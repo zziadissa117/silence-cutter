@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { fillerWordRanges } from './fillerWords'
+import { alignToAudio, fillerWordRanges } from './fillerWords'
 import type { Level } from './silenceMath'
 
 /** A level curve at 20ms steps from [fromSec, toSec, dB] spans. */
@@ -112,5 +112,96 @@ describe('fillerWordRanges', () => {
       { text: ' then', start: 1.6, end: 2.4 },
     ]
     expect(fillerWordRanges(umbrella, spacedOut, { guardSec: 0.04 })).toEqual([])
+  })
+
+  it('leaves the um in when a mistimed cut would also take the start of the next word', () => {
+    // The model says "um" runs to 1.5 and "then" starts at 1.6, but in the
+    // audio "then" really starts at 1.2 with no pause after the "um".
+    const words = [
+      { text: ' so', start: 0, end: 0.6 },
+      { text: ' um', start: 0.9, end: 1.5 },
+      { text: ' then', start: 1.6, end: 2.4 },
+    ]
+    const levels = curve([
+      [0, 0.6, -12],
+      [0.6, 0.9, -60],
+      [0.9, 2.4, -15],
+    ])
+    expect(fillerWordRanges(words, levels, { guardSec: 0.04 })).toEqual([])
+  })
+
+  it('leaves the um in when the cut would hold a second, separate sound', () => {
+    // Quiet at both edges, but two sounds inside where the model heard one
+    // "um" - one of them is a real word it mistimed.
+    const words = [
+      { text: ' so', start: 0, end: 0.6 },
+      { text: ' um', start: 0.9, end: 1.4 },
+      { text: ' then', start: 1.7, end: 2.4 },
+    ]
+    const levels = curve([
+      [0, 0.6, -12],
+      [0.6, 0.9, -60],
+      [0.9, 1.1, -20],
+      [1.1, 1.2, -60],
+      [1.2, 1.4, -14],
+      [1.4, 1.7, -60],
+      [1.7, 2.4, -12],
+    ])
+    expect(fillerWordRanges(words, levels, { guardSec: 0.04 })).toEqual([])
+  })
+
+  it('treats quiet as the same threshold the silence cut uses', () => {
+    // A room whose "quiet" sits at -30 dB: with the silence level set to -25
+    // the um is cut, with the default -35 the edges don't count as quiet.
+    const words = [
+      { text: ' so', start: 0, end: 0.6 },
+      { text: ' um', start: 0.9, end: 1.3 },
+      { text: ' then', start: 1.6, end: 2.4 },
+    ]
+    const noisyRoom = curve([
+      [0, 0.6, -12],
+      [0.6, 0.9, -30],
+      [0.9, 1.3, -20],
+      [1.3, 1.6, -30],
+      [1.6, 2.4, -12],
+    ])
+    expect(fillerWordRanges(words, noisyRoom, { guardSec: 0.04 })).toEqual([])
+    expect(fillerWordRanges(words, noisyRoom, { guardSec: 0.04, quietBelowDb: -25 })).toHaveLength(1)
+  })
+})
+
+
+describe('alignToAudio', () => {
+  // Sound at 0-0.6, 0.9-1.3 and 1.6-2.4, silence between.
+  const exact = [
+    { text: ' so', start: 0, end: 0.6 },
+    { text: ' um', start: 0.9, end: 1.3 },
+    { text: ' then', start: 1.6, end: 2.4 },
+  ]
+
+  it('pulls words that arrived late back onto the sound', () => {
+    const late = exact.map((w) => ({ ...w, start: w.start + 0.3, end: w.end + 0.3 }))
+    const aligned = alignToAudio(late, spacedOut)
+    aligned.forEach((w, i) => {
+      expect(w.start).toBeCloseTo(exact[i].start, 1)
+      expect(w.end).toBeCloseTo(exact[i].end, 1)
+    })
+  })
+
+  it('leaves words that already sit on the sound where they are', () => {
+    expect(alignToAudio(exact, spacedOut)).toEqual(exact)
+  })
+
+  it('does nothing when the audio gives no clue, like a room that is loud throughout', () => {
+    const late = exact.map((w) => ({ ...w, start: w.start + 0.3, end: w.end + 0.3 }))
+    const allLoud = curve([[0, 3, -10]])
+    expect(alignToAudio(late, allLoud)).toEqual(late)
+  })
+
+  it('lets a late um be cut once the words are lined up', () => {
+    // Late by 0.3s, "so" appears to run into the "um" and no cut is safe;
+    // lined up, the pause before the "um" is plain to see.
+    const late = exact.map((w) => ({ ...w, start: w.start + 0.3, end: w.end + 0.3 }))
+    expect(fillerWordRanges(alignToAudio(late, spacedOut), spacedOut)).toHaveLength(1)
   })
 })

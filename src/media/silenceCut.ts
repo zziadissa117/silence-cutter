@@ -25,17 +25,30 @@ import {
   VideoSampleSource,
 } from 'mediabunny'
 
+import { buildCaptionCues, type CaptionCue } from './captions'
 import {
+  WHISPER_SAMPLE_RATE,
+  alignToAudio,
   fillerWordRanges,
   stutterRanges,
-  getTranscriberReady,
   isFillerWordDetectionSupported,
   resampleToMono16k,
-  transcribeWithWordTimestamps,
   concatFloat32,
+  type WordChunk,
 } from './fillerWords'
 import { createOutputSink } from './outputSink'
-import { BALANCED_SETTINGS, findSilentRanges, keepRanges, mergeRanges, totalDuration, type Level, type Range, type SilenceSettings } from './silenceMath'
+import {
+  BALANCED_SETTINGS,
+  findSilentRanges,
+  keepRanges,
+  mergeRanges,
+  speechWindows,
+  totalDuration,
+  type Level,
+  type Range,
+  type SilenceSettings,
+} from './silenceMath'
+import { transcribeOnDevice } from './transcribe'
 
 export class SilenceCutError extends Error {}
 
@@ -124,6 +137,12 @@ export interface SilenceCutResult {
   /** Number of stumbles removed - a small word repeated, like "I-I-I". Only
    *  present when filler-word detection was on. */
   stutters?: number
+  /** Caption lines, timed to this result's own (cut) video - not the
+   *  original. Only present when `detectCaptions` was on. Editable by the
+   *  caller before being written out as an .srt: this is plain data, not a
+   *  file, precisely so a transcription mistake can be fixed without
+   *  re-cutting the video. */
+  captionCues?: CaptionCue[]
 }
 
 export interface CutOptions {
@@ -131,11 +150,15 @@ export interface CutOptions {
    *  filler words like "um"/"uh". Doesn't catch coughs, laughs or other
    *  non-speech noise - Whisper transcribes words, and a cough isn't one. */
   detectFillerWords?: boolean
+  /** Also transcribe the video and return caption cues timed to the cut
+   *  output, ready to edit and save as an .srt. Shares the same
+   *  transcription pass as `detectFillerWords` when both are on. */
+  detectCaptions?: boolean
   /** 0-1 while the model downloads the first time it's used in this tab -
    *  fast on every call after, since transformers.js caches it. */
   onModelDownload?: (fraction: number) => void
   /** 0-1 while the video is being transcribed, before the cut render starts.
-   *  Only called when `detectFillerWords` is on. */
+   *  Only called when `detectFillerWords` or `detectCaptions` is on. */
   onTranscribeProgress?: (fraction: number) => void
 }
 
@@ -153,50 +176,81 @@ export async function planCut(
   silences: number
   fillerWords: number
   stutters: number
+  words: WordChunk[]
 }> {
-  const input = new Input({ source: new BlobSource(file), formats: ALL_FORMATS })
-  try {
-    const [duration, audioTrack] = await Promise.all([input.computeDuration(), input.getPrimaryAudioTrack()])
-    if (!audioTrack) {
-      throw new SilenceCutError('This video has no sound, so there is nothing to detect silence from.')
-    }
-    const wantFillerWords = !!options.detectFillerWords && isFillerWordDetectionSupported()
-    const { levels, mono16k } = await decodeAudio(audioTrack, wantFillerWords)
-    const silences = findSilentRanges(levels, settings)
+  let duration: number
+  let levels: Level[]
+  let mono16k: Float32Array | null
+  const wantFillerWords = !!options.detectFillerWords && isFillerWordDetectionSupported()
+  // Captions need the same transcript as filler-word detection, so asking
+  // for either turns on the one transcription pass below - never two.
+  const wantCaptions = !!options.detectCaptions && isFillerWordDetectionSupported()
+  const wantWords = wantFillerWords || wantCaptions
 
-    let fillerWords: Range[] = []
-    let stutters: Range[] = []
-    if (wantFillerWords && mono16k) {
-      await getTranscriberReady(options.onModelDownload)
-      const words = await transcribeWithWordTimestamps(mono16k, options.onTranscribeProgress)
-      // keepRanges pulls `paddingSec` off both ends of everything it is given,
-      // which is right for a silence but would leave half an "um" behind here.
-      // These ends are already exactly where they should be, so they are
-      // widened by the same amount first and come out unchanged.
+  {
+    // Scoped so the audio decoder is let go before transcription starts.
+    const input = new Input({ source: new BlobSource(file), formats: ALL_FORMATS })
+    try {
+      const [d, audioTrack] = await Promise.all([input.computeDuration(), input.getPrimaryAudioTrack()])
+      if (!audioTrack) {
+        throw new SilenceCutError('This video has no sound, so there is nothing to detect silence from.')
+      }
+      duration = d
+      ;({ levels, mono16k } = await decodeAudio(audioTrack, wantWords))
+    } finally {
+      input.dispose()
+    }
+  }
+
+  const silences = findSilentRanges(levels, settings)
+
+  let fillerWords: Range[] = []
+  let stutters: Range[] = []
+  let words: WordChunk[] = []
+  if (wantWords && mono16k) {
+    // Finished - and its worker ended, so its memory is back - before the
+    // video re-encode starts, so the two never add up.
+    // Only as far as there is sound to hear. A file can claim to run longer
+    // than its audio does - a browser recording claimed minutes for a 13s
+    // clip - and every window past the real end is the model listening to
+    // nothing, a second at a time.
+    const audible = Math.min(duration, mono16k.length / WHISPER_SAMPLE_RATE)
+    const heard = await transcribeOnDevice(mono16k, WHISPER_SAMPLE_RATE, speechWindows(silences, audible), {
+      onModelDownload: options.onModelDownload,
+      onProgress: options.onTranscribeProgress,
+    })
+    // The model's timings run late; line them up with the sound before
+    // anything is cut or captioned from them. See alignToAudio.
+    words = alignToAudio(heard, levels, settings.thresholdDb)
+    if (wantFillerWords) {
+      // keepRanges pulls `paddingSec` off both ends of everything it is
+      // given, which is right for a silence but would leave half an "um"
+      // behind here. These ends are already exactly where they should be,
+      // so they are widened by the same amount first and come out unchanged.
       const uncramp = (range: Range) => ({
         start: Math.max(0, range.start - settings.paddingSec),
         end: Math.min(duration, range.end + settings.paddingSec),
       })
-      // Both are fenced in by the real words either side, so neither can
-      // reach into one. See fillerWordRanges and stutterRanges.
-      fillerWords = fillerWordRanges(words, levels, { guardSec: 0.04 }).map(uncramp)
-      stutters = stutterRanges(words, levels, { guardSec: 0.04 }).map(uncramp)
+      // Fenced in by the real words either side and checked against the
+      // audio itself. See fillerWordRanges and stutterRanges.
+      const cutOptions = { guardSec: 0.04, quietBelowDb: settings.thresholdDb }
+      fillerWords = fillerWordRanges(words, levels, cutOptions).map(uncramp)
+      stutters = stutterRanges(words, levels, cutOptions).map(uncramp)
     }
+  }
 
-    const toCut = mergeRanges([...silences, ...fillerWords, ...stutters])
-    const keep = keepRanges(toCut, duration, settings.paddingSec)
-    if (keep.length === 0) {
-      throw new SilenceCutError('The whole video looks silent. Try recording somewhere quieter.')
-    }
-    return {
-      keep,
-      duration,
-      silences: silences.length,
-      fillerWords: fillerWords.length,
-      stutters: stutters.length,
-    }
-  } finally {
-    input.dispose()
+  const toCut = mergeRanges([...silences, ...fillerWords, ...stutters])
+  const keep = keepRanges(toCut, duration, settings.paddingSec)
+  if (keep.length === 0) {
+    throw new SilenceCutError('The whole video looks silent. Try recording somewhere quieter.')
+  }
+  return {
+    keep,
+    duration,
+    words,
+    silences: silences.length,
+    fillerWords: fillerWords.length,
+    stutters: stutters.length,
   }
 }
 
@@ -389,7 +443,7 @@ export async function cutSilenceFromFile(
   settings: SilenceSettings = BALANCED_SETTINGS,
   options: CutOptions = {},
 ): Promise<SilenceCutResult> {
-  const { keep, duration, silences, fillerWords, stutters } = await planCut(file, settings, options)
+  const { keep, duration, silences, fillerWords, stutters, words } = await planCut(file, settings, options)
   const { blob, storedAs } = await cutSilence(file, keep, onProgress)
   return {
     blob,
@@ -398,6 +452,7 @@ export async function cutSilenceFromFile(
     newDurationSec: totalDuration(keep),
     cuts: silences,
     ...(options.detectFillerWords ? { fillerWords, stutters } : {}),
+    ...(options.detectCaptions ? { captionCues: buildCaptionCues(words, keep) } : {}),
   }
 }
 

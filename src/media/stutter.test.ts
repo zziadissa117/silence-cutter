@@ -109,4 +109,22 @@ describe('stutterRanges', () => {
     ]
     expect(stutterRanges(words, roomy, { guardSec: 0.04 })).toEqual([])
   })
+
+  it('leaves the stumble in when the kept word follows with no pause', () => {
+    // "the the point", but the second "the" runs straight on from the first
+    // with no quiet between - nowhere safe to end the cut.
+    const words = [
+      { text: ' so', start: 0.0, end: 0.3 },
+      { text: ' the', start: 0.4, end: 0.6 },
+      { text: ' the', start: 0.62, end: 0.8 },
+      { text: ' point', start: 0.9, end: 1.2 },
+    ]
+    const joined = curve([
+      [0, 0.3, -12],
+      [0.3, 0.4, -60],
+      [0.4, 1.2, -12],
+    ])
+    expect(stutterRanges(words, joined, { guardSec: 0.04 })).toEqual([])
+  })
 })
+

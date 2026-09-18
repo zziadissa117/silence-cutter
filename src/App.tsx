@@ -11,6 +11,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
+import { cuesToSrt, type CaptionCue } from './media/captions'
 import { isFillerWordDetectionSupported } from './media/fillerWords'
 import {
   MAX_ATTEMPTS,
@@ -19,6 +20,7 @@ import {
   loadJobFile,
   loadPendingJobs,
   persistJob,
+  recordPhase,
   resetAttempts,
 } from './media/jobStore'
 import { forgetCut } from './media/outputSink'
@@ -55,18 +57,31 @@ type Job = {
   file: File | null
   settings: SilenceSettings
   cleanSpeech: boolean
+  wantCaptions: boolean
   status: 'queued' | 'held' | 'working' | 'done' | 'failed'
   phase: 'model' | 'listening' | 'cutting'
   progress: number
   result?: SilenceCutResult
   url?: string
   error?: string
+  /** The phase this video was last seen entering, for a `held` video only -
+   *  see recordPhase's own comment for why this exists and where it comes
+   *  from. Undefined for a video that has never been tried. */
+  lastPhase?: Job['phase']
 }
 
 const PHASE_LABEL: Record<Job['phase'], string> = {
-  model: 'Getting the speech model',
-  listening: 'Listening for "um"s',
-  cutting: 'Cutting',
+  model: 'getting the speech model',
+  listening: 'listening for words',
+  cutting: 'cutting',
+}
+
+function phaseLabel(job: Job): string {
+  if (job.phase === 'model') return 'Getting the speech model'
+  if (job.phase === 'cutting') return 'Cutting'
+  if (job.cleanSpeech && job.wantCaptions) return 'Listening for "um"s and writing captions'
+  if (job.wantCaptions) return 'Writing captions'
+  return 'Listening for "um"s'
 }
 
 function formatTime(seconds: number): string {
@@ -77,6 +92,11 @@ function formatTime(seconds: number): string {
 function cutName(originalName: string): string {
   const base = originalName.replace(/\.[^./]+$/, '')
   return `${base || 'video'}_cut.mp4`
+}
+
+function srtName(originalName: string): string {
+  const base = originalName.replace(/\.[^./]+$/, '')
+  return `${base || 'video'}_captions.srt`
 }
 
 function canShareFiles(files: File[]): boolean {
@@ -102,6 +122,10 @@ export function App() {
   // Off by default. It pulls down a speech model and roughly doubles the work
   // per video; the plain silence cut is the thing that already works well.
   const [cleanSpeech, setCleanSpeech] = useState(false)
+  // Also off by default, and also transcribes - same memory cost as above.
+  // Independent of cleanSpeech: asking for either turns on transcription
+  // once, and either or both can be on for a given video.
+  const [wantCaptions, setWantCaptions] = useState(false)
   const [jobs, setJobs] = useState<Job[]>([])
   const [notice, setNotice] = useState<string | null>(null)
   const [dragging, setDragging] = useState(false)
@@ -132,15 +156,17 @@ export function App() {
         file: null,
         settings: p.settings,
         cleanSpeech: p.cleanSpeech,
+        wantCaptions: p.wantCaptions,
         status: p.attempts >= MAX_ATTEMPTS ? ('held' as const) : ('queued' as const),
         phase: 'cutting' as const,
         progress: 0,
+        lastPhase: p.lastPhase,
       }))
       setJobs((current) => [...restored, ...current])
       const held = restored.filter((j) => j.status === 'held').length
       setNotice(
         held > 0
-          ? `${held} video${held === 1 ? '' : 's'} stopped this page more than once, so ${held === 1 ? 'it has' : 'they have'} been left alone. Start it by hand, or remove it. Turning off "um"s uses far less memory.`
+          ? `${held} video${held === 1 ? '' : 's'} stopped this page more than once, so ${held === 1 ? 'it has' : 'they have'} been left alone. Start it by hand, or remove it. Turning off "um"s or captions uses far less memory.`
           : `Picked up ${restored.length} video${restored.length === 1 ? '' : 's'} that hadn't finished.`,
       )
     })
@@ -159,8 +185,13 @@ export function App() {
 
     const patch = (fields: Partial<Job>) =>
       setJobs((js) => js.map((j) => (j.id === next.id ? { ...j, ...fields } : j)))
-    const setPhase = (phase: Job['phase'], progress: number) =>
+    const setPhase = (phase: Job['phase'], progress: number) => {
       patch({ status: 'working', phase, progress })
+      // Written to disk, not just React state, so it survives the tab being
+      // killed outright rather than only a graceful failure - see
+      // recordPhase's own comment.
+      if (progress === 0) void recordPhase(next.id, phase)
+    }
 
     void (async () => {
       try {
@@ -182,14 +213,16 @@ export function App() {
           return
         }
 
-        setPhase(next.cleanSpeech ? 'model' : 'cutting', 0)
+        const wantsWords = next.cleanSpeech || next.wantCaptions
+        setPhase(wantsWords ? 'model' : 'cutting', 0)
         const result = await cutSilenceFromFile(
           file,
           (progress) => setPhase('cutting', progress),
           next.settings,
-          next.cleanSpeech
+          wantsWords
             ? {
-                detectFillerWords: true,
+                detectFillerWords: next.cleanSpeech,
+                detectCaptions: next.wantCaptions,
                 onModelDownload: (progress) => setPhase('model', progress),
                 onTranscribeProgress: (progress) => setPhase('listening', progress),
               }
@@ -198,8 +231,12 @@ export function App() {
         patch({ status: 'done', result, url: URL.createObjectURL(result.blob) })
         await forgetJob(next.id)
       } catch (err) {
+        // The real reason, not just "something went wrong" - it is the only
+        // way to know what failed on a phone nobody can attach a debugger to.
         const message =
-          err instanceof SilenceCutError ? err.message : 'Something went wrong cutting this video.'
+          err instanceof SilenceCutError
+            ? err.message
+            : `Something went wrong cutting this video (${err instanceof Error ? err.message : String(err)}).`
         patch({ status: 'failed', error: message })
         await forgetJob(next.id)
       } finally {
@@ -222,12 +259,14 @@ export function App() {
       if (files.length === 0) return
       const { preset: _preset, ...snapshot } = settings
       const useSpeech = cleanSpeech && speechSupported
+      const useCaptions = wantCaptions && speechSupported
       const added: Job[] = files.map((file) => ({
         id: `${Date.now()}-${nextId++}`,
         name: file.name,
         file,
         settings: snapshot,
         cleanSpeech: useSpeech,
+        wantCaptions: useCaptions,
         status: 'queued',
         phase: 'cutting',
         progress: 0,
@@ -242,12 +281,13 @@ export function App() {
           fileType: job.file!.type,
           settings: job.settings,
           cleanSpeech: job.cleanSpeech,
+          wantCaptions: job.wantCaptions,
         }).catch(() => {
           // Still queued in memory; it just would not survive a reload.
         })
       }
     },
-    [cleanSpeech, settings, speechSupported],
+    [cleanSpeech, settings, speechSupported, wantCaptions],
   )
 
   // Dropping works anywhere on the page, not only on the dotted rectangle.
@@ -347,7 +387,7 @@ export function App() {
         <span className="hint">Runs on this device. Nothing is uploaded.</span>
       </header>
       <p className="sub">
-        Drop in your raw videos and get back copies with the dead air removed, ready for CapCut.
+        Drop in your raw videos and get back copies with the dead air removed, ready for your editor.
       </p>
 
       {/* Queued and held videos are on disk and come back after a reload; a
@@ -429,22 +469,42 @@ export function App() {
             </details>
 
             {speechSupported ? (
-              <label className="toggle">
-                <input
-                  type="checkbox"
-                  checked={cleanSpeech}
-                  onChange={(e) => setCleanSpeech(e.target.checked)}
-                />
-                <span>
-                  <span className="label">Also cut "um"s and stumbles</span>
-                  <span className="hint" style={{ display: 'block' }}>
-                    Listens to every word on this device and takes out "um" and "uh", plus a small
-                    word repeated in a row like "I-I-I". English only. Downloads a speech model the
-                    first time, and uses a lot more memory - if a video keeps stopping the page,
-                    turn this off.
+              <>
+                <label className="toggle">
+                  <input
+                    type="checkbox"
+                    checked={cleanSpeech}
+                    onChange={(e) => setCleanSpeech(e.target.checked)}
+                  />
+                  <span>
+                    <span className="label">Also cut "um"s and stumbles</span>
+                    <span className="hint" style={{ display: 'block' }}>
+                      Listens to every word on this device and takes out "um" and "uh", plus a small
+                      word repeated in a row like "I-I-I". English only. Only cuts one when there is
+                      a real pause around it, so some will be left in rather than risk clipping a
+                      word. Downloads a speech model the first time, and uses more memory - if a
+                      video keeps stopping the page, turn this off.
+                    </span>
                   </span>
-                </span>
-              </label>
+                </label>
+                <label className="toggle">
+                  <input
+                    type="checkbox"
+                    checked={wantCaptions}
+                    onChange={(e) => setWantCaptions(e.target.checked)}
+                  />
+                  <span>
+                    <span className="label">Also write captions (.srt)</span>
+                    <span className="hint" style={{ display: 'block' }}>
+                      Transcribes the video on this device and hands back an editable caption file
+                      alongside it, timed to match the cut video, ready to check over and import
+                      into your editor. English only, and some words will be wrong - check them
+                      before you import. Same speech model and memory cost as above - if a video
+                      keeps stopping the page, turn this off too.
+                    </span>
+                  </span>
+                </label>
+              </>
             ) : null}
           </section>
 
@@ -545,7 +605,7 @@ function SendAll({ files }: { files: File[] }) {
   }
   return (
     <button type="button" className="btn primary" onClick={() => void send()}>
-      Send all {files.length} to CapCut
+      Send all {files.length}
     </button>
   )
 }
@@ -582,7 +642,7 @@ function JobCard({
       : job.status === 'held'
         ? 'Held back'
         : job.status === 'working'
-          ? `${PHASE_LABEL[job.phase]}… ${Math.round(job.progress * 100)}%`
+          ? `${phaseLabel(job)}… ${Math.round(job.progress * 100)}%`
           : job.status === 'done'
             ? 'Done'
             : 'Failed'
@@ -613,9 +673,12 @@ function JobCard({
 
       {job.status === 'held' ? (
         <>
-          <div className="error">{job.error}</div>
+          <div className="error">
+            {job.error}
+            {job.lastPhase ? ` It last got as far as: ${PHASE_LABEL[job.lastPhase]}.` : ''}
+          </div>
           <div className="result">
-            <span className="hint">Turning off "um"s makes it far more likely to get through.</span>
+            <span className="hint">Turning off "um"s or captions makes it far more likely to get through.</span>
             <button type="button" className="btn" onClick={() => onStart(job.id)}>
               Try this one again
             </button>
@@ -624,26 +687,124 @@ function JobCard({
       ) : null}
 
       {job.status === 'done' && job.result && job.url ? (
-        <div className="result">
-          <span className="pill">
-            {formatTime(job.result.originalDurationSec)} → {formatTime(job.result.newDurationSec)} ·{' '}
-            {job.result.cuts} pause{job.result.cuts === 1 ? '' : 's'}
-            {job.result.fillerWords ? ` · ${job.result.fillerWords} "um"` : ''}
-            {job.result.stutters ? ` · ${job.result.stutters} stumble` : ''} removed
-          </span>
-          {canSend && !shareFailed ? (
-            <button type="button" className="btn primary" onClick={() => void send()}>
-              Send to CapCut
-            </button>
-          ) : (
-            <a className="btn" href={job.url} download={cutName(job.name)}>
-              Save {cutName(job.name)}
-            </a>
-          )}
-        </div>
+        <>
+          <div className="result">
+            <span className="pill">
+              {formatTime(job.result.originalDurationSec)} → {formatTime(job.result.newDurationSec)} ·{' '}
+              {job.result.cuts} pause{job.result.cuts === 1 ? '' : 's'}
+              {job.result.fillerWords ? ` · ${job.result.fillerWords} "um"` : ''}
+              {job.result.stutters ? ` · ${job.result.stutters} stumble` : ''} removed
+            </span>
+            {canSend && !shareFailed ? (
+              <button type="button" className="btn primary" onClick={() => void send()}>
+                Send
+              </button>
+            ) : (
+              <a className="btn" href={job.url} download={cutName(job.name)}>
+                Save {cutName(job.name)}
+              </a>
+            )}
+          </div>
+          {job.result.captionCues ? (
+            <CaptionsEditor cues={job.result.captionCues} videoName={job.name} videoFile={file} />
+          ) : null}
+        </>
       ) : null}
 
-      {job.status === 'failed' ? <div className="error">{job.error}</div> : null}
+      {job.status === 'failed' ? (
+        <div className="error">
+          {job.error}
+          {job.lastPhase ? ` Before the page reloaded, it last got as far as: ${PHASE_LABEL[job.lastPhase]}.` : ''}
+        </div>
+      ) : null}
     </div>
+  )
+}
+
+/** The captions the model wrote are a starting point, not a finished file -
+ *  Whisper gets words wrong sometimes, and there is no way to fix that after
+ *  the fact except by reading every line. This is that: every line, editable,
+ *  before it ever becomes an .srt on disk. */
+function CaptionsEditor({
+  cues: initialCues,
+  videoName,
+  videoFile,
+}: {
+  cues: CaptionCue[]
+  videoName: string
+  videoFile: File | null
+}) {
+  const [cues, setCues] = useState(initialCues)
+  const [shareFailed, setShareFailed] = useState(false)
+  const [srtUrl, setSrtUrl] = useState<string | null>(null)
+  const fileName = srtName(videoName)
+
+  const srtText = useMemo(() => cuesToSrt(cues), [cues])
+
+  useEffect(() => {
+    const url = URL.createObjectURL(new Blob([srtText], { type: 'application/x-subrip' }))
+    setSrtUrl(url)
+    return () => URL.revokeObjectURL(url)
+  }, [srtText])
+
+  const srtFile = useMemo(
+    () => new File([srtText], fileName, { type: 'application/x-subrip' }),
+    [srtText, fileName],
+  )
+  const canSendBoth = useMemo(
+    () => (videoFile ? canShareFiles([videoFile, srtFile]) : false),
+    [videoFile, srtFile],
+  )
+
+  const updateText = (i: number, text: string) =>
+    setCues((cs) => cs.map((c, idx) => (idx === i ? { ...c, text } : c)))
+  const removeCue = (i: number) => setCues((cs) => cs.filter((_, idx) => idx !== i))
+
+  const sendBoth = async () => {
+    if (!videoFile) return
+    try {
+      await navigator.share({ files: [videoFile, srtFile] })
+    } catch (err) {
+      if (err instanceof Error && err.name === 'AbortError') return
+      setShareFailed(true)
+    }
+  }
+
+  return (
+    <details className="captions">
+      <summary>
+        {cues.length} caption line{cues.length === 1 ? '' : 's'} - check and edit
+      </summary>
+      <div className="caption-list">
+        {cues.map((cue, i) => (
+          <div className="caption-row" key={i}>
+            <span className="caption-time">
+              {formatTime(cue.start)}–{formatTime(cue.end)}
+            </span>
+            <input type="text" value={cue.text} onChange={(e) => updateText(i, e.target.value)} />
+            <button
+              type="button"
+              className="linkbtn"
+              aria-label="Remove this line"
+              onClick={() => removeCue(i)}
+            >
+              ✕
+            </button>
+          </div>
+        ))}
+      </div>
+      <div className="result">
+        {canSendBoth && !shareFailed ? (
+          <button type="button" className="btn primary" onClick={() => void sendBoth()}>
+            Send video + captions
+          </button>
+        ) : null}
+        {srtUrl ? (
+          <a className="btn" href={srtUrl} download={fileName}>
+            Save {fileName}
+          </a>
+        ) : null}
+      </div>
+    </details>
   )
 }

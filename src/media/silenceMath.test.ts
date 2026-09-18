@@ -6,6 +6,7 @@ import {
   keepRanges,
   mergeRanges,
   snapCutToQuiet,
+  speechWindows,
   totalDuration,
   type Level,
 } from './silenceMath'
@@ -229,5 +230,49 @@ describe('snapCutToQuiet', () => {
       quietBelowDb: -27,
     })
     expect(snapped).toBeNull()
+  })
+})
+
+describe('speechWindows', () => {
+  it('leaves silence at the ends out and pads the window into its pauses', () => {
+    const windows = speechWindows([{ start: 0, end: 2 }, { start: 5, end: 8 }, { start: 9, end: 12 }], 12)
+    expect(windows).toEqual([{ start: 1.7, end: 9.3 }])
+  })
+
+  it('groups speech across short pauses until the window is full', () => {
+    const silences = [{ start: 10, end: 11 }, { start: 20, end: 21 }, { start: 30, end: 31 }]
+    const windows = speechWindows(silences, 40, { maxSec: 25, padSec: 0 })
+    expect(windows).toEqual([
+      { start: 0, end: 20 },
+      { start: 21, end: 40 },
+    ])
+  })
+
+  it('only ever breaks inside a pause when there is one', () => {
+    const silences = [{ start: 12, end: 12.5 }, { start: 24, end: 24.5 }, { start: 36, end: 36.5 }]
+    for (const w of speechWindows(silences, 48, { maxSec: 25, padSec: 0 })) {
+      for (const edge of [w.start, w.end]) {
+        const inPause = edge === 0 || edge === 48 || silences.some((s) => edge >= s.start && edge <= s.end)
+        expect(inPause).toBe(true)
+      }
+    }
+  })
+
+  it('never lets two windows overlap, however short the pause between them', () => {
+    const windows = speechWindows([{ start: 20, end: 20.2 }], 45, { maxSec: 25, padSec: 0.3 })
+    expect(windows).toHaveLength(2)
+    expect(windows[0].end).toBeLessThanOrEqual(windows[1].start)
+  })
+
+  it('splits a long stretch with no pause into windows the model can take', () => {
+    const windows = speechWindows([], 60, { maxSec: 25, padSec: 0.3 })
+    expect(windows).toHaveLength(3)
+    for (const w of windows) expect(w.end - w.start).toBeLessThanOrEqual(25.6)
+    expect(windows[0].start).toBe(0)
+    expect(windows[windows.length - 1].end).toBe(60)
+  })
+
+  it('returns nothing for a silent video', () => {
+    expect(speechWindows([{ start: 0, end: 30 }], 30)).toEqual([])
   })
 })

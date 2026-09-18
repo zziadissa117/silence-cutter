@@ -24,8 +24,17 @@ interface StoredJob {
   fileType: string
   settings: { thresholdDb: number; minSilenceSec: number; paddingSec: number }
   cleanSpeech: boolean
+  wantCaptions: boolean
   /** How many times cutting this has been started. See the note above. */
   attempts: number
+  /** The last phase this video was seen entering before the tab stopped
+   *  responding - 'model' (downloading/loading the speech model),
+   *  'listening' (transcribing) or 'cutting' (re-encoding). Written as the
+   *  work happens, not just at the end, precisely so a crash that never gets
+   *  to run any of *this* file's own code still leaves a record of how far
+   *  it got - the one thing a silent tab kill on an iPhone doesn't otherwise
+   *  tell you. */
+  lastPhase?: 'model' | 'listening' | 'cutting'
   addedAt: number
 }
 
@@ -37,7 +46,9 @@ export interface PendingJob {
   fileType: string
   settings: StoredJob['settings']
   cleanSpeech: boolean
+  wantCaptions: boolean
   attempts: number
+  lastPhase?: StoredJob['lastPhase']
 }
 
 /** Two goes. A first failure might have been bad luck - the tab trimmed in
@@ -76,6 +87,15 @@ export async function resetAttempts(id: string): Promise<void> {
   await db.jobs.update(id, { attempts: 0 })
 }
 
+/** Records the phase a video just entered. Called throughout the actual cut,
+ *  not just once, so if the tab is killed outright - no error, no unmount,
+ *  nothing JS ever gets to run - the next load still shows which phase it
+ *  never got past. Best-effort: a write that loses the race with the crash
+ *  itself just leaves the previous phase in place. */
+export async function recordPhase(id: string, phase: StoredJob['lastPhase']): Promise<void> {
+  await db.jobs.update(id, { lastPhase: phase }).catch(() => {})
+}
+
 /** The video itself, read only when its turn comes. */
 export async function loadJobFile(id: string): Promise<File | null> {
   const row = await db.jobs.get(id)
@@ -87,12 +107,14 @@ export async function loadJobFile(id: string): Promise<File | null> {
  *  only - see the note at the top. */
 export async function loadPendingJobs(): Promise<PendingJob[]> {
   const rows = await db.jobs.orderBy('addedAt').toArray()
-  return rows.map(({ id, fileName, fileType, settings, cleanSpeech, attempts }) => ({
+  return rows.map(({ id, fileName, fileType, settings, cleanSpeech, wantCaptions, attempts, lastPhase }) => ({
     id,
     fileName,
     fileType,
     settings,
     cleanSpeech,
+    wantCaptions: wantCaptions ?? false, // rows saved before captions existed
     attempts,
+    lastPhase,
   }))
 }

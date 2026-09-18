@@ -153,3 +153,50 @@ export function mergeRanges(ranges: Range[]): Range[] {
 export function totalDuration(ranges: Range[]): number {
   return ranges.reduce((sum, r) => sum + (r.end - r.start), 0)
 }
+
+/** Splits the speech in a video into windows for the speech model to listen
+ *  to one at a time, breaking only inside pauses so no word is ever cut in
+ *  half between two windows.
+ *
+ *  Why windows at all: transcribing a whole clip in one go took the page
+ *  past 3 GB in WebKit, far over what an iPhone allows a tab. Short separate
+ *  windows, with a moment between them for the browser to clear up, are most
+ *  of what brought that down. Pure silence is left out entirely - there is
+ *  nothing in it to hear, and the model tends to invent words in it.
+ *
+ *  A single stretch of speech longer than `maxSec` with no pause anywhere in
+ *  it is the one case that has to be cut mid-flow; it is rare in real takes. */
+export function speechWindows(
+  silences: Range[],
+  duration: number,
+  { maxSec = 25, padSec = 0.3 }: { maxSec?: number; padSec?: number } = {},
+): Range[] {
+  const speech: Range[] = []
+  let cursor = 0
+  for (const { start, end } of silences) {
+    if (start > cursor) speech.push({ start: cursor, end: start })
+    cursor = Math.max(cursor, end)
+  }
+  if (cursor < duration) speech.push({ start: cursor, end: duration })
+
+  const pieces: Range[] = []
+  for (const { start, end } of speech) {
+    for (let s = start; s < end; s += maxSec) pieces.push({ start: s, end: Math.min(end, s + maxSec) })
+  }
+
+  const grouped: Range[] = []
+  for (const piece of pieces) {
+    const current = grouped[grouped.length - 1]
+    if (current && piece.end - current.start <= maxSec) current.end = piece.end
+    else grouped.push({ ...piece })
+  }
+
+  // A little of the pause either side, so the model hears each word begin and
+  // end - but never more than half the gap, so neighbours can't overlap and
+  // hear the same word twice.
+  return grouped.map((w, i) => {
+    const before = i === 0 ? w.start : (w.start - grouped[i - 1].end) / 2
+    const after = i === grouped.length - 1 ? duration - w.end : (grouped[i + 1].start - w.end) / 2
+    return { start: w.start - Math.min(padSec, before), end: w.end + Math.min(padSec, after) }
+  })
+}

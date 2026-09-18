@@ -3,6 +3,10 @@ import { defineConfig } from 'vite'
 import { VitePWA } from 'vite-plugin-pwa'
 
 export default defineConfig({
+  // The speech model runs in a module worker (src/media/transcribe.worker.ts),
+  // and the model library it loads splits into chunks, which only the ES
+  // worker format can do.
+  worker: { format: 'es' },
   plugins: [
     react(),
     VitePWA({

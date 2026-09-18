@@ -1,20 +1,9 @@
-// Detects spoken filler words ("um", "uh"...) so they can be cut the same
-// way a silent pause is. Runs Whisper entirely on-device via transformers.js
-// - the audio never leaves the phone, same as the rest of this tool.
+// Decides which spoken filler words ("um", "uh"...) and stumbles ("I-I-I")
+// to cut, given the words the speech model heard and the loudness curve.
+// The model itself runs in transcribe.worker.ts; everything here is pure.
 //
 // This does NOT catch coughs, laughs or other non-speech noise. Whisper
-// transcribes words; a cough isn't one. Catching non-speech sound reliably
-// needs a different kind of model (audio event classification, not speech
-// recognition), which is a real gap, not an oversight - see CutSilence.tsx
-// for how that's explained to him rather than silently pretending it works.
-
-import { pipeline, type AutomaticSpeechRecognitionPipeline } from '@huggingface/transformers'
-
-/** Mirrors the library's own (unexported) `Chunk` shape. */
-interface TimestampedChunk {
-  text: string
-  timestamp: [number, number]
-}
+// transcribes words; a cough isn't one.
 
 import type { Level, Range } from './silenceMath'
 
@@ -22,15 +11,6 @@ import type { Level, Range } from './silenceMath'
  *  input already at that rate - a raw Float32Array is passed straight
  *  through with no resampling of its own. */
 export const WHISPER_SAMPLE_RATE = 16000
-
-/** base.en rather than tiny.en. tiny is half the download and noticeably
- *  faster, and its word timings are not good enough to cut on: on a real take
- *  it reported an "um" as lasting 20 milliseconds and put it 300ms from where
- *  it actually was, which is how a cut ended up inside the word after it. On
- *  the same clip base.en found all three fillers where tiny found one, and
- *  timed them to within a frame or two. The extra ~35MB buys the difference
- *  between a feature that works and one that damages takes. */
-const MODEL_ID = 'Xenova/whisper-base.en'
 
 /** English fillers, lowercased, punctuation stripped. Whisper sometimes
  *  spells these a few different ways ("umm" vs "um"), so this is a small set
@@ -45,36 +25,10 @@ export interface WordChunk {
   end: number
 }
 
-let transcriber: Promise<AutomaticSpeechRecognitionPipeline> | null = null
-
-/** Loaded once per browser tab and cached by transformers.js itself between
- *  page loads (it keeps the downloaded model in the browser's own Cache
- *  Storage), so this is only ever a real download the first time it runs. */
-function getTranscriber(onModelProgress?: (fraction: number) => void) {
-  transcriber ??= pipeline('automatic-speech-recognition', MODEL_ID, {
-    progress_callback: (data: { status: string; progress?: number }) => {
-      if (onModelProgress && data.status === 'progress' && typeof data.progress === 'number') {
-        onModelProgress(data.progress / 100)
-      }
-    },
-  })
-  return transcriber
-}
-
-/** Starts (or waits for) the model load, reporting download progress. A
- *  separate step from transcribeWithWordTimestamps because the download only
- *  ever happens once per tab and the caller wants to show it as its own
- *  phase ("Downloading the filler-word model…") rather than folded into the
- *  transcribing progress bar. */
-export async function getTranscriberReady(onDownloadProgress?: (fraction: number) => void): Promise<void> {
-  await getTranscriber(onDownloadProgress)
-}
-
-/** True once this browser can actually run the model - same WebAssembly
- *  requirement transformers.js has everywhere, which is effectively "any
- *  browser released in the last several years." */
+/** True when this browser can run the speech model: WebAssembly for the
+ *  model, and a worker to run it in so its memory can be handed back. */
 export function isFillerWordDetectionSupported(): boolean {
-  return typeof WebAssembly !== 'undefined'
+  return typeof WebAssembly !== 'undefined' && typeof Worker !== 'undefined'
 }
 
 /** Mixes an AudioBuffer down to mono and resamples it to 16kHz via linear
@@ -97,7 +51,7 @@ export function resampleToMono16k(buffer: AudioBuffer): Float32Array {
     const i0 = Math.floor(srcIndex)
     const i1 = Math.min(i0 + 1, mono.length - 1)
     const frac = srcIndex - i0
-    out[i] = mono[i0] * (1 - frac) + mono[Math.min(i1, mono.length - 1)] * frac
+    out[i] = mono[i0] * (1 - frac) + mono[i1] * frac
   }
   return out
 }
@@ -113,31 +67,61 @@ export function concatFloat32(chunks: Float32Array[]): Float32Array {
   return out
 }
 
-/** Transcribes the whole track and returns every word with its timing.
- *  `chunk_length_s`/`stride_length_s` is transformers.js's documented way of
- *  handling audio longer than Whisper's native 30-second window - not the
- *  streaming-callback API, which has open bugs around word timestamps
- *  returning null. This calls the pipeline directly on the full buffer. */
-export async function transcribeWithWordTimestamps(
-  samples: Float32Array,
-  onProgress?: (fraction: number) => void,
-): Promise<WordChunk[]> {
-  const model = await getTranscriber()
-  const result = await model(samples, {
-    return_timestamps: 'word',
-    chunk_length_s: 30,
-    stride_length_s: 5,
-  })
-  onProgress?.(1)
-  const output = Array.isArray(result) ? result[0] : result
-  const chunks: TimestampedChunk[] = output.chunks ?? []
-  return chunks
-    .filter((c) => c.timestamp[0] != null && c.timestamp[1] != null)
-    .map((c) => ({ text: c.text, start: c.timestamp[0], end: c.timestamp[1] }))
-}
-
 function normalize(word: string): string {
   return word.toLowerCase().replace(/[^a-z]/g, '')
+}
+
+/** Moves every word by the one shift that best lines the words up with where
+ *  the audio is actually loud.
+ *
+ *  The speech model's timings run late, and by a steady amount: on a real
+ *  take tiny.en put words 0.16-0.24s after base.en, and on a test clip it
+ *  said "So" was still being spoken where the "um" after it had already
+ *  started. Every filler cut is fenced by the words either side, so words
+ *  that are late make the fences wrong - the cut is refused (the "um" stays
+ *  in) or, worse, lands in the wrong place. The loudness curve knows where
+ *  the sound really is, so it decides the shift: words should sit on sound,
+ *  not on silence. Captions come out on time for the same reason. */
+export function alignToAudio(words: WordChunk[], levels: Level[], quietBelowDb = -35): WordChunk[] {
+  if (words.length === 0 || levels.length < 2) return words
+  const step = levels[1].time - levels[0].time
+  const first = levels[0].time
+  const loud = levels.map((l) => (l.db >= quietBelowDb ? 1 : -1))
+  const score = (shift: number) => {
+    let total = 0
+    for (const w of words) {
+      const from = Math.max(0, Math.ceil((w.start - shift - first) / step))
+      const to = Math.min(loud.length - 1, Math.floor((w.end - shift - first) / step))
+      for (let i = from; i <= to; i++) total += loud[i]
+    }
+    return total
+  }
+  const unshifted = score(0)
+  let best = 0
+  let bestScore = unshifted
+  // Late by up to half a second, early by up to a fifth - wider than anything
+  // seen.
+  for (let shift = -0.2; shift <= 0.5 + 1e-9; shift += 0.02) {
+    const s = score(shift)
+    if (s > bestScore || (s === bestScore && Math.abs(shift) < Math.abs(best))) {
+      best = shift
+      bestScore = s
+    }
+  }
+  // Only taken when it clearly lines the words up better. A curve that says
+  // little - loud all the way through, say - still wobbles by a frame or two
+  // between shifts, and that is not a reason to move anything.
+  const wordFrames = words.reduce((n, w) => n + Math.max(0, (w.end - w.start) / step), 0)
+  if (Math.abs(best) < 1e-9 || bestScore - unshifted < Math.max(3, 0.05 * wordFrames)) return words
+  return words.map((w) => ({ ...w, start: Math.max(0, w.start - best), end: Math.max(0, w.end - best) }))
+}
+
+interface CutOptions {
+  /** How far a cut is kept clear of the real words either side. */
+  guardSec?: number
+  /** Below this loudness counts as quiet - the same threshold the silence
+   *  cut uses, so "quiet" means the same thing everywhere in the tool. */
+  quietBelowDb?: number
 }
 
 /** Words a stutter actually repeats. Deliberately only the small ones -
@@ -161,17 +145,18 @@ const MAX_STUTTER_SEC = 0.5
  *  same small word simply turning up twice in a sentence. */
 const MAX_STUTTER_GAP_SEC = 0.45
 
+/** The longest a single "um" is allowed to sound. A cut holding more sound
+ *  than this per filler has almost certainly caught part of a real word. */
+const MAX_FILLER_SEC = 0.9
+
 /** The ranges to cut for stutters - a small word said twice or more in a row.
  *
  *  Only the earlier attempts go. The last one is the one he actually
  *  completed and the one the sentence continues from, so it stays, and the
  *  cut never reaches past the real word before the run or into the repeat
  *  being kept. Same guard rails as the filler cuts, for the same reason. */
-export function stutterRanges(
-  chunks: WordChunk[],
-  levels: Level[],
-  { guardSec }: { guardSec: number } = { guardSec: 0.04 },
-): Range[] {
+export function stutterRanges(chunks: WordChunk[], levels: Level[], options: CutOptions = {}): Range[] {
+  const { guardSec = 0.04, quietBelowDb = -35 } = options
   const ranges: Range[] = []
   let i = 0
 
@@ -194,24 +179,26 @@ export function stutterRanges(
 
     if (last > i) {
       // Everything except the final attempt is the stumble.
+      const attempts = last - i
       const runStart = chunks[i].start
       const runEnd = chunks[last - 1].end
       const kept = chunks[last]
-      const shortEnough = chunks
-        .slice(i, last)
-        .every((c) => c.end - c.start <= MAX_STUTTER_SEC)
+      const shortEnough = chunks.slice(i, last).every((c) => c.end - c.start <= MAX_STUTTER_SEC)
 
       if (shortEnough) {
-        const previous = i > 0 ? chunks[i - 1].end + guardSec : 0
-        const low = Math.max(previous, 0)
+        const low = i > 0 ? chunks[i - 1].end + guardSec : 0
         const high = kept.start - guardSec
         const start = Math.max(low, Math.min(runStart, high))
         const end = Math.min(high, Math.max(runEnd, low))
         if (end > start && end - start >= 0.05) {
-          ranges.push({
-            start: quietestBetween(levels, low, start, 'earliest') ?? start,
-            end: quietestBetween(levels, end, high, 'latest') ?? end,
+          const cut = checkedCut(levels, { low, start, end, high }, {
+            quietBelowDb,
+            quietStart: i > 0,
+            quietEnd: true,
+            maxSounds: attempts,
+            maxSoundSec: MAX_STUTTER_SEC * attempts,
           })
+          if (cut) ranges.push(cut)
         }
       }
     }
@@ -232,15 +219,11 @@ export function stutterRanges(
  *
  *  Inside that corridor the cut is opened out to the quietest instant it can
  *  find, so the "um" goes along with the dead air around it and what is left
- *  runs speech straight into speech. Where the corridor is too tight to hold
- *  a cut at all - a filler said right on top of the next word - nothing is
- *  removed. An "um" left in costs a second with the trimmer. A syllable taken
- *  off "connections" costs the take. */
-export function fillerWordRanges(
-  chunks: WordChunk[],
-  levels: Level[],
-  { guardSec }: { guardSec: number } = { guardSec: 0.04 },
-): Range[] {
+ *  runs speech straight into speech. Then the audio itself has the last word
+ *  - see checkedCut. An "um" left in costs a second with the trimmer. A
+ *  syllable taken off "connections" costs the take. */
+export function fillerWordRanges(chunks: WordChunk[], levels: Level[], options: CutOptions = {}): Range[] {
+  const { guardSec = 0.04, quietBelowDb = -35 } = options
   const isFiller = (c: WordChunk) => FILLER_WORDS.has(normalize(c.text))
   const ranges: Range[] = []
 
@@ -249,55 +232,95 @@ export function fillerWordRanges(
 
     // The nearest real words either side - not other fillers, so a run of
     // "um, uh" collapses into one cut rather than fighting over the gap.
-    let low = 0
+    let before = -1
     for (let j = i - 1; j >= 0; j--) {
       if (!isFiller(chunks[j])) {
-        low = chunks[j].end + guardSec
+        before = j
         break
       }
     }
-    let high = Number.POSITIVE_INFINITY
+    let after = chunks.length
     for (let j = i + 1; j < chunks.length; j++) {
       if (!isFiller(chunks[j])) {
-        high = chunks[j].start - guardSec
+        after = j
         break
       }
     }
+    const low = before >= 0 ? chunks[before].end + guardSec : 0
+    const high = after < chunks.length ? chunks[after].start - guardSec : Number.POSITIVE_INFINITY
 
     const start = Math.max(low, Math.min(chunk.start, high))
     const end = Math.min(high, Math.max(chunk.end, low))
     if (!(end > start) || end - start < 0.05) return
 
-    // Widen to the quietest moment on each side, but never outside the
-    // corridor the neighbouring words define.
-    ranges.push({
-      start: quietestBetween(levels, low, start, 'earliest') ?? start,
-      end: quietestBetween(levels, end, high, 'latest') ?? end,
+    const fillersHere = after - before - 1
+    const cut = checkedCut(levels, { low, start, end, high }, {
+      quietBelowDb,
+      quietStart: before >= 0,
+      quietEnd: after < chunks.length,
+      maxSounds: fillersHere,
+      maxSoundSec: MAX_FILLER_SEC * fillersHere,
     })
+    if (cut) ranges.push(cut)
   })
 
   return ranges
 }
 
-/** The time of the quietest level in [from, to], or null when the curve has
- *  nothing in that span.
+/** Opens a cut out to the quietest moments inside its corridor, then asks
+ *  the audio whether the model was right about what is in there - and
+ *  returns null, leaving the words in, unless it clearly was.
+ *
+ *  The speech model's timings are approximate (the small model this runs on
+ *  a phone more so), and a cut placed on a wrong timing takes the edge off a
+ *  real word. The loudness curve doesn't guess. So a cut only happens when:
+ *   - each edge that touches a real word lands in genuine quiet, and
+ *   - between the edges there are no more separate sounds, and no more sound
+ *     in total, than the filler or stumble being removed could make.
+ *  An "um" said straight into the next word, or a mistimed "um" whose cut
+ *  would also hold the start of the next word, fails one of those and stays. */
+function checkedCut(
+  levels: Level[],
+  { low, start, end, high }: { low: number; start: number; end: number; high: number },
+  rules: { quietBelowDb: number; quietStart: boolean; quietEnd: boolean; maxSounds: number; maxSoundSec: number },
+): Range | null {
+  const from = quietestBetween(levels, low, start, 'earliest')
+  const to = quietestBetween(levels, end, high, 'latest')
+  if (!from || !to) return null
+  if (rules.quietStart && from.db >= rules.quietBelowDb) return null
+  if (rules.quietEnd && to.db >= rules.quietBelowDb) return null
+
+  const step = levels.length > 1 ? levels[1].time - levels[0].time : 0.02
+  let sounds = 0
+  let soundSec = 0
+  let inSound = false
+  for (const level of levels) {
+    if (level.time < from.time) continue
+    if (level.time > to.time) break
+    const loud = level.db >= rules.quietBelowDb
+    if (loud && !inSound) sounds++
+    if (loud) soundSec += step
+    inSound = loud
+  }
+  if (sounds > rules.maxSounds || soundSec > rules.maxSoundSec) return null
+
+  return { start: from.time, end: to.time }
+}
+
+/** The quietest level in [from, to], or null when the curve has nothing in
+ *  that span.
  *
  *  A gap is usually flat silence, so most of it ties for quietest. Which end
  *  of that tie wins decides whether the cut opens out into the gap or stops
  *  at its edge: the start of a cut wants the earliest such moment and the end
  *  of one wants the latest, so between them they take the whole pause and
  *  leave speech running into speech. */
-function quietestBetween(
-  levels: Level[],
-  from: number,
-  to: number,
-  tie: 'earliest' | 'latest',
-): number | null {
+function quietestBetween(levels: Level[], from: number, to: number, tie: 'earliest' | 'latest'): Level | null {
   let best: Level | null = null
   for (const level of levels) {
     if (level.time < from) continue
     if (level.time > to) break
     if (!best || level.db < best.db || (tie === 'latest' && level.db === best.db)) best = level
   }
-  return best ? best.time : null
+  return best
 }
