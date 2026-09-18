@@ -1,0 +1,99 @@
+@import "tailwindcss";
+
+/* Same restraint as the planner this came out of: a single cool near-black at
+   a few depths, and colour reserved for saying something. Green means a video
+   is done, amber means it needs attention, red means it failed. Nothing is
+   coloured just to be colourful. */
+
+@theme {
+  --color-ink: #05070b;
+  --color-surface: #0d1117;
+  --color-surface-raised: #151b24;
+  --color-edge: #222b38;
+  --color-edge-lit: #33404f;
+
+  --color-state-done: #2fd472;
+  --color-state-now: #ffffff;
+  --color-state-later: #8c9aaf;
+  --color-state-waiting: #f0a83c;
+  --color-state-failed: #f2564c;
+
+  --color-text: #eaeff7;
+
+  /* Nothing tappable is smaller than this - it gets used one-handed. */
+  --spacing-tap: 3.5rem;
+}
+
+html {
+  color-scheme: dark;
+  background-color: var(--color-ink);
+  -webkit-text-size-adjust: 100%;
+  font-size: 16px;
+  line-height: 1.5;
+}
+
+body {
+  margin: 0;
+  background-color: var(--color-ink);
+  color: var(--color-text);
+  font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
+  touch-action: manipulation;
+  overscroll-behavior-y: none;
+  min-height: 100dvh;
+
+  background-image:
+    radial-gradient(80rem 40rem at 12% -10%, color-mix(in oklab, var(--color-edge-lit) 26%, transparent), transparent 70%),
+    radial-gradient(60rem 34rem at 100% 8%, color-mix(in oklab, var(--color-edge) 30%, transparent), transparent 70%);
+  background-attachment: fixed;
+  background-repeat: no-repeat;
+}
+
+/* Small print that still has to be readable at arm's length. */
+.label {
+  font-size: 0.75rem;
+  line-height: 1.25;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+}
+
+.meta {
+  font-size: 0.8125rem;
+  line-height: 1.35;
+}
+
+/* Durations and counts line up in a column instead of jittering. */
+.numeric {
+  font-family: ui-monospace, "SF Mono", "JetBrains Mono", Menlo, Consolas, monospace;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.02em;
+}
+
+@keyframes rise-in {
+  from { opacity: 0; transform: translateY(6px); }
+  to { opacity: 1; transform: none; }
+}
+
+.rise-in { animation: rise-in 0.16s ease-out both; }
+
+/* The drop target while a file is actually over it. */
+.drop-live {
+  border-color: var(--color-state-now);
+  background-color: color-mix(in oklab, var(--color-state-now) 7%, transparent);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .rise-in { animation: none; }
+}
+
+:focus-visible {
+  outline: 2px solid var(--color-state-now);
+  outline-offset: 2px;
+}
+
+@media (hover: none) {
+  * { -webkit-tap-highlight-color: transparent; }
+}
