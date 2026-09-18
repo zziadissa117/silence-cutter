@@ -203,6 +203,13 @@ export function App() {
         await forgetJob(next.id)
       } finally {
         processing.current = false
+        // And then ask for another look. This effect only goes hunting for
+        // work when `jobs` changes, and every change this run made - marking
+        // the video done, held or failed - happened while the flag above was
+        // still set, so each of them was turned away. Without this nudge the
+        // queue moves exactly one video per drop: the rest sit at "waiting in
+        // line" until something unrelated re-renders the list.
+        setJobs((js) => [...js])
       }
     })()
   }, [jobs])
