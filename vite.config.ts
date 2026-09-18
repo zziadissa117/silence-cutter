@@ -11,7 +11,15 @@ export default defineConfig({
       // job is a long-running queue of big video files. A reload mid-cut is
       // exactly the bug that made the planner version lose videos.
       registerType: 'prompt',
-      workbox: { globPatterns: ['**/*.{js,css,html,svg,png,ico,woff2}'] },
+      workbox: {
+        globPatterns: ['**/*.{js,css,html,svg,png,ico,woff2}'],
+        // Take over as soon as a new version downloads, instead of waiting
+        // for every open copy of the old page to close. iOS never closes a
+        // bookmarked web app, only freezes it, so waiting meant forever. The
+        // page itself still decides when to reload - see UpdateBanner.tsx.
+        skipWaiting: true,
+        clientsClaim: true,
+      },
       manifest: {
         name: 'Silence Cutter',
         short_name: 'Cut',

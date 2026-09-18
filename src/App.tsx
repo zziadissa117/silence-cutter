@@ -347,7 +347,9 @@ export function App() {
         Drop in your raw videos and get back copies with the dead air removed, ready for CapCut.
       </p>
 
-      <UpdateBanner />
+      {/* Queued and held videos are on disk and come back after a reload; a
+          running cut or a finished one is only in this tab's memory. */}
+      <UpdateBanner safeToReload={jobs.every((j) => j.status === 'queued' || j.status === 'held')} />
 
       {supported === false ? (
         <div className="error">
