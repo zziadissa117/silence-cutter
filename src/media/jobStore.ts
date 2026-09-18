@@ -1,56 +1,98 @@
-// Durable storage for the silence-cutter's queue, so a video he just added
-// survives whatever happens to the tab before it's processed.
+// Durable storage for the queue, so a video that has been added survives
+// whatever happens to the tab before it is cut - a reload, the browser
+// discarding the page for memory, or the phone killing it outright.
 //
-// Why this exists: the queue used to live only in React state. Two things can
-// make a tab reload without any action of his - the PWA's own service worker
-// updating in the background (this app auto-updates, and every deploy today
-// was exactly that), and iOS reclaiming a Safari tab's memory while its own
-// native picker sheet is busy preparing several large videos at once, which
-// is a known rough edge with picking many big videos together. Either one
-// looks identical from where he's sitting: "I added it, and after it loads,
-// it's gone." A reload should never be able to lose a video he already
-// picked, so the queue is written to IndexedDB the moment a file is added,
-// not only held in memory.
+// Two things here are deliberate and both were learned the hard way.
 //
-// A separate database from the main app's on purpose - this is processing
-// state for a local tool, not campaign data, and has no reason to go near
-// docs/schema.sql or the sync engine. Nothing outside src/media imports this.
+// The video is not read at startup. Only the small metadata row is, and the
+// file itself is fetched when its turn actually comes. Pulling ten videos'
+// worth of bytes back into memory the moment the page opens is a good way to
+// be killed for using too much memory before anything has started.
+//
+// And every attempt is counted, before it begins. A video heavy enough to
+// crash the tab would otherwise be restored on the next load, crash it again,
+// and keep doing that forever - which is exactly what Safari means by "a
+// problem repeatedly occurred". After two goes a video is held back and waits
+// to be asked again by hand.
 
 import Dexie, { type EntityTable } from 'dexie'
 
-/** What a queued job needs to resume after a reload. Not the whole `Job`
- *  shape in CutSilence.tsx - only what can't be recomputed: the file itself,
- *  its name, and the settings it was queued with. */
 interface StoredJob {
   id: string
   fileBlob: Blob
   fileName: string
   fileType: string
   settings: { thresholdDb: number; minSilenceSec: number; paddingSec: number }
-  detectFillerWords: boolean
+  cleanSpeech: boolean
+  /** How many times cutting this has been started. See the note above. */
+  attempts: number
   addedAt: number
 }
+
+/** Everything about a queued video except the video, which stays on disk
+ *  until it is needed. */
+export interface PendingJob {
+  id: string
+  fileName: string
+  fileType: string
+  settings: StoredJob['settings']
+  cleanSpeech: boolean
+  attempts: number
+}
+
+/** Two goes. A first failure might have been bad luck - the tab trimmed in
+ *  the background, the phone busy elsewhere. A second one is the video. */
+export const MAX_ATTEMPTS = 2
 
 const db = new Dexie('silence-cutter-queue') as Dexie & {
   jobs: EntityTable<StoredJob, 'id'>
 }
 db.version(1).stores({ jobs: 'id, addedAt' })
 
-export async function persistJob(job: Omit<StoredJob, 'addedAt'>): Promise<void> {
-  await db.jobs.put({ ...job, addedAt: Date.now() })
+export async function persistJob(job: Omit<StoredJob, 'addedAt' | 'attempts'>): Promise<void> {
+  await db.jobs.put({ ...job, attempts: 0, addedAt: Date.now() })
 }
 
 export async function forgetJob(id: string): Promise<void> {
   await db.jobs.delete(id)
 }
 
-/** Every job that never finished - because the tab reloaded, was closed, or
- *  the process was killed while it was still queued or in progress. Oldest
- *  first, so they resume in the order they were added. */
-export async function loadPendingJobs(): Promise<Array<StoredJob & { file: File }>> {
+/** Records that this job is about to be tried, and says whether it is still
+ *  allowed to run. Written before the work starts, so the count survives the
+ *  tab dying midway - which is the whole reason for counting. */
+export async function claimAttempt(id: string): Promise<boolean> {
+  const row = await db.jobs.get(id)
+  if (!row) return true // Added this session, never persisted; nothing to count.
+  const attempts = row.attempts + 1
+  await db.jobs.update(id, { attempts })
+  return attempts <= MAX_ATTEMPTS
+}
+
+/** Wipes the attempt count, for when he asks for a held-back video to be
+ *  tried again himself. Without this the retry button would claim an attempt
+ *  that is already spent and hold the video straight back - a button that
+ *  does nothing. Asking counts as knowing. */
+export async function resetAttempts(id: string): Promise<void> {
+  await db.jobs.update(id, { attempts: 0 })
+}
+
+/** The video itself, read only when its turn comes. */
+export async function loadJobFile(id: string): Promise<File | null> {
+  const row = await db.jobs.get(id)
+  if (!row) return null
+  return new File([row.fileBlob], row.fileName, { type: row.fileType })
+}
+
+/** Everything still waiting from a previous visit, oldest first. Metadata
+ *  only - see the note at the top. */
+export async function loadPendingJobs(): Promise<PendingJob[]> {
   const rows = await db.jobs.orderBy('addedAt').toArray()
-  return rows.map((row) => ({
-    ...row,
-    file: new File([row.fileBlob], row.fileName, { type: row.fileType }),
+  return rows.map(({ id, fileName, fileType, settings, cleanSpeech, attempts }) => ({
+    id,
+    fileName,
+    fileType,
+    settings,
+    cleanSpeech,
+    attempts,
   }))
 }
