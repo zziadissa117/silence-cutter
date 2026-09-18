@@ -28,6 +28,7 @@ import {
   isSilenceCutSupported,
   type SilenceCutResult,
 } from './media/silenceCut'
+import { UpdateBanner } from './UpdateBanner'
 
 const PRESET_ORDER: PresetName[] = ['natural', 'balanced', 'tight']
 const PRESET_LABEL: Record<PresetName, string> = {
@@ -338,6 +339,8 @@ export function App() {
       <p className="sub">
         Drop in your raw videos and get back copies with the dead air removed, ready for CapCut.
       </p>
+
+      <UpdateBanner />
 
       {supported === false ? (
         <div className="error">
