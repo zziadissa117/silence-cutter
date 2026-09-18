@@ -21,6 +21,7 @@ import {
   persistJob,
   resetAttempts,
 } from './media/jobStore'
+import { forgetCut } from './media/outputSink'
 import { PRESETS, type PresetName, type SilenceSettings } from './media/silenceMath'
 import {
   SilenceCutError,
@@ -299,6 +300,7 @@ export function App() {
     setJobs((js) => {
       const going = js.find((j) => j.id === id)
       if (going?.url) URL.revokeObjectURL(going.url)
+      if (going?.result?.storedAs) void forgetCut(going.result.storedAs)
       return js.filter((j) => j.id !== id)
     })
     void forgetJob(id)
@@ -308,6 +310,7 @@ export function App() {
     setJobs((current) => {
       for (const j of current) {
         if ((j.status === 'done' || j.status === 'failed') && j.url) URL.revokeObjectURL(j.url)
+        if (j.status === 'done' && j.result?.storedAs) void forgetCut(j.result.storedAs)
       }
       return current.filter((j) => j.status !== 'done' && j.status !== 'failed')
     })

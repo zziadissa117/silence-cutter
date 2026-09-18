@@ -13,7 +13,6 @@ import {
   AudioSampleSink,
   AudioSampleSource,
   BlobSource,
-  BufferTarget,
   canEncodeAudio,
   canEncodeVideo,
   Input,
@@ -35,6 +34,7 @@ import {
   transcribeWithWordTimestamps,
   concatFloat32,
 } from './fillerWords'
+import { createOutputSink } from './outputSink'
 import { BALANCED_SETTINGS, findSilentRanges, keepRanges, mergeRanges, totalDuration, type Level, type Range, type SilenceSettings } from './silenceMath'
 
 export class SilenceCutError extends Error {}
@@ -111,6 +111,9 @@ async function decodeAudio(
 
 export interface SilenceCutResult {
   blob: Blob
+  /** Name of the file in private storage, for deleting it once it is off the
+   *  screen. Null when the browser kept it in memory instead. */
+  storedAs: string | null
   originalDurationSec: number
   newDurationSec: number
   /** Number of pauses removed. */
@@ -203,7 +206,7 @@ export async function cutSilence(
   file: Blob,
   keep: Range[],
   onProgress?: (fraction: number) => void,
-): Promise<Blob> {
+): Promise<{ blob: Blob; storedAs: string | null }> {
   try {
     return await renderCut(file, keep, onProgress, true)
   } catch (error) {
@@ -221,7 +224,7 @@ async function renderCut(
   keep: Range[],
   onProgress: ((fraction: number) => void) | undefined,
   allowHdr: boolean,
-): Promise<Blob> {
+): Promise<{ blob: Blob; storedAs: string | null }> {
   if (!(await isSilenceCutSupported())) {
     throw new SilenceCutError(
       "This browser can't cut video yet. Update to the newest iOS/Safari, or use the Mac version.",
@@ -229,7 +232,13 @@ async function renderCut(
   }
 
   const input = new Input({ source: new BlobSource(file), formats: ALL_FORMATS })
-  const output = new Output({ format: new Mp4OutputFormat(), target: new BufferTarget() })
+  // Streamed to disk as it is encoded, never held whole in memory - see
+  // outputSink.ts for why that is the difference between working on an
+  // iPhone and crashing it. `fastStart: false` writes the index at the end,
+  // so nothing has to be kept back until the file is finished.
+  const sink = await createOutputSink()
+  const output = new Output({ format: new Mp4OutputFormat({ fastStart: false }), target: sink.target })
+  let finished = false
 
   try {
     const [videoTrack, audioTrack] = await Promise.all([
@@ -357,12 +366,17 @@ async function renderCut(
     }
 
     await output.finalize()
+    const blob = await sink.finish()
+    if (blob.size === 0) throw new SilenceCutError('Rendering finished but produced no file. Try again.')
+    finished = true
     onProgress?.(1)
-    const buffer = output.target.buffer
-    if (!buffer) throw new SilenceCutError('Rendering finished but produced no file. Try again.')
-    return new Blob([buffer], { type: 'video/mp4' })
+    return { blob, storedAs: sink.storedAs }
   } finally {
     input.dispose()
+    if (!finished) {
+      await output.cancel().catch(() => {})
+      await sink.discard()
+    }
   }
 }
 
@@ -376,9 +390,10 @@ export async function cutSilenceFromFile(
   options: CutOptions = {},
 ): Promise<SilenceCutResult> {
   const { keep, duration, silences, fillerWords, stutters } = await planCut(file, settings, options)
-  const blob = await cutSilence(file, keep, onProgress)
+  const { blob, storedAs } = await cutSilence(file, keep, onProgress)
   return {
     blob,
+    storedAs,
     originalDurationSec: duration,
     newDurationSec: totalDuration(keep),
     cuts: silences,
