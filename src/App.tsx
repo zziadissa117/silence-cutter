@@ -695,7 +695,7 @@ function JobCard({
               {job.result.fillerWords ? ` · ${job.result.fillerWords} "um"` : ''}
               {job.result.stutters ? ` · ${job.result.stutters} stumble` : ''} removed
             </span>
-            {canSend && !shareFailed ? (
+            {job.result.captionCues ? null : canSend && !shareFailed ? (
               <button type="button" className="btn primary" onClick={() => void send()}>
                 Send
               </button>
@@ -706,7 +706,12 @@ function JobCard({
             )}
           </div>
           {job.result.captionCues ? (
-            <CaptionsEditor cues={job.result.captionCues} videoName={job.name} videoFile={file} />
+            <CaptionsEditor
+              cues={job.result.captionCues}
+              videoName={job.name}
+              videoFile={file}
+              videoUrl={job.url}
+            />
           ) : null}
         </>
       ) : null}
@@ -729,13 +734,17 @@ function CaptionsEditor({
   cues: initialCues,
   videoName,
   videoFile,
+  videoUrl,
 }: {
   cues: CaptionCue[]
   videoName: string
   videoFile: File | null
+  videoUrl: string
 }) {
   const [cues, setCues] = useState(initialCues)
-  const [shareFailed, setShareFailed] = useState(false)
+  const [captionsSaved, setCaptionsSaved] = useState(false)
+  const [captionShareFailed, setCaptionShareFailed] = useState(false)
+  const [videoShareFailed, setVideoShareFailed] = useState(false)
   const [srtUrl, setSrtUrl] = useState<string | null>(null)
   const fileName = srtName(videoName)
 
@@ -747,35 +756,52 @@ function CaptionsEditor({
     return () => URL.revokeObjectURL(url)
   }, [srtText])
 
-  const srtFile = useMemo(
-    () => new File([srtText], fileName, { type: 'application/x-subrip' }),
-    [srtText, fileName],
-  )
-  const canSendBoth = useMemo(
-    () => (videoFile ? canShareFiles([videoFile, srtFile]) : false),
-    [videoFile, srtFile],
-  )
+  // Shared as plain text: the share sheet only takes a short list of file
+  // types, and .srt is not on it. The name still ends in .srt.
+  const srtFile = useMemo(() => new File([srtText], fileName, { type: 'text/plain' }), [srtText, fileName])
+  const canShareCaptions = useMemo(() => canShareFiles([srtFile]), [srtFile])
+  const canShareVideo = useMemo(() => (videoFile ? canShareFiles([videoFile]) : false), [videoFile])
 
-  const updateText = (i: number, text: string) =>
+  const updateText = (i: number, text: string) => {
     setCues((cs) => cs.map((c, idx) => (idx === i ? { ...c, text } : c)))
-  const removeCue = (i: number) => setCues((cs) => cs.filter((_, idx) => idx !== i))
+    setCaptionsSaved(false)
+  }
+  const removeCue = (i: number) => {
+    setCues((cs) => cs.filter((_, idx) => idx !== i))
+    setCaptionsSaved(false)
+  }
 
-  const sendBoth = async () => {
-    if (!videoFile) return
+  // No page can hand a file to a named app, and one share goes to one place,
+  // so this is two shares: captions first (to Files), because the video goes
+  // to the editor and opening it leaves this page behind.
+  const shareCaptions = async () => {
     try {
-      await navigator.share({ files: [videoFile, srtFile] })
+      await navigator.share({ files: [srtFile] })
+      setCaptionsSaved(true)
     } catch (err) {
       if (err instanceof Error && err.name === 'AbortError') return
-      setShareFailed(true)
+      setCaptionShareFailed(true)
+    }
+  }
+  const shareVideo = async () => {
+    if (!videoFile) return
+    try {
+      await navigator.share({ files: [videoFile] })
+    } catch (err) {
+      if (err instanceof Error && err.name === 'AbortError') return
+      setVideoShareFailed(true)
     }
   }
 
+  const captionsLabel = captionsSaved ? '✓ Captions saved' : '1. Save captions to Files'
+
   return (
-    <details className="captions">
-      <summary>
-        {cues.length} caption line{cues.length === 1 ? '' : 's'} - check and edit
-      </summary>
-      <div className="caption-list">
+    <div className="captions">
+      <details>
+        <summary>
+          {cues.length} caption line{cues.length === 1 ? '' : 's'} - check and edit before saving
+        </summary>
+        <div className="caption-list">
         {cues.map((cue, i) => (
           <div className="caption-row" key={i}>
             <span className="caption-time">
@@ -792,19 +818,47 @@ function CaptionsEditor({
             </button>
           </div>
         ))}
-      </div>
-      <div className="result">
-        {canSendBoth && !shareFailed ? (
-          <button type="button" className="btn primary" onClick={() => void sendBoth()}>
-            Send video + captions
+        </div>
+      </details>
+      <div className="steps">
+        {canShareCaptions && !captionShareFailed ? (
+          <button
+            type="button"
+            className={captionsSaved ? 'btn' : 'btn primary'}
+            onClick={() => void shareCaptions()}
+          >
+            {captionsLabel}
           </button>
-        ) : null}
-        {srtUrl ? (
-          <a className="btn" href={srtUrl} download={fileName}>
-            Save {fileName}
+        ) : srtUrl ? (
+          <a
+            className={captionsSaved ? 'btn' : 'btn primary'}
+            href={srtUrl}
+            download={fileName}
+            onClick={() => setCaptionsSaved(true)}
+          >
+            {captionsSaved ? '✓ Captions saved' : `1. Save ${fileName}`}
           </a>
         ) : null}
+        {canShareVideo && !videoShareFailed ? (
+          <button
+            type="button"
+            className={captionsSaved ? 'btn primary' : 'btn'}
+            onClick={() => void shareVideo()}
+          >
+            2. Send video to CapCut
+          </button>
+        ) : (
+          <a className={captionsSaved ? 'btn primary' : 'btn'} href={videoUrl} download={cutName(videoName)}>
+            2. Save {cutName(videoName)}
+          </a>
+        )}
       </div>
-    </details>
+      {canShareCaptions || canShareVideo ? (
+        <div className="hint">
+          Each opens the share sheet: pick "Save to Files" for the captions, then CapCut for the
+          video.
+        </div>
+      ) : null}
+    </div>
   )
 }
