@@ -34,7 +34,7 @@ interface StoredJob {
    *  to run any of *this* file's own code still leaves a record of how far
    *  it got - the one thing a silent tab kill on an iPhone doesn't otherwise
    *  tell you. */
-  lastPhase?: 'model' | 'listening' | 'cutting'
+  lastPhase?: 'reading' | 'model' | 'listening' | 'cutting'
   addedAt: number
 }
 

@@ -59,7 +59,7 @@ type Job = {
   cleanSpeech: boolean
   wantCaptions: boolean
   status: 'queued' | 'held' | 'working' | 'done' | 'failed'
-  phase: 'model' | 'listening' | 'cutting'
+  phase: 'reading' | 'model' | 'listening' | 'cutting'
   progress: number
   result?: SilenceCutResult
   url?: string
@@ -71,12 +71,14 @@ type Job = {
 }
 
 const PHASE_LABEL: Record<Job['phase'], string> = {
+  reading: 'reading the audio',
   model: 'getting the speech model',
   listening: 'listening for words',
   cutting: 'cutting',
 }
 
 function phaseLabel(job: Job): string {
+  if (job.phase === 'reading') return 'Reading the audio'
   if (job.phase === 'model') return 'Getting the speech model'
   if (job.phase === 'cutting') return 'Cutting'
   if (job.cleanSpeech && job.wantCaptions) return 'Listening for "um"s and writing captions'
@@ -214,19 +216,24 @@ export function App() {
         }
 
         const wantsWords = next.cleanSpeech || next.wantCaptions
-        setPhase(wantsWords ? 'model' : 'cutting', 0)
+        // Reading the audio comes first whatever the options, and on a long
+        // take it is minutes of the wait on its own.
+        setPhase('reading', 0)
         const result = await cutSilenceFromFile(
           file,
           (progress) => setPhase('cutting', progress),
           next.settings,
-          wantsWords
-            ? {
-                detectFillerWords: next.cleanSpeech,
-                detectCaptions: next.wantCaptions,
-                onModelDownload: (progress) => setPhase('model', progress),
-                onTranscribeProgress: (progress) => setPhase('listening', progress),
-              }
-            : {},
+          {
+            onAnalyseProgress: (progress) => setPhase('reading', progress),
+            ...(wantsWords
+              ? {
+                  detectFillerWords: next.cleanSpeech,
+                  detectCaptions: next.wantCaptions,
+                  onModelDownload: (progress) => setPhase('model', progress),
+                  onTranscribeProgress: (progress) => setPhase('listening', progress),
+                }
+              : {}),
+          },
         )
         patch({ status: 'done', result, url: URL.createObjectURL(result.blob) })
         await forgetJob(next.id)

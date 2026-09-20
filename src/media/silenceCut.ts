@@ -96,18 +96,38 @@ async function findHdrCodec(width: number, height: number): Promise<string | nul
 
 const ANALYSIS_WINDOW_SEC = 0.02 // 20ms, same grain ffmpeg's silencedetect uses by default
 
+/** Wraps a progress callback so it only fires on real movement. The points
+ *  it is called from arrive dozens of times a second, and each one is a
+ *  React render; a bar that moves in percent does not need more than this. */
+function throttled(onProgress?: (fraction: number) => void): (fraction: number) => void {
+  let last = -1
+  return (fraction) => {
+    const capped = Math.max(0, Math.min(0.99, fraction))
+    if (!onProgress || capped - last < 0.01) return
+    last = capped
+    onProgress(capped)
+  }
+}
+
 /** Decodes the audio track once and returns whatever it was asked for: the
  *  loudness curve silenceMath reads, and/or a 16kHz mono copy for Whisper.
  *  One pass either way, so asking for both doesn't mean decoding twice. */
 async function decodeAudio(
   audioTrack: NonNullable<Awaited<ReturnType<Input['getPrimaryAudioTrack']>>>,
   wantMono16k: boolean,
+  duration: number,
+  onProgress?: (fraction: number) => void,
 ): Promise<{ levels: Level[]; mono16k: Float32Array | null }> {
   const sink = new AudioBufferSink(audioTrack)
   const levels: Level[] = []
   const monoChunks: Float32Array[] = []
+  const report = throttled(onProgress)
 
   for await (const { buffer, timestamp } of sink.buffers()) {
+    // Listening to a long take is minutes of work on a phone, and all of it
+    // happens before a single frame is encoded. Without this the bar sits at
+    // zero throughout and the app looks hung.
+    if (duration > 0) report(timestamp / duration)
     const channel = buffer.getChannelData(0) // any one channel is enough to judge loudness
     const windowFrames = Math.max(1, Math.round(ANALYSIS_WINDOW_SEC * buffer.sampleRate))
     for (let i = 0; i < channel.length; i += windowFrames) {
@@ -154,6 +174,9 @@ export interface CutOptions {
    *  output, ready to edit and save as an .srt. Shares the same
    *  transcription pass as `detectFillerWords` when both are on. */
   detectCaptions?: boolean
+  /** 0-1 while the audio is decoded and its quiet parts found, before any
+   *  video is touched. On a long take that is a big share of the wait. */
+  onAnalyseProgress?: (fraction: number) => void
   /** 0-1 while the model downloads the first time it's used in this tab -
    *  fast on every call after, since transformers.js caches it. */
   onModelDownload?: (fraction: number) => void
@@ -196,7 +219,7 @@ export async function planCut(
         throw new SilenceCutError('This video has no sound, so there is nothing to detect silence from.')
       }
       duration = d
-      ;({ levels, mono16k } = await decodeAudio(audioTrack, wantWords))
+      ;({ levels, mono16k } = await decodeAudio(audioTrack, wantWords, d, options.onAnalyseProgress))
     } finally {
       input.dispose()
     }
@@ -285,6 +308,7 @@ async function renderCut(
     )
   }
 
+  const report = throttled(onProgress)
   const input = new Input({ source: new BlobSource(file), formats: ALL_FORMATS })
   // Streamed to disk as it is encoded, never held whole in memory - see
   // outputSink.ts for why that is the difference between working on an
@@ -383,6 +407,10 @@ async function renderCut(
       await Promise.all([
         (async () => {
           for await (const sample of videoSink.samples(start, end)) {
+            // Driven by the video, not the audio: audio decodes far faster
+            // than frames encode, so reporting on audio ran the bar up to
+            // near the end of a range and then left it there.
+            report((doneSoFar + (sample.timestamp - start)) / total)
             videoShift ??= cursor - sample.timestamp
             const timestamp = sample.timestamp + videoShift
             videoEnd = timestamp + sample.duration
