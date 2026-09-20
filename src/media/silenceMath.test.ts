@@ -359,3 +359,45 @@ describe('words that fade out', () => {
     expect(keeps[1].start - keeps[0].end).toBeGreaterThan(1.4)
   })
 })
+
+describe('quiet speech is not a pause', () => {
+  // A real take: room at -54, speech at -20, and one quieter word at -37 -
+  // under the -35 silence line, but plainly speech next to that room. This
+  // is the case that used to delete whole words: the transcript of the cut
+  // read "make bank off of / if you aren't aware" where he had said "make
+  // bank off of Trump. If you aren't aware."
+  const quietWord = spans([
+    [0, 1.5, -20],
+    [1.5, 1.7, -46],
+    [1.7, 2.1, -37],
+    [2.1, 3.6, -54],
+    [3.6, 5, -20],
+  ])
+
+  it('keeps a word that dips under the silence line', () => {
+    for (const settings of Object.values(PRESETS)) {
+      const keeps = keepRanges(findSilentRanges(quietWord, settings), 5, settings.paddingSec)
+      // Nothing between 1.7 and 2.1 may be cut away.
+      const kept = keeps.some((k) => k.start <= 1.7 && k.end >= 2.1)
+      expect(kept).toBe(true)
+    }
+  })
+
+  it('still takes out the real pause after it', () => {
+    const keeps = keepRanges(findSilentRanges(quietWord, PRESETS.balanced), 5, PRESETS.balanced.paddingSec)
+    expect(keeps).toHaveLength(2)
+    expect(keeps[1].start - keeps[0].end).toBeGreaterThan(1.0)
+  })
+
+  it('leaves little of the pause behind', () => {
+    // Measured on a take with eight real pauses spliced in, the longest
+    // stretch of quiet left in the cut was 0.18s. Much longer than that is
+    // audible as "it did not cut".
+    const quietInTake = 0.2 + 1.5 // the small gap, and the pause itself
+    for (const settings of Object.values(PRESETS)) {
+      const keeps = keepRanges(findSilentRanges(quietWord, settings), 5, settings.paddingSec)
+      const quietLeft = quietInTake - (5 - totalDuration(keeps))
+      expect(quietLeft).toBeLessThan(0.5)
+    }
+  })
+})

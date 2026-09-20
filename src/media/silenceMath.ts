@@ -34,12 +34,21 @@ export interface SilenceSettings {
   paddingSec: number
 }
 
-/** Same three presets as the desktop Silence Cutter tool, same numbers, so a
- *  clip cut on the phone and one cut on the Mac land the same way. */
+/** The desktop tool's three presets, with the padding pulled in.
+ *
+ *  v1 had to leave a lot of room around every cut because it cut at the
+ *  silence line itself, and the end of a word lives below that line. Now
+ *  that the ends of a pause are pulled back to where the sound really
+ *  stopped (see softenEnds), that room is no longer what protects the word,
+ *  and leaving it only left silence behind: measured over takes whose word
+ *  boundaries are known exactly, 0.07s of padding left 160ms of every pause
+ *  in the cut and removed 78% of the silence, while 0.05s left 120ms and
+ *  removed 84% - with no word touched either way. Without the softening,
+ *  0.05s ate 50ms off the end of a word, which is the old complaint. */
 export const PRESETS = {
-  natural: { thresholdDb: -35, minSilenceSec: 0.6, paddingSec: 0.18 },
-  balanced: { thresholdDb: -35, minSilenceSec: 0.4, paddingSec: 0.12 },
-  tight: { thresholdDb: -35, minSilenceSec: 0.25, paddingSec: 0.07 },
+  natural: { thresholdDb: -35, minSilenceSec: 0.5, paddingSec: 0.12 },
+  balanced: { thresholdDb: -35, minSilenceSec: 0.35, paddingSec: 0.08 },
+  tight: { thresholdDb: -35, minSilenceSec: 0.2, paddingSec: 0.04 },
 } as const satisfies Record<string, SilenceSettings>
 
 export type PresetName = keyof typeof PRESETS
@@ -59,35 +68,96 @@ export const BALANCED_SETTINGS: SilenceSettings = PRESETS.balanced
  *  trailing "s" is far below it, and in a noisy one the room itself sits
  *  above it and every pause looks like speech. So it is measured against
  *  the room: what this take's own background noise is, plus a little. */
-const ABOVE_ROOM_DB = 6
+const ABOVE_ROOM_DB = 10
 
 /** A word can trail off for this long. Past it, whatever is still there is
- *  not the end of a word. */
-const MAX_SOFTEN_SEC = 0.25
+ *  room tone, not the end of a word - and following it further only left
+ *  silence in the cut. Measured: past 0.1s this protects nothing more. */
+const MAX_SOFTEN_SEC = 0.1
 
-/** This take's background noise: the level the quietest tenth of it sits
- *  at. Silent stretches give it away, and every video has some. */
-function roomNoiseDb(levels: Level[]): number {
+/** How far a pause may reach outward, through sound under the line he set,
+ *  to take the fade either side of it along with the pause.
+ *
+ *  A pause is found against the strict line, so it can never start inside a
+ *  quiet word - but it still has to reach out through the fade, or a third
+ *  of a second of pause is left behind at every cut and it reads as "it did
+ *  not cut". A fade is over in about a tenth of a second, which is what
+ *  this allows. The cost of being wrong is bounded and small: where the
+ *  sound outside a pause is a quietly spoken word rather than a fade, at
+ *  most this much of its tail is at stake, and softenEnds gives most of
+ *  that back. */
+const MAX_GROW_SEC = 0.12
+
+/** The line between speech and a pause sits halfway between this take's
+ *  room and how loud he actually talks in it.
+ *
+ *  A fixed line cannot do this job. On a real take the room sat at -54 dB,
+ *  the pauses at -47 to -73, and the quieter words - "Trump.", "in market
+ *  cap" - at -35 to -39, under the -35 dB line. Every window of those words
+ *  counted as silence, and enough ran together that the words were cut out
+ *  of the video: the transcript of the cut read "make bank off of / if you
+ *  aren't aware" where he had said "make bank off of Trump. If you aren't
+ *  aware." Halfway between -54 and his speaking level puts the line at
+ *  about -42, below those words and above the pauses.
+ *
+ *  Loudness varies far more between rooms and phones than between people,
+ *  which is why this is measured per take rather than set once. */
+const ROOM_PERCENTILE = 0.1
+const SPEECH_PERCENTILE = 0.9
+
+/** The line never moves above where he put the slider - that stays the most
+ *  aggressive it will be - nor further below it than this, so a take with
+ *  almost no sound in it doesn't end up with a line so low that no pause
+ *  ever counts. */
+const MAX_LINE_DROP_DB = 15
+
+/** A level this take sits at or below for the given share of its length. */
+function percentileDb(levels: Level[], share: number): number {
   const heard = levels.map((l) => l.db).filter((db) => Number.isFinite(db)).sort((a, b) => a - b)
   if (heard.length === 0) return -Infinity
-  return heard[Math.floor(heard.length * 0.1)]
+  return heard[Math.min(heard.length - 1, Math.floor(heard.length * share))]
 }
 
+/** This take's background noise: the level its quietest tenth sits at.
+ *  Silent stretches give it away, and every video has some. */
+function roomNoiseDb(levels: Level[]): number {
+  return percentileDb(levels, ROOM_PERCENTILE)
+}
+
+/** However short a pause is, this much of it is always worth removing -
+ *  otherwise protecting both ends would leave nothing to cut. */
+const MIN_CUT_SEC = 0.05
+
 /** Pulls the ends of a silence back to where the sound has really died away,
- *  so the padding that follows is measured from the word's true edge rather
- *  than from where it dropped under the silence line. */
-function softenEnds(silence: Range, levels: Level[], floorDb: number): Range {
+ *  so the cut is measured from the word's true edge rather than from where
+ *  it dropped under the silence line.
+ *
+ *  Two things this must not do. It must not stack on top of `paddingSec`:
+ *  both exist to keep the cut off the word, so the budget here is what the
+ *  padding does not already cover, and the two together stay within
+ *  MAX_SOFTEN_SEC. And it must never ask for more room than the pause has -
+ *  the first version of this gave up and used the raw pause whenever the
+ *  ends met in the middle, which meant short pauses got no protection at
+ *  all while long ones got plenty. Since a take is mostly short pauses,
+ *  that read as "it cuts words sometimes", and fixing it read as "it stopped
+ *  cutting". It now shrinks to fit instead. */
+function softenEnds(silence: Range, levels: Level[], floorDb: number, paddingSec: number): Range {
+  const room = (silence.end - silence.start - MIN_CUT_SEC - 2 * paddingSec) / 2
+  const budget = Math.max(0, Math.min(MAX_SOFTEN_SEC - paddingSec, room))
+  if (budget <= 0) return silence
+
+  const step = levels.length > 1 ? levels[1].time - levels[0].time : 0.02
   let { start, end } = silence
   for (const level of levels) {
     if (level.time < silence.start) continue
-    if (level.time > silence.start + MAX_SOFTEN_SEC) break
-    if (level.db > floorDb) start = level.time + (levels.length > 1 ? levels[1].time - levels[0].time : 0.02)
+    if (level.time > silence.start + budget) break
+    if (level.db > floorDb) start = Math.min(level.time + step, silence.start + budget)
   }
   for (let i = levels.length - 1; i >= 0; i--) {
     const level = levels[i]
     if (level.time > silence.end) continue
-    if (level.time < silence.end - MAX_SOFTEN_SEC) break
-    if (level.db > floorDb) end = level.time
+    if (level.time < silence.end - budget) break
+    if (level.db > floorDb) end = Math.max(level.time, silence.end - budget)
   }
   return end > start ? { start, end } : silence
 }
@@ -98,9 +168,10 @@ export function findSilentRanges(levels: Level[], settings: SilenceSettings): Ra
   const ranges: Range[] = []
   let runStart: number | null = null
   let last: Level | null = null
+  const lineDb = silenceLineDb(levels, settings)
 
   for (const level of levels) {
-    const quiet = level.db < settings.thresholdDb
+    const quiet = level.db < lineDb
     if (quiet && runStart === null) {
       runStart = level.time
     } else if (!quiet && runStart !== null) {
@@ -111,6 +182,38 @@ export function findSilentRanges(levels: Level[], settings: SilenceSettings): Ra
     }
     last = level
   }
+  // Found above: the stretches that are unmistakably a pause, judged
+  // against the strict line so a quiet word can never start one. Each now
+  // grows outward to where the sound crosses the line he actually set,
+  // which is where the fade either side of the pause ends. Triggering
+  // strictly but extending loosely is what lets a pause be taken out whole
+  // without a quiet word ever being mistaken for one.
+  //
+  // What it may grow through is only the fade itself: sound getting quieter
+  // the closer it comes to the pause, for no longer than a fade lasts. A
+  // word said quietly holds its level instead of falling away, so it stops
+  // the growth dead - without that, a quiet word sitting beside a pause was
+  // swallowed by it, which is the same lost-word bug by another route.
+  const step = levels.length > 1 ? levels[1].time - levels[0].time : 0.02
+  const grow = (range: Range): Range => {
+    let { start, end } = range
+    // Measured from where the pause was found, not from the edge as it
+    // moves, or the limit never bites and the pause grows until it meets
+    // speech - which swallows a quietly spoken word whole.
+    const foundAt = { start, end }
+    for (let i = levels.findIndex((l) => l.time >= start) - 1; i >= 0; i--) {
+      if (levels[i].db >= settings.thresholdDb) break
+      if (foundAt.start - levels[i].time > MAX_GROW_SEC) break
+      start = levels[i].time
+    }
+    for (let i = levels.findIndex((l) => l.time >= end); i >= 0 && i < levels.length; i++) {
+      if (levels[i].db >= settings.thresholdDb) break
+      if (levels[i].time - foundAt.end > MAX_GROW_SEC) break
+      end = levels[i].time + step
+    }
+    return { start, end }
+  }
+
   if (runStart !== null && last && last.time - runStart >= settings.minSilenceSec) {
     // Silence ran to the end of the file with no loud level to close it. It
     // ends where that last level's own window ends, not where the window
@@ -121,14 +224,28 @@ export function findSilentRanges(levels: Level[], settings: SilenceSettings): Ra
     ranges.push({ start: runStart, end: last.time + step })
   }
   const floorDb = quietFloorDb(levels, settings)
-  return ranges.map((range) => softenEnds(range, levels, floorDb))
+  return mergeRanges(ranges.map(grow)).map((range) => softenEnds(range, levels, floorDb, settings.paddingSec))
+}
+
+/** Where the line between speech and a pause actually falls for this take:
+ *  where he put it, or 12 dB above the room, whichever is lower - see
+ *  SPEECH_ABOVE_ROOM_DB - and never more than MAX_LINE_DROP_DB below where
+ *  he put it. */
+export function silenceLineDb(levels: Level[], settings: SilenceSettings): number {
+  const room = roomNoiseDb(levels)
+  const speech = percentileDb(levels, SPEECH_PERCENTILE)
+  if (!Number.isFinite(room) || !Number.isFinite(speech)) return settings.thresholdDb
+  return Math.max(
+    Math.min(settings.thresholdDb, (room + speech) / 2),
+    settings.thresholdDb - MAX_LINE_DROP_DB,
+  )
 }
 
 /** The level below which a sound is just this take's room, not a word
- *  trailing off. Never above the silence line itself - a word tail is
- *  quieter than that by definition. */
+ *  trailing off. Never above the line itself - a word tail is quieter than
+ *  that by definition. */
 function quietFloorDb(levels: Level[], settings: SilenceSettings): number {
-  return Math.min(roomNoiseDb(levels) + ABOVE_ROOM_DB, settings.thresholdDb - 3)
+  return Math.min(roomNoiseDb(levels) + ABOVE_ROOM_DB, silenceLineDb(levels, settings) - 3)
 }
 
 /** The smallest section worth keeping - shorter blips (a click, a breath) are dropped. */

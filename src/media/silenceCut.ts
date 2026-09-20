@@ -128,14 +128,21 @@ async function decodeAudio(
     // happens before a single frame is encoded. Without this the bar sits at
     // zero throughout and the app looks hung.
     if (duration > 0) report(timestamp / duration)
-    const channel = buffer.getChannelData(0) // any one channel is enough to judge loudness
+    // The loudest channel, not the first one. A phone's two channels are not
+    // the same recording, and judging by one of them can call a moment quiet
+    // that the other heard perfectly well - which is how a word ends up
+    // inside a "pause".
+    const channels = Array.from({ length: buffer.numberOfChannels }, (_, c) => buffer.getChannelData(c))
     const windowFrames = Math.max(1, Math.round(ANALYSIS_WINDOW_SEC * buffer.sampleRate))
-    for (let i = 0; i < channel.length; i += windowFrames) {
-      let sumSquares = 0
-      const end = Math.min(i + windowFrames, channel.length)
-      for (let j = i; j < end; j++) sumSquares += channel[j] * channel[j]
-      const rms = Math.sqrt(sumSquares / (end - i))
-      levels.push({ time: timestamp + i / buffer.sampleRate, db: levelDb(rms) })
+    for (let i = 0; i < buffer.length; i += windowFrames) {
+      const end = Math.min(i + windowFrames, buffer.length)
+      let loudest = 0
+      for (const channel of channels) {
+        let sumSquares = 0
+        for (let j = i; j < end; j++) sumSquares += channel[j] * channel[j]
+        loudest = Math.max(loudest, Math.sqrt(sumSquares / (end - i)))
+      }
+      levels.push({ time: timestamp + i / buffer.sampleRate, db: levelDb(loudest) })
     }
     if (wantMono16k) monoChunks.push(resampleToMono16k(buffer))
   }
