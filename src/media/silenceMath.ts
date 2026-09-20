@@ -2,11 +2,17 @@
 // be unit-tested under jsdom like the rest of the data layer. The actual
 // decoding lives in silenceCut.ts, which feeds this module a level curve.
 //
-// Same algorithm as the desktop Silence Cutter tool (ffmpeg's silencedetect
-// plus a padding pass): find runs where the level stays under a dB threshold
-// for at least `minSilenceSec`, then invert those runs into the ranges to
-// keep, leaving `paddingSec` of breathing room around each cut so words don't
-// get clipped.
+// The desktop Silence Cutter's algorithm (ffmpeg's silencedetect plus a
+// padding pass): find runs where the level stays under a dB threshold for at
+// least `minSilenceSec`, then invert those runs into the ranges to keep,
+// leaving `paddingSec` of breathing room around each cut so words don't get
+// clipped.
+//
+// Two things here the desktop tool does not do, both because it cut too
+// close: the ends of a pause are pulled back to where the sound has really
+// died away rather than to where it crossed the threshold, and the silence
+// at the very start and end of a video keeps a breath instead of being cut
+// flush.
 
 /** One sample of the audio's loudness, in dB, at a point in time. */
 export interface Level {
@@ -40,7 +46,54 @@ export type PresetName = keyof typeof PRESETS
 
 export const BALANCED_SETTINGS: SilenceSettings = PRESETS.balanced
 
-/** Runs of consecutive `db < thresholdDb` levels lasting at least `minSilenceSec`. */
+/** How far a sound has to sit above the room's own hiss to still count as
+ *  part of the word.
+ *
+ *  Speech does not stop dead: an "s" or an "f" trails off, a word starts
+ *  softly, and all of that lies under the silence line while still being
+ *  part of the word. Cutting at the line takes the ends off words - measured
+ *  on a real take, cuts landed within a millisecond of the nearest sound,
+ *  with everything quieter than the line gone.
+ *
+ *  Measuring that against a fixed number doesn't work: in a quiet room a
+ *  trailing "s" is far below it, and in a noisy one the room itself sits
+ *  above it and every pause looks like speech. So it is measured against
+ *  the room: what this take's own background noise is, plus a little. */
+const ABOVE_ROOM_DB = 6
+
+/** A word can trail off for this long. Past it, whatever is still there is
+ *  not the end of a word. */
+const MAX_SOFTEN_SEC = 0.25
+
+/** This take's background noise: the level the quietest tenth of it sits
+ *  at. Silent stretches give it away, and every video has some. */
+function roomNoiseDb(levels: Level[]): number {
+  const heard = levels.map((l) => l.db).filter((db) => Number.isFinite(db)).sort((a, b) => a - b)
+  if (heard.length === 0) return -Infinity
+  return heard[Math.floor(heard.length * 0.1)]
+}
+
+/** Pulls the ends of a silence back to where the sound has really died away,
+ *  so the padding that follows is measured from the word's true edge rather
+ *  than from where it dropped under the silence line. */
+function softenEnds(silence: Range, levels: Level[], floorDb: number): Range {
+  let { start, end } = silence
+  for (const level of levels) {
+    if (level.time < silence.start) continue
+    if (level.time > silence.start + MAX_SOFTEN_SEC) break
+    if (level.db > floorDb) start = level.time + (levels.length > 1 ? levels[1].time - levels[0].time : 0.02)
+  }
+  for (let i = levels.length - 1; i >= 0; i--) {
+    const level = levels[i]
+    if (level.time > silence.end) continue
+    if (level.time < silence.end - MAX_SOFTEN_SEC) break
+    if (level.db > floorDb) end = level.time
+  }
+  return end > start ? { start, end } : silence
+}
+
+/** Runs of consecutive `db < thresholdDb` levels lasting at least
+ *  `minSilenceSec`, each pulled in to where the sound actually stops. */
 export function findSilentRanges(levels: Level[], settings: SilenceSettings): Range[] {
   const ranges: Range[] = []
   let runStart: number | null = null
@@ -59,29 +112,54 @@ export function findSilentRanges(levels: Level[], settings: SilenceSettings): Ra
     last = level
   }
   if (runStart !== null && last && last.time - runStart >= settings.minSilenceSec) {
-    // Silence ran to the end of the file with no loud level to close it.
-    ranges.push({ start: runStart, end: last.time })
+    // Silence ran to the end of the file with no loud level to close it. It
+    // ends where that last level's own window ends, not where the window
+    // starts: a silence that stopped a grain short of the end used to read
+    // as an ordinary pause in the middle, and the end of the video was
+    // trimmed as tightly as one.
+    const step = levels.length > 1 ? levels[1].time - levels[0].time : 0.02
+    ranges.push({ start: runStart, end: last.time + step })
   }
-  return ranges
+  const floorDb = quietFloorDb(levels, settings)
+  return ranges.map((range) => softenEnds(range, levels, floorDb))
+}
+
+/** The level below which a sound is just this take's room, not a word
+ *  trailing off. Never above the silence line itself - a word tail is
+ *  quieter than that by definition. */
+function quietFloorDb(levels: Level[], settings: SilenceSettings): number {
+  return Math.min(roomNoiseDb(levels) + ABOVE_ROOM_DB, settings.thresholdDb - 3)
 }
 
 /** The smallest section worth keeping - shorter blips (a click, a breath) are dropped. */
 const MIN_KEEP_SEC = 0.1
 
+/** Room left before the first word and after the last one, whichever pacing
+ *  he picked. v1 cut both flush, on the reasoning that no word can be there
+ *  to protect - true, but it starts the video on the very first syllable and
+ *  ends it on the last, which he asked for room around. Every preset gets
+ *  the same amount: this is about how the video opens and closes, not how
+ *  fast the middle moves. */
+export const EDGE_LEEWAY_SEC = 0.4
+
 /** Turns silent ranges into the ranges to keep: everything else, padded so
  *  the cut lands just outside the speech rather than on top of it. */
 export function keepRanges(silences: Range[], duration: number, paddingSec: number): Range[] {
   const keeps: Range[] = []
+  const edge = Math.max(paddingSec, EDGE_LEEWAY_SEC)
   let cursor = 0
 
   for (const { start, end } of silences) {
-    // Silence touching the very start or end of the file is cut flush - no
-    // word can be there to protect with padding.
-    const cutStart = start <= 0.01 ? 0 : start + paddingSec
-    const cutEnd = end >= duration - 0.01 ? duration : end - paddingSec
-    if (cutEnd - cutStart <= 0.01) continue
-    if (cutStart > cursor) keeps.push({ start: cursor, end: cutStart })
-    cursor = Math.max(cursor, cutEnd)
+    const isHead = start <= 0.01
+    const isTail = end >= duration - 0.01
+    // What gets removed. In the middle, the pause less `paddingSec` at each
+    // end. At the head and tail, the pause less `edge`, so the video opens
+    // and closes with a breath instead of on a syllable.
+    const removeFrom = isHead ? 0 : isTail ? start + edge : start + paddingSec
+    const removeTo = isTail ? duration : isHead ? end - edge : end - paddingSec
+    if (removeTo - removeFrom <= 0.01) continue
+    if (removeFrom > cursor) keeps.push({ start: cursor, end: removeFrom })
+    cursor = Math.max(cursor, removeTo)
   }
   if (cursor < duration) keeps.push({ start: cursor, end: duration })
 

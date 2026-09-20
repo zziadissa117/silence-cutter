@@ -2,9 +2,11 @@ import { describe, expect, it } from 'vitest'
 
 import {
   BALANCED_SETTINGS,
+  PRESETS,
   findSilentRanges,
   keepRanges,
   mergeRanges,
+  EDGE_LEEWAY_SEC,
   snapCutToQuiet,
   speechWindows,
   totalDuration,
@@ -70,10 +72,10 @@ describe('keepRanges', () => {
     ])
   })
 
-  it('cuts silence touching the start/end flush, but still pads the inward edge', () => {
-    // Silence at the very start/end is cut right to the edge - there's no
-    // word beyond the edge to protect. The edge closest to speech still gets
-    // its padding, so the first and last words aren't clipped.
+  it('leaves room before the first word and after the last', () => {
+    // Silence at the very start/end used to be cut flush, which opened the
+    // video on the first syllable and ended it on the last. Both ends now
+    // keep EDGE_LEEWAY_SEC of quiet, whatever the padding is.
     const kept = keepRanges(
       [
         { start: 0, end: 1 },
@@ -82,7 +84,7 @@ describe('keepRanges', () => {
       10,
       0.12,
     )
-    expect(kept).toEqual([{ start: 0.88, end: 9.12 }])
+    expect(kept).toEqual([{ start: 1 - EDGE_LEEWAY_SEC, end: 9 + EDGE_LEEWAY_SEC }])
   })
 
   it('drops a leftover sliver shorter than the minimum keep length', () => {
@@ -274,5 +276,86 @@ describe('speechWindows', () => {
 
   it('returns nothing for a silent video', () => {
     expect(speechWindows([{ start: 0, end: 30 }], 30)).toEqual([])
+  })
+})
+
+/** A level curve from [fromSec, toSec, dB] spans, at 20ms steps. */
+function spans(list: Array<[from: number, to: number, db: number]>): Level[] {
+  const levels: Level[] = []
+  for (const [from, to, db] of list) {
+    for (let t = from; t < to - 1e-9; t += 0.02) levels.push({ time: Number(t.toFixed(3)), db })
+  }
+  return levels
+}
+
+describe('room at the start and end', () => {
+  // Quiet, then talking from 1.5s to 4s, then quiet to 6s.
+  const levels = spans([
+    [0, 1.5, -70],
+    [1.5, 4, -12],
+    [4, 6, -70],
+  ])
+
+  it('leaves a breath before the first word and after the last, on every preset', () => {
+    for (const settings of Object.values(PRESETS)) {
+      const keeps = keepRanges(findSilentRanges(levels, settings), 6, settings.paddingSec)
+      expect(keeps[0].start).toBeCloseTo(1.5 - EDGE_LEEWAY_SEC, 2)
+      expect(keeps[keeps.length - 1].end).toBeCloseTo(4 + EDGE_LEEWAY_SEC, 2)
+    }
+  })
+
+  it('still removes the rest of the silence at both ends', () => {
+    const keeps = keepRanges(findSilentRanges(levels, PRESETS.balanced), 6, PRESETS.balanced.paddingSec)
+    expect(totalDuration(keeps)).toBeCloseTo(2.5 + 2 * EDGE_LEEWAY_SEC, 2)
+  })
+
+  it('keeps a video that is nothing but a short silence at each end intact', () => {
+    const shortEnds = spans([
+      [0, 0.2, -70],
+      [0.2, 2, -12],
+      [2, 2.2, -70],
+    ])
+    const keeps = keepRanges(findSilentRanges(shortEnds, PRESETS.tight), 2.2, PRESETS.tight.paddingSec)
+    expect(keeps[0].start).toBe(0)
+    expect(keeps[keeps.length - 1].end).toBeCloseTo(2.2, 2)
+  })
+})
+
+describe('words that fade out', () => {
+  // "...word" fading through -40 for 100ms, then a real pause, then talking
+  // again. The fade is under the silence line but is still the word.
+  const fading = spans([
+    [0, 1, -12],
+    [1, 1.1, -40],
+    [1.1, 3, -70],
+    [3, 4, -12],
+  ])
+
+  it('does not cut the fading end off the word', () => {
+    for (const settings of Object.values(PRESETS)) {
+      const keeps = keepRanges(findSilentRanges(fading, settings), 4, settings.paddingSec)
+      // The cut starts after the fade, not at the moment the level dropped
+      // under the silence line.
+      expect(keeps[0].end).toBeGreaterThanOrEqual(1.1)
+    }
+  })
+
+  it('still cuts the pause that follows it', () => {
+    const keeps = keepRanges(findSilentRanges(fading, PRESETS.balanced), 4, PRESETS.balanced.paddingSec)
+    expect(keeps).toHaveLength(2)
+    expect(keeps[1].start - keeps[0].end).toBeGreaterThan(1.4)
+  })
+
+  it('treats a steady room as room, not as a word trailing off', () => {
+    // Same shape, but the "pause" is a noisy room sitting just under the
+    // line the whole way. Nothing here is a word fading out.
+    const noisyRoom = spans([
+      [0, 1, -12],
+      [1, 3, -38],
+      [3, 4, -12],
+    ])
+    const keeps = keepRanges(findSilentRanges(noisyRoom, PRESETS.balanced), 4, PRESETS.balanced.paddingSec)
+    expect(keeps).toHaveLength(2)
+    expect(keeps[1].start - keeps[0].end).toBeGreaterThan(1.4)
   })
 })
