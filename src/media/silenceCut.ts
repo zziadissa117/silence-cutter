@@ -10,11 +10,13 @@
 import {
   ALL_FORMATS,
   AudioBufferSink,
+  AudioSample,
   AudioSampleSink,
   AudioSampleSource,
   BlobSource,
   canEncodeAudio,
   canEncodeVideo,
+  EncodedPacketSink,
   Input,
   Mp4OutputFormat,
   Output,
@@ -37,6 +39,7 @@ import {
   type WordChunk,
 } from './fillerWords'
 import { createOutputSink } from './outputSink'
+import { RangeReader } from './rangeReader'
 import {
   BALANCED_SETTINGS,
   findSilentRanges,
@@ -324,6 +327,8 @@ async function renderCut(
   const sink = await createOutputSink()
   const output = new Output({ format: new Mp4OutputFormat({ fastStart: false }), target: sink.target })
   let finished = false
+  let videoFrames: RangeReader<VideoSample> | null = null
+  let audioFrames: RangeReader<AudioSample> | null = null
 
   try {
     const [videoTrack, audioTrack] = await Promise.all([
@@ -387,8 +392,24 @@ async function renderCut(
     output.addAudioTrack(audioSource)
     await output.start()
 
-    const videoSink = new VideoSampleSink(videoTrack)
-    const audioSink = new AudioSampleSink(audioTrack)
+    // One decoder per track for the whole cut, walked through the kept ranges
+    // in order - not a fresh one per range. Cutting "um"s multiplies the
+    // ranges, and a new 4K decoder for each of them brought Safari's GPU
+    // process down on an iPhone 15 ("decoding task did not complete"). Each
+    // range still gets exactly the frames it always did; see rangeReader.ts.
+    const spanStart = keep[0].start
+    const spanEnd = keep[keep.length - 1].end
+    videoFrames = new RangeReader(new VideoSampleSink(videoTrack).samples(spanStart, spanEnd))
+    audioFrames = new RangeReader(new AudioSampleSink(audioTrack).samples(spanStart, spanEnd))
+    const videoReader = videoFrames
+    const audioReader = audioFrames
+    // Where a decoder seeking to each range's start would have begun - an
+    // index lookup, no decoding - so a range starting a hair before a key
+    // frame still begins cleanly on it. See rangeReader.ts.
+    const videoPackets = new EncodedPacketSink(videoTrack)
+    const audioPackets = new EncodedPacketSink(audioTrack)
+    const keyAt = async (packets: EncodedPacketSink, timestamp: number) =>
+      (await packets.getKeyPacket(timestamp, { verifyKeyPackets: true }))?.timestamp ?? -Infinity
 
     const total = totalDuration(keep)
     let doneSoFar = 0
@@ -410,10 +431,11 @@ async function renderCut(
       let audioShift: number | null = null
       let videoEnd = cursor
       let audioEnd = cursor
+      const [videoFrom, audioFrom] = await Promise.all([keyAt(videoPackets, start), keyAt(audioPackets, start)])
 
       await Promise.all([
         (async () => {
-          for await (const sample of videoSink.samples(start, end)) {
+          for await (const sample of videoReader.range(start, end, videoFrom)) {
             // Driven by the video, not the audio: audio decodes far faster
             // than frames encode, so reporting on audio ran the bar up to
             // near the end of a range and then left it there.
@@ -438,7 +460,7 @@ async function renderCut(
           }
         })(),
         (async () => {
-          for await (const sample of audioSink.samples(start, end)) {
+          for await (const sample of audioReader.range(start, end, audioFrom)) {
             audioShift ??= cursor - sample.timestamp
             sample.setTimestamp(sample.timestamp + audioShift)
             audioEnd = sample.timestamp + sample.duration
@@ -461,6 +483,7 @@ async function renderCut(
     onProgress?.(1)
     return { blob, storedAs: sink.storedAs }
   } finally {
+    await Promise.all([videoFrames?.dispose(), audioFrames?.dispose()]).catch(() => {})
     input.dispose()
     if (!finished) {
       await output.cancel().catch(() => {})
