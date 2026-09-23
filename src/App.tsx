@@ -390,7 +390,7 @@ export function App() {
   return (
     <main>
       <header>
-        <h1>✂️ Silence Cutter</h1>
+        <h1>Silence Cutter</h1>
         <span className="hint">Runs on this device. Nothing is uploaded.</span>
       </header>
       <p className="sub">
@@ -486,11 +486,7 @@ export function App() {
                   <span>
                     <span className="label">Also cut "um"s and stumbles</span>
                     <span className="hint" style={{ display: 'block' }}>
-                      Listens to every word on this device and takes out "um" and "uh", plus a small
-                      word repeated in a row like "I-I-I". English only. Only cuts one when there is
-                      a real pause around it, so some will be left in rather than risk clipping a
-                      word. Downloads a speech model the first time, and uses more memory - if a
-                      video keeps stopping the page, turn this off.
+                      Takes out "um", "uh" and "I-I-I" - and leaves one in rather than risk a word.
                     </span>
                   </span>
                 </label>
@@ -503,14 +499,15 @@ export function App() {
                   <span>
                     <span className="label">Also write captions (.srt)</span>
                     <span className="hint" style={{ display: 'block' }}>
-                      Transcribes the video on this device and hands back an editable caption file
-                      alongside it, timed to match the cut video, ready to check over and import
-                      into your editor. English only, and some words will be wrong - check them
-                      before you import. Same speech model and memory cost as above - if a video
-                      keeps stopping the page, turn this off too.
+                      An editable caption file timed to the cut video. Some words will be wrong -
+                      check them before you import.
                     </span>
                   </span>
                 </label>
+                <div className="hint">
+                  Both are English only, listen on this device, download a speech model the first
+                  time and use more memory - if a video keeps stopping the page, turn them off.
+                </div>
               </>
             ) : null}
           </section>
@@ -532,7 +529,20 @@ export function App() {
             aria-label="Add videos"
             onClick={() => picker.current?.click()}
           >
-            <div className="icon">🎬</div>
+            {/* The planner's line icons, not an emoji: colour is for state. */}
+            <svg
+              className="icon"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth={1.5}
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              aria-hidden
+            >
+              <path d="M12 15V4.5M7.75 8.5L12 4.25l4.25 4.25" />
+              <path d="M4.5 14.5v2.75a2.25 2.25 0 0 0 2.25 2.25h10.5a2.25 2.25 0 0 0 2.25-2.25V14.5" />
+            </svg>
             <div className="big">{dragging ? 'Drop them anywhere' : 'Drop videos here'}</div>
             <div className="hint">
               or tap to choose files · MP4, MOV and more · as many as you want
@@ -852,7 +862,7 @@ function CaptionsEditor({
             className={captionsSaved ? 'btn primary' : 'btn'}
             onClick={() => void shareVideo()}
           >
-            2. Send video to CapCut
+            2. Send the video
           </button>
         ) : (
           <a className={captionsSaved ? 'btn primary' : 'btn'} href={videoUrl} download={cutName(videoName)}>
@@ -862,8 +872,8 @@ function CaptionsEditor({
       </div>
       {canShareCaptions || canShareVideo ? (
         <div className="hint">
-          Each opens the share sheet: pick "Save to Files" for the captions, then CapCut for the
-          video.
+          Each opens the share sheet: pick "Save to Files" for the captions, then your editor for
+          the video.
         </div>
       ) : null}
     </div>

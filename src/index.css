@@ -1,144 +1,307 @@
-/* The desktop tool's look, carried over as-is: warm paper, white cards, one
-   orange accent, and the same dark variant that follows the system. He asked
-   for the v1 UI, so this is v1's stylesheet rather than a new take on it. */
+/* The UGC planner's look, so the two tools feel like one kit: a pitch-black
+   ground, hairlines instead of boxes, and colour only where it says
+   something.
+
+     white  the one thing to do next (the primary button, a running bar)
+     green  done
+     amber  something to know (a notice, a new version)
+     red    failed, with the reason in words
+     grey   everything else
+
+   It is a tool for getting in, cutting, and leaving, so the page stays
+   plain: one column, big tap targets, no decoration. Dark only, like the
+   planner - it is used on a phone, often at night. */
 
 :root {
-  --bg: #f6f5f2;
-  --card: #ffffff;
-  --text: #1d1c1a;
-  --muted: #75716b;
-  --line: #e6e3dd;
-  --accent: #e8562a;
-  --accent-soft: #fdeee8;
-  --ok: #1f8a4c;
-  --ok-soft: #e7f5ec;
-  --bad: #c0392b;
-  --bad-soft: #fbeae8;
-  --warn: #9a6a12;
-  --warn-soft: #fdf3e0;
-  --track: #eeebe6;
-}
+  --ink: #05070b;
+  --surface: #0d1117;
+  --surface-raised: #151b24;
+  --edge: #222b38;
+  --edge-lit: #33404f;
+  --rule: #18202b;
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --bg: #151413;
-    --card: #1f1e1c;
-    --text: #f1efeb;
-    --muted: #9c978f;
-    --line: #33312d;
-    --accent: #ff7a4d;
-    --accent-soft: #3a2419;
-    --ok: #4cc27f;
-    --ok-soft: #173024;
-    --bad: #ff6b5c;
-    --bad-soft: #3a1c19;
-    --warn: #e8b872;
-    --warn-soft: #332616;
-    --track: #2c2a27;
-  }
+  --text: #eaeff7;
+  --dim: #a4b1c3;
+  --muted: #8c9aaf;
+
+  --now: #ffffff;
+  --ok: #2fd472;
+  --warn: #f0a83c;
+  --bad: #f2564c;
+
+  --mono: ui-monospace, "SF Mono", "JetBrains Mono", Menlo, Consolas, monospace;
+  /* A spring's shape for a button let go of: back past its size, then home. */
+  --ease-press: cubic-bezier(0.25, 1.35, 0.5, 1);
+
+  color-scheme: dark;
 }
 
 * { box-sizing: border-box; }
 
-html { -webkit-text-size-adjust: 100%; }
+html {
+  -webkit-text-size-adjust: 100%;
+  background: var(--ink);
+}
 
 body {
   margin: 0;
-  background: var(--bg);
+  background: var(--ink);
   color: var(--text);
-  font: 15px/1.45 -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", sans-serif;
+  font: 17px/1.5 ui-sans-serif, -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", sans-serif;
   -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
   /* A tap should not wait to see whether it was a double-tap to zoom. */
   touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
 }
 
-main { max-width: 760px; margin: 0 auto; padding: 36px 16px 80px; }
+:focus-visible { outline: 2px solid var(--now); outline-offset: 2px; }
 
-header { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
-h1 { font-size: 26px; margin: 0; letter-spacing: -0.02em; }
-.sub { color: var(--muted); margin: 4px 0 24px; }
+main {
+  max-width: 720px;
+  margin: 0 auto;
+  padding: calc(env(safe-area-inset-top) + 24px) 16px calc(env(safe-area-inset-bottom) + 64px);
+}
 
-.card { background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 18px; }
-.settings { display: flex; flex-direction: column; gap: 14px; margin-bottom: 16px; }
-.row { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+/* --- Header ------------------------------------------------------------- */
+
+header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 4px 12px;
+  flex-wrap: wrap;
+}
+h1 { font-size: 26px; font-weight: 600; line-height: 1.2; margin: 0; letter-spacing: -0.015em; }
+.sub { color: var(--muted); font-size: 15px; margin: 6px 0 24px; }
+
+/* --- Small text --------------------------------------------------------- */
+
 .label { font-weight: 600; }
-.hint { color: var(--muted); font-size: 13px; }
+.hint { color: var(--muted); font-size: 15px; line-height: 1.4; }
 
-.seg { display: inline-flex; background: var(--track); border-radius: 10px; padding: 3px; }
-.seg button {
-  border: 0; background: transparent; color: var(--text); font: inherit; font-weight: 500;
-  padding: 6px 14px; border-radius: 8px; cursor: pointer;
+/* --- Settings ----------------------------------------------------------- */
+
+/* Not a box: a band between two hairlines, the planner's way of grouping. */
+.card {
+  border-top: 1px solid var(--rule);
+  border-bottom: 1px solid var(--rule);
+  padding: 18px 0;
 }
-.seg button.active { background: var(--card); box-shadow: 0 1px 3px rgba(0, 0, 0, 0.12); }
+.settings { display: flex; flex-direction: column; gap: 18px; margin-bottom: 20px; }
+.row { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
 
-details summary { cursor: pointer; color: var(--muted); font-size: 14px; user-select: none; }
-.sliders { display: grid; gap: 12px; margin-top: 12px; }
-.slider { display: grid; grid-template-columns: 150px 1fr 70px; align-items: center; gap: 12px; }
-.slider output { text-align: right; font-variant-numeric: tabular-nums; }
-input[type=range] { width: 100%; accent-color: var(--accent); }
+.seg {
+  display: inline-flex;
+  gap: 4px;
+  padding: 3px;
+  border: 1px solid var(--edge);
+  border-radius: 12px;
+}
+.seg button {
+  min-height: 44px;
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--dim);
+  font: inherit;
+  font-size: 16px;
+  font-weight: 600;
+  padding: 0 16px;
+  border-radius: 9px;
+  cursor: pointer;
+  transition: transform 300ms var(--ease-press), color 150ms, border-color 150ms;
+}
+.seg button.active { border-color: var(--now); background: var(--surface); color: var(--now); }
+
+details summary {
+  display: flex;
+  align-items: center;
+  min-height: 44px;
+  cursor: pointer;
+  color: var(--dim);
+  font-size: 16px;
+  font-weight: 600;
+  user-select: none;
+  list-style: none;
+}
+details summary::-webkit-details-marker { display: none; }
+details summary::after {
+  content: "";
+  width: 7px;
+  height: 7px;
+  margin-left: 10px;
+  border-right: 1.5px solid currentColor;
+  border-bottom: 1.5px solid currentColor;
+  transform: translateY(-2px) rotate(45deg);
+  transition: transform 250ms;
+}
+details[open] > summary::after { transform: translateY(2px) rotate(-135deg); }
+
+.sliders { display: grid; gap: 14px; margin-top: 8px; }
+.slider { display: grid; grid-template-columns: 170px 1fr 76px; align-items: center; gap: 12px; }
+.slider output { text-align: right; font-family: var(--mono); font-variant-numeric: tabular-nums; color: var(--text); }
+input[type=range] { width: 100%; accent-color: var(--now); }
+
+/* Cutting "um"s and writing captions: each a switch he turns on or leaves
+   off, with what it costs written underneath. */
+.toggle { display: flex; align-items: flex-start; gap: 12px; cursor: pointer; }
+.toggle input { margin: 3px 0 0; width: 20px; height: 20px; accent-color: var(--now); flex: none; }
+
+/* --- Adding videos ------------------------------------------------------ */
+
+/* The one place a box earns its edge: all of it is the button. */
+.drop {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  width: 100%;
+  padding: 36px 16px;
+  border: 1.5px dashed var(--edge-lit);
+  border-radius: 20px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: center;
+  cursor: pointer;
+  transition: border-color 150ms, background 150ms, transform 300ms var(--ease-press);
+}
+.drop.over { border-color: var(--now); background: var(--surface); }
+.drop .icon { width: 30px; height: 30px; color: var(--dim); }
+.drop .big { font-size: 20px; font-weight: 600; margin: 10px 0 4px; }
+
+/* --- Buttons ------------------------------------------------------------ */
+
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 44px;
+  padding: 0 16px;
+  border: 1px solid var(--edge);
+  border-radius: 12px;
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  font-size: 16px;
+  font-weight: 600;
+  text-decoration: none;
+  cursor: pointer;
+  transition: transform 300ms var(--ease-press), background 150ms, border-color 150ms;
+}
+/* The thing to do next: white, lit from behind - the planner's FILM button. */
+.btn.primary {
+  border-color: rgb(255 255 255 / 0.8);
+  background: var(--surface);
+  color: var(--now);
+  box-shadow: 0 0 0 1px rgb(255 255 255 / 0.12), 0 0 18px -6px var(--now);
+}
+.btn:disabled { color: var(--muted); border-color: var(--edge); box-shadow: none; cursor: default; }
+
+/* Down is immediate; the let-go is the spring. */
+.btn:active:not(:disabled),
+.seg button:active,
+.drop:active {
+  transform: scale(0.965);
+  transition-duration: 70ms;
+  transition-timing-function: ease-out;
+}
+.btn:active:not(:disabled) { background: var(--surface-raised); }
+
+.linkbtn {
+  flex: none;
+  min-height: 32px;
+  background: none;
+  border: 0;
+  padding: 0;
+  color: var(--muted);
+  font: inherit;
+  font-size: 15px;
+  text-decoration: underline;
+  text-decoration-color: var(--edge-lit);
+  text-underline-offset: 4px;
+  cursor: pointer;
+}
+
+/* --- The queue ---------------------------------------------------------- */
+
+.toolbar { display: flex; justify-content: space-between; align-items: center; margin: 28px 0 8px; gap: 10px; flex-wrap: wrap; }
+
+/* Rows between hairlines, not a stack of cards. */
+.jobs { display: flex; flex-direction: column; border-top: 1px solid var(--rule); }
+.job { padding: 16px 0; border-bottom: 1px solid var(--rule); }
+.job-top { display: flex; justify-content: space-between; align-items: center; gap: 12px; }
+.name { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+.right { display: flex; align-items: center; gap: 12px; flex: none; }
+.status { font-size: 15px; color: var(--muted); white-space: nowrap; font-variant-numeric: tabular-nums; }
+.status.done { color: var(--ok); font-weight: 600; }
+.status.failed { color: var(--bad); font-weight: 600; }
+
+/* A running cut is the thing happening now, so its bar is white. */
+.bar { height: 3px; background: var(--rule); border-radius: 3px; overflow: hidden; margin-top: 12px; }
+.bar > div { height: 100%; width: 0; background: var(--now); border-radius: 3px; transition: width 300ms ease-out; }
+
+.result { display: flex; justify-content: space-between; align-items: center; gap: 10px 12px; margin-top: 10px; flex-wrap: wrap; }
+/* What came out of a finished cut - done, so green, and plain text rather
+   than a pill: it is a fact about the video, not a badge. */
+.pill { font-size: 15px; font-family: var(--mono); font-variant-numeric: tabular-nums; color: var(--ok); }
+
+.error {
+  margin-top: 10px;
+  padding-left: 12px;
+  border-left: 2px solid var(--bad);
+  font-size: 15px;
+  color: var(--bad);
+  white-space: pre-wrap;
+}
+.notice {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 12px;
+  margin-bottom: 20px;
+  padding-left: 12px;
+  border-left: 2px solid var(--warn);
+  font-size: 15px;
+  color: var(--warn);
+}
+.notice .linkbtn { color: var(--warn); text-decoration-color: currentColor; }
+.empty { color: var(--muted); padding: 18px 0; }
+
+/* --- Captions ----------------------------------------------------------- */
+
+.captions { margin-top: 12px; padding-top: 4px; }
+.steps { display: flex; gap: 8px; flex-wrap: wrap; margin: 10px 0 8px; }
+.steps .btn { flex: 1 1 200px; text-align: center; }
+.caption-list { display: flex; flex-direction: column; gap: 8px; margin: 8px 0 12px; max-height: 280px; overflow-y: auto; }
+.caption-row { display: flex; align-items: center; gap: 10px; }
+.caption-time { flex: none; width: 70px; font-size: 13px; color: var(--muted); font-family: var(--mono); font-variant-numeric: tabular-nums; }
+.caption-row input {
+  flex: 1;
+  min-width: 0;
+  min-height: 44px;
+  padding: 0 12px;
+  border: 1px solid var(--edge);
+  border-radius: 10px;
+  background: var(--surface);
+  color: var(--text);
+  font: inherit;
+  font-size: 16px;
+}
+.caption-row input:focus { border-color: rgb(255 255 255 / 0.8); outline: none; }
+.caption-row .linkbtn { width: 32px; text-decoration: none; font-size: 16px; }
+
+/* --- Phones ------------------------------------------------------------- */
+
 @media (max-width: 560px) {
-  .slider { grid-template-columns: 1fr 70px; }
+  .seg { width: 100%; }
+  .seg button { flex: 1; padding: 0 8px; }
+  .slider { grid-template-columns: 1fr 76px; }
   .slider input { grid-column: 1 / -1; }
 }
 
-/* The one addition to v1's settings: cutting "um"s needs a speech model, and
-   v1 had no such thing. Off unless asked for - it is the heavy path, and the
-   plain silence cut is what he called perfect. */
-.toggle { display: flex; align-items: flex-start; gap: 10px; cursor: pointer; }
-.toggle input { margin: 2px 0 0; width: 18px; height: 18px; accent-color: var(--accent); flex: none; }
-
-.drop {
-  border: 2px dashed var(--line); border-radius: 14px; padding: 42px 16px; text-align: center;
-  background: var(--card); transition: border-color .15s, background .15s; cursor: pointer;
-  width: 100%; color: inherit; font: inherit; display: block;
-}
-.drop.over { border-color: var(--accent); background: var(--accent-soft); }
-.drop .big { font-size: 18px; font-weight: 600; margin: 6px 0; }
-.drop .icon { font-size: 34px; }
-
-.toolbar { display: flex; justify-content: space-between; align-items: center; margin: 26px 0 10px; gap: 10px; flex-wrap: wrap; }
-.btn {
-  border: 1px solid var(--line); background: var(--card); color: var(--text); font: inherit; font-size: 14px;
-  padding: 7px 12px; border-radius: 9px; cursor: pointer;
-}
-.btn:hover { border-color: var(--muted); }
-.btn.primary { background: var(--accent); border-color: var(--accent); color: #fff; font-weight: 600; }
-.btn:disabled { opacity: .5; cursor: default; }
-
-.jobs { display: flex; flex-direction: column; gap: 8px; }
-.job { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 12px 14px; }
-.job-top { display: flex; justify-content: space-between; align-items: center; gap: 10px; }
-.name { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
-.right { display: flex; align-items: center; gap: 12px; }
-.status { font-size: 13px; color: var(--muted); white-space: nowrap; }
-.status.done { color: var(--ok); }
-.status.failed { color: var(--bad); }
-.bar { height: 6px; background: var(--track); border-radius: 4px; overflow: hidden; margin-top: 9px; }
-.bar > div { height: 100%; width: 0; background: var(--accent); border-radius: 4px; transition: width .3s; }
-.result { display: flex; justify-content: space-between; align-items: center; gap: 10px; margin-top: 8px; flex-wrap: wrap; }
-.pill { font-size: 13px; background: var(--ok-soft); color: var(--ok); padding: 3px 9px; border-radius: 99px; }
-.error { margin-top: 8px; font-size: 13px; color: var(--bad); background: var(--bad-soft); padding: 8px 10px; border-radius: 8px; white-space: pre-wrap; }
-.notice { font-size: 13px; color: var(--warn); background: var(--warn-soft); border: 1px solid var(--line); padding: 10px 12px; border-radius: 10px; margin-bottom: 16px; display: flex; justify-content: space-between; gap: 10px; align-items: flex-start; }
-.empty { color: var(--muted); text-align: center; padding: 18px; }
-.linkbtn { background: none; border: 0; color: var(--muted); font: inherit; font-size: 13px; cursor: pointer; text-decoration: underline; padding: 0; }
-
-.captions { margin-top: 10px; border-top: 1px solid var(--line); padding-top: 10px; }
-.captions summary { font-size: 13px; }
-.steps { display: flex; gap: 8px; flex-wrap: wrap; margin: 10px 0 6px; }
-.steps .btn { flex: 1 1 200px; text-align: center; text-decoration: none; }
-.caption-list { display: flex; flex-direction: column; gap: 6px; margin: 10px 0; max-height: 260px; overflow-y: auto; }
-.caption-row { display: flex; align-items: center; gap: 8px; }
-.caption-time { flex: none; width: 60px; font-size: 12px; color: var(--muted); font-variant-numeric: tabular-nums; }
-.caption-row input {
-  flex: 1; min-width: 0; font: inherit; font-size: 14px; padding: 6px 8px;
-  border: 1px solid var(--line); border-radius: 8px; background: var(--card); color: var(--text);
-}
-.caption-row .linkbtn { flex: none; text-decoration: none; font-size: 15px; color: var(--muted); }
-
-/* On a phone every one of these gets tapped with a thumb, often one-handed. */
-@media (max-width: 560px) {
-  main { padding: 24px 14px 60px; }
-  .btn, .seg button { min-height: 44px; }
-  .seg { width: 100%; }
-  .seg button { flex: 1; }
+@media (prefers-reduced-motion: reduce) {
+  .btn, .seg button, .drop, .btn:active:not(:disabled), .seg button:active, .drop:active {
+    transition: none;
+    transform: none;
+  }
 }
