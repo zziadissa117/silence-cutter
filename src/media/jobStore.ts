@@ -60,8 +60,49 @@ const db = new Dexie('silence-cutter-queue') as Dexie & {
 }
 db.version(1).stores({ jobs: 'id, addedAt' })
 
-export async function persistJob(job: Omit<StoredJob, 'addedAt' | 'attempts'>): Promise<void> {
-  await db.jobs.put({ ...job, attempts: 0, addedAt: Date.now() })
+/** What the browser will let this site keep on the phone, and how much of
+ *  that is already spoken for. Both in bytes; nulls when the browser won't
+ *  say (older Safari), which is treated as "go ahead". */
+export async function spaceOnDevice(): Promise<{ free: number | null; quota: number | null }> {
+  try {
+    const { quota, usage } = await navigator.storage.estimate()
+    if (quota === undefined || usage === undefined) return { free: null, quota: null }
+    return { free: quota - usage, quota }
+  } catch {
+    return { free: null, quota: null }
+  }
+}
+
+/** Keeps the video itself, and says whether it managed to.
+ *
+ *  A queued video is kept so it survives the page being reloaded or killed
+ *  mid-cut. But the cut has to be written somewhere too, and both come out
+ *  of the same allowance: a 2 minute 4K video is most of a gigabyte in, and
+ *  its cut is nearly as much again. Keeping a copy of something that big is
+ *  what leaves no room to write the result - so past a point the copy is
+ *  skipped, the video is cut straight from memory, and the only thing lost
+ *  is resuming it after a crash. */
+export async function persistJob(
+  job: Omit<StoredJob, 'addedAt' | 'attempts' | 'fileBlob'> & { fileBlob: Blob },
+): Promise<boolean> {
+  const row = { ...job, attempts: 0, addedAt: Date.now() }
+  const { free } = await spaceOnDevice()
+  // Room for the video, its cut, and room to spare.
+  const roomy = free === null || free > job.fileBlob.size * 2.5
+  try {
+    await db.jobs.put(roomy ? row : { ...row, fileBlob: new Blob([]) })
+    return roomy
+  } catch {
+    // Out of room, or storage blocked. The cut itself does not depend on
+    // this having worked.
+    return false
+  }
+}
+
+/** Lets go of the kept copy once the cut is reading the video from memory
+ *  anyway, so the space is free for the cut being written. */
+export async function forgetFile(id: string): Promise<void> {
+  await db.jobs.update(id, { fileBlob: new Blob([]) }).catch(() => {})
 }
 
 export async function forgetJob(id: string): Promise<void> {
@@ -99,7 +140,9 @@ export async function recordPhase(id: string, phase: StoredJob['lastPhase']): Pr
 /** The video itself, read only when its turn comes. */
 export async function loadJobFile(id: string): Promise<File | null> {
   const row = await db.jobs.get(id)
-  if (!row) return null
+  // An empty blob means the video was too big to keep a copy of - see
+  // persistJob. There is nothing to pick the cut back up from.
+  if (!row || row.fileBlob.size === 0) return null
   return new File([row.fileBlob], row.fileName, { type: row.fileType })
 }
 

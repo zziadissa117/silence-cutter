@@ -17,9 +17,11 @@ import {
   MAX_ATTEMPTS,
   claimAttempt,
   forgetJob,
+  forgetFile,
   loadJobFile,
   loadPendingJobs,
   persistJob,
+  spaceOnDevice,
   recordPhase,
   resetAttempts,
 } from './media/jobStore'
@@ -213,6 +215,21 @@ export function App() {
           patch({ status: 'failed', error: 'That video is no longer available on this device.' })
           await forgetJob(next.id)
           return
+        }
+
+        // The cut is written into the space this site is allowed on the
+        // phone, and a long video's cut is nearly as big as the video. Short
+        // of room, the write fails deep inside the encoder with nothing that
+        // reads as "out of space", so it is checked here and said plainly.
+        // The kept copy of the video goes first, since the cut is read from
+        // memory from here on and no longer needs it.
+        await forgetFile(next.id)
+        const { free } = await spaceOnDevice()
+        const needed = file.size * 1.2
+        if (free !== null && free < needed) {
+          throw new SilenceCutError(
+            `This video needs about ${Math.ceil(needed / 1e6)} MB of space to cut and this phone will only give the app ${Math.floor(free / 1e6)} MB. Clear some space, or cut it in two halves.`,
+          )
         }
 
         const wantsWords = next.cleanSpeech || next.wantCaptions
