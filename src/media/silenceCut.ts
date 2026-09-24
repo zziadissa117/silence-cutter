@@ -38,6 +38,7 @@ import {
   concatFloat32,
   type WordChunk,
 } from './fillerWords'
+import { forwardOnly } from './forwardOnly'
 import { createOutputSink } from './outputSink'
 import { RangeReader } from './rangeReader'
 import {
@@ -418,6 +419,7 @@ async function renderCut(
     // so a few milliseconds of audio/video misalignment at one cut can never
     // carry over and stack up by the next one.
     let cursor = 0
+    const videoClock = forwardOnly()
 
     for (const { start, end } of keep) {
       // Video and audio frames rarely land exactly on `start` - a decoder
@@ -441,7 +443,7 @@ async function renderCut(
             // near the end of a range and then left it there.
             report((doneSoFar + (sample.timestamp - start)) / total)
             videoShift ??= cursor - sample.timestamp
-            const timestamp = sample.timestamp + videoShift
+            const timestamp = videoClock(sample.timestamp + videoShift)
             videoEnd = timestamp + sample.duration
             if (ctx && canvas) {
               // Drawing to the canvas is what performs the colour
