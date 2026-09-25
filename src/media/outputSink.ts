@@ -43,15 +43,51 @@ async function cutsDirectory(): Promise<FileSystemDirectoryHandle | null> {
   }
 }
 
+/** Every cut this tab is writing or still showing holds a Web Lock named
+ *  after its file, released when the cut is thrown away or the tab closes. */
+const LOCK_PREFIX = 'silence-cutter-cut:'
+const releasers = new Map<string, () => void>()
+
+async function holdLock(name: string): Promise<void> {
+  if (!navigator.locks) return
+  await new Promise<void>((granted) => {
+    void navigator.locks.request(LOCK_PREFIX + name, () => {
+      granted()
+      return new Promise<void>((release) => releasers.set(name, release))
+    })
+  })
+}
+
+function releaseLock(name: string): void {
+  releasers.get(name)?.()
+  releasers.delete(name)
+}
+
+/** A day, for browsers with no Web Locks: a cut older than that belongs to no
+ *  open tab, however long a video took. */
+const STALE_MS = 24 * 60 * 60 * 1000
+
 /** Clears out cuts left behind by an earlier visit. Finished videos only live
- *  on the screen that made them, so anything here at startup is unreachable
- *  and would otherwise fill the phone's storage one visit at a time. Runs once
- *  when the page loads, and every new cut waits for it, so it can never delete
- *  a file this visit is still writing. */
+ *  on the screen that made them, so anything here nobody is holding is
+ *  unreachable and would otherwise fill the phone's storage one visit at a
+ *  time. It used to delete the whole folder, which also deleted the cut a
+ *  second open tab was in the middle of writing - so now a file still locked
+ *  by a live tab is left alone. Every new cut waits for this to finish. */
 const leftoversCleared: Promise<void> = (async () => {
   try {
-    const root = await navigator.storage.getDirectory()
-    await root.removeEntry(DIR, { recursive: true })
+    const dir = await cutsDirectory()
+    if (!dir) return
+    const held = navigator.locks
+      ? new Set((await navigator.locks.query()).held?.map((lock) => lock.name) ?? [])
+      : null
+    const names: string[] = []
+    for await (const name of dir.keys()) names.push(name)
+    for (const name of names) {
+      const inUse = held
+        ? held.has(LOCK_PREFIX + name)
+        : Date.now() - Number(name.split('-')[0]) < STALE_MS
+      if (!inUse) await dir.removeEntry(name).catch(() => {})
+    }
   } catch {
     // Nothing there, or no OPFS at all.
   }
@@ -62,6 +98,7 @@ export async function createOutputSink(): Promise<OutputSink> {
   const dir = await cutsDirectory()
   if (dir) {
     const name = `${Date.now()}-${Math.random().toString(36).slice(2)}.mp4`
+    await holdLock(name)
     try {
       const handle = await dir.getFileHandle(name, { create: true })
       if (typeof handle.createWritable === 'function') {
@@ -72,6 +109,7 @@ export async function createOutputSink(): Promise<OutputSink> {
           discard: async () => {
             await writable.abort().catch(() => {})
             await dir.removeEntry(name).catch(() => {})
+            releaseLock(name)
           },
           storedAs: name,
         }
@@ -80,6 +118,7 @@ export async function createOutputSink(): Promise<OutputSink> {
     } catch {
       // Fall through to Blob pieces.
     }
+    releaseLock(name)
   }
   return blobPieceSink()
 }
@@ -134,4 +173,5 @@ function blobPieceSink(): OutputSink {
 export async function forgetCut(name: string): Promise<void> {
   const dir = await cutsDirectory()
   await dir?.removeEntry(name).catch(() => {})
+  releaseLock(name)
 }

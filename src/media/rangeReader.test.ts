@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { RangeReader } from './rangeReader'
+import { RangeReader, inTimestampOrder } from './rangeReader'
 
 /** mediabunny's `samples(start, end)`, reduced to timestamps - the same
  *  decisions as the decoder callback in mediaSamplesInRange (media-sink.js):
@@ -142,5 +142,33 @@ describe('reading every kept range from one decoder', () => {
     }
     await reader.dispose()
     expect(skipped[0]).toBe(key)
+  })
+})
+
+describe('inTimestampOrder', () => {
+  async function collect(timestamps: number[], depth?: number): Promise<number[]> {
+    const out: number[] = []
+    for await (const sample of inTimestampOrder(stream(timestamps), depth)) {
+      out.push(sample.timestamp)
+      sample.close()
+    }
+    return out
+  }
+
+  it('leaves samples already in order alone', async () => {
+    expect(await collect([0, 1, 2, 3, 4, 5, 6])).toEqual([0, 1, 2, 3, 4, 5, 6])
+  })
+
+  it('puts swapped neighbours back in order', async () => {
+    expect(await collect([0, 2, 1, 3, 5, 4, 6])).toEqual([0, 1, 2, 3, 4, 5, 6])
+  })
+
+  it('closes everything it was still holding when stopped early', async () => {
+    FakeSample.open = 0
+    const iterator = inTimestampOrder(stream([0, 1, 2, 3, 4, 5, 6]))
+    const first = await iterator.next()
+    ;(first.value as FakeSample).close()
+    await iterator.return(undefined)
+    expect(FakeSample.open).toBe(0)
   })
 })

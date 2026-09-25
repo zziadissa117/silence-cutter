@@ -135,6 +135,11 @@ export function App() {
   const [dragging, setDragging] = useState(false)
   const picker = useRef<HTMLInputElement>(null)
   const processing = useRef(false)
+  // Each new video's backup copy, while it is still being written. The cut
+  // waits for it: started alongside, the copy could land after the cut had
+  // already let it go, doubling the space used mid-cut and bringing a
+  // finished video back to run again on the next visit.
+  const persisting = useRef(new Map<string, Promise<unknown>>())
   const speechSupported = useMemo(() => isFillerWordDetectionSupported(), [])
 
   useEffect(() => {
@@ -189,7 +194,9 @@ export function App() {
 
     const patch = (fields: Partial<Job>) =>
       setJobs((js) => js.map((j) => (j.id === next.id ? { ...j, ...fields } : j)))
-    const setPhase = (phase: Job['phase'], progress: number) => {
+    let phase: Job['phase'] = 'reading'
+    const setPhase = (entered: Job['phase'], progress: number) => {
+      phase = entered
       patch({ status: 'working', phase, progress })
       // Written to disk, not just React state, so it survives the tab being
       // killed outright rather than only a graceful failure - see
@@ -199,6 +206,8 @@ export function App() {
 
     void (async () => {
       try {
+        await persisting.current.get(next.id)
+        persisting.current.delete(next.id)
         // Counted before any work happens, so a tab that dies mid-cut still
         // remembers it tried.
         const allowed = await claimAttempt(next.id)
@@ -260,7 +269,7 @@ export function App() {
         const message =
           err instanceof SilenceCutError
             ? err.message
-            : `Something went wrong cutting this video (${err instanceof Error ? err.message : String(err)}).`
+            : `Something went wrong while ${PHASE_LABEL[phase]} (${err instanceof Error ? err.message : String(err)}). Version ${__APP_VERSION__}.`
         patch({ status: 'failed', error: message })
         await forgetJob(next.id)
       } finally {
@@ -298,7 +307,7 @@ export function App() {
       setJobs((current) => [...current, ...added])
       setNotice(null)
       for (const job of added) {
-        void persistJob({
+        const saved = persistJob({
           id: job.id,
           fileBlob: job.file!,
           fileName: job.name,
@@ -309,6 +318,7 @@ export function App() {
         }).catch(() => {
           // Still queued in memory; it just would not survive a reload.
         })
+        persisting.current.set(job.id, saved)
       }
     },
     [cleanSpeech, settings, speechSupported, wantCaptions],
@@ -367,7 +377,7 @@ export function App() {
       if (going?.result?.storedAs) void forgetCut(going.result.storedAs)
       return js.filter((j) => j.id !== id)
     })
-    void forgetJob(id)
+    void (persisting.current.get(id) ?? Promise.resolve()).then(() => forgetJob(id))
   }, [])
 
   const clearFinished = useCallback(() => {
@@ -408,7 +418,7 @@ export function App() {
     <main>
       <header>
         <h1>Silence Cutter</h1>
-        <span className="hint">Runs on this device. Nothing is uploaded.</span>
+        <span className="hint">Runs on this device. Nothing is uploaded. Version {__APP_VERSION__}</span>
       </header>
       <p className="sub">
         Drop in your raw videos and get back copies with the dead air removed, ready for your editor.

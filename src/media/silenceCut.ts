@@ -22,12 +22,14 @@ import {
   Output,
   QUALITY_HIGH,
   QUALITY_MEDIUM,
+  UnsupportedInputFormatError,
   VideoSample,
   VideoSampleSink,
   VideoSampleSource,
 } from 'mediabunny'
 
 import { buildCaptionCues, type CaptionCue } from './captions'
+import { SilenceCutError } from './errors'
 import {
   WHISPER_SAMPLE_RATE,
   alignToAudio,
@@ -38,9 +40,9 @@ import {
   concatFloat32,
   type WordChunk,
 } from './fillerWords'
-import { forwardOnly } from './forwardOnly'
+import { contiguousAudio, forwardOnly } from './forwardOnly'
 import { createOutputSink } from './outputSink'
-import { RangeReader } from './rangeReader'
+import { RangeReader, inTimestampOrder } from './rangeReader'
 import {
   BALANCED_SETTINGS,
   findSilentRanges,
@@ -54,7 +56,19 @@ import {
 } from './silenceMath'
 import { transcribeOnDevice } from './transcribe'
 
-export class SilenceCutError extends Error {}
+export { SilenceCutError }
+
+/** The 10-bit HDR encoder said it could and then could not. Only this is
+ *  worth a second go without HDR - any other failure would just fail again,
+ *  after the whole cut had been made a second time. */
+class HdrEncodeFailed extends Error {
+  constructor(original: unknown) {
+    super(original instanceof Error ? original.message : String(original))
+  }
+}
+
+const UNREADABLE_FORMAT =
+  "This browser can't read this video's format. On a computer, open this page in Safari or Chrome; on a phone, update to the newest iOS."
 
 /** True once this browser can actually decode and re-encode video and audio.
  *  Safari only gained AudioEncoder/AudioDecoder in Safari 26 (2026); older
@@ -96,6 +110,29 @@ async function findHdrCodec(width: number, height: number): Promise<string | nul
     }
   }
   return null
+}
+
+/** What every AAC encoder takes: 48kHz, at most stereo. */
+const SAFE_SAMPLE_RATE = 48000
+const MAX_CHANNELS = 2
+
+/** How the audio has to be converted before this device will encode it, if at
+ *  all. AAC encoders only take a handful of sample rates - Chrome's refuses
+ *  32kHz, which some apps and screen recordings use - and some take no more
+ *  than two channels. Nothing is converted when the device can take the
+ *  audio as it is, so a normal video comes out exactly as it always did. */
+async function audioConversionFor(
+  audioTrack: NonNullable<Awaited<ReturnType<Input['getPrimaryAudioTrack']>>>,
+): Promise<{ transform?: { sampleRate: number; numberOfChannels: number } }> {
+  const [sampleRate, channels] = await Promise.all([audioTrack.getSampleRate(), audioTrack.getNumberOfChannels()])
+  const numberOfChannels = Math.min(channels, MAX_CHANNELS)
+  if (numberOfChannels === channels && (await canEncodeAudio('aac', { sampleRate, numberOfChannels }))) return {}
+  if (await canEncodeAudio('aac', { sampleRate: SAFE_SAMPLE_RATE, numberOfChannels })) {
+    return { transform: { sampleRate: SAFE_SAMPLE_RATE, numberOfChannels } }
+  }
+  throw new SilenceCutError(
+    `This video's sound (${channels} channels at ${sampleRate} Hz) can't be re-encoded by this browser. Try Safari or Chrome.`,
+  )
 }
 
 const ANALYSIS_WINDOW_SEC = 0.02 // 20ms, same grain ffmpeg's silencedetect uses by default
@@ -225,10 +262,17 @@ export async function planCut(
     // Scoped so the audio decoder is let go before transcription starts.
     const input = new Input({ source: new BlobSource(file), formats: ALL_FORMATS })
     try {
-      const [d, audioTrack] = await Promise.all([input.computeDuration(), input.getPrimaryAudioTrack()])
+      const [d, audioTrack] = await Promise.all([input.computeDuration(), input.getPrimaryAudioTrack()]).catch(
+        (error: unknown) => {
+          throw error instanceof UnsupportedInputFormatError
+            ? new SilenceCutError("This file isn't a video this app can open. Try exporting it again as an MP4 or MOV.")
+            : error
+        },
+      )
       if (!audioTrack) {
         throw new SilenceCutError('This video has no sound, so there is nothing to detect silence from.')
       }
+      if (!(await audioTrack.canDecode())) throw new SilenceCutError(UNREADABLE_FORMAT)
       duration = d
       ;({ levels, mono16k } = await decodeAudio(audioTrack, wantWords, d, options.onAnalyseProgress))
     } finally {
@@ -298,7 +342,7 @@ export async function cutSilence(
   try {
     return await renderCut(file, keep, onProgress, true)
   } catch (error) {
-    if (error instanceof SilenceCutError) throw error
+    if (!(error instanceof HdrEncodeFailed)) throw error
     // Keeping HDR means asking for a 10-bit encoder that only some devices
     // have, and it cannot be tested anywhere it does not exist. If the device
     // said it could and then could not, convert the colour and go again -
@@ -330,6 +374,7 @@ async function renderCut(
   let finished = false
   let videoFrames: RangeReader<VideoSample> | null = null
   let audioFrames: RangeReader<AudioSample> | null = null
+  let keepingHdr = false
 
   try {
     const [videoTrack, audioTrack] = await Promise.all([
@@ -338,6 +383,8 @@ async function renderCut(
     ])
     if (!videoTrack) throw new SilenceCutError('No video track found in this file.')
     if (!audioTrack) throw new SilenceCutError('This video has no sound, so there is nothing to detect silence from.')
+    const [videoReadable, audioReadable] = await Promise.all([videoTrack.canDecode(), audioTrack.canDecode()])
+    if (!videoReadable || !audioReadable) throw new SilenceCutError(UNREADABLE_FORMAT)
 
     const [isHdr, rotation, displayWidth, displayHeight] = await Promise.all([
       videoTrack.hasHighDynamicRange(),
@@ -358,7 +405,7 @@ async function renderCut(
     // for devices with no 10-bit encoder, because a converted picture is
     // still better than a broken one.
     const hdrCodec = isHdr && allowHdr ? await findHdrCodec(displayWidth, displayHeight) : null
-    const keepingHdr = isHdr && hdrCodec !== null
+    keepingHdr = isHdr && hdrCodec !== null
     const converting = isHdr && !keepingHdr
 
     let canvas: OffscreenCanvas | null = null
@@ -382,11 +429,15 @@ async function renderCut(
           // encoder is asked whether it can do it. Same object, checked and
           // then used - see media-source.js.
           onEncoderConfig: (config) => {
-            config.codec = hdrCodec
+            if (hdrCodec) config.codec = hdrCodec
           },
         })
       : new VideoSampleSource({ codec: 'avc', quality: QUALITY_HIGH })
-    const audioSource = new AudioSampleSource({ codec: 'aac', quality: QUALITY_MEDIUM })
+    const audioSource = new AudioSampleSource({
+      codec: 'aac',
+      quality: QUALITY_MEDIUM,
+      ...(await audioConversionFor(audioTrack)),
+    })
     // `draw` bakes the rotation into the pixels, so a converted track must
     // not *also* carry rotation metadata - that would turn it sideways.
     output.addVideoTrack(videoSource, converting ? {} : { rotation })
@@ -400,8 +451,8 @@ async function renderCut(
     // range still gets exactly the frames it always did; see rangeReader.ts.
     const spanStart = keep[0].start
     const spanEnd = keep[keep.length - 1].end
-    videoFrames = new RangeReader(new VideoSampleSink(videoTrack).samples(spanStart, spanEnd))
-    audioFrames = new RangeReader(new AudioSampleSink(audioTrack).samples(spanStart, spanEnd))
+    videoFrames = new RangeReader(inTimestampOrder(new VideoSampleSink(videoTrack).samples(spanStart, spanEnd)))
+    audioFrames = new RangeReader(inTimestampOrder(new AudioSampleSink(audioTrack).samples(spanStart, spanEnd)))
     const videoReader = videoFrames
     const audioReader = audioFrames
     // Where a decoder seeking to each range's start would have begun - an
@@ -420,6 +471,7 @@ async function renderCut(
     // carry over and stack up by the next one.
     let cursor = 0
     const videoClock = forwardOnly()
+    const audioClock = contiguousAudio()
 
     for (const { start, end } of keep) {
       // Video and audio frames rarely land exactly on `start` - a decoder
@@ -464,7 +516,7 @@ async function renderCut(
         (async () => {
           for await (const sample of audioReader.range(start, end, audioFrom)) {
             audioShift ??= cursor - sample.timestamp
-            sample.setTimestamp(sample.timestamp + audioShift)
+            sample.setTimestamp(audioClock(sample.timestamp + audioShift, sample.duration))
             audioEnd = sample.timestamp + sample.duration
             await audioSource.add(sample)
             sample.close()
@@ -484,6 +536,9 @@ async function renderCut(
     finished = true
     onProgress?.(1)
     return { blob, storedAs: sink.storedAs }
+  } catch (error) {
+    if (keepingHdr && !(error instanceof SilenceCutError)) throw new HdrEncodeFailed(error)
+    throw error
   } finally {
     await Promise.all([videoFrames?.dispose(), audioFrames?.dispose()]).catch(() => {})
     input.dispose()

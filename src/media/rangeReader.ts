@@ -38,6 +38,35 @@ export interface TimedSample {
   clone(): TimedSample
 }
 
+/** How many decoded frames may be held back to put them in order. Frames
+ *  only ever arrive a frame or two out of place, and four 4K frames is a few
+ *  tens of MB at most. */
+const REORDER_DEPTH = 4
+
+/** Hands samples on in timestamp order. Chrome's decoders already do, but
+ *  Safari on an iPhone passes frames on as some files store them - videos
+ *  saved from TikTok arrive with neighbours swapped - and a frame written
+ *  after a later one is exactly what the MP4 writer refuses. A few samples are
+ *  held back and the earliest always goes first, so the picture comes out in
+ *  its real order rather than with one frame jumping back. */
+export async function* inTimestampOrder<T extends TimedSample>(
+  source: AsyncIterable<T>,
+  depth = REORDER_DEPTH,
+): AsyncGenerator<T> {
+  const held: T[] = []
+  try {
+    for await (const sample of source) {
+      let at = held.length
+      while (at > 0 && held[at - 1].timestamp > sample.timestamp) at--
+      held.splice(at, 0, sample)
+      if (held.length > depth) yield held.shift()!
+    }
+    while (held.length > 0) yield held.shift()!
+  } finally {
+    for (const sample of held) sample.close()
+  }
+}
+
 export class RangeReader<T extends TimedSample> {
   private readonly source: AsyncIterator<T>
   /** The next sample, already pulled, that belongs to a later range. */

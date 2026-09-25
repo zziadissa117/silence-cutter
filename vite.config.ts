@@ -2,7 +2,12 @@ import react from '@vitejs/plugin-react'
 import { defineConfig } from 'vite'
 import { VitePWA } from 'vite-plugin-pwa'
 
+/** When this copy was built, in UTC. Shown on the page and in every error, so
+ *  a screenshot from someone else's phone says which version it came from. */
+const BUILT = new Date().toISOString().slice(0, 16).replace('T', ' ')
+
 export default defineConfig({
+  define: { __APP_VERSION__: JSON.stringify(BUILT) },
   // The speech model runs in a module worker (src/media/transcribe.worker.ts),
   // and the model library it loads splits into chunks, which only the ES
   // worker format can do.
