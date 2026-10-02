@@ -94,6 +94,7 @@ import {
 import { PostsView } from './PostsView'
 import { pushState, refreshPush, turnOnPush, type PushState } from './push'
 import { defaultEffects } from './defaultEffects'
+import { picturesHeard, type PictureChoice } from './skipPictures'
 import { talksIn } from './reaction'
 import { SettingsView } from './SettingsView'
 import { SignIn } from './SignIn'
@@ -1171,6 +1172,7 @@ export function CampaignApp() {
               musicFor(next),
               await clipsFor(next),
               next.day?.noEffects ? null : defaultEffects(),
+              next.day?.skipPictures ?? [],
             ),
           )
         } else {
@@ -2122,6 +2124,8 @@ export function CampaignApp() {
                 onCuts={talkingIn(job) ? () => setCutting({ id: job.id }) : undefined}
                 onMusic={(choice) => setMusic(job.id, choice)}
                 onNoEffects={(off) => setNoEffects(job.id, off)}
+                pictures={picturesFor(job)}
+                onSkipPicture={(pictureId, skip) => setSkipPicture(job.id, pictureId, skip)}
                 clips={clipsField(job)}
                 joinWith={
                   joinable(job)
@@ -2198,6 +2202,24 @@ export function CampaignApp() {
     const job = jobs.find((j) => j.id === id)
     if (!job?.day) return
     const day = { ...job.day, music: choice || undefined }
+    setJobs((js) => js.map((j) => (j.id === id ? { ...j, day } : j)))
+    void recordDay(id, day, { campaignId: job.campaignId, angleId: job.angleId, headlineText: job.headlineText })
+  }
+
+  /** The pictures a sorted video will show, for leaving any of them out. */
+  const picturesFor = (job: Job): PictureChoice[] => {
+    const plan = job.day?.plan
+    const campaign = campaignsRef.current.find((c) => c.id === job.campaignId)
+    const angle = campaign?.angles.find((a) => a.id === job.angleId)
+    return plan && angle ? picturesHeard(angle, bankRef.current, plan.words) : []
+  }
+
+  const setSkipPicture = (id: string, pictureId: string, skip: boolean) => {
+    const job = jobs.find((j) => j.id === id)
+    if (!job?.day) return
+    const now = job.day.skipPictures ?? []
+    const next = skip ? [...new Set([...now, pictureId])] : now.filter((p) => p !== pictureId)
+    const day = { ...job.day, skipPictures: next.length > 0 ? next : undefined }
     setJobs((js) => js.map((j) => (j.id === id ? { ...j, day } : j)))
     void recordDay(id, day, { campaignId: job.campaignId, angleId: job.angleId, headlineText: job.headlineText })
   }

@@ -17,6 +17,7 @@
 
 import { NO_EFFECTS, type AngleEffects } from './effects'
 import { effectsFor } from './defaultEffects'
+import { without } from './skipPictures'
 import type { MusicLevel } from './music'
 
 export type HeadlinePosition = 'top' | 'middle' | 'bottom'
@@ -339,7 +340,14 @@ export function parseWordList(typed: string): string[] {
 
 /** `defaults`: the effects for an angle that sets none (see defaultEffects.ts);
  *  null for none. */
-export function videoLook(campaign: Campaign, angle: Angle, bank: BankPicture[] = [], defaults: AngleEffects | null = null): VideoLook {
+export function videoLook(
+  campaign: Campaign,
+  angle: Angle,
+  bank: BankPicture[] = [],
+  defaults: AngleEffects | null = null,
+  /** Picture ids left out of this one video. */
+  skipPictures: readonly string[] = [],
+): VideoLook {
   const logoOn = angle.logo.show && campaign.logo !== null
   return {
     headline: angle.headline,
@@ -357,8 +365,8 @@ export function videoLook(campaign: Campaign, angle: Angle, bank: BankPicture[] 
           ? { kind: 'words' as const, words: campaign.brandWords }
           : sound.trigger,
     })),
-    pictures: angle.pictures,
-    bankPictures: angle.bank.use ? bank : [],
+    pictures: without(angle.pictures, skipPictures),
+    bankPictures: angle.bank.use ? without(bank, skipPictures) : [],
     bankPlacement: { position: angle.bank.position, widthPct: angle.bank.widthPct, seconds: angle.bank.seconds },
     mentions: angle.mentions,
     effects: effectsFor(angle.effects, defaults),

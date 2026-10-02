@@ -3,6 +3,16 @@
 Newest first. Every change says what it does, how to use it, and how it works
 underneath. Kept up to date with each commit.
 
+## Leave one picture out of one video
+**What:** A photo that popped up on a word you said in passing can be dropped from
+that video only.
+**Use it:** Open the video's row (before approving, or after Edit again) → "Pictures in
+this video" lists each picture that will appear, with a tick. Untick to leave it out,
+then approve (or re-make).
+**How:** `skipPictures.ts` lists the pictures whose words were heard, using the same
+matching as the render. The unticked ids are saved on the video (`day.skipPictures`) and
+filtered out in `videoLook`. Files: `skipPictures.ts`, `look.ts`, `JobRow.tsx`.
+
 ## Proposed: planner bridge (design only)
 `docs/PLANNER_BRIDGE_PROPOSAL.md` - how a cutter "posted" post would auto-tick the
 planner without exposing your cutter data to other planner users. Needs your OK.

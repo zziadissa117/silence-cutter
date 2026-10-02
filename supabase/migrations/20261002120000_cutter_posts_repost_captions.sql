@@ -1,6 +1,4 @@
--- PROPOSED - NOT APPLIED. Waiting for the owner's OK (kept out of
--- supabase/migrations so `supabase db push` can't apply it by accident).
---
+-- Applied to the live project (uykuoibqdxmpbbrsmyad) on 2026-10-02 after the owner approved it.
 -- Two things on cutter_posts, both only adding nullable columns (no data
 -- rewritten, nothing dropped, existing rows and code unaffected):
 --

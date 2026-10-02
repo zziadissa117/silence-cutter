@@ -10,6 +10,7 @@ import { useEffect, useMemo, useState, type ReactNode } from 'react'
 
 import { totalDuration } from '../media/silenceMath'
 import { ChevronDown } from './icons'
+import type { PictureChoice } from './skipPictures'
 import { anyEffect, defaultEffects } from './defaultEffects'
 import { NO_EFFECTS } from './effects'
 import { canShareFiles, formatTime, outputName, share, type Job } from './jobs'
@@ -39,6 +40,8 @@ export function JobRow({
   onCuts,
   onMusic,
   onNoEffects,
+  pictures,
+  onSkipPicture,
   onChoose,
   onHeadline,
   onHeadlineDone,
@@ -65,6 +68,8 @@ export function JobRow({
    *  for its angle's own. */
   onMusic: (choice: string) => void
   onNoEffects: (off: boolean) => void
+  pictures: PictureChoice[]
+  onSkipPicture: (pictureId: string, skip: boolean) => void
   onChoose: (campaignId: string, angleId: string) => void
   onHeadline: (text: string) => void
   onHeadlineDone: () => void
@@ -230,6 +235,8 @@ export function JobRow({
               onCuts={onCuts}
               onMusic={onMusic}
               onNoEffects={onNoEffects}
+              pictures={pictures}
+              onSkipPicture={onSkipPicture}
               clips={clips}
               joinWith={joinWith}
               onJoin={onJoin}
@@ -315,6 +322,26 @@ export function musicTracks(campaigns: Campaign[]): { value: string; name: strin
   return out
 }
 
+/** One picture that comes up in the video, with a tick to keep or drop it. */
+function PictureToggle({ picture, shown, onChange }: { picture: PictureChoice; shown: boolean; onChange: (shown: boolean) => void }) {
+  const [url, setUrl] = useState<string | null>(null)
+  useEffect(() => {
+    const made = URL.createObjectURL(picture.image)
+    setUrl(made)
+    return () => URL.revokeObjectURL(made)
+  }, [picture.image])
+  return (
+    <label className="toggle">
+      <input type="checkbox" checked={shown} onChange={(e) => onChange(e.target.checked)} />
+      {url ? <img src={url} alt="" width={36} height={36} style={{ objectFit: 'cover', borderRadius: 4 }} /> : null}
+      <span className="label">
+        {picture.words}
+        <span className="hint" style={{ display: 'block' }}>{shown ? 'Shown when you say it' : 'Left out of this video'}</span>
+      </span>
+    </label>
+  )
+}
+
 function SortedDetails({
   job,
   campaigns,
@@ -324,6 +351,8 @@ function SortedDetails({
   onCuts,
   onMusic,
   onNoEffects,
+  pictures,
+  onSkipPicture,
   clips,
   joinWith,
   onJoin,
@@ -337,6 +366,8 @@ function SortedDetails({
   onCuts?: () => void
   onMusic: (choice: string) => void
   onNoEffects: (off: boolean) => void
+  pictures: PictureChoice[]
+  onSkipPicture: (pictureId: string, skip: boolean) => void
   clips?: ReactNode
   joinWith?: { id: string; label: string }[]
   onJoin?: (otherId: string) => void
@@ -403,6 +434,14 @@ function SortedDetails({
             <option value="off">No effects</option>
           </select>
         </label>
+      ) : null}
+      {pictures.length > 0 ? (
+        <div className="field">
+          <span className="label">Pictures in this video</span>
+          {pictures.map((p) => (
+            <PictureToggle key={p.id} picture={p} shown={!job.day?.skipPictures?.includes(p.id)} onChange={(shown) => onSkipPicture(p.id, !shown)} />
+          ))}
+        </div>
       ) : null}
       {clips}
       {parts ? (

@@ -154,9 +154,11 @@ export async function make(
   clips: JoinedClips = {},
   /** The effects for an angle that sets none; null for none on this video. */
   defaults: AngleEffects | null = null,
+  /** Picture ids left out of this video. */
+  skipPictures: readonly string[] = [],
 ): Promise<CampaignResult> {
   refuseBroken(campaign, angle)
-  const look = videoLook(campaign, angle, bank, defaults)
+  const look = videoLook(campaign, angle, bank, defaults, skipPictures)
   const track = music === undefined ? (angle.music ?? null) : music
 
   const notHeard: string[] = []
