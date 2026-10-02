@@ -7,7 +7,7 @@
 // down the right, and the caption across the bottom.
 
 import { HEADLINE_FAMILY, headlineFontReady } from './headlineFont'
-import type { HeadlinePosition, HeadlineSize, HeadlineStyle, LogoPosition } from './look'
+import type { HeadlinePosition, HeadlineSize, HeadlineStyle, LogoPosition, OutlineWidth } from './look'
 
 // Start loading TikTok Sans as soon as anything that draws a headline is
 // around, so previews have it by the time they are looked at.
@@ -30,6 +30,13 @@ const HEADLINE_WEIGHT = 600
  *  in its own box, the boxes touch, and the corners are gently rounded. */
 const BOX = { lineHeight: 1.32, padX: 0.3, radius: 0.24 } as const
 const OUTLINE = { lineHeight: 1.18, stroke: 0.14 } as const
+/** The outline's thickness, as a multiple of the normal one. */
+const OUTLINE_WIDTH: Record<OutlineWidth, number> = { thin: 0.55, normal: 1, thick: 1.5 }
+
+/** A #rrggbb, or black: whatever was saved, only a real colour reaches the canvas. */
+export function outlineColorOf(value: string | undefined): string {
+  return typeof value === 'string' && /^#[0-9a-fA-F]{6}$/.test(value) ? value : '#000000'
+}
 
 const SIZE_FACTOR: Record<HeadlineSize, number> = { small: 0.052, medium: 0.066, large: 0.082 }
 
@@ -47,6 +54,8 @@ export interface HeadlineLayout {
   baselineOffset: number
   lineHeight: number
   style: HeadlineStyle
+  outlineColor: string
+  outlineWidth: OutlineWidth
 }
 
 export interface LogoLayout {
@@ -80,7 +89,7 @@ export function layoutHeadline(
   ctx: Ctx,
   width: number,
   height: number,
-  headline: { text: string; position: HeadlinePosition; style: HeadlineStyle; size: HeadlineSize },
+  headline: { text: string; position: HeadlinePosition; style: HeadlineStyle; size: HeadlineSize; outlineColor?: string; outlineWidth?: OutlineWidth },
 ): HeadlineLayout | null {
   const text = headline.text.trim()
   if (!text) return null
@@ -113,6 +122,8 @@ export function layoutHeadline(
     baselineOffset: lineHeight / 2 + (ascent - descent) / 2,
     lineHeight,
     style: headline.style,
+    outlineColor: outlineColorOf(headline.outlineColor),
+    outlineWidth: headline.outlineWidth ?? 'normal',
   }
 }
 
@@ -239,8 +250,8 @@ export function drawHeadline(ctx: Ctx, layout: HeadlineLayout): void {
     } else {
       ctx.lineJoin = 'round'
       ctx.miterLimit = 2
-      ctx.lineWidth = layout.fontPx * OUTLINE.stroke
-      ctx.strokeStyle = '#000000'
+      ctx.lineWidth = layout.fontPx * OUTLINE.stroke * OUTLINE_WIDTH[layout.outlineWidth]
+      ctx.strokeStyle = layout.outlineColor
       ctx.strokeText(line.text, layout.centerX, baseline)
       ctx.fillStyle = '#ffffff'
       ctx.fillText(line.text, layout.centerX, baseline)

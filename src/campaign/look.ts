@@ -82,7 +82,13 @@ export interface Headline {
   position: HeadlinePosition
   style: HeadlineStyle
   size: HeadlineSize
+  /** The outline's colour, for the outline style: a #rrggbb. Default black. */
+  outlineColor?: string
+  /** The outline's thickness: thin, normal or thick. Default normal. */
+  outlineWidth?: OutlineWidth
 }
+
+export type OutlineWidth = 'thin' | 'normal' | 'thick'
 
 export interface Angle {
   id: string
@@ -218,7 +224,8 @@ export function blankAngle(id: string, name: string): Angle {
   return {
     id,
     name,
-    headline: { text: '', seconds: 4, position: 'top', style: 'box', size: 'medium' },
+    // Outlined text, no box behind it: the look he asked for by default.
+    headline: { text: '', seconds: 4, position: 'top', style: 'outline', size: 'medium' },
     logo: { show: true, seconds: 2.5, position: 'bottom-left', widthPct: 30 },
     sounds: [],
     pictures: [],

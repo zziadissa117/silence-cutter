@@ -6,6 +6,8 @@
 
 import { useEffect, useRef, useState, type ReactNode } from 'react'
 
+import { outlineColorOf } from './overlay'
+
 import {
   LIMITS,
   angleProblems,
@@ -22,6 +24,7 @@ import {
   type HeadlinePosition,
   type HeadlineSize,
   type HeadlineStyle,
+  type OutlineWidth,
   type LogoPosition,
   type PictureCue,
 } from './look'
@@ -41,6 +44,11 @@ const POSITIONS: { value: HeadlinePosition; label: string }[] = [
 const STYLES: { value: HeadlineStyle; label: string }[] = [
   { value: 'box', label: 'White box' },
   { value: 'outline', label: 'Outline' },
+]
+const OUTLINE_WIDTHS: { value: OutlineWidth; label: string }[] = [
+  { value: 'thin', label: 'Thin' },
+  { value: 'normal', label: 'Normal' },
+  { value: 'thick', label: 'Thick' },
 ]
 const SIZES: { value: HeadlineSize; label: string }[] = [
   { value: 'small', label: 'S' },
@@ -475,6 +483,25 @@ export function AngleEditor({
             </label>
             <Choice label="Where" options={POSITIONS} value={angle.headline.position} onChange={(position) => setHeadline({ position })} />
             <Choice label="Style" options={STYLES} value={angle.headline.style} onChange={(style) => setHeadline({ style })} />
+            {angle.headline.style === 'outline' ? (
+              <>
+                <Choice
+                  label="Outline"
+                  options={OUTLINE_WIDTHS}
+                  value={angle.headline.outlineWidth ?? 'normal'}
+                  onChange={(outlineWidth) => setHeadline({ outlineWidth })}
+                />
+                <label className="field">
+                  <span className="label">Outline colour</span>
+                  <input
+                    type="color"
+                    aria-label="Outline colour"
+                    value={outlineColorOf(angle.headline.outlineColor)}
+                    onChange={(e) => setHeadline({ outlineColor: e.target.value })}
+                  />
+                </label>
+              </>
+            ) : null}
             <Choice label="Size" options={SIZES} value={angle.headline.size} onChange={(size) => setHeadline({ size })} />
             <Slider
               label="On screen for"

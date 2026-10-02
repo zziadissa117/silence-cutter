@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { TIKTOK_ZONES, layoutLogo, outputSize, wrapText } from './overlay'
+import { TIKTOK_ZONES, drawHeadline, layoutHeadline, layoutLogo, outlineColorOf, outputSize, wrapText } from './overlay'
 
 describe('wrapText', () => {
   const measure = (s: string) => s.length * 10
@@ -53,5 +53,68 @@ describe('layoutLogo', () => {
         expect(box.x + box.width).toBeLessThanOrEqual(1080 * (1 - TIKTOK_ZONES.right) + 0.5)
       }
     }
+  })
+})
+
+describe('outlined headlines', () => {
+  /** A canvas that only remembers what was drawn. */
+  function recorder() {
+    const calls: string[] = []
+    const ctx = {
+      font: '',
+      textAlign: '',
+      textBaseline: '',
+      lineJoin: '',
+      miterLimit: 0,
+      lineWidth: 0,
+      strokeStyle: '',
+      fillStyle: '',
+      save: () => calls.push('save'),
+      restore: () => calls.push('restore'),
+      measureText: (s: string) => ({ width: s.length * 10, fontBoundingBoxAscent: 20, fontBoundingBoxDescent: 5 }),
+      strokeText(this: { strokeStyle: string; lineWidth: number }) {
+        calls.push(`stroke ${this.strokeStyle} ${this.lineWidth.toFixed(2)}`)
+      },
+      fillText(this: { fillStyle: string }) {
+        calls.push(`fill ${this.fillStyle}`)
+      },
+      beginPath: () => calls.push('box'),
+      fillRect: () => calls.push('box'),
+      roundRect: () => calls.push('box'),
+      closePath: () => calls.push('box'),
+      moveTo: () => calls.push('box'),
+      lineTo: () => calls.push('box'),
+      arcTo: () => calls.push('box'),
+      quadraticCurveTo: () => calls.push('box'),
+      fill: () => calls.push('box'),
+    }
+    return { ctx: ctx as unknown as Parameters<typeof layoutHeadline>[0], calls }
+  }
+  const base = { text: 'HELLO', position: 'top', size: 'medium', style: 'outline' } as const
+
+  it('draws white letters with an outline and no background box', () => {
+    const { ctx, calls } = recorder()
+    const layout = layoutHeadline(ctx, 1080, 1920, base)!
+    drawHeadline(ctx, layout)
+    expect(calls).not.toContain('box')
+    expect(calls.some((c) => c.startsWith('stroke #000000'))).toBe(true)
+    expect(calls).toContain('fill #ffffff')
+  })
+
+  it('takes the outline colour and width he set', () => {
+    const normal = recorder()
+    drawHeadline(normal.ctx, layoutHeadline(normal.ctx, 1080, 1920, base)!)
+    const thick = recorder()
+    drawHeadline(thick.ctx, layoutHeadline(thick.ctx, 1080, 1920, { ...base, outlineColor: '#ff0000', outlineWidth: 'thick' })!)
+    const width = (calls: string[]) => Number(calls.find((c) => c.startsWith('stroke'))!.split(' ')[2])
+    expect(thick.calls.find((c) => c.startsWith('stroke'))).toContain('#ff0000')
+    expect(width(thick.calls)).toBeGreaterThan(width(normal.calls))
+  })
+
+  it('never lets a bad colour reach the canvas', () => {
+    expect(outlineColorOf('#12ab9f')).toBe('#12ab9f')
+    expect(outlineColorOf('red')).toBe('#000000')
+    expect(outlineColorOf('#12ab9')).toBe('#000000')
+    expect(outlineColorOf(undefined)).toBe('#000000')
   })
 })
