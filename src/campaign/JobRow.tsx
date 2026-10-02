@@ -10,6 +10,8 @@ import { useEffect, useMemo, useState, type ReactNode } from 'react'
 
 import { totalDuration } from '../media/silenceMath'
 import { ChevronDown } from './icons'
+import { anyEffect, defaultEffects } from './defaultEffects'
+import { NO_EFFECTS } from './effects'
 import { canShareFiles, formatTime, outputName, share, type Job } from './jobs'
 import { LIMITS, type Campaign } from './look'
 
@@ -36,6 +38,7 @@ export function JobRow({
   onCheck,
   onCuts,
   onMusic,
+  onNoEffects,
   onChoose,
   onHeadline,
   onHeadlineDone,
@@ -61,6 +64,7 @@ export function JobRow({
   /** Picks the track under this video: "campaignId:angleId", "none", or ""
    *  for its angle's own. */
   onMusic: (choice: string) => void
+  onNoEffects: (off: boolean) => void
   onChoose: (campaignId: string, angleId: string) => void
   onHeadline: (text: string) => void
   onHeadlineDone: () => void
@@ -225,6 +229,7 @@ export function JobRow({
               onHeadlineDone={onHeadlineDone}
               onCuts={onCuts}
               onMusic={onMusic}
+              onNoEffects={onNoEffects}
               clips={clips}
               joinWith={joinWith}
               onJoin={onJoin}
@@ -317,6 +322,7 @@ function SortedDetails({
   onHeadlineDone,
   onCuts,
   onMusic,
+  onNoEffects,
   clips,
   joinWith,
   onJoin,
@@ -329,6 +335,7 @@ function SortedDetails({
   onHeadlineDone: () => void
   onCuts?: () => void
   onMusic: (choice: string) => void
+  onNoEffects: (off: boolean) => void
   clips?: ReactNode
   joinWith?: { id: string; label: string }[]
   onJoin?: (otherId: string) => void
@@ -387,6 +394,15 @@ function SortedDetails({
           <option value="none">No music</option>
         </select>
       </label>
+      {anyEffect(defaultEffects()) && !anyEffect(angle?.effects ?? NO_EFFECTS) ? (
+        <label className="field">
+          <span className="label">Effects</span>
+          <select value={job.day?.noEffects ? 'off' : 'default'} onChange={(e) => onNoEffects(e.target.value === 'off')}>
+            <option value="default">Default effects</option>
+            <option value="off">No effects</option>
+          </select>
+        </label>
+      ) : null}
       {clips}
       {parts ? (
         <div className="cuts-row">

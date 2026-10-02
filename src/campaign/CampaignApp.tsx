@@ -93,6 +93,7 @@ import {
 } from './posting'
 import { PostsView } from './PostsView'
 import { pushState, refreshPush, turnOnPush, type PushState } from './push'
+import { defaultEffects } from './defaultEffects'
 import { talksIn } from './reaction'
 import { SettingsView } from './SettingsView'
 import { SignIn } from './SignIn'
@@ -1169,6 +1170,7 @@ export function CampaignApp() {
               voiceRef.current,
               musicFor(next),
               await clipsFor(next),
+              next.day?.noEffects ? null : defaultEffects(),
             ),
           )
         } else {
@@ -2119,6 +2121,7 @@ export function CampaignApp() {
                 onCheck={captionsOn && talkingIn(job) ? () => startCheck([job.id]) : undefined}
                 onCuts={talkingIn(job) ? () => setCutting({ id: job.id }) : undefined}
                 onMusic={(choice) => setMusic(job.id, choice)}
+                onNoEffects={(off) => setNoEffects(job.id, off)}
                 clips={clipsField(job)}
                 joinWith={
                   joinable(job)
@@ -2195,6 +2198,14 @@ export function CampaignApp() {
     const job = jobs.find((j) => j.id === id)
     if (!job?.day) return
     const day = { ...job.day, music: choice || undefined }
+    setJobs((js) => js.map((j) => (j.id === id ? { ...j, day } : j)))
+    void recordDay(id, day, { campaignId: job.campaignId, angleId: job.angleId, headlineText: job.headlineText })
+  }
+
+  const setNoEffects = (id: string, noEffects: boolean) => {
+    const job = jobs.find((j) => j.id === id)
+    if (!job?.day) return
+    const day = { ...job.day, noEffects: noEffects || undefined }
     setJobs((js) => js.map((j) => (j.id === id ? { ...j, day } : j)))
     void recordDay(id, day, { campaignId: job.campaignId, angleId: job.angleId, headlineText: job.headlineText })
   }

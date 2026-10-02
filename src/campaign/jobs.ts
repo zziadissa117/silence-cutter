@@ -43,6 +43,8 @@ export type Job = {
     /** The track under this video: an angle's, as "campaignId:angleId", or
      *  "none". Absent means the video's own angle's. */
     music?: string
+    /** No default effects on this video (its angle's own still apply). */
+    noEffects?: boolean
     /** The videos joined on before and after it: a clip's id, or "none".
      *  Absent means the angle's own - see clips.ts. */
     clips?: JobClips

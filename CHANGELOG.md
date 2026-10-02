@@ -3,6 +3,20 @@
 Newest first. Every change says what it does, how to use it, and how it works
 underneath. Kept up to date with each commit.
 
+## Default effects preset
+**What:** One setting that gives every talking video punch-ins, hook push and
+spring-in logo, so you don't set effects angle by angle.
+**Use it:** Settings → Default effects: Off (as shipped) / Subtle / Strong, or mix
+the four controls yourself. Per video: open its row (before approving) →
+Effects → "No effects".
+**How:** Stored on the phone (`cutter-default-effects`). `videoLook` uses the
+angle's own effects if it has any on, otherwise the default, so nothing already
+set up changes. Per-video off is `day.noEffects`. Files: `defaultEffects.ts`,
+`look.ts`, `pipeline.ts`, `JobRow.tsx`, `SettingsView.tsx`.
+**Limit:** Reaction/montage (batch) renderers have no zoom effects at all today
+(their code says "effects are not used"), so the default only affects talking
+videos. Adding zooms to those is a separate piece of work.
+
 ## Edit again (2-hour window)
 **What:** After a talking video is made, you can reopen it from Posts and fix
 captions, cuts or music without redoing everything.

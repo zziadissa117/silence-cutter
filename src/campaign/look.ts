@@ -16,6 +16,7 @@
 // is refused rather than shown at some made-up moment.
 
 import { NO_EFFECTS, type AngleEffects } from './effects'
+import { effectsFor } from './defaultEffects'
 import type { MusicLevel } from './music'
 
 export type HeadlinePosition = 'top' | 'middle' | 'bottom'
@@ -336,7 +337,9 @@ export function parseWordList(typed: string): string[] {
   return words
 }
 
-export function videoLook(campaign: Campaign, angle: Angle, bank: BankPicture[] = []): VideoLook {
+/** `defaults`: the effects for an angle that sets none (see defaultEffects.ts);
+ *  null for none. */
+export function videoLook(campaign: Campaign, angle: Angle, bank: BankPicture[] = [], defaults: AngleEffects | null = null): VideoLook {
   const logoOn = angle.logo.show && campaign.logo !== null
   return {
     headline: angle.headline,
@@ -358,7 +361,7 @@ export function videoLook(campaign: Campaign, angle: Angle, bank: BankPicture[] 
     bankPictures: angle.bank.use ? bank : [],
     bankPlacement: { position: angle.bank.position, widthPct: angle.bank.widthPct, seconds: angle.bank.seconds },
     mentions: angle.mentions,
-    effects: angle.effects,
+    effects: effectsFor(angle.effects, defaults),
     brandWords: campaign.brandWords,
   }
 }

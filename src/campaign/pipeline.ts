@@ -10,6 +10,7 @@
 // whole day listens to every video, sorts them, waits for his approval, and
 // only then makes each - without listening again.
 
+import type { AngleEffects } from './effects'
 import { SilenceCutError } from '../media/errors'
 import { isFillerWordDetectionSupported } from '../media/fillerWords'
 import { cutSilence, cutSilenceFromFile } from '../media/silenceCut'
@@ -149,9 +150,11 @@ export async function make(
   music?: AngleMusic | null,
   /** Videos joined on before and after him. */
   clips: JoinedClips = {},
+  /** The effects for an angle that sets none; null for none on this video. */
+  defaults: AngleEffects | null = null,
 ): Promise<CampaignResult> {
   refuseBroken(campaign, angle)
-  const look = videoLook(campaign, angle, bank)
+  const look = videoLook(campaign, angle, bank, defaults)
   const track = music === undefined ? (angle.music ?? null) : music
 
   const notHeard: string[] = []

@@ -6,6 +6,8 @@ import { useEffect, useState } from 'react'
 import type { PresetName } from '../media/silenceMath'
 import type { Session, SyncState } from './cloud'
 import type { LocalPosting, Profile } from './posting'
+import { PRESET_EFFECTS, defaultEffects, presetOf, setDefaultEffects, type DefaultPreset } from './defaultEffects'
+import type { AngleEffects, EffectLevel } from './effects'
 import { LANDSCAPE_MODES, landscapeMode, setLandscapeMode, type LandscapeMode } from './framing916'
 import { PostingLimits } from './PostingLimits'
 import type { PushState } from './push'
@@ -48,6 +50,52 @@ function useSpaceUsed(): number | null {
       .catch(() => {})
   }, [])
   return used
+}
+
+const EFFECT_LEVELS: EffectLevel[] = ['off', 'subtle', 'strong']
+const PRESET_NAMES: DefaultPreset[] = ['off', 'subtle', 'strong']
+
+function DefaultEffectsSetting() {
+  const [effects, setEffects] = useState<AngleEffects>(defaultEffects)
+  const change = (next: AngleEffects) => {
+    setDefaultEffects(next)
+    setEffects(next)
+  }
+  const preset = presetOf(effects)
+  const level = (key: 'cutPunch' | 'hookPush' | 'brandHit', label: string) => (
+    <label className="field">
+      <span className="label">{label}</span>
+      <select value={effects[key]} onChange={(e) => change({ ...effects, [key]: e.target.value as EffectLevel })}>
+        {EFFECT_LEVELS.map((l) => (
+          <option key={l} value={l}>
+            {l[0].toUpperCase() + l.slice(1)}
+          </option>
+        ))}
+      </select>
+    </label>
+  )
+  return (
+    <>
+      <div className="list-title">Default effects</div>
+      <div className="seg full" role="radiogroup" aria-label="Default effects">
+        {PRESET_NAMES.map((name) => (
+          <button key={name} type="button" role="radio" aria-checked={preset === name} className={preset === name ? 'active' : ''} onClick={() => change(PRESET_EFFECTS[name])}>
+            {name[0].toUpperCase() + name.slice(1)}
+          </button>
+        ))}
+      </div>
+      <p className="hint">
+        Applied to every video whose angle has no effects of its own{preset === null ? ' (custom mix below)' : ''}. Turn them off for one video in its row. Applies to videos you make next.
+      </p>
+      {level('cutPunch', 'Punch-in at cuts')}
+      {level('hookPush', 'Push-in under the hook')}
+      {level('brandHit', 'Punch when you say the brand')}
+      <label className="toggle">
+        <input type="checkbox" checked={effects.logoPop} onChange={(e) => change({ ...effects, logoPop: e.target.checked })} />
+        <span className="label">Logo and pictures spring in</span>
+      </label>
+    </>
+  )
 }
 
 function WideClips() {
@@ -221,6 +269,8 @@ export function SettingsView({
         ))}
       </div>
       <p className="hint">{PRESET_HINT[preset]} Applies to videos you add next.</p>
+
+      <DefaultEffectsSetting />
 
       <WideClips />
 
