@@ -6,6 +6,7 @@ import { useEffect, useState } from 'react'
 import type { PresetName } from '../media/silenceMath'
 import type { Session, SyncState } from './cloud'
 import type { LocalPosting, Profile } from './posting'
+import { LANDSCAPE_MODES, landscapeMode, setLandscapeMode, type LandscapeMode } from './framing916'
 import { PostingLimits } from './PostingLimits'
 import type { PushState } from './push'
 
@@ -47,6 +48,29 @@ function useSpaceUsed(): number | null {
       .catch(() => {})
   }, [])
   return used
+}
+
+function WideClips() {
+  const [mode, setMode] = useState<LandscapeMode>(landscapeMode)
+  const pick = (next: LandscapeMode) => {
+    setLandscapeMode(next)
+    setMode(next)
+  }
+  return (
+    <>
+      <div className="list-title">Wide clips</div>
+      <div className="seg full" role="radiogroup" aria-label="Wide clips">
+        {LANDSCAPE_MODES.map((m) => (
+          <button key={m.id} type="button" role="radio" aria-checked={mode === m.id} className={mode === m.id ? 'active' : ''} onClick={() => pick(m.id)}>
+            {m.label}
+          </button>
+        ))}
+      </div>
+      <p className="hint">
+        {LANDSCAPE_MODES.find((m) => m.id === mode)?.note} Clips already 9:16 are never touched. Applies to videos you make next.
+      </p>
+    </>
+  )
 }
 
 export function SettingsView({
@@ -197,6 +221,8 @@ export function SettingsView({
         ))}
       </div>
       <p className="hint">{PRESET_HINT[preset]} Applies to videos you add next.</p>
+
+      <WideClips />
 
       <div className="list-title">Captions</div>
       <label className="toggle">

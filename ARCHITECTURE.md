@@ -94,6 +94,10 @@ attempt before it starts (a video that kills the tab cannot loop).
   by Claude server-side from stills (`postiz/caption.ts`), edited in `PostsView`.
 - Headlines: `campaign/overlay.ts` (position/draw, same function for preview and
   every frame), `headlineFont.ts` (TikTok Sans, bundled), set per angle in `look.ts`.
+- Wide clips (Meta glasses): `campaign/framing916.ts` - detects non-9:16 from the
+  display size (rotation applied), Fill (crop, default) / Fit (blurred backdrop) / Off,
+  stored in localStorage `cutter-landscape-mode`, set in Settings, used by render.ts.
+  Clips already 9:16 are never touched. Join/montage/reaction already cover-fill.
 - Effects: `campaign/effects.ts`, `EffectsSection.tsx` (opt-in, with examples).
 
 **Duplicates (Phase 1.1).** `campaign/fingerprint.ts` = size + SHA-256 of three

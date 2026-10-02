@@ -56,7 +56,8 @@ import { decoderGaveUp, eachSound, openClip, pause, visibleAgain, wholeOf, write
 import type { ClipPlace } from './clips'
 import { framingAt, logoPop, placeFrame, planMotion } from './effects'
 import { headlineFontReady } from './headlineFont'
-import { drawHeadline, drawLogo, drawPoppedLogo, layoutHeadline, layoutLogo, outputSize } from './overlay'
+import { framedSize, landscapeMode, makeBlurBackdrop, planFrame } from './framing916'
+import { drawHeadline, drawLogo, drawPoppedLogo, layoutHeadline, layoutLogo } from './overlay'
 import { dbToGain, mixInto, prepareSound, type PlacedSound, type PreparedSound } from './sounds'
 import { MomentPlacer, inWindow } from './timeline'
 import { MusicBed, musicGain, trackLoudness, type MusicLevel } from './music'
@@ -335,7 +336,11 @@ export async function renderCampaignCut(
     const beforeGain = await levelFor(beforeClip)
     const afterGain = await levelFor(afterClip)
 
-    const { width, height } = outputSize(displayWidth, displayHeight)
+    // A wide clip (Meta glasses) becomes 9:16; one already 9:16 is untouched.
+    const mode = landscapeMode()
+    const { width, height } = framedSize(displayWidth, displayHeight, mode)
+    const framePlan = planFrame(displayWidth, displayHeight, width, height, mode)
+    const backdrop = framePlan.blurred ? makeBlurBackdrop() : null
     const canvas = new OffscreenCanvas(width, height)
     const ctx = canvas.getContext('2d')
     if (!ctx) throw new SilenceCutError("This browser couldn't prepare a canvas to draw the headline on.")
@@ -505,12 +510,22 @@ export async function renderCampaignCut(
                   timestamp - talkStart,
                   talkStart === 0 ? brandPlacer.times : brandPlacer.times.map((at) => at - talkStart),
                 )
-                if (framing.scale === 1 && framing.dx === 0) sample.draw(ctx, 0, 0, width, height)
-                else {
+                if (backdrop) {
+                  // Fit: the whole picture over a blurred copy; no zoom here.
+                  backdrop.draw(ctx, sample, width, height, displayWidth, displayHeight)
+                  const m = framePlan.main
+                  sample.draw(ctx, m.x, m.y, m.width, m.height)
+                } else if (framing.scale === 1 && framing.dx === 0) {
+                  const m = framePlan.main
+                  sample.draw(ctx, m.x, m.y, m.width, m.height)
+                } else {
                   // Drawn larger than the canvas, from the full-size frame - so a
                   // zoom into 4K footage loses no sharpness at all.
-                  const place = placeFrame(framing, width, height)
-                  sample.draw(ctx, place.x, place.y, place.width, place.height)
+                  const m = framePlan.main
+                  const inner = placeFrame(framing, m.width, m.height)
+                  const x = Math.min(0, Math.max(width - inner.width, m.x + inner.x))
+                  const y = Math.min(0, Math.max(height - inner.height, m.y + inner.y))
+                  sample.draw(ctx, x, y, inner.width, inner.height)
                 }
                 sample.close()
                 // Pictures under the headline and logo: those two always read.

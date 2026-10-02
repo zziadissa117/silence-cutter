@@ -45,6 +45,7 @@ git checkout tsconfig.tsbuildinfo   # after builds (tracked file)
 
 - Render: `src/campaign/{pipeline,plan,render,reactionRender,montageRender,joinRender}.ts`
 - Audio: `voice.ts`, `music.ts`, `sounds.ts`; captions `captions.ts`; headline `overlay.ts`, `look.ts`; effects `effects.ts`
+- Wide clips -> 9:16: `framing916.ts` (Settings: Fill/Fit/Off)
 - Queue/storage: `store.ts`, `outbox.ts`; sync + login: `cloud.ts`, `SignIn.tsx`, `LoginGate.tsx`
 - Posting (phone): `posting.ts`, `PostsView.tsx`, `NewPost.tsx`, `BatchView.tsx`
 - Posting (server): `supabase/functions/postiz/*` (`slots.ts` times, `caption.ts`, `batch.ts`, `hand.ts`, `attach.ts`)
