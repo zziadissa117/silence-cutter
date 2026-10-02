@@ -3,6 +3,10 @@
 Newest first. Every change says what it does, how to use it, and how it works
 underneath. Kept up to date with each commit.
 
+## Proposed: planner bridge (design only)
+`docs/PLANNER_BRIDGE_PROPOSAL.md` - how a cutter "posted" post would auto-tick the
+planner without exposing your cutter data to other planner users. Needs your OK.
+
 ## Music library: names and a player
 **What:** Every track in the batch bank has a ▶/■ button and a name you can change;
 every made talking video says which track is under it.
