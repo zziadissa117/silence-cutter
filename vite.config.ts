@@ -1,3 +1,5 @@
+import { fileURLToPath } from 'node:url'
+
 import react from '@vitejs/plugin-react'
 import { defineConfig } from 'vite'
 import { VitePWA } from 'vite-plugin-pwa'
@@ -12,6 +14,16 @@ export default defineConfig({
   // and the model library it loads splits into chunks, which only the ES
   // worker format can do.
   worker: { format: 'es' },
+  // Two pages: the plain cutter at /, and campaign videos, kept apart so the
+  // plain one runs exactly as it always has. See src/ModeNav.tsx.
+  build: {
+    rollupOptions: {
+      input: {
+        main: fileURLToPath(new URL('./index.html', import.meta.url)),
+        campaign: fileURLToPath(new URL('./campaign.html', import.meta.url)),
+      },
+    },
+  },
   plugins: [
     react(),
     VitePWA({
@@ -28,6 +40,9 @@ export default defineConfig({
         // page itself still decides when to reload - see UpdateBanner.tsx.
         skipWaiting: true,
         clientsClaim: true,
+        // The posting's notifications (public/push-sw.js). The version in
+        // the address makes a change to that file a new service worker too.
+        importScripts: ['push-sw.js?v=1'],
       },
       manifest: {
         name: 'Silence Cutter',

@@ -214,17 +214,69 @@ export function findSilentRanges(levels: Level[], settings: SilenceSettings): Ra
     return { start, end }
   }
 
+  const audioEnd = last ? last.time + step : 0
   if (runStart !== null && last && last.time - runStart >= settings.minSilenceSec) {
     // Silence ran to the end of the file with no loud level to close it. It
     // ends where that last level's own window ends, not where the window
     // starts: a silence that stopped a grain short of the end used to read
     // as an ordinary pause in the middle, and the end of the video was
     // trimmed as tightly as one.
-    const step = levels.length > 1 ? levels[1].time - levels[0].time : 0.02
-    ranges.push({ start: runStart, end: last.time + step })
+    ranges.push({ start: runStart, end: audioEnd })
   }
+
+  // A click right at the very start or end - the tap that starts or stops
+  // the recording - is not him talking. Too short to be a word, and with a
+  // real pause between it and his first (or after his last) word, it goes
+  // with the silence at that end.
+  const first = ranges[0]
+  if (first && first.start > 0.01 && first.start <= EDGE_CLICK_SEC) first.start = 0
+  const final = ranges[ranges.length - 1]
+  if (final && final.end < audioEnd - 0.01 && audioEnd - final.end <= EDGE_CLICK_SEC) final.end = audioEnd
+
   const floorDb = quietFloorDb(levels, settings)
-  return mergeRanges(ranges.map(grow)).map((range) => softenEnds(range, levels, floorDb, settings.paddingSec))
+  const isHead = (range: Range) => range.start <= 0.01
+  const isTail = (range: Range) => range.end >= audioEnd - 0.01
+  const middle = ranges.filter((r) => !isHead(r) && !isTail(r))
+  const edges = ranges
+    .filter((r) => isHead(r) !== isTail(r))
+    .map((r) => (isHead(r) ? headSilence(r, levels, floorDb) : tailSilence(r, levels, floorDb, step)))
+  const whole = ranges.filter((r) => isHead(r) && isTail(r))
+  return mergeRanges([
+    ...whole,
+    ...edges,
+    ...mergeRanges(middle.map(grow)).map((range) => softenEnds(range, levels, floorDb, settings.paddingSec)),
+  ])
+}
+
+/** How far back from his first word, or on from his last, the sound of the
+ *  word itself is followed: the soft start of an "h" or an "s", or a word
+ *  trailing away. Past this it is room, not the word. */
+const EDGE_FADE_SEC = 0.3
+
+/** The silence before his first word, ending where the word's sound really
+ *  starts - the moment it rises out of the room - rather than where it
+ *  crossed the silence line, which is already partway into a softly spoken
+ *  first word. Measured from there, the room left before it can be short
+ *  without ever clipping the word. */
+function headSilence(range: Range, levels: Level[], floorDb: number): Range {
+  let end = range.end
+  const from = levels.findIndex((l) => l.time >= range.end)
+  for (let i = (from === -1 ? levels.length : from) - 1; i >= 0; i--) {
+    if (levels[i].db <= floorDb || range.end - levels[i].time > EDGE_FADE_SEC) break
+    end = levels[i].time
+  }
+  return { start: range.start, end: Math.max(range.start, end) }
+}
+
+/** The silence after his last word, starting once the word has faded all
+ *  the way into the room. */
+function tailSilence(range: Range, levels: Level[], floorDb: number, step: number): Range {
+  let start = range.start
+  for (let i = levels.findIndex((l) => l.time >= range.start); i >= 0 && i < levels.length; i++) {
+    if (levels[i].db <= floorDb || levels[i].time - range.start > EDGE_FADE_SEC) break
+    start = levels[i].time + step
+  }
+  return { start: Math.min(start, range.end), end: range.end }
 }
 
 /** Where the line between speech and a pause actually falls for this take:
@@ -251,29 +303,44 @@ function quietFloorDb(levels: Level[], settings: SilenceSettings): number {
 /** The smallest section worth keeping - shorter blips (a click, a breath) are dropped. */
 const MIN_KEEP_SEC = 0.1
 
+/** Longest sound at the very start or end of a take that is treated as a
+ *  click rather than a word. A spoken word, even "so", lasts longer. */
+export const EDGE_CLICK_SEC = 0.1
+
 /** Room left before the first word and after the last one, whichever pacing
- *  he picked. v1 cut both flush, on the reasoning that no word can be there
- *  to protect - true, but it starts the video on the very first syllable and
- *  ends it on the last, which he asked for room around. Every preset gets
- *  the same amount: this is about how the video opens and closes, not how
- *  fast the middle moves. */
-export const EDGE_LEEWAY_SEC = 0.4
+ *  he picked.
+ *
+ *  v1 cut both flush, which clipped the first and last words: it cut where
+ *  the level crossed the silence line, and the soft start and trailing end
+ *  of a word sit under that line. The fix was 0.4s of room at each end - and
+ *  that was too much: the video opened on nearly half a second of nothing.
+ *  Now the room is measured from where his voice really starts and fades
+ *  (see headSilence and tailSilence), so it can be short and still never
+ *  touch the word: a beat before the first word, a little longer after the
+ *  last so the video does not end on a clipped syllable. Every preset gets
+ *  the same: this is about how the video opens and closes, not how fast the
+ *  middle moves. */
+export const HEAD_LEEWAY_SEC = 0.15
+export const TAIL_LEEWAY_SEC = 0.2
 
 /** Turns silent ranges into the ranges to keep: everything else, padded so
  *  the cut lands just outside the speech rather than on top of it. */
 export function keepRanges(silences: Range[], duration: number, paddingSec: number): Range[] {
   const keeps: Range[] = []
-  const edge = Math.max(paddingSec, EDGE_LEEWAY_SEC)
+  const head = Math.max(paddingSec, HEAD_LEEWAY_SEC)
+  const tail = Math.max(paddingSec, TAIL_LEEWAY_SEC)
   let cursor = 0
 
   for (const { start, end } of silences) {
     const isHead = start <= 0.01
-    const isTail = end >= duration - 0.01
+    // A video's sound can stop a moment before its picture does; silence
+    // that runs to the end of the sound is still the end of the video.
+    const isTail = end >= duration - EDGE_CLICK_SEC
     // What gets removed. In the middle, the pause less `paddingSec` at each
-    // end. At the head and tail, the pause less `edge`, so the video opens
-    // and closes with a breath instead of on a syllable.
-    const removeFrom = isHead ? 0 : isTail ? start + edge : start + paddingSec
-    const removeTo = isTail ? duration : isHead ? end - edge : end - paddingSec
+    // end. At the head and tail, the pause less a short breath, so the video
+    // opens and closes just around his words, not on a syllable.
+    const removeFrom = isHead ? 0 : isTail ? start + tail : start + paddingSec
+    const removeTo = isTail ? duration : isHead ? end - head : end - paddingSec
     if (removeTo - removeFrom <= 0.01) continue
     if (removeFrom > cursor) keeps.push({ start: cursor, end: removeFrom })
     cursor = Math.max(cursor, removeTo)

@@ -1,0 +1,521 @@
+/* Campaign videos: the same kit as the plain cutter (index.css), plus the
+   form a campaign's look is set up in. Grouped by hairlines and spacing, not
+   boxes; the preview is the one framed thing, because it is a picture of
+   the video. */
+
+.field { display: grid; gap: 6px; }
+.field.grow { flex: 1 1 220px; min-width: 0; }
+.actions { display: flex; align-items: center; gap: 14px; flex: none; }
+
+.field input[type=text],
+.field input[type=password],
+.field textarea,
+.field select,
+.sound select,
+.sound input.words {
+  width: 100%;
+  min-height: 44px;
+  padding: 10px 12px;
+  border: 1px solid var(--edge);
+  border-radius: 10px;
+  background: var(--surface);
+  color: var(--text);
+  font: inherit;
+  /* 16px or iOS zooms the page when the field is tapped. */
+  font-size: 16px;
+}
+.field textarea { resize: vertical; line-height: 1.35; }
+.field select, .sound select {
+  /* Safari draws its own slim control and ignores the height without this. */
+  appearance: none;
+  -webkit-appearance: none;
+  padding: 0 36px 0 12px;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8' fill='none' stroke='%23a4b1c3' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M1 1.5l5 5 5-5'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 14px center;
+}
+.field input:focus, .field textarea:focus, .field select:focus,
+.sound select:focus, .sound input.words:focus { border-color: rgb(255 255 255 / 0.8); outline: none; }
+::placeholder { color: var(--muted); opacity: 1; }
+
+/* --- Setting up a look --------------------------------------------------- */
+
+.editor { display: flex; flex-direction: column; gap: 18px; }
+.editor-head { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; }
+.editor h2 { margin: 0; font-size: 21px; font-weight: 600; letter-spacing: -0.01em; }
+
+.group { display: flex; flex-direction: column; gap: 14px; padding-top: 16px; border-top: 1px solid var(--rule); }
+.group-title { font-size: 17px; font-weight: 600; color: var(--text); }
+
+.preview { display: flex; flex-direction: column; align-items: center; gap: 8px; text-align: center; }
+.preview canvas {
+  width: 200px;
+  height: auto;
+  aspect-ratio: 9 / 16;
+  border: 1px solid var(--edge);
+  border-radius: 14px;
+}
+.preview .hint { max-width: 360px; font-size: 13px; }
+
+.sound { display: flex; flex-direction: column; gap: 10px; padding-bottom: 14px; border-bottom: 1px solid var(--rule); }
+.sound-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+
+.editor-foot { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding-top: 8px; }
+.linkbtn.danger { color: var(--bad); text-decoration-color: currentColor; }
+
+/* Angles and sounds are picked from a row of chips that wraps, so a long
+   angle name or a fourth sound never runs off a phone's screen. */
+.seg.chips { display: flex; flex-wrap: wrap; width: 100%; }
+.seg.chips button { flex: 1 1 auto; min-width: 0; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.seg.chips button.file { flex-basis: 100%; }
+
+.thumb { max-height: 56px; max-width: 160px; object-fit: contain; }
+
+/* A sound's level: the fill is where it peaks at the chosen volume (and,
+   while it plays, where it is right now, with a tick at its peak). White is
+   the thing itself; amber means loud enough to distort. */
+.meter-row { display: flex; align-items: center; gap: 12px; }
+.btn.play { flex: none; width: 44px; padding: 0; }
+.btn.play svg { width: 18px; height: 18px; }
+.meter { position: relative; flex: 1; height: 8px; border-radius: 4px; background: var(--rule); overflow: hidden; }
+.meter-fill { height: 100%; background: var(--now); border-radius: 4px; }
+.meter-fill.loud { background: var(--warn); }
+.meter-peak { position: absolute; top: 0; bottom: 0; width: 2px; margin-left: -1px; background: var(--dim); }
+.meter-read { flex: none; width: 64px; text-align: right; font-family: var(--mono); font-variant-numeric: tabular-nums; font-size: 15px; }
+.meter-read.loud, .hint.loud { color: var(--warn); }
+
+.job .for { color: var(--muted); font-weight: 400; }
+
+/* Effects: each a row with its example; the example plays in the one
+   canvas above them. */
+.effect { display: flex; flex-direction: column; gap: 8px; padding-bottom: 14px; border-bottom: 1px solid var(--rule); }
+.effects .preview .linkbtn { margin-top: 2px; }
+.example-caption { min-height: 1.4em; }
+.seg button:disabled { color: var(--muted); opacity: 0.5; cursor: default; }
+
+/* Signed in or not, and whether the shared setups are up to date. */
+.sync-row { margin-bottom: 14px; }
+
+/* How videos are added: one angle, or the whole day sorted. */
+.mode-row { margin-bottom: 14px; }
+
+/* A day's video waiting for approval. Unsure ones say so in amber - a
+   choice to look at, not a failure. */
+.day { display: flex; flex-direction: column; gap: 10px; margin-top: 10px; }
+.day .heard { font-style: italic; }
+.status.unsure { color: var(--warn); font-weight: 600; }
+
+/* The picture bank: a thumbnail and its words per row. */
+.bank { display: flex; flex-direction: column; border-top: 1px solid var(--rule); }
+.bank-row { display: flex; align-items: center; gap: 12px; padding: 10px 0; border-bottom: 1px solid var(--rule); }
+.bank-row .thumb { width: 56px; height: 56px; object-fit: contain; flex: none; }
+.bank-row input {
+  flex: 1;
+  min-width: 0;
+  min-height: 44px;
+  padding: 0 12px;
+  border: 1px solid var(--edge);
+  border-radius: 10px;
+  background: var(--surface);
+  color: var(--text);
+  font: inherit;
+  font-size: 16px;
+}
+.bank-row input.needs { border-color: var(--warn); }
+
+/* Something in a finished video to know about - amber, not red: the video
+   was made, one part of the look just did not fire. */
+.notice.missed { margin: 10px 0 0; }
+
+@media (max-width: 560px) {
+  .sound-grid { grid-template-columns: 1fr; }
+}
+
+
+/* === The tabbed layout ======================================================
+   Four places, one job each: Videos (add, approve, send), Campaigns, Pictures,
+   Settings. One thing to do per screen, the rest a tap away. The planner's
+   language: black ground, hairlines, a dot for each row's state, colour only
+   where it says something. */
+
+main.tabbed { padding-bottom: calc(env(safe-area-inset-bottom) + 96px); }
+.hint, .lede, .quote { text-wrap: pretty; }
+.linkbtn { min-height: 44px; }
+
+.screen { display: flex; flex-direction: column; gap: 14px; }
+.screen-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 44px; }
+.screen-head h1 { font-size: 30px; font-weight: 700; letter-spacing: -0.02em; margin: 0; }
+.screen-head h2 { font-size: 24px; font-weight: 700; letter-spacing: -0.015em; margin: 0; }
+.lede { color: var(--muted); font-size: 15px; line-height: 1.45; margin: -6px 0 0; max-width: 60ch; }
+.list-title { font-size: 15px; font-weight: 600; color: var(--dim); margin-top: 10px; }
+.empty { color: var(--muted); text-align: center; padding: 28px 0; }
+.footnote { color: var(--muted); font-size: 13px; text-align: center; margin-top: 24px; }
+.warn-text { color: var(--warn) !important; }
+.quote { color: var(--dim); font-style: italic; font-size: 15px; }
+.facts { color: var(--dim); font-size: 14px; font-variant-numeric: tabular-nums; line-height: 1.5; }
+
+.btn.small { min-height: 40px; padding: 0 14px; font-size: 15px; border-radius: 11px; white-space: nowrap; }
+.status-link {
+  min-height: 44px; padding: 0 2px; background: none; border: 0; color: var(--muted);
+  font: inherit; font-size: 15px; cursor: pointer;
+}
+.back {
+  display: inline-flex; align-items: center; gap: 2px; align-self: flex-start; min-height: 44px;
+  margin-left: -6px; padding: 0 6px; background: none; border: 0; color: var(--dim); font: inherit; font-size: 16px; cursor: pointer;
+}
+
+/* The bottom tab bar. */
+.tabbar {
+  position: fixed; left: 0; right: 0; bottom: 0; z-index: 10;
+  display: flex; justify-content: center;
+  padding: 6px 8px calc(env(safe-area-inset-bottom) + 6px);
+  background: var(--ink);
+  border-top: 1px solid var(--rule);
+}
+.tabbar button {
+  flex: 1; max-width: 180px; display: flex; flex-direction: column; align-items: center; gap: 3px;
+  min-height: 52px; padding: 6px 0 2px; background: none; border: 0; color: var(--muted);
+  font: inherit; font-size: 12px; font-weight: 600; cursor: pointer;
+  transition: color 150ms, transform 300ms var(--ease-press);
+}
+.tabbar button.active { color: var(--now); }
+.tabbar button:active { transform: scale(0.94); transition-duration: 70ms; }
+
+/* Adding videos. */
+.btn.add-more { gap: 8px; width: 100%; min-height: 52px; }
+.btn.add-more svg { width: 22px; height: 22px; }
+.drop { gap: 6px; padding: 30px 16px; }
+.drop .icon { color: var(--dim); }
+.drop .big { margin: 4px 0 0; }
+.under-drop-links { display: flex; flex-direction: column; align-items: center; }
+.callout { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 12px 0; border-top: 1px solid var(--rule); border-bottom: 1px solid var(--rule); }
+.chooser { display: flex; flex-direction: column; gap: 10px; }
+.chooser-head { display: flex; align-items: center; justify-content: space-between; }
+.chooser select, .chooser > input[type=text], input.find {
+  width: 100%; min-height: 48px; padding: 0 14px; border: 1px solid var(--edge); border-radius: 12px;
+  background: var(--surface); color: var(--text); font: inherit; font-size: 16px;
+}
+.chooser select {
+  appearance: none; -webkit-appearance: none; padding-right: 40px; font-weight: 600;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8' fill='none' stroke='%23a4b1c3' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M1 1.5l5 5 5-5'/%3E%3C/svg%3E");
+  background-repeat: no-repeat; background-position: right 16px center;
+}
+
+/* The list: a summary that stays in reach while scrolling, then one row per
+   video, in the order they were added. */
+.summary {
+  position: sticky; top: 0; z-index: 5;
+  display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 8px 12px;
+  margin: 8px -16px 0; padding: calc(env(safe-area-inset-top) * 0 + 10px) 16px 10px;
+  background: var(--ink);
+  border-bottom: 1px solid var(--rule);
+}
+.summary-actions { display: flex; gap: 8px; }
+.vlist { list-style: none; margin: 0; padding: 0; }
+.vrow { border-bottom: 1px solid var(--rule); }
+.vrow-top { display: flex; align-items: center; gap: 10px; }
+.vrow-open {
+  flex: 1; min-width: 0; display: flex; align-items: center; gap: 12px;
+  min-height: 64px; padding: 10px 0; background: none; border: 0; color: inherit; font: inherit; text-align: left; cursor: pointer;
+}
+.vrow-open:disabled { cursor: default; }
+.vrow-text { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.vrow-name { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.vrow-line { font-size: 14px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.vrow-line.warn { color: var(--warn); }
+.vrow-line.bad { color: var(--bad); }
+.vrow-chevron { color: var(--muted); display: flex; transition: transform 200ms var(--ease-press); }
+.vrow.open .vrow-chevron { transform: rotate(180deg); }
+.vrow-action { flex: none; }
+.vrow .bar { margin: 0 0 12px 22px; }
+.vrow-details { display: flex; flex-direction: column; gap: 12px; padding: 0 0 16px 22px; }
+.vrow-details .linkbtn { align-self: flex-start; }
+
+/* A row's state, as a dot: white - yours to do now; grey - waiting its turn;
+   green - done; amber - look at this; red - failed, reason underneath. */
+.dot { flex: none; width: 10px; height: 10px; border-radius: 50%; background: var(--muted); }
+.dot.now { background: var(--now); box-shadow: 0 0 10px -2px var(--now); }
+.dot.later { background: transparent; border: 1.5px solid var(--muted); }
+.dot.ok { background: var(--ok); }
+.dot.warn { background: var(--warn); }
+.dot.bad { background: var(--bad); }
+
+/* Campaigns and their angles, as rows you tap into. */
+.rows { list-style: none; margin: 0; padding: 0; border-top: 1px solid var(--rule); }
+.row-link {
+  width: 100%; display: flex; align-items: center; gap: 14px; min-height: 68px; padding: 10px 0;
+  background: none; border: 0; border-bottom: 1px solid var(--rule); color: inherit; font: inherit; text-align: left; cursor: pointer;
+}
+.row-link > svg { color: var(--muted); flex: none; }
+.row-text { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.row-name { font-weight: 600; font-size: 17px; }
+.row-line { font-size: 14px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mark { flex: none; width: 44px; height: 44px; border-radius: 11px; object-fit: contain; background: var(--surface); }
+.mark.letter { display: flex; align-items: center; justify-content: center; font-weight: 700; color: var(--dim); border: 1px solid var(--edge); }
+.actions-row { display: flex; gap: 8px; }
+
+/* Settings. */
+.setting { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 12px 0; border-top: 1px solid var(--rule); border-bottom: 1px solid var(--rule); }
+.setting-text { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.seg.full, .seg.parts { display: flex; width: 100%; }
+.seg.full button, .seg.parts button { flex: 1; padding: 0 6px; }
+.seg.parts { position: sticky; top: 0; z-index: 5; background: var(--ink); }
+
+/* Editors: the preview small at the top, the parts one at a time, and Save
+   always in reach at the bottom. */
+.preview.compact canvas { width: 136px; }
+.editor-foot.sticky {
+  position: sticky; bottom: 0; z-index: 6;
+  margin: 8px -16px 0; padding: 12px 16px calc(env(safe-area-inset-bottom) + 12px);
+  display: flex; flex-direction: column; gap: 10px;
+  background: var(--ink);
+  border-top: 1px solid var(--rule);
+}
+.btn.wide { width: 100%; min-height: 52px; }
+.delete { align-self: flex-start; margin-top: 8px; }
+.effects { display: flex; flex-direction: column; gap: 14px; }
+
+@media (prefers-reduced-motion: reduce) {
+  .tabbar button, .tabbar button:active, .vrow-chevron { transition: none; transform: none; }
+  .vrow.open .vrow-chevron { transform: rotate(180deg); }
+}
+
+/* Checking captions, like TikTok's caption editor: the video held at the
+   top, a little smaller while typing so the keyboard leaves room, and every
+   phrase a box to type into, with Approve always in reach at the bottom. */
+.review { gap: 12px; }
+.review-top {
+  position: sticky; top: 0; z-index: 5;
+  display: flex; flex-direction: column; gap: 8px;
+  margin: calc(-1 * (env(safe-area-inset-top) + 24px)) -16px 0;
+  padding: calc(env(safe-area-inset-top) + 12px) 16px 10px;
+  background: var(--ink); border-bottom: 1px solid var(--rule);
+}
+.review-head { display: flex; align-items: center; justify-content: space-between; }
+.review-count { color: var(--dim); font-size: 15px; font-variant-numeric: tabular-nums; }
+.review-frame {
+  position: relative; align-self: center;
+  height: min(36svh, 420px); max-width: 100%;
+  border-radius: 14px; overflow: hidden; background: #000; cursor: pointer;
+  transition: height 0.2s ease;
+}
+.review.typing .review-frame { height: min(22svh, 260px); }
+.review-frame video, .review-frame canvas {
+  position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain;
+}
+.review-frame canvas { pointer-events: none; }
+.review-loading { position: absolute; inset: 0; display: grid; place-items: center; padding: 0 12px; text-align: center; }
+.review-playing {
+  position: absolute; right: 8px; bottom: 8px; width: 34px; height: 34px;
+  display: grid; place-items: center; border-radius: 50%;
+  background: rgb(0 0 0 / 0.55); color: #fff; pointer-events: none;
+}
+.review-playing svg { width: 16px; height: 16px; }
+.phrases { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; }
+.phrase {
+  display: flex; align-items: flex-start; gap: 6px; padding: 4px 0;
+  border-bottom: 1px solid var(--rule);
+  scroll-margin-top: calc(min(36svh, 420px) + 80px); scroll-margin-bottom: 140px;
+}
+.phrase-play {
+  flex: none; width: 40px; height: 44px; display: grid; place-items: center;
+  border: 0; background: none; color: var(--muted); cursor: pointer;
+}
+.phrase-play svg { width: 16px; height: 16px; }
+.phrase.on .phrase-play { color: var(--now); }
+.phrase textarea {
+  flex: 1; min-width: 0; min-height: 44px; padding: 10px 10px; resize: none; overflow: hidden;
+  border: 1px solid transparent; border-radius: 10px; background: transparent;
+  color: var(--dim); font: inherit; font-size: 17px; line-height: 1.4;
+}
+.phrase.on textarea { color: var(--text); }
+.phrase textarea:focus { outline: none; border-color: var(--now); background: var(--surface); color: var(--text); }
+.phrase.gone textarea { color: var(--muted); }
+.review-skip { align-self: center; }
+
+/* Fixing cuts by hand: the video held at the top, a timeline under it that
+   scrolls under a playhead fixed in the middle. Kept parts are lit, cut-out
+   parts are the bare track; the words sit under them. */
+.cuts { gap: 12px; }
+.cuts .review-head .btn.small { min-height: 36px; }
+.cuts-out {
+  position: absolute; left: 50%; top: 10px; transform: translateX(-50%);
+  padding: 4px 10px; border-radius: 999px; background: rgb(0 0 0 / 0.6);
+  color: var(--warn); font-size: 13px; font-weight: 600; pointer-events: none;
+}
+.cuts-strip-wrap { position: relative; margin: 0 -16px; }
+.cuts-strip {
+  overflow-x: auto; overflow-y: hidden; -webkit-overflow-scrolling: touch;
+  scrollbar-width: none; overscroll-behavior-x: contain;
+}
+.cuts-strip::-webkit-scrollbar { display: none; }
+.cuts-track { box-sizing: content-box; width: max-content; padding: 0 50%; }
+.cuts-ruler {
+  position: relative; height: 138px;
+  background: repeating-linear-gradient(135deg, var(--ink) 0 6px, var(--rule) 6px 7px);
+}
+.cuts-part {
+  position: absolute; top: 26px; height: 48px; box-sizing: border-box;
+  border: 1px solid var(--edge); border-radius: 8px; background: var(--surface);
+}
+.cuts-part.on { border-color: var(--now); border-width: 2px; }
+.cuts-handle {
+  position: absolute; top: -6px; bottom: -6px; width: 22px;
+  touch-action: none; cursor: ew-resize;
+}
+.cuts-handle::after {
+  content: ''; position: absolute; top: 0; bottom: 0; left: 8px; width: 6px;
+  border-radius: 3px; background: var(--now);
+}
+.cuts-handle.start { left: -12px; }
+.cuts-handle.end { right: -12px; }
+.cuts-word {
+  position: absolute; top: 62px; white-space: nowrap; pointer-events: none;
+  color: var(--text); font-size: 13px; line-height: 1;
+}
+.cuts-word.gone { color: var(--muted); text-decoration: line-through; }
+.cuts-playhead {
+  position: absolute; left: 50%; top: 0; bottom: 0; width: 2px; margin-left: -1px;
+  background: var(--now); pointer-events: none;
+}
+/* The time marks along the top, finer as it zooms in, and the zoom. */
+.cuts-mark { position: absolute; top: 0; width: 1px; height: 5px; background: var(--muted); pointer-events: none; }
+.cuts-mark.major { height: 10px; background: var(--dim); }
+.cuts-mark-label {
+  position: absolute; top: 0; left: 4px; white-space: nowrap;
+  color: var(--dim); font-size: 11px; line-height: 1; font-variant-numeric: tabular-nums;
+}
+.cuts-timer { font-variant-numeric: tabular-nums; }
+.cuts-zoom { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.cuts-zoom-buttons { display: flex; gap: 8px; }
+.cuts-zoom-buttons .btn { min-width: 48px; font-size: 20px; }
+.cuts-controls { display: flex; gap: 8px; }
+.cuts-controls .btn { flex: 1; min-height: 48px; }
+.cuts-hint { text-align: center; font-size: 14px; }
+.cuts-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.music-track { display: flex; align-items: center; gap: 10px; min-width: 0; }
+.music-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; }
+
+/* --- Posting ------------------------------------------------------------ */
+
+.posts-link { width: 100%; background: none; border-left: 0; border-right: 0; color: var(--text); font: inherit; text-align: left; cursor: pointer; }
+.posts-link svg { color: var(--muted); flex: none; }
+.now-text { color: var(--now); }
+.posts-list { list-style: none; margin: 0; padding: 0; }
+.post { display: flex; flex-direction: column; gap: 8px; padding: 14px 0; border-bottom: 1px solid var(--rule); }
+.post-head { display: flex; align-items: center; gap: 10px; min-width: 0; }
+.post-head.as-button { width: 100%; padding: 0; background: none; border: 0; color: inherit; font: inherit; text-align: left; cursor: pointer; }
+.post-title { flex: 1; min-width: 0; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.post-when { flex: none; color: var(--dim); font-size: 14px; font-variant-numeric: tabular-nums; }
+.post-line { padding-left: 20px; font-size: 14px; color: var(--muted); }
+.post-line.warn { color: var(--warn); }
+.post-line.bad { color: var(--bad); }
+.post > .hint, .post > .field, .post > .bar, .post-caption, .post-caption-read, .post-video, .post-links, .post-actions { margin-left: 20px; }
+.post-caption,
+.post .field input[type=datetime-local],
+.time-add input[type=time] {
+  width: calc(100% - 20px);
+  min-height: 44px;
+  padding: 10px 12px;
+  border: 1px solid var(--edge);
+  border-radius: 10px;
+  background: var(--surface);
+  color: var(--text);
+  font: inherit;
+  font-size: 16px;
+  line-height: 1.35;
+  resize: vertical;
+}
+.post .field input[type=datetime-local], .time-add input[type=time] { width: 100%; }
+.post-caption:focus, .post .field input:focus, .time-add input:focus { border-color: rgb(255 255 255 / 0.8); outline: none; }
+.post-caption-read { white-space: pre-wrap; color: var(--dim); font-size: 15px; }
+.post-video { width: 160px; max-width: calc(100% - 20px); aspect-ratio: 9 / 16; border-radius: 10px; background: #000; }
+.post-links { display: flex; flex-wrap: wrap; gap: 4px 14px; }
+.post-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 14px; }
+.time-add { display: flex; gap: 8px; }
+.time-add input[type=time] { flex: 1; }
+.row-line.wrap { white-space: normal; overflow: visible; }
+.product-row { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px 12px; }
+.product-text { flex: 1; display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+/* The picker's own tip goes under the row, full width. */
+.product-row .pick-tip { flex-basis: 100%; order: 3; margin: 0; text-align: left; }
+.product-text .hint { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.product-row .picker { flex: none; }
+
+/* A video's Add list and the clips joined on before and after it. */
+.clips-field { display: flex; flex-direction: column; gap: 10px; }
+.clip-line { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.clip-label { flex-basis: 100%; font-weight: 600; }
+.clip-line select, .clip-add {
+  min-height: 40px;
+  padding: 0 34px 0 12px;
+  border: 1px solid var(--edge);
+  border-radius: 11px;
+  background: var(--surface) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8' fill='none' stroke='%23a4b1c3' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M1 1.5l5 5 5-5'/%3E%3C/svg%3E") no-repeat right 12px center;
+  color: var(--text);
+  font: inherit;
+  /* 16px or iOS zooms the page when it is tapped. */
+  font-size: 16px;
+  appearance: none;
+  -webkit-appearance: none;
+}
+.clip-line select { flex: 1 1 0; min-width: 0; text-overflow: ellipsis; }
+.clip-add { align-self: flex-start; }
+.clip-line .picker { flex: none; }
+.clip-line .pick-tip, .clip-line .error { flex-basis: 100%; margin: 0; text-align: left; }
+/* On the caption check: the label beside the clip, and less height. */
+.clips-field.compact { gap: 6px; }
+.clips-field.compact .clip-label { flex: 0 0 96px; font-weight: 400; color: var(--dim); font-size: 14px; }
+.clips-field.compact .clip-line select, .clips-field.compact .clip-add { min-height: 36px; }
+.clip-watch { width: 160px; max-width: 100%; aspect-ratio: 9 / 16; border-radius: 10px; background: #000; }
+
+/* When the videos being added post: today, or from tomorrow. */
+.post-later { display: flex; flex-direction: column; gap: 6px; }
+
+/* A recording filmed right after this one, offered to be joined. */
+.join-hint { display: flex; align-items: center; gap: 10px; padding: 0 0 12px 22px; }
+.join-hint .hint { flex: 1; min-width: 0; }
+
+/* A video with no talking: the clips in order, each movable. */
+.montage-clips { list-style: none; margin: 0; padding: 0; border-top: 1px solid var(--rule); }
+.montage-clip { display: flex; align-items: center; gap: 8px; padding: 8px 0; border-bottom: 1px solid var(--rule); }
+.montage-n { flex: none; width: 22px; font-family: var(--mono); font-variant-numeric: tabular-nums; color: var(--dim); text-align: center; }
+.montage-text { flex: 1; display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.montage-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; }
+.btn.icon-btn { flex: none; width: 40px; padding: 0; }
+.montage .btn.primary:not(.add-more) { min-height: 52px; }
+.montage-for { margin: 0; text-align: center; }
+
+/* New post: a finished video, posted as it is. */
+.new-post { padding-bottom: 14px; border-bottom: 1px solid var(--rule); }
+.new-post .post-caption { margin-left: 0; width: 100%; }
+.new-post .field input[type=datetime-local] {
+  width: 100%; min-height: 44px; padding: 10px 12px; border: 1px solid var(--edge); border-radius: 10px;
+  background: var(--surface); color: var(--text); font: inherit; font-size: 16px;
+}
+.new-post-to { margin: 0; }
+/* The videos in a New post, each with its caption. */
+.np-list { list-style: none; margin: 0; padding: 0; border-top: 1px solid var(--rule); }
+.np-item { display: flex; flex-direction: column; gap: 6px; padding: 10px 0; border-bottom: 1px solid var(--rule); }
+.np-head { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.np-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; }
+.np-again { align-self: flex-start; }
+.new-post .btn.primary:not(.add-more) { min-height: 52px; }
+
+/* The Batch tab: a campaign's bank, and making a batch from it. */
+.bank-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.bank-count { margin-left: 6px; font-family: var(--mono); font-variant-numeric: tabular-nums; color: var(--dim); font-weight: 400; }
+.bank-hint { margin: 2px 0 0; }
+.bank-list { list-style: none; margin: 8px 0 0; padding: 0; border-top: 1px solid var(--rule); }
+.bank-item { display: flex; align-items: center; gap: 10px; padding: 8px 0; border-bottom: 1px solid var(--rule); min-width: 0; }
+.bank-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; }
+.bank-text { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.bank-text .hint { overflow: hidden; text-overflow: ellipsis; }
+.bank-item .hint { flex: none; }
+.bank-text .hint { flex: initial; }
+.batch .post-caption.bank-headlines { margin: 8px 0 0; width: 100%; }
+.stepper { display: flex; align-items: center; gap: 14px; }
+.stepper-value { min-width: 28px; text-align: center; font-size: 22px; font-weight: 600; font-variant-numeric: tabular-nums; }
+.btn.primary.batch-make { min-height: 52px; }
+.batch-progress, .batch-failed { display: flex; flex-direction: column; gap: 8px; }
+.batch-spent { border-color: var(--now); }

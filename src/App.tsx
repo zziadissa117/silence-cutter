@@ -33,7 +33,12 @@ import {
   isSilenceCutSupported,
   type SilenceCutResult,
 } from './media/silenceCut'
+import { pageLeaving } from './leaving'
+import { within } from './media/within'
+import { lostPick, pickArrived, pickSaved, whenPickGoesWrong } from './pickWatch'
+import { report } from './report'
 import { UpdateBanner } from './UpdateBanner'
+import { VideoPicker } from './VideoPicker'
 
 const PRESET_ORDER: PresetName[] = ['natural', 'balanced', 'tight']
 const PRESET_LABEL: Record<PresetName, string> = {
@@ -133,7 +138,6 @@ export function App() {
   const [jobs, setJobs] = useState<Job[]>([])
   const [notice, setNotice] = useState<string | null>(null)
   const [dragging, setDragging] = useState(false)
-  const picker = useRef<HTMLInputElement>(null)
   const processing = useRef(false)
   // Each new video's backup copy, while it is still being written. The cut
   // waits for it: started alongside, the copy could land after the cut had
@@ -150,6 +154,14 @@ export function App() {
     return () => {
       cancelled = true
     }
+  }, [])
+
+  // A video picked just before the page restarted never arrived; say so
+  // rather than showing an empty list as if nothing happened.
+  useEffect(() => {
+    const lost = lostPick('cut')
+    if (lost) setNotice(lost)
+    whenPickGoesWrong(setNotice)
   }, [])
 
   // Anything still waiting from last time comes back. A video that has
@@ -206,7 +218,9 @@ export function App() {
 
     void (async () => {
       try {
-        await persisting.current.get(next.id)
+        // A stuck save never holds a video up: it is cut from the copy in
+        // hand either way.
+        await within(persisting.current.get(next.id) ?? Promise.resolve(), 60_000, undefined)
         persisting.current.delete(next.id)
         // Counted before any work happens, so a tab that dies mid-cut still
         // remembers it tried.
@@ -230,9 +244,10 @@ export function App() {
         // phone, and a long video's cut is nearly as big as the video. Short
         // of room, the write fails deep inside the encoder with nothing that
         // reads as "out of space", so it is checked here and said plainly.
-        // The kept copy of the video goes first, since the cut is read from
-        // memory from here on and no longer needs it.
-        await forgetFile(next.id)
+        // The kept copy of the video goes first when the picker's own copy
+        // is in hand. A video brought back after a restart has no other
+        // copy: deleting it here deleted the file mid-read.
+        if (next.file) await forgetFile(next.id)
         const { free } = await spaceOnDevice()
         const needed = file.size * 1.2
         if (free !== null && free < needed) {
@@ -264,6 +279,8 @@ export function App() {
         patch({ status: 'done', result, url: URL.createObjectURL(result.blob) })
         await forgetJob(next.id)
       } catch (err) {
+        // Cut short by the page going away: it comes back on the next load.
+        if (pageLeaving()) return
         // The real reason, not just "something went wrong" - it is the only
         // way to know what failed on a phone nobody can attach a debugger to.
         const message =
@@ -271,6 +288,7 @@ export function App() {
             ? err.message
             : `Something went wrong while ${PHASE_LABEL[phase]} (${err instanceof Error ? err.message : String(err)}). Version ${__APP_VERSION__}.`
         patch({ status: 'failed', error: message })
+        report({ page: 'cut', kind: 'failed', phase, message, video: next.file })
         await forgetJob(next.id)
       } finally {
         processing.current = false
@@ -286,9 +304,12 @@ export function App() {
   }, [jobs])
 
   const addFiles = useCallback(
-    (incoming: Iterable<File> | null) => {
+    (incoming: Iterable<File> | null, fromPicker = false) => {
       if (!incoming) return
-      const files = videoFilesFrom(incoming)
+      // The picker only offers videos, so everything it hands over is kept:
+      // a file it names oddly then fails on its row, where he can see it,
+      // instead of vanishing.
+      const files = fromPicker ? Array.from(incoming) : videoFilesFrom(incoming)
       if (files.length === 0) return
       const { preset: _preset, ...snapshot } = settings
       const useSpeech = cleanSpeech && speechSupported
@@ -306,6 +327,7 @@ export function App() {
       }))
       setJobs((current) => [...current, ...added])
       setNotice(null)
+      const saving: Promise<unknown>[] = []
       for (const job of added) {
         const saved = persistJob({
           id: job.id,
@@ -319,7 +341,9 @@ export function App() {
           // Still queued in memory; it just would not survive a reload.
         })
         persisting.current.set(job.id, saved)
+        saving.push(saved)
       }
+      void Promise.all(saving).finally(pickSaved)
     },
     [cleanSpeech, settings, speechSupported, wantCaptions],
   )
@@ -418,15 +442,16 @@ export function App() {
     <main>
       <header>
         <h1>Silence Cutter</h1>
-        <span className="hint">Runs on this device. Nothing is uploaded. Version {__APP_VERSION__}</span>
+        <span className="hint">Runs on this device - videos never leave it. Version {__APP_VERSION__}</span>
       </header>
       <p className="sub">
         Drop in your raw videos and get back copies with the dead air removed, ready for your editor.
       </p>
 
-      {/* Queued and held videos are on disk and come back after a reload; a
-          running cut or a finished one is only in this tab's memory. */}
-      <UpdateBanner safeToReload={jobs.every((j) => j.status === 'queued' || j.status === 'held')} />
+      {/* Only held videos are certainly on disk. A queued one may still be
+          being copied there - a reload then lost it, leaving an empty list -
+          and a running cut or a finished one is only in this tab's memory. */}
+      <UpdateBanner safeToReload={jobs.every((j) => j.status === 'held')} />
 
       {supported === false ? (
         <div className="error">
@@ -539,22 +564,14 @@ export function App() {
             ) : null}
           </section>
 
-          <input
-            ref={picker}
-            type="file"
-            accept="video/*,.mov,.mp4,.m4v,.mkv,.avi,.webm"
-            multiple
-            hidden
-            onChange={(e) => {
-              addFiles(e.target.files)
-              e.target.value = ''
-            }}
-          />
-          <button
-            type="button"
+          <VideoPicker
             className={dragging ? 'drop over' : 'drop'}
-            aria-label="Add videos"
-            onClick={() => picker.current?.click()}
+            label="Add videos"
+            onFiles={(picked) => {
+              const problem = pickArrived(picked)
+              if (problem) setNotice(problem)
+              else addFiles(picked, true)
+            }}
           >
             {/* The planner's line icons, not an emoji: colour is for state. */}
             <svg
@@ -574,7 +591,7 @@ export function App() {
             <div className="hint">
               or tap to choose files · MP4, MOV and more · as many as you want
             </div>
-          </button>
+          </VideoPicker>
 
           <div className="toolbar">
             <div className="hint">{summary}</div>

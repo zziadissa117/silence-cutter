@@ -6,7 +6,8 @@ import {
   findSilentRanges,
   keepRanges,
   mergeRanges,
-  EDGE_LEEWAY_SEC,
+  HEAD_LEEWAY_SEC,
+  TAIL_LEEWAY_SEC,
   snapCutToQuiet,
   speechWindows,
   totalDuration,
@@ -75,7 +76,7 @@ describe('keepRanges', () => {
   it('leaves room before the first word and after the last', () => {
     // Silence at the very start/end used to be cut flush, which opened the
     // video on the first syllable and ended it on the last. Both ends now
-    // keep EDGE_LEEWAY_SEC of quiet, whatever the padding is.
+    // keep a short breath, whatever the padding is.
     const kept = keepRanges(
       [
         { start: 0, end: 1 },
@@ -84,7 +85,7 @@ describe('keepRanges', () => {
       10,
       0.12,
     )
-    expect(kept).toEqual([{ start: 1 - EDGE_LEEWAY_SEC, end: 9 + EDGE_LEEWAY_SEC }])
+    expect(kept).toEqual([{ start: 1 - HEAD_LEEWAY_SEC, end: 9 + TAIL_LEEWAY_SEC }])
   })
 
   it('drops a leftover sliver shorter than the minimum keep length', () => {
@@ -299,23 +300,101 @@ describe('room at the start and end', () => {
   it('leaves a breath before the first word and after the last, on every preset', () => {
     for (const settings of Object.values(PRESETS)) {
       const keeps = keepRanges(findSilentRanges(levels, settings), 6, settings.paddingSec)
-      expect(keeps[0].start).toBeCloseTo(1.5 - EDGE_LEEWAY_SEC, 2)
-      expect(keeps[keeps.length - 1].end).toBeCloseTo(4 + EDGE_LEEWAY_SEC, 2)
+      expect(keeps[0].start).toBeCloseTo(1.5 - HEAD_LEEWAY_SEC, 2)
+      expect(keeps[keeps.length - 1].end).toBeCloseTo(4 + TAIL_LEEWAY_SEC, 2)
     }
   })
 
   it('still removes the rest of the silence at both ends', () => {
     const keeps = keepRanges(findSilentRanges(levels, PRESETS.balanced), 6, PRESETS.balanced.paddingSec)
-    expect(totalDuration(keeps)).toBeCloseTo(2.5 + 2 * EDGE_LEEWAY_SEC, 2)
+    expect(totalDuration(keeps)).toBeCloseTo(2.5 + HEAD_LEEWAY_SEC + TAIL_LEEWAY_SEC, 2)
   })
 
-  it('keeps a video that is nothing but a short silence at each end intact', () => {
+  it('leaves no more than a beat of quiet at either end', () => {
+    // He found 0.4s at each end too much: the video opened on nothing.
+    for (const settings of Object.values(PRESETS)) {
+      const keeps = keepRanges(findSilentRanges(levels, settings), 6, settings.paddingSec)
+      expect(1.5 - keeps[0].start).toBeLessThanOrEqual(0.2)
+      expect(keeps[keeps.length - 1].end - 4).toBeLessThanOrEqual(0.25)
+    }
+  })
+
+  it('measures from where a soft first word really starts, and a last word really fades', () => {
+    // "h..." rising out of the room for 120ms before the word proper, and
+    // the last word trailing off for 150ms - both under the silence line,
+    // both still the word.
+    const soft = spans([
+      [0, 1.4, -70],
+      [1.4, 1.52, -44],
+      [1.52, 4, -12],
+      [4, 4.16, -46],
+      [4.16, 6, -70],
+    ])
+    for (const settings of Object.values(PRESETS)) {
+      const keeps = keepRanges(findSilentRanges(soft, settings), 6, settings.paddingSec)
+      expect(keeps[0].start).toBeCloseTo(1.4 - HEAD_LEEWAY_SEC, 2)
+      expect(keeps[keeps.length - 1].end).toBeCloseTo(4.16 + TAIL_LEEWAY_SEC, 2)
+    }
+  })
+
+  it('cuts a click at the very start or end, like the tap that starts the recording', () => {
+    const clicks = spans([
+      [0, 0.06, -8],
+      [0.06, 1.5, -70],
+      [1.5, 4, -12],
+      [4, 5.9, -70],
+      [5.9, 5.96, -8],
+      [5.96, 6, -70],
+    ])
+    for (const settings of Object.values(PRESETS)) {
+      const keeps = keepRanges(findSilentRanges(clicks, settings), 6, settings.paddingSec)
+      expect(keeps).toHaveLength(1)
+      expect(keeps[0].start).toBeCloseTo(1.5 - HEAD_LEEWAY_SEC, 2)
+      expect(keeps[0].end).toBeCloseTo(4 + TAIL_LEEWAY_SEC, 2)
+    }
+  })
+
+  it('never takes a short first word for a click', () => {
+    // "So." on its own, a pause, then the rest.
+    const so = spans([
+      [0, 0.3, -70],
+      [0.3, 0.5, -14],
+      [0.5, 1.4, -70],
+      [1.4, 4, -12],
+      [4, 5, -70],
+    ])
+    // And a word said the instant the recording starts.
+    const straightIn = spans([
+      [0, 0.18, -14],
+      [0.18, 1.2, -70],
+      [1.2, 4, -12],
+      [4, 5, -70],
+    ])
+    for (const settings of Object.values(PRESETS)) {
+      const a = keepRanges(findSilentRanges(so, settings), 5, settings.paddingSec)
+      expect(a.some((k) => k.start <= 0.3 && k.end >= 0.5)).toBe(true)
+      const b = keepRanges(findSilentRanges(straightIn, settings), 5, settings.paddingSec)
+      expect(b.some((k) => k.start <= 0 && k.end >= 0.18)).toBe(true)
+    }
+  })
+
+  it('still trims the end when the sound stops a moment before the picture', () => {
+    // The file says 6.05s; its sound runs to 6s.
+    for (const settings of Object.values(PRESETS)) {
+      const keeps = keepRanges(findSilentRanges(levels, settings), 6.05, settings.paddingSec)
+      expect(keeps[keeps.length - 1].end).toBeCloseTo(4 + TAIL_LEEWAY_SEC, 2)
+    }
+  })
+
+  it('leaves a short silence at each end as it is when it is already about a breath long', () => {
     const shortEnds = spans([
       [0, 0.2, -70],
       [0.2, 2, -12],
       [2, 2.2, -70],
     ])
     const keeps = keepRanges(findSilentRanges(shortEnds, PRESETS.tight), 2.2, PRESETS.tight.paddingSec)
+    // Shorter than the shortest pause worth cutting, so there is nothing to
+    // take - and it is only a few hundredths over the breath it would leave.
     expect(keeps[0].start).toBe(0)
     expect(keeps[keeps.length - 1].end).toBeCloseTo(2.2, 2)
   })

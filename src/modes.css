@@ -1,0 +1,34 @@
+/* The switch between the two sections - the plain cutter and campaign
+   videos. It sits above each page's own <main> and takes over the top
+   safe-area gap, so the page below it starts closer. */
+
+.modes {
+  display: flex;
+  width: calc(100% - 32px);
+  max-width: 688px;
+  margin: calc(env(safe-area-inset-top) + 14px) auto 0;
+}
+.modes > a,
+.modes > span {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 40px;
+  padding: 0 12px;
+  border: 1px solid transparent;
+  border-radius: 9px;
+  color: var(--dim);
+  font-size: 15px;
+  font-weight: 600;
+  text-decoration: none;
+  transition: transform 300ms var(--ease-press), color 150ms, border-color 150ms;
+}
+.modes > span.active { border-color: var(--now); background: var(--surface); color: var(--now); }
+.modes > a:active { transform: scale(0.965); transition-duration: 70ms; transition-timing-function: ease-out; }
+
+.modes + main { padding-top: 22px; }
+
+@media (prefers-reduced-motion: reduce) {
+  .modes > a, .modes > a:active { transition: none; transform: none; }
+}

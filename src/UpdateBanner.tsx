@@ -1,6 +1,8 @@
 import { useEffect, useState } from 'react'
 import { registerSW } from 'virtual:pwa-register'
 
+import { pickQuiet } from './pickWatch'
+
 /** Gets a new version onto the phone without ever pulling the page out from
  *  under a cut.
  *
@@ -54,8 +56,17 @@ export function UpdateBanner({ safeToReload }: { safeToReload: boolean }) {
     }
   }, [])
 
+  // Never while he is picking videos: they only exist once the picker has
+  // handed them over and they are saved (see pickWatch.ts).
   useEffect(() => {
-    if (ready && safeToReload) window.location.reload()
+    if (!ready || !safeToReload) return
+    let cancelled = false
+    void pickQuiet().then(() => {
+      if (!cancelled) window.location.reload()
+    })
+    return () => {
+      cancelled = true
+    }
   }, [ready, safeToReload])
 
   if (!ready || safeToReload) return null

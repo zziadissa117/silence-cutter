@@ -14,12 +14,20 @@
 // and keep doing that forever - which is exactly what Safari means by "a
 // problem repeatedly occurred". After two goes a video is held back and waits
 // to be asked again by hand.
+//
+// The video lives in a table of its own, apart from its row. Changing a row
+// means storing the whole row again, and on an iPhone storing a video that
+// was read back out of the database fails ("Error preparing Blob/File data
+// to be stored in object store") - so while the video sat in the row, the
+// attempt count could not be written and every video failed at "reading the
+// audio". Rows now hold nothing but plain values, and a video is written
+// once, when it is added, and never again.
 
+import { orTimeout, within } from './within'
 import Dexie, { type EntityTable } from 'dexie'
 
 interface StoredJob {
   id: string
-  fileBlob: Blob
   fileName: string
   fileType: string
   settings: { thresholdDb: number; minSilenceSec: number; paddingSec: number }
@@ -55,10 +63,24 @@ export interface PendingJob {
  *  the background, the phone busy elsewhere. A second one is the video. */
 export const MAX_ATTEMPTS = 2
 
+/** A queued video, kept under its job's id. */
+interface StoredVideo {
+  id: string
+  blob: Blob
+}
+
 const db = new Dexie('silence-cutter-queue') as Dexie & {
   jobs: EntityTable<StoredJob, 'id'>
+  videos: EntityTable<StoredVideo, 'id'>
 }
 db.version(1).stores({ jobs: 'id, addedAt' })
+// Videos out of the rows - see the note at the top. Rows from before are
+// dropped rather than moved: moving means storing their videos again, the
+// very thing that fails, and a failure inside an upgrade would stop the
+// queue opening at all. On the iPhone none of them could run anyway.
+db.version(2)
+  .stores({ jobs: 'id, addedAt', videos: 'id' })
+  .upgrade((tx) => tx.table('jobs').clear())
 
 /** What the browser will let this site keep on the phone, and how much of
  *  that is already spoken for. Both in bytes; nulls when the browser won't
@@ -83,15 +105,16 @@ export async function spaceOnDevice(): Promise<{ free: number | null; quota: num
  *  skipped, the video is cut straight from memory, and the only thing lost
  *  is resuming it after a crash. */
 export async function persistJob(
-  job: Omit<StoredJob, 'addedAt' | 'attempts' | 'fileBlob'> & { fileBlob: Blob },
+  job: Omit<StoredJob, 'addedAt' | 'attempts'> & { fileBlob: Blob },
 ): Promise<boolean> {
-  const row = { ...job, attempts: 0, addedAt: Date.now() }
-  const { free } = await spaceOnDevice()
-  // Room for the video, its cut, and room to spare.
-  const roomy = free === null || free > job.fileBlob.size * 2.5
+  const { fileBlob, ...meta } = job
   try {
-    await db.jobs.put(roomy ? row : { ...row, fileBlob: new Blob([]) })
-    return roomy
+    await db.jobs.put({ ...meta, attempts: 0, addedAt: Date.now() })
+    const { free } = await spaceOnDevice()
+    // Room for the video, its cut, and room to spare.
+    if (free !== null && free <= fileBlob.size * 2.5) return false
+    await db.videos.put({ id: job.id, blob: fileBlob })
+    return true
   } catch {
     // Out of room, or storage blocked. The cut itself does not depend on
     // this having worked.
@@ -102,22 +125,37 @@ export async function persistJob(
 /** Lets go of the kept copy once the cut is reading the video from memory
  *  anyway, so the space is free for the cut being written. */
 export async function forgetFile(id: string): Promise<void> {
-  await db.jobs.update(id, { fileBlob: new Blob([]) }).catch(() => {})
+  await db.videos.delete(id).catch(() => {})
 }
 
+/** Both or neither: a page being torn down mid-delete must not leave a
+ *  video with no row, taking up space that nothing will ever free. */
 export async function forgetJob(id: string): Promise<void> {
-  await db.jobs.delete(id)
+  await db.transaction('rw', db.jobs, db.videos, async () => {
+    await db.jobs.delete(id)
+    await db.videos.delete(id)
+  })
 }
 
 /** Records that this job is about to be tried, and says whether it is still
  *  allowed to run. Written before the work starts, so the count survives the
  *  tab dying midway - which is the whole reason for counting. */
 export async function claimAttempt(id: string): Promise<boolean> {
-  const row = await db.jobs.get(id)
-  if (!row) return true // Added this session, never persisted; nothing to count.
-  const attempts = row.attempts + 1
-  await db.jobs.update(id, { attempts })
-  return attempts <= MAX_ATTEMPTS
+  return within(countAttempt(id), 10_000, true)
+}
+
+async function countAttempt(id: string): Promise<boolean> {
+  try {
+    const row = await db.jobs.get(id)
+    if (!row) return true // Added this session, never persisted; nothing to count.
+    const attempts = row.attempts + 1
+    await db.jobs.update(id, { attempts })
+    return attempts <= MAX_ATTEMPTS
+  } catch {
+    // The count is a safety net, not a gate: a write that fails must never
+    // be what stops a video.
+    return true
+  }
 }
 
 /** Wipes the attempt count, for when he asks for a held-back video to be
@@ -125,7 +163,7 @@ export async function claimAttempt(id: string): Promise<boolean> {
  *  that is already spent and hold the video straight back - a button that
  *  does nothing. Asking counts as knowing. */
 export async function resetAttempts(id: string): Promise<void> {
-  await db.jobs.update(id, { attempts: 0 })
+  await db.jobs.update(id, { attempts: 0 }).catch(() => {})
 }
 
 /** Records the phase a video just entered. Called throughout the actual cut,
@@ -139,17 +177,31 @@ export async function recordPhase(id: string, phase: StoredJob['lastPhase']): Pr
 
 /** The video itself, read only when its turn comes. */
 export async function loadJobFile(id: string): Promise<File | null> {
-  const row = await db.jobs.get(id)
-  // An empty blob means the video was too big to keep a copy of - see
-  // persistJob. There is nothing to pick the cut back up from.
-  if (!row || row.fileBlob.size === 0) return null
-  return new File([row.fileBlob], row.fileName, { type: row.fileType })
+  const [row, video] = await orTimeout(Promise.all([db.jobs.get(id), db.videos.get(id)]), 20_000, 'Reading the saved video')
+  // No video means it was too big to keep a copy of - see persistJob. There
+  // is nothing to pick the cut back up from.
+  if (!row || !video || video.blob.size === 0) return null
+  return new File([video.blob], row.fileName, { type: row.fileType })
+}
+
+/** Deletes kept videos whose job is gone - left by versions that could lose
+ *  a row and keep its video. Runs inside the caller's transaction, so a job
+ *  being added at the same moment is never mistaken for one. */
+async function dropOrphans(jobIds: string[]): Promise<void> {
+  const live = new Set(jobIds)
+  const kept = await db.videos.toCollection().primaryKeys()
+  const orphans = kept.filter((id) => !live.has(id))
+  if (orphans.length > 0) await db.videos.bulkDelete(orphans)
 }
 
 /** Everything still waiting from a previous visit, oldest first. Metadata
  *  only - see the note at the top. */
 export async function loadPendingJobs(): Promise<PendingJob[]> {
-  const rows = await db.jobs.orderBy('addedAt').toArray()
+  const rows = await db.transaction('rw', db.jobs, db.videos, async () => {
+    const rows = await db.jobs.orderBy('addedAt').toArray()
+    await dropOrphans(rows.map((row) => row.id))
+    return rows
+  })
   return rows.map(({ id, fileName, fileType, settings, cleanSpeech, wantCaptions, attempts, lastPhase }) => ({
     id,
     fileName,
