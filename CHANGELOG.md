@@ -3,6 +3,11 @@
 Newest first. Every change says what it does, how to use it, and how it works
 underneath. Kept up to date with each commit.
 
+## Proposed, not applied: repost + per-platform captions columns
+`supabase/proposed/20261002120000_cutter_posts_repost_captions.sql` adds four
+nullable columns to `cutter_posts` (`repost_of`, `repost_at`, `reposted_at`,
+`captions`). Waiting for the owner's OK; nothing in the app depends on it yet.
+
 ## Default effects preset
 **What:** One setting that gives every talking video punch-ins, hook push and
 spring-in logo, so you don't set effects angle by angle.
