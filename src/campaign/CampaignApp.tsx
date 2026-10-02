@@ -2359,6 +2359,7 @@ export function CampaignApp() {
           disconnectPosting()
           setPosting(null)
         }}
+        onLimitsChanged={() => setPosting(postingHere())}
       />
     ) : (
       videos

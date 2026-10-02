@@ -113,6 +113,16 @@ account at its existing time (existing accounts untouched, no double posting);
 posted/too-close/busy posts are left and reported. `unschedule`/`reject` now delete
 every Postiz group (`deleteScheduled`), since late accounts are their own group.
 
+**Pause and daily limits (Phase 2.1).** `settings.limits` on the posting profile
+(`{platforms:{tiktok:{paused,perDay}}, accounts:{<id>:{...}}}`, no table): set in
+Settings (`PostingLimits.tsx`, action `save-limits`). `postiz/limits.ts`: at
+schedule time `split()` removes paused/full accounts from the group and marks them
+`held` on the post (`accounts` jsonb); the others go as planned; if every account
+is held the post stays `approved`, untouched, retried every 30 min. `releaseHeld()`
+(run by every 5-min `tick`) gives a freed account its own Postiz post from the same
+video+caption, at the video's time of day on the first day with room. Paused ones
+resume without loss; caps are counted per account per local day.
+
 ## Posting pipeline
 
 ```

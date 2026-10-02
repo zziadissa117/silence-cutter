@@ -25,6 +25,7 @@
 //   profile        { profile }                  -> profile
 //   accounts       { profile }                  -> profile (accounts listed again)
 //   save-campaign  { profile, campaignId, accounts, times } -> profile
+//   save-limits    { profile, limits }          -> profile   (pause / posts-a-day, per platform and per account: limits.ts)
 //   attach-accounts { profile, campaignId, accounts } -> { added, scheduled, left }
 //                  videos already made for the campaign get an account linked later
 //   push           { profile, subscription }    -> { ok }
@@ -53,8 +54,9 @@ import {
 import { FAKE_CLAUDE, FakeError, fakeCaption, fakePostiz, isFakePostiz } from './fake.ts'
 import { batchChoices, batchInfo, batchSpan, type BatchInfo } from './batch.ts'
 import { handFields } from './hand.ts'
-import { endOfDay, lastTimeToday, nextSlot, normalTimes, pickTime, spreadDay, type OtherPost, type Spread } from './slots.ts'
+import { endOfDay, lastTimeToday, nextSlot, normalTimes, pickTime, spreadDay, type OtherPost, type Spread, addDays, localDate, localTime, zoned } from './slots.ts'
 import { attachMove, summarise, type AttachMove } from './attach.ts'
+import { cleanLimits, firstDayWithRoom, heldNote, releasable, split, usedOn, type Limits, type PostAccount } from './limits.ts'
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!
 const SERVICE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
@@ -287,7 +289,7 @@ interface Profile {
   space_id: string
   accounts: Account[]
   accounts_at: string | null
-  settings: { campaigns?: Record<string, { accounts?: string[]; times?: string[] }> }
+  settings: { campaigns?: Record<string, { accounts?: string[]; times?: string[] }>; limits?: Limits }
   timezone: string
 }
 
@@ -323,7 +325,7 @@ interface Post {
   batch: BatchInfo | null
   /** He has had the one notification for its batch. */
   batch_told: boolean
-  accounts: { id: string; name: string; platform: string }[]
+  accounts: PostAccount[]
   media: Media | null
   postiz_ids: { postId: string; integration: string }[] | null
   release_urls: Record<string, string> | null
@@ -508,6 +510,117 @@ async function saveCampaign(profile: Profile, body: Record<string, unknown>): Pr
     .single()
   if (error || !data) throw new Problem('It could not be saved. Try again.', true, 500)
   return reply(await profileView(data as Profile))
+}
+
+/** Pause / posts-a-day limits, per platform and per account (limits.ts). Saved
+ *  whole; a held account is let go by the scheduler on its next pass, so
+ *  unpausing needs nothing else. */
+async function saveLimits(profile: Profile, body: Record<string, unknown>): Promise<Response> {
+  const limits = cleanLimits(body.limits)
+  const { data, error } = await db
+    .from('cutter_profiles')
+    .update({ settings: { ...profile.settings, limits }, updated_at: new Date().toISOString() })
+    .eq('id', profile.id)
+    .select('*')
+    .single()
+  if (error || !data) throw new Problem('It could not be saved. Try again.', true, 500)
+  return reply(await profileView(data as Profile))
+}
+
+/** Lets held accounts go: scheduled or posted videos with an account that was
+ *  paused or full, which is now free. Each gets its own Postiz post from the
+ *  same video and caption - at the video's own time of day on the first day it
+ *  has room, or in a few minutes when that has passed. Nothing held is ever
+ *  dropped; the others the video already went to are not touched. */
+async function releaseHeld(now: number): Promise<void> {
+  const { data } = await db
+    .from('cutter_posts')
+    .select('*')
+    .in('status', ['scheduled', 'posted'])
+    .gt('created_at', new Date(now - 14 * 24 * 60 * MINUTE).toISOString())
+    .order('updated_at', { ascending: false })
+    .limit(300)
+  const rows = ((data ?? []) as Post[]).filter((p) => p.accounts.some((a) => a.held) && p.media && p.caption?.trim())
+  const profiles = new Map<string, Profile>()
+  for (const row of rows) {
+    try {
+      let profile = profiles.get(row.profile_id)
+      if (!profile) {
+        const { data: found } = await db.from('cutter_profiles').select('*').eq('id', row.profile_id).single()
+        profile = found as Profile
+        profiles.set(row.profile_id, profile)
+      }
+      const free = releasable(row.accounts, profile.settings.limits)
+      if (free.length === 0) continue
+      const owned = await claim(row.id)
+      if (!owned) continue
+      try {
+        const tz = profile.timezone
+        const keys = await keysFor(profile.id)
+        const soon = Math.max(owned.post_at ? new Date(owned.post_at).getTime() : 0, now + 3 * MINUTE)
+        const baseDay = localDate(new Date(soon), tz)
+        const timeOfDay = localTime(new Date(owned.post_at ?? soon), tz)
+        const caches = new Map<string, Record<string, number>>()
+        const usedFor = async (day: string) => {
+          if (!caches.has(day)) caches.set(day, await usedForDay(profile!, day, owned.id))
+          return caches.get(day)!
+        }
+        // Each account's first day with room; accounts landing on one day go together.
+        const byDay = new Map<string, PostAccount[]>()
+        for (const account of free) {
+          const counts = new Map<string, Record<string, number>>()
+          for (let n = 0; n < 7; n++) counts.set(addDays(baseDay, n), await usedFor(addDays(baseDay, n)))
+          const day = firstDayWithRoom(account, profile.settings.limits, baseDay, addDays, (d, id) => counts.get(d)?.[id] ?? 0)
+          if (day) byDay.set(day, [...(byDay.get(day) ?? []), account])
+        }
+        if (byDay.size === 0) continue
+        const title = finishTitle(owned.title ?? '', [owned.headline ?? '', owned.campaign_name])
+        const ids = [...(owned.postiz_ids ?? [])]
+        const gone = new Set<string>()
+        let latest = owned.post_at ? new Date(owned.post_at).getTime() : 0
+        for (const [day, accounts] of byDay) {
+          const at = day === baseDay ? new Date(soon) : zoned(day, timeOfDay, tz)
+          const date = at.toISOString()
+          const found = await findCreated(keys.postiz, { ...owned, accounts }, date)
+          const made =
+            found ??
+            (await postiz<{ postId: string; integration: string }[]>(keys.postiz, 'POST', '/posts', {
+              type: 'schedule',
+              date,
+              shortLink: false,
+              tags: [],
+              posts: accounts.map((account) => ({
+                integration: { id: account.id },
+                value: [{ content: owned.caption, image: [{ id: owned.media!.id, path: owned.media!.path }] }],
+                settings: settingsFor(account.platform, title),
+              })),
+            }))
+          ids.push(...(Array.isArray(made) ? made : []))
+          for (const a of accounts) gone.add(a.id)
+          latest = Math.max(latest, at.getTime())
+        }
+        const accountsNow: PostAccount[] = owned.accounts.map((a): PostAccount => {
+          if (!gone.has(a.id)) return a
+          const { held: _was, ...bare } = a
+          void _was
+          return bare
+        })
+        await update(owned.id, {
+          accounts: accountsNow,
+          postiz_ids: ids,
+          status: 'scheduled',
+          post_at: new Date(latest).toISOString(),
+          error: heldNote(accountsNow.filter((a) => a.held)),
+          checks: 0,
+          checked_at: null,
+        })
+      } finally {
+        await release(row.id)
+      }
+    } catch (error) {
+      console.error('release held failed', row.id, error instanceof Error ? error.message : String(error))
+    }
+  }
 }
 
 /** Videos already made for a campaign get an account that was linked after
@@ -1189,6 +1302,20 @@ function anthropicProblem(error: unknown): never {
 /** Puts an approved post into Postiz, at its time - or, if that time has
  *  gone while it waited, the next one (a brand-approved post takes the next
  *  time today, or goes at once). */
+/** How many posts each account already has on a day (limits.ts usedOn). */
+async function usedForDay(profile: Profile, date: string, exceptId: string): Promise<Record<string, number>> {
+  const around = new Date(zoned(date, '12:00', profile.timezone).getTime())
+  const { data } = await db
+    .from('cutter_posts')
+    .select('post_at, status, accounts')
+    .eq('profile_id', profile.id)
+    .in('status', ['scheduled', 'posted'])
+    .neq('id', exceptId)
+    .gte('post_at', new Date(around.getTime() - 36 * 60 * MINUTE).toISOString())
+    .lte('post_at', new Date(around.getTime() + 36 * 60 * MINUTE).toISOString())
+  return usedOn((data ?? []) as { post_at: string | null; status: string; accounts: PostAccount[] }[], date, (iso) => localDate(new Date(iso), profile.timezone))
+}
+
 async function schedule(start: Post): Promise<Post> {
   let post = start
   const { data: profileRow } = await db.from('cutter_profiles').select('*').eq('id', post.profile_id).single()
@@ -1216,10 +1343,20 @@ async function schedule(start: Post): Promise<Post> {
   const now = !post.post_at
   const date = now ? new Date().toISOString() : post.post_at!
 
+  // A paused or full account does not go in this group: it is held on the post
+  // and goes out by itself once it is free (releaseHeld). The others go as
+  // planned. Everything held keeps the post queued, untouched.
+  const used = await usedForDay(profile, localDate(new Date(date), profile.timezone), post.id)
+  const { send, held } = split(post.accounts, profile.settings.limits, used)
+  if (send.length === 0) {
+    return update(post.id, { accounts: held, error: heldNote(held), retry_at: new Date(Date.now() + 30 * MINUTE).toISOString(), attempts: 0 })
+  }
+  post = { ...post, accounts: send }
+
   if (post.creating_at) {
     // A run before this one may have got as far as creating it.
     const found = await findCreated(keys.postiz, post, date)
-    if (found) return update(post.id, { status: 'scheduled', postiz_ids: found, creating_at: null, error: null, attempts: 0, retry_at: null })
+    if (found) return update(post.id, { status: 'scheduled', accounts: [...send, ...held], postiz_ids: found, creating_at: null, error: heldNote(held), attempts: 0, retry_at: null })
   }
   await update(post.id, { creating_at: new Date().toISOString() })
   const title = finishTitle(post.title ?? '', [post.headline ?? '', post.campaign_name])
@@ -1236,10 +1373,11 @@ async function schedule(start: Post): Promise<Post> {
   })
   return update(post.id, {
     status: 'scheduled',
+    accounts: [...send, ...held],
     post_at: date,
     postiz_ids: Array.isArray(created) ? created : [],
     creating_at: null,
-    error: null,
+    error: heldNote(held),
     attempts: 0,
     retry_at: null,
     checks: 0,
@@ -1443,6 +1581,7 @@ async function tick(): Promise<void> {
   for (const row of (untold ?? []) as Pick<Post, 'profile_id' | 'batch'>[]) if (row.batch) owed.set(row.batch.id, row.profile_id)
   for (const [batchId, profileId] of owed) await notifyBatch(profileId, batchId, true)
 
+  await releaseHeld(now)
   await checkPosted(now)
   await remind(now)
 
@@ -1563,6 +1702,8 @@ Deno.serve(async (req) => {
         return reply(await profileView(await refreshAccounts(profile)))
       case 'save-campaign':
         return await saveCampaign(profile, body)
+      case 'save-limits':
+        return await saveLimits(profile, body)
       case 'attach-accounts':
         return await attachAccounts(profile, body)
       case 'push':

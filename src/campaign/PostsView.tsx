@@ -176,7 +176,9 @@ function WaitingPost({
         <span className="post-title">{post.campaignName}</span>
         <span className="post-when">{whenLabel(post.postAt)}</span>
       </div>
-      <div className="post-line">{post.accounts.map(accountLabel).join(', ')}</div>
+      <div className="post-line">
+        {post.accounts.map((a) => (a.held ? `${accountLabel(a)} (${a.held === 'paused' ? 'paused - waiting' : "today's limit - waiting"})` : accountLabel(a))).join(', ')}
+      </div>
       {post.error ? <div className="hint warn-text">{post.error}</div> : null}
       {brand ? <div className="hint">Send it to the brand first - Save video - then Brand approved when they say yes.</div> : null}
       <textarea
@@ -238,7 +240,7 @@ function OtherPost({
     post.status === 'posted' ? (post.error ? 'warn' : 'ok') : post.status === 'error' || post.status === 'failed' ? 'bad' : 'later'
   const line =
     post.status === 'posted'
-      ? `Posted · ${post.accounts.map((a) => a.name).join(', ')}`
+      ? `Posted · ${post.accounts.filter((a) => !a.held).map((a) => a.name).join(', ')}`
       : post.status === 'scheduled'
         ? post.accounts.map(accountLabel).join(', ')
         : post.status === 'failed' || post.status === 'error'

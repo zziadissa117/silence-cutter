@@ -5,7 +5,8 @@ import { useEffect, useState } from 'react'
 
 import type { PresetName } from '../media/silenceMath'
 import type { Session, SyncState } from './cloud'
-import type { LocalPosting } from './posting'
+import type { LocalPosting, Profile } from './posting'
+import { PostingLimits } from './PostingLimits'
 import type { PushState } from './push'
 
 const PUSH_LINE: Record<PushState, string> = {
@@ -69,6 +70,7 @@ export function SettingsView({
   onSendHere,
   onPush,
   onDisconnectPosting,
+  onLimitsChanged,
 }: {
   session: Session | null
   syncState: SyncState
@@ -90,6 +92,8 @@ export function SettingsView({
   onSendHere: (on: boolean) => void
   onPush: () => void
   onDisconnectPosting: () => void
+  /** The profile came back from saving pause / daily limits. */
+  onLimitsChanged: (profile: Profile) => void
 }) {
   const used = useSpaceUsed()
   return (
@@ -144,6 +148,7 @@ export function SettingsView({
               </span>
             </span>
           </label>
+          <PostingLimits profile={posting.profile} onChanged={onLimitsChanged} />
           <div className="setting">
             <div className="setting-text">
               <span className="row-name">Notifications</span>

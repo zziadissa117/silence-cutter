@@ -522,3 +522,11 @@ main.tabbed { padding-bottom: calc(env(safe-area-inset-bottom) + 96px); }
 
 /* The sign-in page, shown alone until there is a session (LoginGate). */
 .login-gate { max-width: 420px; margin: 0 auto; padding: 56px 20px; }
+
+/* Pause and daily limits (PostingLimits). */
+.posting-limits { display: flex; flex-direction: column; gap: 10px; padding: 8px 0; }
+.limit-group { display: flex; flex-direction: column; gap: 6px; }
+.limit-row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.limit-row .toggle { flex: 1 1 10rem; }
+.limit-accounts { margin-left: 18px; display: flex; flex-direction: column; gap: 6px; }
+.limit-input { width: 5.5rem; }

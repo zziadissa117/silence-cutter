@@ -29,10 +29,22 @@ export interface CampaignPlace {
   times: string[]
 }
 
+/** Pause and posts-a-day, per platform and per account. The server holds a
+ *  paused or full account's post back and sends it when it is free - nothing
+ *  is dropped (supabase/functions/postiz/limits.ts). */
+export interface Limit {
+  paused?: boolean
+  perDay?: number
+}
+export interface Limits {
+  platforms?: Record<string, Limit>
+  accounts?: Record<string, Limit>
+}
+
 export interface Profile {
   id: string
   accounts: PostizAccount[]
-  settings: { campaigns?: Record<string, CampaignPlace> }
+  settings: { campaigns?: Record<string, CampaignPlace>; limits?: Limits }
   timezone: string
   hasAnthropic: boolean
   vapidPublic: string | null
@@ -55,7 +67,8 @@ export interface ServerPost {
   caption: string | null
   title: string | null
   postAt: string | null
-  accounts: { id: string; name: string; platform: string }[]
+  /** `held`: paused or at its day's limit - not scheduled yet, and goes out by itself when free. */
+  accounts: { id: string; name: string; platform: string; held?: 'paused' | 'cap' }[]
   /** Postiz's own copy of the video, for when this phone has none. */
   videoUrl: string | null
   links: Record<string, string>
@@ -183,6 +196,10 @@ export function accountsBehind(
     for (const id of lacking) missing.add(id)
   }
   return { accounts: [...missing], videos }
+}
+
+export async function saveLimits(limits: Limits): Promise<Profile> {
+  return remember(await call<Profile>('save-limits', { profile: profileId(), limits }))
 }
 
 export interface AttachResult {
