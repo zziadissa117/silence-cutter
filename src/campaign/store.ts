@@ -199,8 +199,13 @@ export interface OutboxEntry {
 /** A finished video on its way to Postiz - see outbox.ts. */
 export interface SendEntry {
   /** The job's id: also the post's own id on the server, so sending it
-   *  twice makes one post. */
+   *  twice makes one post. A video posted by hand has one worked out from
+   *  what is in it, the campaign and the day (NewPost), so picking or tapping
+   *  it again lands on the same key instead of making a second post. */
   key: string
+  /** Content fingerprint of the picked file (fingerprint.ts), for a video
+   *  posted by hand. */
+  fp?: string
   profileId: string
   campaign: { id: string; name: string; posting: CampaignPosting }
   meta: {

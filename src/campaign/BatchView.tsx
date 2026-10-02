@@ -22,6 +22,7 @@ import {
   type BatchBank,
 } from './batch'
 import { filmingOf } from './filming'
+import { fingerprint, skippedNotice } from './fingerprint'
 import { formatTime, labelOf, type Job } from './jobs'
 import type { Angle, Campaign } from './look'
 import { accountLabel, placeFor, timeLabel, type LocalPosting } from './posting'
@@ -85,6 +86,10 @@ export function BatchView({
   const [headlineText, setHeadlineText] = useState('')
   const [saving, setSaving] = useState<string | null>(null)
   const [problem, setProblem] = useState<string | null>(null)
+  const [notice, setNotice] = useState<string | null>(null)
+  /** Fingerprints being kept right now, so two picks that overlap cannot both
+   *  keep the same recording. */
+  const adding = useRef(new Set<string>())
   const bankRef = useRef(bank)
   bankRef.current = bank
 
@@ -144,23 +149,42 @@ export function BatchView({
       }
     }
     setProblem(null)
+    setNotice(null)
     const added: BankFile[] = []
+    const skipped: string[] = []
+    const mine = new Set<string>()
     try {
       for (const [i, file] of files.entries()) {
         if (kind === 'music' && file.size > MAX_SONG_MB * 1e6) throw new Error(`${file.name} is over ${MAX_SONG_MB} MB - pick a shorter one or an MP3.`)
+        // The same recording is never kept twice: by what is in it, and for
+        // files kept before fingerprints existed, by name and size.
+        const fp = await fingerprint(file)
+        const inBank = bankRef.current?.[kind] ?? []
+        const alreadyKept =
+          adding.current.has(fp) ||
+          inBank.some((f) => (f.fp ? f.fp === fp : f.name === file.name && f.size === file.size)) ||
+          added.some((f) => f.fp === fp)
+        if (alreadyKept) {
+          skipped.push(file.name)
+          continue
+        }
+        adding.current.add(fp)
+        mine.add(fp)
         setSaving(`Keeping ${files.length > 1 ? `${i + 1} of ${files.length}` : file.name} on this phone…`)
         const id = crypto.randomUUID()
         await saveBankFile(id, file)
         const seconds = kind === 'music' ? undefined : (await filmingOf(file)).seconds
-        added.push({ id, name: file.name, type: file.type || (kind === 'music' ? 'audio/mpeg' : 'video/mp4'), size: file.size, ...(seconds ? { seconds } : {}) })
+        added.push({ id, name: file.name, type: file.type || (kind === 'music' ? 'audio/mpeg' : 'video/mp4'), size: file.size, fp, ...(seconds ? { seconds } : {}) })
       }
     } catch (error) {
       setProblem(`Not all of them could be kept: ${error instanceof Error ? error.message : String(error)}`)
     } finally {
       setSaving(null)
+      setNotice(skippedNotice(skipped, `in the ${kind === 'music' ? 'music' : kind} bank`))
       if (kind !== 'music') pickSaved()
       const current = bankRef.current
       if (current && added.length > 0) keep({ ...current, [kind]: [...current[kind], ...added] })
+      for (const fp of mine) adding.current.delete(fp)
     }
   }
 
@@ -395,6 +419,7 @@ export function BatchView({
           </div>
 
           {problem ? <p className="error">{problem}</p> : null}
+          {notice ? <p className="notice">{notice}</p> : null}
 
           <button type="button" className="btn primary batch-make" disabled={!canMake} onClick={make}>
             {slots.length > 0 ? `Make ${slots.length} video${slots.length === 1 ? '' : 's'}` : 'Make them'}

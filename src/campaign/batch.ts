@@ -16,6 +16,10 @@ export interface BankFile {
   type: string
   size: number
   seconds?: number
+  /** Content fingerprint (fingerprint.ts), so the same recording is never
+   *  kept twice. Absent on files kept before it existed; those are matched on
+   *  name and size instead. */
+  fp?: string
 }
 
 export interface BatchBank {

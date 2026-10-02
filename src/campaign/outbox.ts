@@ -129,17 +129,32 @@ export async function forgetSend(key: string): Promise<void> {
 
 // --- Sending ------------------------------------------------------------------
 
-/** Puts a finished video in line for Postiz. Safe to call twice. */
+/** Whether a video is already in line, or already sent and not yet let go. */
+export async function isQueued(key: string): Promise<boolean> {
+  await load()
+  return entries.some((e) => e.key === key)
+}
+
+/** The fingerprints of what is in line or sent for a campaign, so a video
+ *  picked again can be recognised before anything is done with it. */
+export async function fingerprintsFor(campaignId: string): Promise<Set<string>> {
+  await load()
+  return new Set(entries.filter((e) => e.campaign.id === campaignId && e.fp).map((e) => e.fp as string))
+}
+
+/** Puts a finished video in line for Postiz. Safe to call twice: the second
+ *  call does nothing and says so ('duplicate'), so a caller can tell him. */
 export async function queueSend(
   fields: Omit<SendEntry, 'where' | 'state' | 'tries' | 'addedAt' | 'size'>,
   video: Blob,
-): Promise<void> {
+): Promise<'queued' | 'duplicate'> {
   await load()
-  if (entries.some((e) => e.key === fields.key)) return
+  if (entries.some((e) => e.key === fields.key)) return 'duplicate'
   const where = await keepCopy(fields.key, video)
   await saveSend({ ...fields, size: video.size, where, state: 'sending', tries: 0, addedAt: Date.now() })
   await refresh()
   kick()
+  return 'queued'
 }
 
 let running = false
