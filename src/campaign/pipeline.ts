@@ -74,6 +74,8 @@ export interface CampaignResult {
   /** A video of clips and music, no talking: how long each clip came out,
    *  the track under it, and why it went without one when it had to. */
   montage?: { seconds: number[]; music: string | null; musicFailed?: string }
+  /** A talking video: the name of the track under it, when there is one. */
+  music?: string
 }
 
 export interface CampaignCallbacks {
@@ -214,6 +216,7 @@ export async function make(
     cuts: plan.silences,
     ...(plan.cleanSpeech ? { fillerWords: plan.fillerWords, stutters: plan.stutters } : {}),
     ...(joined.beforeSec || joined.afterSec || joined.leftOut.length ? { clips: joined } : {}),
+    ...(track ? { music: track.name } : {}),
     logoAt: rendered.logoAt,
     picturesAt: [...rendered.picturesAt.flat(), ...rendered.bankAt].sort((a, b) => a - b),
     headline: headlineText,

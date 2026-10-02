@@ -530,3 +530,6 @@ main.tabbed { padding-bottom: calc(env(safe-area-inset-bottom) + 96px); }
 .limit-row .toggle { flex: 1 1 10rem; }
 .limit-accounts { margin-left: 18px; display: flex; flex-direction: column; gap: 6px; }
 .limit-input { width: 5.5rem; }
+
+.bank-name.as-button { background: none; border: 0; padding: 0; color: inherit; font: inherit; font-weight: 600; text-align: left; cursor: text; }
+input.bank-name { background: transparent; border: 0; border-bottom: 1px solid currentColor; color: inherit; font: inherit; font-weight: 600; padding: 0; }

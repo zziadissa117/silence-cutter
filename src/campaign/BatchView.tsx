@@ -5,6 +5,7 @@
 // for one of the campaign's posting times - to wait for his approval. He
 // hears once, when the whole batch is ready.
 
+import { TrackName, TrackPlayer } from './TrackPlayer'
 import { useEffect, useRef, useState } from 'react'
 
 import { VideoPicker } from '../VideoPicker'
@@ -272,7 +273,17 @@ export function BatchView({
         <ul className="bank-list">
           {bank[kind].map((file) => (
             <li key={file.id} className="bank-item">
-              <span className="bank-name">{file.name}</span>
+              {kind === 'music' && bank ? (
+                <>
+                  <TrackPlayer file={file} />
+                  <TrackName
+                    name={file.name}
+                    onRename={(name) => keep({ ...bank, music: bank.music.map((m) => (m.id === file.id ? { ...m, name } : m)) })}
+                  />
+                </>
+              ) : (
+                <span className="bank-name">{file.name}</span>
+              )}
               <span className="hint">{[file.seconds ? formatTime(file.seconds) : '', mb(file.size)].filter(Boolean).join(' · ')}</span>
               <button type="button" className="btn small icon-btn" aria-label={`Take out ${file.name}`} onClick={() => takeOut(kind, file)}>
                 ✕

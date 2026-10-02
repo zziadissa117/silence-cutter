@@ -3,6 +3,18 @@
 Newest first. Every change says what it does, how to use it, and how it works
 underneath. Kept up to date with each commit.
 
+## Music library: names and a player
+**What:** Every track in the batch bank has a ▶/■ button and a name you can change;
+every made talking video says which track is under it.
+**Use it:** Batch tab → Music: tap ▶ to hear it, tap the name to rename (Enter
+saves). Made videos list "music: <name>" in their row.
+**How:** `TrackPlayer.tsx` plays the stored file through an `Audio` element (object
+URL freed on leave). Rename changes only the label in the bank row, not the file.
+`CampaignResult.music` carries the name. Per-video track choice already existed
+(row → Music) and Edit again re-renders with a new one.
+**Not yet:** a swap-music-for-the-whole-batch button; a track in the
+angle editor still shows its filename as before.
+
 ## Proposed, not applied: repost + per-platform captions columns
 `supabase/proposed/20261002120000_cutter_posts_repost_captions.sql` adds four
 nullable columns to `cutter_posts` (`repost_of`, `repost_at`, `reposted_at`,

@@ -253,6 +253,7 @@ export function JobRow({
                 {result.logoAt.length > 0 ? ` · logo at ${result.logoAt.map(formatTime).join(', ')}` : ''}
                 {result.picturesAt.length > 0 ? ` · picture at ${result.picturesAt.map(formatTime).join(', ')}` : ''}
                 {result.headline ? ` · "${result.headline}"` : ''}
+                {result.music ? ` · music: ${result.music}` : ''}
                 {result.clips?.beforeSec ? ` · ${formatTime(result.clips.beforeSec)} video before` : ''}
                 {result.clips?.afterSec ? ` · ${formatTime(result.clips.afterSec)} video after` : ''}
               </div>
