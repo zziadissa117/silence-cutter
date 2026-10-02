@@ -10,6 +10,7 @@ import { NO_POSTING, type Campaign, type CampaignPosting } from './look'
 import {
   PostingError,
   accountLabel,
+  accountsBehind,
   placeFor,
   refreshAccounts,
   timeLabel,
@@ -42,8 +43,10 @@ export function PostingEditor({
   campaign: Campaign
   local: LocalPosting | null
   /** Saves the shared rules with the campaign, and this person's accounts
-   *  and times with their profile. */
-  onSave: (posting: CampaignPosting, place: CampaignPlace | null) => Promise<void>
+   *  and times with their profile. `catchUp` names newly picked accounts the
+   *  videos already made should also go to - empty when he declined, or
+   *  there is none. */
+  onSave: (posting: CampaignPosting, place: CampaignPlace | null, catchUp: string[]) => Promise<void>
   onCancel: () => void
   onSetUp: () => void
 }) {
@@ -51,6 +54,14 @@ export function PostingEditor({
   const [hashtagText, setHashtagText] = useState((campaign.posting?.hashtags ?? []).join(' '))
   const [place, setPlace] = useState<CampaignPlace>(() => placeFor(local?.profile, campaign.id))
   const [accounts, setAccounts] = useState(local?.profile.accounts ?? [])
+  // The videos already made were fixed to the accounts the campaign had when
+  // they were prepared, so an account picked later misses them. When any
+  // picked account is one that waiting or scheduled videos do not go to, he is
+  // asked whether they should. On by default: leaving them out is the bug this
+  // answers, and it can be unticked. Worked out from the last posts the phone
+  // saw, so it also offers again after a save that could not reach the server.
+  const [catchUpOn, setCatchUpOn] = useState(true)
+  const behind = accountsBehind(campaign.id, place.accounts)
   const [newTime, setNewTime] = useState('')
   const [refreshing, setRefreshing] = useState(false)
   const [refreshProblem, setRefreshProblem] = useState<string | null>(null)
@@ -82,7 +93,7 @@ export function PostingEditor({
             .filter(Boolean)
             .map((t) => `#${t}`)
           try {
-            await onSave({ ...posting, rules: posting.rules.trim(), hashtags }, local ? place : null)
+            await onSave({ ...posting, rules: posting.rules.trim(), hashtags }, local ? place : null, catchUpOn ? behind.accounts : [])
           } catch (error) {
             throw new Error(error instanceof PostingError ? error.message : String(error))
           }
@@ -127,6 +138,21 @@ export function PostingEditor({
               </button>
             </div>
             {refreshProblem ? <div className="error">{refreshProblem}</div> : null}
+            {behind.videos > 0 ? (
+              <label className="toggle">
+                <input type="checkbox" checked={catchUpOn} onChange={() => setCatchUpOn((on) => !on)} />
+                <span>
+                  <span className="label">Add to videos already made</span>
+                  <span className="hint" style={{ display: 'block' }}>
+                    {behind.videos} video{behind.videos === 1 ? '' : 's'} already made for {campaign.name}{' '}
+                    {behind.videos === 1 ? "doesn't" : "don't"} go to{' '}
+                    {behind.accounts.map((id) => accounts.find((a) => a.id === id)).filter((a) => a !== undefined).map(accountLabel).join(', ')}. Tick to add{' '}
+                    {behind.accounts.length === 1 ? 'it' : 'them'}: the accounts they already go to are not touched, so nothing posts twice. Ones that
+                    have gone out stay as they were.
+                  </span>
+                </span>
+              </label>
+            ) : null}
           </>
         ) : (
           <>

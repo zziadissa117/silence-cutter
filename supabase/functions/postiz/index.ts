@@ -25,6 +25,8 @@
 //   profile        { profile }                  -> profile
 //   accounts       { profile }                  -> profile (accounts listed again)
 //   save-campaign  { profile, campaignId, accounts, times } -> profile
+//   attach-accounts { profile, campaignId, accounts } -> { added, scheduled, left }
+//                  videos already made for the campaign get an account linked later
 //   push           { profile, subscription }    -> { ok }
 //   unpush         { endpoint }                 -> { ok }
 //   start          { profile, key, campaign, meta, size } -> { id, partBytes, uploads }
@@ -52,6 +54,7 @@ import { FAKE_CLAUDE, FakeError, fakeCaption, fakePostiz, isFakePostiz } from '.
 import { batchChoices, batchInfo, batchSpan, type BatchInfo } from './batch.ts'
 import { handFields } from './hand.ts'
 import { endOfDay, lastTimeToday, nextSlot, normalTimes, pickTime, spreadDay, type OtherPost, type Spread } from './slots.ts'
+import { attachMove, summarise, type AttachMove } from './attach.ts'
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!
 const SERVICE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
@@ -505,6 +508,81 @@ async function saveCampaign(profile: Profile, body: Record<string, unknown>): Pr
     .single()
   if (error || !data) throw new Problem('It could not be saved. Try again.', true, 500)
   return reply(await profileView(data as Profile))
+}
+
+/** Videos already made for a campaign get an account that was linked after
+ *  them (attach.ts says what each one does). The accounts must already be
+ *  saved on the campaign's Posting - this only catches the videos up.
+ *
+ *  Each post is claimed first, like the scheduler does, so a run that is
+ *  moving it along cannot race this. A scheduled post gets a Postiz post for
+ *  ONLY the new accounts, at the time it already has; the accounts that are
+ *  there are never touched, so nothing goes out twice. */
+async function attachAccounts(profile: Profile, body: Record<string, unknown>): Promise<Response> {
+  const campaignId = typeof body.campaignId === 'string' ? body.campaignId : ''
+  if (!campaignId || campaignId.length > 200) throw new Problem('Which campaign?')
+  const chosen = new Set(profile.settings.campaigns?.[campaignId]?.accounts ?? [])
+  const accounts = (Array.isArray(body.accounts) ? body.accounts : [])
+    .filter((id): id is string => typeof id === 'string' && chosen.has(id))
+    .map((id) => profile.accounts.find((a) => a.id === id))
+    .filter((a): a is Account => Boolean(a))
+    .map((a) => ({ id: a.id, name: a.name, platform: a.platform }))
+  if (accounts.length === 0) return reply({ added: 0, scheduled: 0, left: 0 })
+  const wanted = accounts.map((a) => a.id)
+
+  const { data } = await db
+    .from('cutter_posts')
+    .select('*')
+    .eq('profile_id', profile.id)
+    .eq('campaign_id', campaignId)
+    .in('status', ['waiting', 'approved', 'scheduled'])
+  const keys = await keysFor(profile.id)
+  const moves: AttachMove[] = []
+
+  for (const row of (data ?? []) as Post[]) {
+    const first = attachMove(row, wanted, Date.now())
+    if (first.move === 'has-all' || first.move === 'not-open') continue
+    const owned = await claim(row.id)
+    if (!owned) {
+      moves.push('busy')
+      continue
+    }
+    try {
+      // Decided again now that it is ours: it may have moved on since the read.
+      const { move, missing } = attachMove(owned, wanted, Date.now())
+      moves.push(move)
+      const extra = accounts.filter((a) => missing.includes(a.id))
+      if (move === 'add') {
+        await update(owned.id, { accounts: [...owned.accounts, ...extra] })
+      } else if (move === 'add-scheduled') {
+        const date = owned.post_at!
+        // A run that stopped before it could record what it made is found
+        // first, so the same account is never posted to twice.
+        const found = await findCreated(keys.postiz, { ...owned, accounts: extra }, date)
+        const title = finishTitle(owned.title ?? '', [owned.headline ?? '', owned.campaign_name])
+        const made =
+          found ??
+          (await postiz<{ postId: string; integration: string }[]>(keys.postiz, 'POST', '/posts', {
+            type: 'schedule',
+            date,
+            shortLink: false,
+            tags: [],
+            posts: extra.map((account) => ({
+              integration: { id: account.id },
+              value: [{ content: owned.caption, image: [{ id: owned.media!.id, path: owned.media!.path }] }],
+              settings: settingsFor(account.platform, title),
+            })),
+          }))
+        await update(owned.id, {
+          accounts: [...owned.accounts, ...extra],
+          postiz_ids: [...(owned.postiz_ids ?? []), ...(Array.isArray(made) ? made : [])],
+        })
+      }
+    } finally {
+      await release(row.id)
+    }
+  }
+  return reply(summarise(moves))
 }
 
 // --- Notifications --------------------------------------------------------------
@@ -1266,6 +1344,21 @@ async function listPosts(profile: Profile): Promise<Response> {
   return reply({ posts: posts.map(postView), now: new Date().toISOString() })
 }
 
+/** Takes a scheduled post back out of Postiz: every post it made. Accounts
+ *  linked late are scheduled as their own group (attachAccounts), so deleting
+ *  only the first id would leave those posts to go out. Ids after the first
+ *  may already be gone with their group; only a refusal that matters stops it. */
+async function deleteScheduled(key: string, post: Post): Promise<void> {
+  const ids = [...new Set((post.postiz_ids ?? []).map((ref) => ref.postId))]
+  for (const [n, id] of ids.entries()) {
+    try {
+      await postiz(key, 'DELETE', `/posts/${id}`)
+    } catch (error) {
+      if (n === 0 || !(error instanceof Problem) || error.status !== 400) throw error
+    }
+  }
+}
+
 async function act(profile: Profile, action: string, body: Record<string, unknown>): Promise<Response> {
   const post = await ownPost(profile, body.id)
   switch (action) {
@@ -1286,7 +1379,7 @@ async function act(profile: Profile, action: string, body: Record<string, unknow
     case 'reject': {
       if (post.status === 'scheduled' && post.postiz_ids?.[0]) {
         const { postiz: key } = await keysFor(profile.id)
-        await postiz(key, 'DELETE', `/posts/${post.postiz_ids[0].postId}`)
+        await deleteScheduled(key, post)
       }
       if (post.status === 'uploading' || post.status === 'writing' || post.status === 'failed') await removeParts(post).catch(() => {})
       return reply({ post: postView(await update(post.id, { status: 'rejected', error: null, retry_at: null })) })
@@ -1295,7 +1388,7 @@ async function act(profile: Profile, action: string, body: Record<string, unknow
       if (post.status !== 'scheduled') return reply({ post: postView(post) })
       if (post.post_at && new Date(post.post_at).getTime() < Date.now()) throw new Problem('It has already gone out.')
       const { postiz: key } = await keysFor(profile.id)
-      if (post.postiz_ids?.[0]) await postiz(key, 'DELETE', `/posts/${post.postiz_ids[0].postId}`)
+      if (post.postiz_ids?.[0]) await deleteScheduled(key, post)
       return reply({ post: postView(await update(post.id, { status: 'waiting', postiz_ids: null, error: null })) })
     }
     case 'retry': {
@@ -1470,6 +1563,8 @@ Deno.serve(async (req) => {
         return reply(await profileView(await refreshAccounts(profile)))
       case 'save-campaign':
         return await saveCampaign(profile, body)
+      case 'attach-accounts':
+        return await attachAccounts(profile, body)
       case 'push':
         return await savePush(profile, body)
       case 'start':

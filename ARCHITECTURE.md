@@ -96,6 +96,23 @@ attempt before it starts (a video that kills the tab cannot loop).
   every frame), `headlineFont.ts` (TikTok Sans, bundled), set per angle in `look.ts`.
 - Effects: `campaign/effects.ts`, `EffectsSection.tsx` (opt-in, with examples).
 
+**Duplicates (Phase 1.1).** `campaign/fingerprint.ts` = size + SHA-256 of three
+1 MB samples. The Batch bank (`BatchView.add`, `BankFile.fp`) and New post
+(`NewPost.add`) skip a recording already there and say so; a hand post's send key
+is `post-<fingerprint>-<campaign>-<day>` (`handPostKey`), so a re-pick/re-tap lands
+on the same key (the server keeps one post per profile + key). `queueSend` returns
+`'duplicate'`.
+
+**Account linked after videos were made (Phase 1.2).** A post's `accounts` are fixed
+when it is prepared. `PostingEditor` shows "Add to videos already made" (default on)
+when picked accounts are missing from waiting/approved/scheduled posts
+(`accountsBehind`); saving calls the server action `attach-accounts`
+(`postiz/index.ts attachAccounts`, decisions in `postiz/attach.ts`): waiting/approved
+posts just gain the account; a scheduled post gets a Postiz post for ONLY the new
+account at its existing time (existing accounts untouched, no double posting);
+posted/too-close/busy posts are left and reported. `unschedule`/`reject` now delete
+every Postiz group (`deleteScheduled`), since late accounts are their own group.
+
 ## Posting pipeline
 
 ```
@@ -162,7 +179,8 @@ src/campaign/                  the campaign app (CampaignApp.tsx is the 2.4k-lin
 src/media/                     the plain cutter's engine, reused by campaign/
 src/{report,leaving,opening,CrashGuard,UpdateBanner,VideoPicker,pick*}.ts(x)  shell helpers
 supabase/functions/cutter      login + shared-setup sync (Edge Function)
-supabase/functions/postiz      posting, captions, scheduler, push (Edge Function)
+supabase/functions/postiz      posting, captions, scheduler, push (Edge Function);
+                               slots.ts times, attach.ts late-account rules, batch.ts, hand.ts, caption.ts
 supabase/migrations            SQL
 public/push-sw.js              service-worker push handler
 ```

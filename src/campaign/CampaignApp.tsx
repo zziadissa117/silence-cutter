@@ -78,6 +78,8 @@ import { PostingSetup } from './PostingSetup'
 import {
   disconnect as disconnectPosting,
   lastPosts,
+  attachAccounts,
+  attachSummary,
   listPosts,
   placeFor,
   postingHere,
@@ -1460,10 +1462,21 @@ export function CampaignApp() {
 
   /** The brand's rules go with the campaign, to both phones; his own
    *  accounts and times go to his profile. */
-  const savePosting = async (owner: Campaign, rules: CampaignPosting, place: { accounts: string[]; times: string[] } | null) => {
+  const savePosting = async (owner: Campaign, rules: CampaignPosting, place: { accounts: string[]; times: string[] } | null, catchUp: string[] = []) => {
     if (place) {
       await saveCampaignPlace(owner.id, place)
       setPosting(postingHere())
+      // Videos already made were fixed to the accounts the campaign had; the
+      // ones he just added are caught up when he asked for it. A failure here
+      // is said, not swallowed - the new accounts are saved either way, and
+      // saving again retries it.
+      if (catchUp.length > 0) {
+        await attachAccounts(owner.id, catchUp)
+          .then((result) => setNotice(attachSummary(result)))
+          .catch((error: unknown) =>
+            setNotice(`The new account is saved, but the videos already made could not be updated: ${error instanceof Error ? error.message : String(error)} Save posting again to retry.`),
+          )
+      }
     }
     const saved = await store({ ...owner, posting: rules })
     select(saved, saved.angles.find((a) => a.id === angleId))
@@ -2179,7 +2192,7 @@ export function CampaignApp() {
         key={editing.campaign.id}
         campaign={editing.campaign}
         local={posting}
-        onSave={(rules, place) => savePosting(editing.campaign, rules, place)}
+        onSave={(rules, place, catchUp) => savePosting(editing.campaign, rules, place, catchUp)}
         onCancel={() => setEditing(null)}
         onSetUp={() => {
           setEditing(null)

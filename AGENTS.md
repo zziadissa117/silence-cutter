@@ -47,7 +47,8 @@ git checkout tsconfig.tsbuildinfo   # after builds (tracked file)
 - Audio: `voice.ts`, `music.ts`, `sounds.ts`; captions `captions.ts`; headline `overlay.ts`, `look.ts`; effects `effects.ts`
 - Queue/storage: `store.ts`, `outbox.ts`; sync + login: `cloud.ts`, `SignIn.tsx`, `LoginGate.tsx`
 - Posting (phone): `posting.ts`, `PostsView.tsx`, `NewPost.tsx`, `BatchView.tsx`
-- Posting (server): `supabase/functions/postiz/*` (`slots.ts` times, `caption.ts`, `batch.ts`, `hand.ts`)
+- Posting (server): `supabase/functions/postiz/*` (`slots.ts` times, `caption.ts`, `batch.ts`, `hand.ts`, `attach.ts`)
+- Duplicate protection: `campaign/fingerprint.ts` (never key a send or a bank file on a random id alone)
 - Login (server): `supabase/functions/cutter/index.ts`
 
 ## Workflow

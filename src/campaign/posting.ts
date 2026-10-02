@@ -156,6 +156,64 @@ export async function saveCampaignPlace(campaignId: string, place: CampaignPlace
   return remember(await call<Profile>('save-campaign', { profile: profileId(), campaignId, ...place }))
 }
 
+/** Of the accounts picked for a campaign, the ones some video already made
+ *  for it - waiting, approved, or scheduled and not about to go out - does not
+ *  go to, and how many videos are in that position. Read from the last list of
+ *  posts the phone saw, so it is a hint for the checkbox, never the decision:
+ *  the server decides what each video can still take. */
+export function accountsBehind(
+  campaignId: string,
+  chosen: readonly string[],
+  posts: readonly ServerPost[] = lastPosts(),
+  now = Date.now(),
+): { accounts: string[]; videos: number } {
+  const open = posts.filter(
+    (p) =>
+      p.campaignId === campaignId &&
+      (p.status === 'waiting' ||
+        p.status === 'approved' ||
+        (p.status === 'scheduled' && p.postAt !== null && Date.parse(p.postAt) > now + 2 * 60_000)),
+  )
+  const missing = new Set<string>()
+  let videos = 0
+  for (const post of open) {
+    const have = new Set(post.accounts.map((a) => a.id))
+    const lacking = chosen.filter((id) => !have.has(id))
+    if (lacking.length > 0) videos++
+    for (const id of lacking) missing.add(id)
+  }
+  return { accounts: [...missing], videos }
+}
+
+export interface AttachResult {
+  /** Waiting or approved videos that now include the account. */
+  added: number
+  /** Scheduled videos that got a post for it at the time they already had. */
+  scheduled: number
+  /** Gone out already, too close to going out, or busy: left alone. */
+  left: number
+}
+
+/** Catches the videos already made for a campaign up with accounts linked
+ *  after them. The accounts must already be saved on the campaign. */
+export async function attachAccounts(campaignId: string, accounts: string[]): Promise<AttachResult> {
+  return call<AttachResult>('attach-accounts', { profile: profileId(), campaignId, accounts })
+}
+
+/** What happened, in words: "Added to 5 videos waiting and 3 scheduled. 2 had
+ *  already gone out - they stay as they were." */
+export function attachSummary(result: AttachResult): string {
+  const parts: string[] = []
+  if (result.added > 0) parts.push(`${result.added} video${result.added === 1 ? '' : 's'} waiting`)
+  if (result.scheduled > 0) parts.push(`${result.scheduled} already scheduled`)
+  const said = parts.length > 0 ? `Added to ${parts.join(' and ')}.` : 'No videos were waiting for it.'
+  const left =
+    result.left > 0
+      ? ` ${result.left} ${result.left === 1 ? 'has' : 'have'} already gone out or ${result.left === 1 ? 'is' : 'are'} about to - ${result.left === 1 ? 'it stays' : 'they stay'} as ${result.left === 1 ? 'it was' : 'they were'}, and a new post is needed for the new account.`
+      : ''
+  return said + left
+}
+
 export function setSendHere(sendHere: boolean): void {
   const local = postingHere()
   if (local) keepPosting({ ...local, sendHere })
