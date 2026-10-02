@@ -71,7 +71,7 @@ import {
   type Campaign,
   type CampaignPosting,
 } from './look'
-import { queueSend, sending, startSending, watchSending } from './outbox'
+import { forgetSend, queueSend, sending, startSending, watchSending } from './outbox'
 import { headlineFor, listen, make, makeCampaignVideo, makeMontage, makeReaction, plainCut, type CampaignResult } from './pipeline'
 import { PostingEditor } from './PostingEditor'
 import { PostingSetup } from './PostingSetup'
@@ -82,6 +82,7 @@ import {
   attachSummary,
   listPosts,
   placeFor,
+  postAction,
   postingHere,
   refreshProfile,
   saveCampaignPlace,
@@ -100,8 +101,15 @@ import {
   MAX_ATTEMPTS,
   claimAttempt,
   deleteCampaign,
+  EDIT_WINDOW_MS,
+  editableJobs,
+  expireMade,
   forgetJob,
+  jobOfPostKey,
   keepJobVideo,
+  markMade,
+  postKeyOf,
+  reopenJob,
   loadBank,
   loadCampaigns,
   loadBankFile,
@@ -390,6 +398,28 @@ export function CampaignApp() {
   /** Sends a finished video to Postiz, when this phone posts its campaign.
    *  The plain cut never goes by itself - it is missing the look - but can
    *  be sent from its row. */
+  /** An edited video replaces the post it was made again from, when that has
+   *  not gone out: the old post is rejected (taken out of Postiz if it was
+   *  already scheduled) before the new one is sent. One already posted can't
+   *  be taken back, so the new one goes out as a post of its own - said. */
+  const retireOld = async (job: Job): Promise<void> => {
+    if (!job.replaces) return
+    try {
+      const posts = await listPosts().catch(() => lastPosts())
+      const old = posts.find((p) => p.key === job.replaces)
+      if (!old || old.status === 'rejected') return
+      const wentOut = old.status === 'posted' || (old.status === 'scheduled' && old.postAt !== null && new Date(old.postAt).getTime() <= Date.now())
+      if (wentOut) {
+        setNotice('The first version was already posted, so the edited one goes out as a new post.')
+        return
+      }
+      await postAction('reject', old.id)
+      await forgetSend(old.key).catch(() => {})
+    } catch (error) {
+      setNotice(`The edited video was sent, but the old post could not be removed - reject it in Posts. (${error instanceof Error ? error.message : String(error)})`)
+    }
+  }
+
   const sendToPostiz = (job: Job, campaign: Campaign, result: CampaignResult, byHand = false): void => {
     const local = postingHere()
     if (!local || (!byHand && (result.lookFailed || !sendsFrom(campaign, local)))) return
@@ -400,9 +430,10 @@ export function CampaignApp() {
           .filter(Boolean)
           .join(' ')
       : (result.said ?? '')
-    const queued = queueSend(
+    const retired = retireOld(job)
+    const queued = retired.then(() => queueSend(
       {
-        key: job.id,
+        key: postKeyOf(job.id, job.version),
         profileId: local.profile.id,
         campaign: { id: campaign.id, name: campaign.name, posting: campaign.posting ?? NO_POSTING },
         meta: {
@@ -415,7 +446,7 @@ export function CampaignApp() {
         },
       },
       result.blob,
-    ).catch((error: unknown) => {
+    )).catch((error: unknown) => {
       report({ page: 'campaign', kind: 'failed', phase: 'posting', message: `Could not keep a copy to send: ${error instanceof Error ? error.message : String(error)}` })
     })
     copying.current.set(job.id, queued)
@@ -471,6 +502,19 @@ export function CampaignApp() {
     }
   }
   const [notice, setNotice] = useState<string | null>(null)
+
+  // Made videos whose recording is still on the phone, so they can be edited
+  // and made again: job id -> when made. They go EDIT_WINDOW_MS after.
+  const [editable, setEditable] = useState<Record<string, number>>({})
+  const refreshEditable = useCallback(async () => {
+    await expireMade().catch(() => 0)
+    setEditable(await editableJobs().catch(() => ({})))
+  }, [])
+  useEffect(() => {
+    void refreshEditable()
+    const timer = window.setInterval(() => void refreshEditable(), 5 * 60 * 1000)
+    return () => window.clearInterval(timer)
+  }, [refreshEditable])
   const [phoneProblem, setPhoneProblem] = useState<string | null>(null)
   const [dragging, setDragging] = useState(false)
   const [visible, setVisible] = useState(() => document.visibilityState === 'visible')
@@ -881,6 +925,8 @@ export function CampaignApp() {
         ...(p.failed ? { error: p.failed } : {}),
         ...(p.day ? { day: p.day } : {}),
         ...(p.later ? { later: true } : {}),
+        ...(p.version ? { version: p.version } : {}),
+        ...(p.replaces ? { replaces: p.replaces } : {}),
         ...(p.joinedInto ? { joinedInto: p.joinedInto } : {}),
         ...(p.filmedAt !== undefined ? { filmedAt: p.filmedAt, seconds: p.seconds } : {}),
         ...(p.reaction ? { reaction: p.reaction } : {}),
@@ -1161,7 +1207,12 @@ export function CampaignApp() {
         }
         patch({ status: 'done', result, url: next.batch ? undefined : URL.createObjectURL(result.blob) })
         sendToPostiz(next, jobCampaign, result)
-        await forgetJob(next.id)
+        // A talking video keeps its recording and edits for a couple of hours,
+        // so a caption, a cut or the music can be fixed and it made again.
+        if (plan && !next.reaction && !next.montage && !next.batch && !next.prejoin && !next.day?.parts) {
+          await markMade(next.id)
+          void refreshEditable()
+        } else await forgetJob(next.id)
         if (next.batch) {
           // Footage let go of once the last video from it is made.
           sweepBank()
@@ -1265,6 +1316,43 @@ export function CampaignApp() {
         void recordDay(id, { ...job.day, approved: true }, { campaignId: job.campaignId, angleId: job.angleId, headlineText: job.headlineText })
       }
     }
+  }
+
+  /** Opens a made video's cuts, captions and music again, from the post it
+   *  went out as. Making it again replaces that post if it hasn't gone out. */
+  const editAgain = async (postKey: string) => {
+    const reopened = await reopenJob(jobOfPostKey(postKey), postKey)
+    if (!reopened) {
+      setNotice(`The original recording is only kept for ${EDIT_WINDOW_MS / 3_600_000} hours after a video is made, and this one's is gone.`)
+      void refreshEditable()
+      return
+    }
+    const restored: Job = {
+      id: reopened.id,
+      name: reopened.fileName,
+      file: null,
+      campaignId: reopened.campaignId,
+      angleId: reopened.angleId,
+      label: '',
+      headlineText: reopened.headlineText,
+      settings: reopened.settings,
+      cleanSpeech: reopened.cleanSpeech,
+      status: 'sorted',
+      phase: 'cutting',
+      progress: 0,
+      ...(reopened.day ? { day: reopened.day } : {}),
+      ...(reopened.later ? { later: true } : {}),
+      version: reopened.version,
+      replaces: reopened.replaces,
+    }
+    const campaign = campaignsRef.current.find((c) => c.id === restored.campaignId)
+    const angle = campaign?.angles.find((a) => a.id === restored.angleId)
+    if (campaign && angle) restored.label = labelOf(campaign, angle)
+    setJobs((js) => [restored, ...js.filter((j) => j.id !== restored.id)])
+    void refreshEditable()
+    setShowPosts(false)
+    setTab('videos')
+    setReviewing([restored.id])
   }
 
   const addFiles = useCallback(
@@ -2278,6 +2366,8 @@ export function CampaignApp() {
     ) : showPosts && posting ? (
       <PostsView
         campaigns={campaigns ?? []}
+        editable={editable}
+        onEditAgain={(key) => void editAgain(key)}
         onBack={() => {
           setShowPosts(false)
           if (window.location.hash === '#posts') history.replaceState(null, '', window.location.pathname)

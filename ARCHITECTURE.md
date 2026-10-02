@@ -209,3 +209,20 @@ public/push-sw.js              service-worker push handler
 - `render.ts` is a *sibling* of `media/silenceCut.ts`; the plain cutter must
   keep working exactly as it did.
 - Postiz refuses browser calls and only takes MP4 (`toMp4.ts`).
+
+## Edit again (Phase 5 / 4.1 / 3.2)
+
+A finished *talking* video (plan present; not reaction, montage, batch, joined) is
+not forgotten when made: `store.markMade` stamps `madeAt` and keeps its job row
+(listen plan, captions, cuts, music) and raw recording for `EDIT_WINDOW_MS`
+(2 h). `expireMade` removes older ones (on load + every 5 min). Made jobs are
+never returned by `loadPendingJobs`, so they are not re-queued.
+
+Posts view shows "Edit again · Xh left" when the post's job is in `editableJobs()`.
+`CampaignApp.editAgain` -> `store.reopenJob` (clears madeAt, `version`+1, `replaces` =
+old post key, day.approved=false) -> caption review (with Cuts + per-video music).
+Approving re-makes it; `sendToPostiz` sends under `postKeyOf(id, version)` (`id~2`)
+after `retireOld` rejects the old post (unschedules in Postiz) - unless it already
+posted, in which case a notice says the edit goes out as a new post. No server
+change: reuses the `reject` action. Not yet covered: reaction/montage/batch videos,
+and excluding a single bank picture from one video.

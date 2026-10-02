@@ -16,6 +16,7 @@ import { canShareFiles, share } from './jobs'
 import { ChevronLeft } from './icons'
 import type { Campaign } from './look'
 import { NewPost } from './NewPost'
+import { jobOfPostKey, EDIT_WINDOW_MS } from './store'
 import { copyKind, forgetSend, kick, localVideo, sending, tidySends, watchSending, type Sending } from './outbox'
 import {
   PostingError,
@@ -148,13 +149,46 @@ function Watch({ post }: { post: ServerPost }) {
 
 /** One post waiting for him: its caption to read (or paste), its time, and
  *  the button that lets it go. */
+/** Opens the video's cuts, captions and music again, while its recording is
+ *  still on the phone. A post that already went out says a new one is needed. */
+function EditAgain({
+  post,
+  editable,
+  onEdit,
+}: {
+  post: ServerPost
+  editable: Record<string, number>
+  onEdit: (key: string) => void
+}) {
+  const madeAt = editable[jobOfPostKey(post.key)]
+  if (madeAt === undefined || post.status === 'rejected') return null
+  const left = Math.max(0, madeAt + EDIT_WINDOW_MS - Date.now())
+  const minutes = Math.ceil(left / 60_000)
+  const label = minutes >= 60 ? `${Math.floor(minutes / 60)}h ${minutes % 60}m` : `${minutes}m`
+  const out = post.status === 'posted'
+  return (
+    <button
+      type="button"
+      className="linkbtn"
+      title={out ? 'Already posted: editing makes a new post.' : 'Replaces this post.'}
+      onClick={() => onEdit(post.key)}
+    >
+      {out ? 'Edit as new post' : 'Edit again'} · {label} left
+    </button>
+  )
+}
+
 function WaitingPost({
   post,
   busy,
   onAct,
+  editable,
+  onEdit,
 }: {
   post: ServerPost
   busy: boolean
+  editable: Record<string, number>
+  onEdit: (key: string) => void
   onAct: (action: PostAction, fields?: { caption?: string; at?: string }) => void
 }) {
   const [caption, setCaption] = useState(post.caption ?? '')
@@ -207,6 +241,7 @@ function WaitingPost({
           {busy ? 'Sending…' : brand ? 'Brand approved' : 'Approve'}
         </button>
         <SaveVideo post={post} primary={brand} />
+        <EditAgain post={post} editable={editable} onEdit={onEdit} />
         <button type="button" className="linkbtn" onClick={() => setWatching((w) => !w)}>
           {watching ? 'Hide' : 'Watch'}
         </button>
@@ -230,9 +265,13 @@ function OtherPost({
   post,
   busy,
   onAct,
+  editable,
+  onEdit,
 }: {
   post: ServerPost
   busy: boolean
+  editable: Record<string, number>
+  onEdit: (key: string) => void
   onAct: (action: PostAction) => void
 }) {
   const [open, setOpen] = useState(false)
@@ -276,6 +315,7 @@ function OtherPost({
       ) : null}
       <div className="post-actions">
         <SaveVideo post={post} />
+        <EditAgain post={post} editable={editable} onEdit={onEdit} />
         {post.status === 'failed' ? (
           <button type="button" className="btn small" disabled={busy} onClick={() => onAct('retry')}>
             {busy ? 'Trying…' : 'Try again'}
@@ -329,7 +369,17 @@ function SendingRow({ item, onRemove }: { item: Sending; onRemove: () => void })
   )
 }
 
-export function PostsView({ campaigns, onBack }: { campaigns: Campaign[]; onBack: () => void }) {
+export function PostsView({
+  campaigns,
+  onBack,
+  editable,
+  onEditAgain,
+}: {
+  campaigns: Campaign[]
+  onBack: () => void
+  editable: Record<string, number>
+  onEditAgain: (key: string) => void
+}) {
   const [posts, setPosts] = useState<ServerPost[]>(lastPosts)
   const [making, setMaking] = useState(false)
   const profile = postingHere()?.profile ?? null
@@ -455,7 +505,7 @@ export function PostsView({ campaigns, onBack }: { campaigns: Campaign[]; onBack
           <div className="list-title">To approve</div>
           <ul className="posts-list">
             {waiting.map((post) => (
-              <WaitingPost key={post.id} post={post} busy={busy.has(post.id)} onAct={(action, fields) => void act(post, action, fields)} />
+              <WaitingPost key={post.id} editable={editable} onEdit={onEditAgain} post={post} busy={busy.has(post.id)} onAct={(action, fields) => void act(post, action, fields)} />
             ))}
           </ul>
         </>
@@ -469,7 +519,7 @@ export function PostsView({ campaigns, onBack }: { campaigns: Campaign[]; onBack
               <SendingRow key={item.entry.key} item={item} onRemove={() => void forgetSend(item.entry.key)} />
             ))}
             {working.map((post) => (
-              <OtherPost key={post.id} post={post} busy={busy.has(post.id)} onAct={(action) => void act(post, action)} />
+              <OtherPost key={post.id} editable={editable} onEdit={onEditAgain} post={post} busy={busy.has(post.id)} onAct={(action) => void act(post, action)} />
             ))}
           </ul>
         </>
@@ -480,7 +530,7 @@ export function PostsView({ campaigns, onBack }: { campaigns: Campaign[]; onBack
           <div className="list-title">Failed</div>
           <ul className="posts-list">
             {failed.map((post) => (
-              <OtherPost key={post.id} post={post} busy={busy.has(post.id)} onAct={(action) => void act(post, action)} />
+              <OtherPost key={post.id} editable={editable} onEdit={onEditAgain} post={post} busy={busy.has(post.id)} onAct={(action) => void act(post, action)} />
             ))}
           </ul>
         </>
@@ -491,7 +541,7 @@ export function PostsView({ campaigns, onBack }: { campaigns: Campaign[]; onBack
           <div className="list-title">Scheduled</div>
           <ul className="posts-list">
             {scheduled.map((post) => (
-              <OtherPost key={post.id} post={post} busy={busy.has(post.id)} onAct={(action) => void act(post, action)} />
+              <OtherPost key={post.id} editable={editable} onEdit={onEditAgain} post={post} busy={busy.has(post.id)} onAct={(action) => void act(post, action)} />
             ))}
           </ul>
         </>
@@ -502,7 +552,7 @@ export function PostsView({ campaigns, onBack }: { campaigns: Campaign[]; onBack
           <div className="list-title">Posted</div>
           <ul className="posts-list">
             {done.map((post) => (
-              <OtherPost key={post.id} post={post} busy={busy.has(post.id)} onAct={(action) => void act(post, action)} />
+              <OtherPost key={post.id} editable={editable} onEdit={onEditAgain} post={post} busy={busy.has(post.id)} onAct={(action) => void act(post, action)} />
             ))}
           </ul>
         </>

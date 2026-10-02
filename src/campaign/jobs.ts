@@ -71,6 +71,9 @@ export type Job = {
   /** When it was filmed (from the file) and how long it is. */
   filmedAt?: number
   seconds?: number
+  /** Made again after an edit: which go this is, and the post it replaces. */
+  version?: number
+  replaces?: string
   /** Part of a joined video: hidden until that is split apart or made. */
   joinedInto?: string
   /** A joined video's file in the phone's private storage, to delete. */

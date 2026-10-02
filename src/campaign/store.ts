@@ -105,6 +105,30 @@ interface StoredJob {
   /** A recording that is now part of a joined video, hidden until that is
    *  split apart or made. */
   joinedInto?: string
+  /** When it was made. Its recording, listening and edits are kept for
+   *  EDIT_WINDOW_MS after, so he can fix a caption, a cut or the music and
+   *  make it again - then they go. A made job is never picked up as one
+   *  still to make. */
+  madeAt?: number
+  /** How many times it has been made again. The post's key carries it, so
+   *  each go is its own post on the server. */
+  version?: number
+  /** The post key this go replaces, retired when the new one is sent. */
+  replaces?: string
+}
+
+/** How long a made video can still be edited and made again. */
+export const EDIT_WINDOW_MS = 2 * 60 * 60 * 1000
+
+/** The key a job's post goes under: the job's id for the first go,
+ *  `id~2`, `id~3` for each go after. */
+export function postKeyOf(id: string, version = 1): string {
+  return version > 1 ? `${id}~${version}` : id
+}
+
+/** The job a post key was made from. */
+export function jobOfPostKey(key: string): string {
+  return key.split('~')[0]
 }
 
 /** A video's own pick of the clips joined on before and after it. */
@@ -926,6 +950,37 @@ export async function recordDay(id: string, day: NonNullable<StoredJob['day']>, 
   await db.jobs.update(id, { ...fields, day }).catch(() => {})
 }
 
+/** Marks a job as made, keeping its recording and edits for the edit window. */
+export async function markMade(id: string): Promise<void> {
+  await db.jobs.update(id, { madeAt: Date.now(), attempts: 0, failed: undefined }).catch(() => {})
+}
+
+/** The made jobs still inside the edit window: id -> when made. */
+export async function editableJobs(now = Date.now()): Promise<Record<string, number>> {
+  const rows = await db.jobs.filter((j) => j.madeAt !== undefined && now - j.madeAt < EDIT_WINDOW_MS).toArray()
+  return Object.fromEntries(rows.map((j) => [j.id, j.madeAt as number]))
+}
+
+/** Lets go of made jobs past the window, recording and all. */
+export async function expireMade(now = Date.now()): Promise<number> {
+  const old = await db.jobs.filter((j) => j.madeAt !== undefined && now - j.madeAt >= EDIT_WINDOW_MS).primaryKeys()
+  for (const id of old) await forgetJob(id)
+  return old.length
+}
+
+/** Takes a made job back to be edited: it is a job to make again, its next
+ *  post a new version replacing the old. Null when it has expired. */
+export async function reopenJob(id: string, replaces: string): Promise<PendingJob | null> {
+  const row = await db.jobs.get(id)
+  const video = await db.videos.get(id)
+  if (!row?.madeAt || !row.day?.plan || !video || video.blob.size === 0) return null
+  if (Date.now() - row.madeAt >= EDIT_WINDOW_MS) return null
+  const day = { ...row.day, approved: false, checked: false }
+  await db.jobs.update(id, { madeAt: undefined, day, version: (row.version ?? 1) + 1, replaces, attempts: 0 })
+  const { addedAt: _added, ...meta } = (await db.jobs.get(id))!
+  return meta
+}
+
 export async function loadPendingJobs(): Promise<PendingJob[]> {
   const rows = await db.transaction('rw', db.jobs, db.videos, async () => {
     const rows = await db.jobs.orderBy('addedAt').toArray()
@@ -939,5 +994,5 @@ export async function loadPendingJobs(): Promise<PendingJob[]> {
     if (orphans.length > 0) await db.videos.bulkDelete(orphans)
     return rows
   })
-  return rows.map(({ addedAt: _added, ...meta }) => meta)
+  return rows.filter((row) => row.madeAt === undefined).map(({ addedAt: _added, ...meta }) => meta)
 }
