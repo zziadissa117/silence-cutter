@@ -37,6 +37,10 @@ const FUNCTION_URL = 'https://uykuoibqdxmpbbrsmyad.supabase.co/functions/v1/cutt
 export const PUBLISHABLE_KEY = 'sb_publishable_UhAfC6SJRmnDOR5Y10CmPg_DFepNyVA'
 
 const SESSION_KEY = 'cutter.session'
+/** Fired on window whenever the signed-in state changes, so the login gate
+ *  puts the sign-in page back the moment a session ends - whether he signed
+ *  out or the server stopped accepting the token. */
+export const SESSION_EVENT = 'cutter:session'
 const LAST_PULL = 'lastPull'
 
 export interface Session {
@@ -60,6 +64,7 @@ function keepSession(session: Session | null): void {
   } catch {
     // Storage blocked: signed in for this visit only.
   }
+  if (typeof window !== 'undefined') window.dispatchEvent(new Event(SESSION_EVENT))
 }
 
 export class CloudError extends Error {}
@@ -95,11 +100,12 @@ async function call<T>(action: string, body: Record<string, unknown>): Promise<T
   return json
 }
 
-/** Signs in, or - with `create` - makes the login first. The first sign-in
- *  on a phone also sends everything already on it, so nothing set up before
- *  signing in is left behind. */
-export async function signIn(name: string, password: string, create = false): Promise<Session> {
-  const { token, name: signedAs } = await call<{ token: string; name: string }>('login', { name, password, create })
+/** Signs in. Logins cannot be created from here: the server has the one login
+ *  and an admin backup, and says "Wrong login or password" to anything else.
+ *  The first sign-in on a phone also sends everything already on it, so
+ *  nothing set up before signing in is left behind. */
+export async function signIn(name: string, password: string): Promise<Session> {
+  const { token, name: signedAs } = await call<{ token: string; name: string }>('login', { name, password })
   const session = { name: signedAs, token }
   keepSession(session)
   await setMeta(LAST_PULL, null)

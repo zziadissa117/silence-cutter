@@ -6,11 +6,14 @@ import '../index.css'
 import '../modes.css'
 import './campaign.css'
 import { CampaignApp } from './CampaignApp'
+import { LoginGate } from './LoginGate'
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
     <CrashGuard>
-      <CampaignApp />
+      <LoginGate>
+        <CampaignApp />
+      </LoginGate>
     </CrashGuard>
   </StrictMode>,
 )

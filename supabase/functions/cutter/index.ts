@@ -11,8 +11,21 @@
 // cutter_* tables and the cutter-files bucket (which have no policies at
 // all). Deployed with verify_jwt off: the login is checked here instead.
 //
+// CLOSED: this backend does not create logins. There is the one that already
+// exists, plus one admin backup (below). `create` is ignored. Anyone else who
+// calls login gets the same answer a wrong password gets, so nothing says
+// which names exist.
+//
+// The admin backup is a second way into the SAME space - not a second space,
+// which would be empty and useless as a backup. Its name is `admin` and its
+// password is the project secret CUTTER_ADMIN_PASSWORD, set in the Supabase
+// dashboard: it is never stored in the database, never in this code, and with
+// no secret set there is no admin at all. It has its own failure counter
+// (cutter_config admin_failed / admin_locked_until), so locking the main login
+// out never locks the admin out too.
+//
 // Actions, all POST with a JSON body:
-//   login          { name, password, create? }  -> { token, name }
+//   login          { name, password }           -> { token, name }
 //   pull           { token, since? }            -> { items, until }
 //   push           { token, items }             -> { accepted }
 //   upload-urls    { token, files: [{ sha }] }  -> { uploads: [{ sha, url }] }
@@ -30,8 +43,11 @@ const SERVICE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
 const BUCKET = 'cutter-files'
 
 const MIN_PASSWORD = 6
-const MAX_FAILS = 10
-const LOCK_MINUTES = 15
+// Five wrong passwords lock that login for half an hour. It was ten and
+// fifteen minutes: with a short password and a guessable name, that was still
+// close to a thousand guesses a day.
+const MAX_FAILS = 5
+const LOCK_MINUTES = 30
 const ITERATIONS = 100_000
 
 const CORS = {
@@ -108,6 +124,52 @@ async function spaceFor(token: unknown): Promise<string | null> {
   }
 }
 
+/** The one answer for "that did not work", whatever the reason: no such
+ *  login, wrong password, or an admin name with the wrong password. */
+const WRONG = { error: 'Wrong login or password.' }
+
+async function configValues(keys: string[]): Promise<Record<string, string>> {
+  const { data } = await db.from('cutter_config').select('key, value').in('key', keys)
+  return Object.fromEntries((data ?? []).map((row: { key: string; value: string }) => [row.key, row.value]))
+}
+
+async function setConfig(key: string, value: string): Promise<void> {
+  await db.from('cutter_config').upsert({ key, value }, { onConflict: 'key' })
+}
+
+const ADMIN_NAME = 'admin'
+
+async function sha256Hex(text: string): Promise<string> {
+  return hex(await crypto.subtle.digest('SHA-256', encoder.encode(text)))
+}
+
+/** The admin backup: the same space, a different way in. Null for anything
+ *  that is not the admin name with the admin password. */
+async function adminLogin(name: string, password: string): Promise<{ id: string; pass_hash: string } | 'locked' | null> {
+  const secret = Deno.env.get('CUTTER_ADMIN_PASSWORD') ?? ''
+  // No secret set, or too short to be one: there is no admin.
+  if (secret.length < 12 || name !== ADMIN_NAME) return null
+
+  const c = await configValues(['admin_failed', 'admin_locked_until'])
+  if (c.admin_locked_until && new Date(c.admin_locked_until) > new Date()) return 'locked'
+
+  // Compared as hashes, so it does not matter where the two differ or how
+  // long they are.
+  if (!same(await sha256Hex(password), await sha256Hex(secret))) {
+    const failed = (Number(c.admin_failed) || 0) + 1
+    await setConfig('admin_failed', String(failed >= MAX_FAILS ? 0 : failed))
+    if (failed >= MAX_FAILS) {
+      await setConfig('admin_locked_until', new Date(Date.now() + LOCK_MINUTES * 60_000).toISOString())
+    }
+    return null
+  }
+
+  if ((Number(c.admin_failed) || 0) > 0) await setConfig('admin_failed', '0')
+  // Logins can no longer be created, so there is exactly one space: his.
+  const { data } = await db.from('cutter_spaces').select('id, pass_hash').order('created_at').limit(1).maybeSingle()
+  return data ?? null
+}
+
 async function login(body: Record<string, unknown>): Promise<Response> {
   const name = typeof body.name === 'string' ? body.name.trim().toLowerCase() : ''
   const password = typeof body.password === 'string' ? body.password : ''
@@ -119,36 +181,36 @@ async function login(body: Record<string, unknown>): Promise<Response> {
   const { data: space, error } = await db.from('cutter_spaces').select('*').eq('name', name).maybeSingle()
   if (error) return reply({ error: 'The server could not check the login. Try again.' }, 500)
 
-  if (!space) {
-    if (body.create !== true) return reply({ error: 'no-such-login' }, 404)
-    const salt = hex(crypto.getRandomValues(new Uint8Array(16)))
-    const pass_hash = await hashPassword(password, salt)
-    const { data: made, error: createError } = await db
-      .from('cutter_spaces')
-      .insert({ name, pass_salt: salt, pass_hash })
-      .select('id, pass_hash')
-      .single()
-    if (createError || !made) return reply({ error: 'That login could not be created. Try again.' }, 500)
-    return reply({ token: await makeToken(made.id, made.pass_hash), name })
+  if (space) {
+    if (space.locked_until && new Date(space.locked_until) > new Date()) {
+      return reply({ error: `Too many wrong passwords. Try again in ${LOCK_MINUTES} minutes.` }, 429)
+    }
+    const hash = await hashPassword(password, space.pass_salt)
+    if (!same(hash, space.pass_hash)) {
+      const failed = space.failed_count + 1
+      await db
+        .from('cutter_spaces')
+        .update({
+          failed_count: failed >= MAX_FAILS ? 0 : failed,
+          locked_until: failed >= MAX_FAILS ? new Date(Date.now() + LOCK_MINUTES * 60_000).toISOString() : null,
+        })
+        .eq('id', space.id)
+      return reply(WRONG, 401)
+    }
+    if (space.failed_count > 0) await db.from('cutter_spaces').update({ failed_count: 0 }).eq('id', space.id)
+    return reply({ token: await makeToken(space.id, space.pass_hash), name })
   }
 
-  if (space.locked_until && new Date(space.locked_until) > new Date()) {
+  const admin = await adminLogin(name, password)
+  if (admin === 'locked') {
     return reply({ error: `Too many wrong passwords. Try again in ${LOCK_MINUTES} minutes.` }, 429)
   }
-  const hash = await hashPassword(password, space.pass_salt)
-  if (!same(hash, space.pass_hash)) {
-    const failed = space.failed_count + 1
-    await db
-      .from('cutter_spaces')
-      .update({
-        failed_count: failed >= MAX_FAILS ? 0 : failed,
-        locked_until: failed >= MAX_FAILS ? new Date(Date.now() + LOCK_MINUTES * 60_000).toISOString() : null,
-      })
-      .eq('id', space.id)
-    return reply({ error: 'Wrong password for that login.' }, 401)
-  }
-  if (space.failed_count > 0) await db.from('cutter_spaces').update({ failed_count: 0 }).eq('id', space.id)
-  return reply({ token: await makeToken(space.id, space.pass_hash), name })
+  if (admin) return reply({ token: await makeToken(admin.id, admin.pass_hash), name })
+
+  // No such login. Spend the time a real check would have, so how long the
+  // answer takes does not say whether the name exists.
+  await hashPassword(password, 'no-such-login')
+  return reply(WRONG, 401)
 }
 
 async function pull(spaceId: string, body: Record<string, unknown>): Promise<Response> {

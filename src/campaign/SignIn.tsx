@@ -1,29 +1,28 @@
 // Signing in to the shared login - the same name and password on his phone
 // and his friend's. Once in, it stays in until he signs out.
+//
+// This is the first thing anyone sees: LoginGate shows it full screen, with no
+// way to cancel, until there is a session. There is no "create a login" step -
+// the server does not make them, so a name that does not exist gets the same
+// "Wrong login or password" as a wrong password, and nothing here says which.
 
 import { useState } from 'react'
 
 import { CloudError, signIn, type Session } from './cloud'
 
-export function SignIn({ onSignedIn, onCancel }: { onSignedIn: (session: Session) => void; onCancel: () => void }) {
+export function SignIn({ onSignedIn, onCancel }: { onSignedIn: (session: Session) => void; onCancel?: () => void }) {
   const [name, setName] = useState('')
   const [password, setPassword] = useState('')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const [offerCreate, setOfferCreate] = useState(false)
 
-  const go = async (create: boolean) => {
+  const go = async () => {
     setBusy(true)
     setError(null)
     try {
-      onSignedIn(await signIn(name, password, create))
+      onSignedIn(await signIn(name, password))
     } catch (err) {
-      const message = err instanceof CloudError ? err.message : String(err)
-      if (message === 'no-such-login') {
-        setOfferCreate(true)
-      } else {
-        setError(message)
-      }
+      setError(err instanceof CloudError ? err.message : String(err))
     } finally {
       setBusy(false)
     }
@@ -34,20 +33,22 @@ export function SignIn({ onSignedIn, onCancel }: { onSignedIn: (session: Session
   return (
     <section className="editor">
       <div className="editor-head">
-        <h2>Shared login</h2>
-        <button type="button" className="linkbtn" onClick={onCancel}>
-          Cancel
-        </button>
+        <h2>Sign in</h2>
+        {onCancel ? (
+          <button type="button" className="linkbtn" onClick={onCancel}>
+            Cancel
+          </button>
+        ) : null}
       </div>
       <div className="hint">
-        The same login on your phone and your friend's, so your campaigns, angles and picture bank are the same on both
-        - and backed up. Videos stay on the phone unless you set up posting. You stay signed in until you sign out.
+        Private. Your campaigns, angles and picture bank are kept on this login and backed up. You stay signed in until
+        you sign out.
       </div>
       <form
         className="editor"
         onSubmit={(e) => {
           e.preventDefault()
-          if (ready) void go(false)
+          if (ready && !busy) void go()
         }}
       >
         <label className="field">
@@ -58,10 +59,7 @@ export function SignIn({ onSignedIn, onCancel }: { onSignedIn: (session: Session
             autoCapitalize="off"
             autoCorrect="off"
             autoComplete="username"
-            onChange={(e) => {
-              setName(e.target.value)
-              setOfferCreate(false)
-            }}
+            onChange={(e) => setName(e.target.value)}
           />
         </label>
         <label className="field">
@@ -70,33 +68,15 @@ export function SignIn({ onSignedIn, onCancel }: { onSignedIn: (session: Session
             type="password"
             value={password}
             autoComplete="current-password"
-            onChange={(e) => {
-              setPassword(e.target.value)
-              setOfferCreate(false)
-            }}
+            onChange={(e) => setPassword(e.target.value)}
           />
-          <span className="hint">At least 6 characters.</span>
         </label>
-        {offerCreate ? (
-          <div className="notice">
-            <span>
-              There's no login called "{name.trim().toLowerCase()}" yet. Create it with this password? Your friend then
-              signs in with the same two.
-            </span>
-          </div>
-        ) : null}
         {error ? <div className="error">{error}</div> : null}
         <div className="editor-foot">
           <span />
-          {offerCreate ? (
-            <button type="button" className="btn primary" disabled={busy || !ready} onClick={() => void go(true)}>
-              {busy ? 'Creating…' : 'Create it'}
-            </button>
-          ) : (
-            <button type="submit" className="btn primary" disabled={busy || !ready}>
-              {busy ? 'Signing in…' : 'Sign in'}
-            </button>
-          )}
+          <button type="submit" className="btn primary" disabled={busy || !ready}>
+            {busy ? 'Signing in…' : 'Sign in'}
+          </button>
         </div>
       </form>
     </section>
