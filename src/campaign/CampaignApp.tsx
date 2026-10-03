@@ -1245,11 +1245,16 @@ export function CampaignApp() {
         sendToPostiz(next, jobCampaign, result)
         // A talking video keeps its recording and edits for a couple of hours,
         // so a caption, a cut or the music can be fixed and it made again.
-        const keepTalking = plan && !next.reaction && !next.montage && !next.batch && !next.prejoin && !next.day?.parts
+        const keepTalking = (plan ?? result.plan) && !next.reaction && !next.montage && !next.batch && !next.prejoin && !next.day?.parts
         // A batch video's footage is the bank's, kept while a job row names it,
         // so keeping the (small) row keeps the footage for the edit window.
         const keepBatch = Boolean(next.batch && next.montage?.bank)
         if (keepTalking || keepBatch) {
+          // Heard inside the making: keep what was heard so it can be edited again.
+          if (!plan && result.plan) {
+            const day = { plan: result.plan, approved: true, chosen: true }
+            await recordDay(next.id, day)
+          }
           await markMade(next.id)
           void refreshEditable()
         } else await forgetJob(next.id)
@@ -2498,6 +2503,9 @@ export function CampaignApp() {
         missing={reviewFile?.id === cutsJob.id && reviewFile.missing}
         duration={cutsJob.day!.plan!.duration}
         initial={planFor(cutsJob)!.keep}
+        checks={cutsJob.day!.plan!.checks}
+        peaks={cutsJob.day!.plan!.peaks}
+        noiseNote={cutsJob.day!.plan!.noiseNote}
         words={captionWords(cutsJob.day!.plan!.spoken ?? cutsJob.day!.plan!.words, [{ start: 0, end: cutsJob.day!.plan!.duration }])}
         onDone={(keep) => {
           keepCuts(cutsJob.id, keep)

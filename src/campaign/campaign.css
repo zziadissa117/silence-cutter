@@ -351,14 +351,17 @@ main.tabbed { padding-bottom: calc(env(safe-area-inset-bottom) + 96px); }
 .cuts-strip::-webkit-scrollbar { display: none; }
 .cuts-track { box-sizing: content-box; width: max-content; padding: 0 50%; }
 .cuts-ruler {
-  position: relative; height: 138px;
-  background: repeating-linear-gradient(135deg, var(--ink) 0 6px, var(--rule) 6px 7px);
+  position: relative; height: 166px;
+  /* Cut-out time is red-striped, so it reads at a glance against the kept parts. */
+  background: repeating-linear-gradient(135deg, rgb(242 86 76 / 0.26) 0 6px, rgb(242 86 76 / 0.1) 6px 12px);
 }
 .cuts-part {
-  position: absolute; top: 26px; height: 48px; box-sizing: border-box;
-  border: 1px solid var(--edge); border-radius: 8px; background: var(--surface);
+  position: absolute; top: 22px; height: 64px; box-sizing: border-box;
+  border: 2px solid var(--ok); border-radius: 8px; background: rgb(47 212 114 / 0.22);
 }
-.cuts-part.on { border-color: var(--now); border-width: 2px; }
+.cuts-part.on { border-color: var(--now); background: rgb(47 212 114 / 0.34); }
+.cuts-wave { position: absolute; pointer-events: none; }
+.cuts-wave path { fill: rgb(255 255 255 / 0.8); }
 .cuts-handle {
   position: absolute; top: -6px; bottom: -6px; width: 22px;
   touch-action: none; cursor: ew-resize;
@@ -369,6 +372,15 @@ main.tabbed { padding-bottom: calc(env(safe-area-inset-bottom) + 96px); }
 }
 .cuts-handle.start { left: -12px; }
 .cuts-handle.end { right: -12px; }
+/* A sound worth checking: amber, with a ? when it could have been a word. */
+.cuts-flag {
+  position: absolute; box-sizing: border-box; padding: 0; border-radius: 8px;
+  border: 2px solid var(--warn); color: var(--warn); font: inherit; font-weight: 800; font-size: 15px;
+  background: repeating-linear-gradient(135deg, rgb(240 168 60 / 0.4) 0 5px, rgb(240 168 60 / 0.14) 5px 10px);
+  display: flex; align-items: center; justify-content: center; cursor: pointer;
+}
+.cuts-flag.back { border-style: dashed; background: rgb(240 168 60 / 0.12); }
+.cuts-flag.on { border-color: var(--now); color: var(--now); }
 .cuts-word {
   position: absolute; top: 62px; white-space: nowrap; pointer-events: none;
   color: var(--text); font-size: 13px; line-height: 1;
@@ -535,3 +547,17 @@ main.tabbed { padding-bottom: calc(env(safe-area-inset-bottom) + 96px); }
 input.bank-name { background: transparent; border: 0; border-bottom: 1px solid currentColor; color: inherit; font: inherit; font-weight: 600; padding: 0; }
 
 .caption-position { margin-top: 8px; }
+
+.cuts-legend { display: flex; gap: 16px; justify-content: center; font-size: 13px; color: var(--dim); }
+.cuts-legend .swatch { display: inline-block; width: 14px; height: 14px; border-radius: 4px; vertical-align: -2px; margin-right: 4px; border: 2px solid transparent; box-sizing: border-box; }
+.cuts-legend .swatch.kept { border-color: var(--ok); background: rgb(47 212 114 / 0.3); }
+.cuts-legend .swatch.gone { background: repeating-linear-gradient(135deg, rgb(242 86 76 / 0.5) 0 3px, rgb(242 86 76 / 0.15) 3px 6px); }
+.cuts-legend .swatch.check { border-color: var(--warn); background: rgb(240 168 60 / 0.4); }
+.cuts-checks { display: flex; flex-direction: column; gap: 8px; }
+.cuts-check { display: flex; align-items: center; gap: 8px; padding: 10px; border: 1px solid var(--edge); border-radius: 10px; background: var(--surface); }
+.cuts-check.on { border-color: var(--now); }
+.cuts-check.maybe-word { border-color: var(--warn); }
+.cuts-check-main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; text-align: left; background: none; border: 0; padding: 0; color: inherit; font: inherit; }
+.cuts-check-title { font-weight: 600; }
+.cuts-noises { margin-top: 4px; display: flex; flex-direction: column; gap: 8px; }
+.cuts-noises .cuts-check { margin-top: 8px; }

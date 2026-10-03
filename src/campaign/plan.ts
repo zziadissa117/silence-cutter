@@ -33,6 +33,7 @@ import { report } from '../report'
 import type { TimedWord } from './align'
 import type { AlignMessage, AlignRequest } from './align.worker'
 import { ALIGNED_LATE_SEC, snapToOnsets, spokenWords } from './captions'
+import { LONG_SEC, TINY_SEC, cutNoise, loneSounds, peakDbIn, peaksOf, protectWords, type CutCheck } from './noiseCuts'
 import type { TranscribeMessage, TranscribeRequest } from './transcribe.worker'
 
 const UNREADABLE_FORMAT =
@@ -190,6 +191,14 @@ export interface CampaignPlan {
   aligned?: boolean
   /** Whether "um"s and stumbles were cut too. */
   cleanSpeech: boolean
+  /** Sounds with no speech in them that were cut or are worth a listen - see
+   *  noiseCuts.ts. Absent when noise cutting was off. */
+  checks?: CutCheck[]
+  /** Said when noise cutting stopped itself. */
+  noiseNote?: string
+  /** The sound's loudness over the recording, 10 bars a second from 0 to 1,
+   *  for drawing it under the cuts timeline. */
+  peaks?: number[]
 }
 
 /** A clip kept as it is, with nothing heard in it. */
@@ -214,6 +223,8 @@ export async function planCampaignCut(
     /** Keep every moment: nothing is cut, however long the pauses. Words are
      *  still heard when asked for (captions, the logo). */
     keepWhole?: boolean
+    /** Cut the sounds with no speech in them, never a word (noiseCuts.ts). */
+    cutNoise?: boolean
     onAnalyseProgress?: (fraction: number) => void
     onModelDownload?: (fraction: number) => void
     onTranscribeProgress?: (fraction: number) => void
@@ -251,12 +262,18 @@ export async function planCampaignCut(
   let words: WordChunk[] = []
   let spoken: WordChunk[] | undefined
   let aligned = false
+  let forRecheck: Float32Array | null = null
+  let audibleSec = duration
   if (wantWords && mono16k) {
     const audible = Math.min(duration, mono16k.length / WHISPER_SAMPLE_RATE)
+    audibleSec = audible
     const windows = speechWindows(silences, audible)
     // The speech model's worker takes the samples; the letter model needs
     // them after it.
     const forAligning = options.align ? mono16k.slice() : null
+    // The model's second listen at the stretches that might be noise needs
+    // the samples too, after the first listen has taken them.
+    forRecheck = options.cutNoise && !options.keepWhole ? mono16k.slice() : null
     const share = forAligning ? 0.85 : 1
     const heard = await transcribe(mono16k, windows, options.prompt, {
       onModelDownload: options.onModelDownload,
@@ -294,6 +311,7 @@ export async function planCampaignCut(
     }
   }
 
+  const peaks = peaksOf(levels, duration)
   if (options.keepWhole) {
     return {
       keep: [{ start: 0, end: duration }],
@@ -304,12 +322,58 @@ export async function planCampaignCut(
       fillerWords: 0,
       stutters: 0,
       cleanSpeech: options.cleanSpeech,
+      peaks,
     }
   }
   const toCut = mergeRanges([...silences, ...fillerWords, ...stutters])
-  const keep = keepRanges(toCut, duration, settings.paddingSec)
-  if (keep.length === 0 && options.quietIsFine) return { ...keptWhole(duration, options.cleanSpeech), words }
+  let keep = keepRanges(toCut, duration, settings.paddingSec)
+  if (keep.length === 0 && options.quietIsFine) return { ...keptWhole(duration, options.cleanSpeech), words, peaks }
   if (keep.length === 0) throw new SilenceCutError('The whole video looks silent. Try recording somewhere quieter.')
+
+  // Sounds with no speech in them (noiseCuts.ts): a heard word is never cut,
+  // each stretch that might be noise is listened to a second time before it
+  // goes, and whatever is cut that could have been a word is written down.
+  let checks: CutCheck[] | undefined
+  let noiseNote: string | undefined
+  if (options.cutNoise && forRecheck && words.length > 0) {
+    const wordList = [...words, ...(spoken ?? [])]
+    const meant = mergeRanges([...fillerWords, ...stutters])
+    keep = protectWords(keep, wordList, meant, duration).keep
+    const lone = loneSounds(keep, wordList, (range) => peakDbIn(levels, range))
+    const heardAgain = new Set<number>()
+    const worth = lone.flatMap((c, i) => {
+      const length = c.range.end - c.range.start
+      return length >= TINY_SEC && length <= LONG_SEC ? [{ c, i }] : []
+    })
+    if (worth.length > 0) {
+      try {
+        const again = await transcribe(
+          forRecheck,
+          worth.map(({ c }) => ({ start: Math.max(0, c.range.start - 0.25), end: Math.min(audibleSec, c.range.end + 0.25) })),
+          options.prompt,
+          { onModelDownload: options.onModelDownload },
+        )
+        for (const { c, i } of worth) {
+          const found = again.filter((w) => w.start < c.range.end + 0.1 && w.end > c.range.start - 0.1)
+          if (found.length > 0) {
+            heardAgain.add(i)
+            // Speech the first listen missed: it is words for the captions too.
+            words = [...words, ...found].sort((a, b) => a.start - b.start)
+            if (spoken) spoken = [...spoken, ...found].sort((a, b) => a.start - b.start)
+          }
+        }
+      } catch (error) {
+        // The second listen failing means nothing is known about these
+        // stretches, so none is cut.
+        for (const { i } of worth) heardAgain.add(i)
+        report({ page: 'campaign', kind: 'fallback', phase: 'noise', message: error instanceof Error ? error.message : String(error) })
+      }
+    }
+    const result = cutNoise(keep, lone, heardAgain)
+    keep = result.keep
+    checks = result.checks
+    noiseNote = result.note
+  }
   return {
     keep,
     duration,
@@ -319,6 +383,9 @@ export async function planCampaignCut(
     fillerWords: fillerWords.length,
     stutters: stutters.length,
     cleanSpeech: options.cleanSpeech,
+    peaks,
+    ...(checks ? { checks } : {}),
+    ...(noiseNote ? { noiseNote } : {}),
   }
 }
 
@@ -339,6 +406,7 @@ export function joinPlans(plans: CampaignPlan[], offsets: number[], duration: nu
     words: plans.flatMap((p, i) => moved(p.words, offsets[i])),
     ...(everySpoken ? { spoken: plans.flatMap((p, i) => moved(p.spoken!, offsets[i])) } : {}),
     ...(plans.every((p) => p.aligned) ? { aligned: true } : {}),
+    ...(plans.some((p) => p.checks) ? { checks: plans.flatMap((p, i) => moved(p.checks ?? [], offsets[i])) } : {}),
     cleanSpeech: plans[0]?.cleanSpeech ?? false,
   }
 }

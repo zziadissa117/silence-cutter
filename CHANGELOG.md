@@ -3,6 +3,27 @@
 Newest first. Every change says what it does, how to use it, and how it works
 underneath. Kept up to date with each commit.
 
+## Cut noises, never words (with a checker) + a brighter cuts editor
+**What:** The cutter now also cuts sounds with no speech in them (cough, bump, room
+noise), and tells you about anything it cut that could have been a word.
+**Safety, in order:** (1) any word the speech model heard is brought back whole with a
+little room either side, so a heard word is never cut (except the "um"s and stumbles you
+chose to cut). (2) A sound with no word in it is listened to a second time on its own; if
+a word turns up, it stays and the word joins the captions. (3) Whatever is still cut that
+could have been a word is listed with its exact time, length and loudness. A long sound
+with no words (over 2.5 s) is never cut, only pointed out. If almost everything looks
+like noise, nothing is cut and it says so. If the second listen fails, nothing is cut.
+**Use it:** Settings, Noises (on by default; every video is listened to, so it takes a
+little longer). On a video row: "N sounds to check" and a "Check cuts" button. In the cuts
+editor, "Check these" lists each sound with Listen / Put it back / Cut it; short clicks are
+under "Short noises cut". Each is also marked on the timeline with an amber ? box.
+**Cuts editor:** kept parts are green, cut-out time is red-striped, the sound's waveform
+is drawn across, amber marks flag what to check, and there is a legend. Bigger parts.
+**How:** `noiseCuts.ts` (pure, tested), `plan.ts`, `CutsEditor.tsx`. Videos made with
+captions off also keep what was heard, so Edit again works for them.
+**Limit:** "Never cuts a word" means a word the model heard; a word it missed twice and
+that sits alone with silence on both sides can still be cut - that is what the list is for.
+
 ## Fix: "Cannot access 'nr' before initialization" crash
 The Videos list crashed the whole page when it had a video row. Cause: the per-video
 pictures list (added with "leave one picture out") was called while the page was being

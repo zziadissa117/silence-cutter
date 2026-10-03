@@ -261,6 +261,7 @@ export function JobRow({
                 {result.picturesAt.length > 0 ? ` · picture at ${result.picturesAt.map(formatTime).join(', ')}` : ''}
                 {result.headline ? ` · "${result.headline}"` : ''}
                 {result.music ? ` · music: ${result.music}` : ''}
+                {result.soundsToCheck ? ` · ${result.soundsToCheck} cut sound${result.soundsToCheck === 1 ? '' : 's'} could be quiet words - Edit again to check` : ''}
                 {result.clips?.beforeSec ? ` · ${formatTime(result.clips.beforeSec)} video before` : ''}
                 {result.clips?.afterSec ? ` · ${formatTime(result.clips.afterSec)} video after` : ''}
               </div>
@@ -376,6 +377,8 @@ function SortedDetails({
   const plan = job.day?.plan
   const kept = job.day?.keep ?? plan?.keep ?? []
   const heard = (job.day?.plan?.words ?? []).map((w) => w.text.trim()).join(' ')
+  // Sounds the cutter took out that could have been quiet words, or left that are long and wordless.
+  const toCheck = (plan?.checks ?? []).filter((c) => c.kind !== 'noise').length
   const angle = campaigns.find((c) => c.id === job.campaignId)?.angles.find((a) => a.id === job.angleId)
   return (
     <>
@@ -473,9 +476,10 @@ function SortedDetails({
             {job.reaction ? 'Product clip: ' : ''}
             {plan ? `${formatTime(plan.duration)} → ${formatTime(totalDuration(kept))}` : ''}
             {job.day?.keep ? ' · cuts fixed by hand' : ''}
+            {toCheck > 0 ? ` · ${toCheck} sound${toCheck === 1 ? '' : 's'} to check` : ''}
           </span>
-          <button type="button" className="btn small" onClick={onCuts}>
-            Edit cuts
+          <button type="button" className={`btn small${toCheck > 0 ? ' primary' : ''}`} onClick={onCuts}>
+            {toCheck > 0 ? 'Check cuts' : 'Edit cuts'}
           </button>
         </div>
       ) : job.reaction ? (

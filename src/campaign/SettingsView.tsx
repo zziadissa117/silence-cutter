@@ -9,6 +9,7 @@ import type { LocalPosting, Profile } from './posting'
 import { CAPTION_POSITIONS, defaultCaptionPosition, setDefaultCaptionPosition, type CaptionPosition } from './captions'
 import { PRESET_EFFECTS, defaultEffects, presetOf, setDefaultEffects, type DefaultPreset } from './defaultEffects'
 import type { AngleEffects, EffectLevel } from './effects'
+import { cutNoiseOn, setCutNoise } from './noiseSetting'
 import { LANDSCAPE_MODES, landscapeMode, setLandscapeMode, type LandscapeMode } from './framing916'
 import { PostingLimits } from './PostingLimits'
 import type { PushState } from './push'
@@ -94,6 +95,32 @@ function DefaultEffectsSetting() {
       <label className="toggle">
         <input type="checkbox" checked={effects.logoPop} onChange={(e) => change({ ...effects, logoPop: e.target.checked })} />
         <span className="label">Logo and pictures spring in</span>
+      </label>
+    </>
+  )
+}
+
+function NoiseCutting() {
+  const [on, setOn] = useState(cutNoiseOn)
+  return (
+    <>
+      <div className="list-title">Noises</div>
+      <label className="toggle">
+        <input
+          type="checkbox"
+          checked={on}
+          onChange={(e) => {
+            setCutNoise(e.target.checked)
+            setOn(e.target.checked)
+          }}
+        />
+        <span>
+          <span className="label">Cut sounds that aren't speech</span>
+          <span className="hint" style={{ display: 'block' }}>
+            Coughs, bumps and room noise go. It never cuts a word it heard, listens a second time to anything it is unsure
+            about, and lists what it cut so you can listen and put it back. Takes a little longer: every video is listened to.
+          </span>
+        </span>
       </label>
     </>
   )
@@ -286,6 +313,8 @@ export function SettingsView({
           ) : null}
         </div>
       )}
+
+      <NoiseCutting />
 
       <div className="list-title">Pacing</div>
       <div className="seg full" role="radiogroup" aria-label="Pacing">

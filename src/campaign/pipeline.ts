@@ -26,6 +26,7 @@ import {
   type BankPicture,
   type Campaign,
 } from './look'
+import { cutNoiseOn } from './noiseSetting'
 import { captionWords, type CaptionPosition, type CaptionWord } from './captions'
 import type { ClipPlace, JoinedClips } from './clips'
 import { planCampaignCut, type CampaignPlan } from './plan'
@@ -41,6 +42,12 @@ export interface CampaignResult {
   originalDurationSec: number
   newDurationSec: number
   cuts: number
+  /** Sounds with no speech that were cut and could have been quiet words: worth
+   *  a listen (Edit again, Cuts). */
+  soundsToCheck?: number
+  /** What was heard and cut, when the video was heard inside makeCampaignVideo
+   *  - kept so it can be edited again. */
+  plan?: CampaignPlan
   fillerWords?: number
   stutters?: number
   /** When the logo came up in the finished video. */
@@ -99,7 +106,8 @@ export async function listen(
     align = false,
     quietIsFine = false,
     keepWhole = false,
-  }: { cleanSpeech: boolean; hear: boolean; names: string[]; align?: boolean; quietIsFine?: boolean; keepWhole?: boolean },
+    cutNoise = cutNoiseOn(),
+  }: { cleanSpeech: boolean; hear: boolean; names: string[]; align?: boolean; quietIsFine?: boolean; keepWhole?: boolean; cutNoise?: boolean },
   callbacks: CampaignCallbacks = {},
 ): Promise<CampaignPlan> {
   if (hear && !isFillerWordDetectionSupported()) {
@@ -107,13 +115,17 @@ export async function listen(
       "This browser can't run the speech model, so it can't hear what is said. Try Safari or Chrome.",
     )
   }
+  // Cutting noise needs the words, so it listens even when nothing else
+  // wanted them - where this browser can run the speech model at all.
+  const wantNoise = cutNoise && !quietIsFine && !keepWhole && isFillerWordDetectionSupported()
   return planCampaignCut(file, settings, {
     cleanSpeech,
-    listen: hear,
+    listen: hear || wantNoise,
     prompt: listeningPrompt(names),
     align,
     quietIsFine,
     keepWhole,
+    cutNoise: wantNoise,
     onAnalyseProgress: callbacks.onAnalyseProgress,
     onModelDownload: callbacks.onModelDownload,
     onTranscribeProgress: callbacks.onTranscribeProgress,
@@ -224,6 +236,7 @@ export async function make(
     originalDurationSec: plan.duration,
     newDurationSec: totalDuration(plan.keep) + joined.beforeSec + joined.afterSec,
     cuts: plan.silences,
+    ...(plan.checks?.some((c) => c.cut && c.kind === 'maybe-word') ? { soundsToCheck: plan.checks.filter((c) => c.cut && c.kind === 'maybe-word').length } : {}),
     ...(plan.cleanSpeech ? { fillerWords: plan.fillerWords, stutters: plan.stutters } : {}),
     ...(joined.beforeSec || joined.afterSec || joined.leftOut.length ? { clips: joined } : {}),
     ...(track ? { music: track.name } : {}),
@@ -276,7 +289,8 @@ export async function makeCampaignVideo(
     },
     callbacks,
   )
-  return make(file, plan, campaign, angle, bank, headlineFor(angle, plan, headlineText), seed, callbacks.onRenderProgress, gentle, [], voice, undefined, clips, defaults, [], 'usual', noCut)
+  const made = await make(file, plan, campaign, angle, bank, headlineFor(angle, plan, headlineText), seed, callbacks.onRenderProgress, gentle, [], voice, undefined, clips, defaults, [], 'usual', noCut)
+  return { ...made, plan }
 }
 
 /** A reaction video: the reaction clip whole with the headline over it,

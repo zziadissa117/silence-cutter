@@ -31,6 +31,7 @@ import {
 } from 'react'
 
 import { totalDuration, type Range } from '../media/silenceMath'
+import { cutOut, putBack, type CutCheck } from './noiseCuts'
 import type { CaptionWord } from './captions'
 import {
   formatPrecise,
@@ -59,8 +60,11 @@ const WORD_LINES = 3
 const LETTER_PX = 7.5
 /** How near a word's edge a trim has to come to land on it: a fingertip. */
 const SNAP_PX = 10
-/** Where the parts start below the time marks. */
-const MARKS_PX = 18
+/** Where the parts start below the time marks, how tall they are, and where
+ *  the words start under them. */
+const PART_TOP = 22
+const PART_H = 64
+const WORD_TOP = PART_TOP + PART_H + 8
 
 const clampPx = (px: number) => Math.min(MAX_PX, Math.max(MIN_PX, px))
 
@@ -84,6 +88,11 @@ const Track = memo(function Track({
   px,
   selected,
   words,
+  checks,
+  peaks,
+  duration,
+  focus,
+  onFlag,
   onSelect,
   onHandleDown,
 }: {
@@ -91,12 +100,33 @@ const Track = memo(function Track({
   px: number
   selected: number | null
   words: CaptionWord[]
+  checks: CutCheck[]
+  peaks: number[] | undefined
+  duration: number
+  focus: number | null
+  onFlag: (i: number) => void
   onSelect: (i: number | null) => void
   onHandleDown: (i: number, edge: 'start' | 'end', down: ReactPointerEvent<HTMLSpanElement>) => void
 }) {
   const lines = useMemo(() => wordLines(words, px), [words, px])
+  const wave = useMemo(() => {
+    if (!peaks || peaks.length === 0) return null
+    // One bar per tenth of a second, mirrored about the middle, as a single path.
+    return peaks.map((v, i) => `M${i} ${50 - v * 48}h1v${Math.max(2, v * 96)}h-1z`).join('')
+  }, [peaks])
   return (
     <>
+      {wave ? (
+        <svg
+          className="cuts-wave"
+          aria-hidden
+          style={{ left: 0, top: PART_TOP, width: duration * px, height: PART_H }}
+          viewBox={`0 0 ${peaks!.length} 100`}
+          preserveAspectRatio="none"
+        >
+          <path d={wave} />
+        </svg>
+      ) : null}
       {keep.map((part, i) => (
         <div
           // By place, not by times: a part being trimmed keeps its element, and
@@ -117,11 +147,29 @@ const Track = memo(function Track({
           ) : null}
         </div>
       ))}
+      {checks.map((c, i) => {
+        const isCut = partAt(keep, (c.start + c.end) / 2) < 0
+        return (
+          <button
+            key={`flag-${i}`}
+            type="button"
+            aria-label={`Check at ${formatPrecise(c.start)}`}
+            className={`cuts-flag ${c.kind}${isCut ? ' cut' : ' back'}${focus === i ? ' on' : ''}`}
+            style={{ left: c.start * px, width: Math.max(14, (c.end - c.start) * px), top: PART_TOP - 8, height: PART_H + 16 }}
+            onClick={(e) => {
+              e.stopPropagation()
+              onFlag(i)
+            }}
+          >
+            {c.kind === 'noise' ? '' : '?'}
+          </button>
+        )
+      })}
       {words.map((w, i) => (
         <span
           key={`${w.start}-${i}`}
           className={`cuts-word${partAt(keep, w.start + 0.05) < 0 ? ' gone' : ''}`}
-          style={{ left: w.start * px, top: MARKS_PX + 62 + lines[i] * 18 }}
+          style={{ left: w.start * px, top: WORD_TOP + lines[i] * 18 }}
         >
           {w.text}
         </span>
@@ -148,6 +196,57 @@ const Marks = memo(function Marks({ px, from, to }: { px: number; from: number; 
   )
 })
 
+const KIND_TEXT: Record<CutCheck['kind'], string> = {
+  noise: 'Short noise',
+  'maybe-word': 'Might be a quiet word',
+  'long-sound': 'Long sound, no words heard',
+}
+
+/** One sound to check: what it is, where, how long and loud, and what to do. */
+function CheckRow({
+  check,
+  isCut,
+  focused,
+  onGo,
+  onListen,
+  onPutBack,
+  onCutIt,
+}: {
+  check: CutCheck
+  isCut: boolean
+  focused: boolean
+  onGo: () => void
+  onListen: () => void
+  onPutBack: () => void
+  onCutIt: () => void
+}) {
+  const length = (check.end - check.start).toFixed(1)
+  return (
+    <div className={`cuts-check ${check.kind}${focused ? ' on' : ''}`}>
+      <button type="button" className="cuts-check-main" onClick={onGo}>
+        <span className="cuts-check-title">
+          {KIND_TEXT[check.kind]} · {isCut ? 'cut' : 'in the video'}
+        </span>
+        <span className="hint">
+          at {formatPrecise(check.start)} · {length}s{check.peakDb !== undefined ? ` · ${check.peakDb} dB` : ''}
+        </span>
+      </button>
+      <button type="button" className="btn small" onClick={onListen}>
+        Listen
+      </button>
+      {isCut ? (
+        <button type="button" className="btn small primary" onClick={onPutBack}>
+          Put it back
+        </button>
+      ) : (
+        <button type="button" className="btn small" onClick={onCutIt}>
+          Cut it
+        </button>
+      )}
+    </div>
+  )
+}
+
 export function CutsEditor({
   name,
   file,
@@ -155,6 +254,9 @@ export function CutsEditor({
   duration,
   initial,
   words,
+  checks = [],
+  peaks,
+  noiseNote,
   onDone,
   onCancel,
 }: {
@@ -167,6 +269,11 @@ export function CutsEditor({
   initial: Range[]
   /** What he says, for finding the bad bit and for the edges to snap to. */
   words: CaptionWord[]
+  /** Sounds that were cut (or left) that are worth a listen - see noiseCuts.ts. */
+  checks?: CutCheck[]
+  /** The sound's loudness over the recording, for drawing under the timeline. */
+  peaks?: number[]
+  noiseNote?: string
   onDone: (keep: Range[]) => void
   onCancel: () => void
 }) {
@@ -179,6 +286,7 @@ export function CutsEditor({
   const [aspect, setAspect] = useState(9 / 16)
   const [url, setUrl] = useState<string | null>(null)
   const [viewWidth, setViewWidth] = useState(400)
+  const [focus, setFocus] = useState<number | null>(null)
   const video = useRef<HTMLVideoElement>(null)
   const strip = useRef<HTMLDivElement>(null)
   const ruler = useRef<HTMLDivElement>(null)
@@ -285,6 +393,45 @@ export function CutsEditor({
     const to = Math.min(duration, Math.max(0, s.scrollLeft / pxRef.current))
     followTime(to)
     seek(to)
+  }
+
+  /** Plays just this stretch, with sound, a moment either side - the way to
+   *  hear whether a cut sound was a word. */
+  const listenTo = (range: Range) => {
+    const v = video.current
+    if (!v) return
+    stop()
+    seeking.current.want = null
+    const from = Math.max(0, range.start - 0.4)
+    const until = range.end + 0.4
+    v.currentTime = from
+    v.muted = false
+    playingRef.current = true
+    setPlaying(true)
+    void v.play().catch(() => stop())
+    const tick = () => {
+      const now = v.currentTime
+      scrollTo(now)
+      followTime(now)
+      if (now >= until || v.paused || v.ended) {
+        v.pause()
+        stop()
+        return
+      }
+      frame.current = requestAnimationFrame(tick)
+    }
+    frame.current = requestAnimationFrame(tick)
+  }
+
+  /** Takes the timeline to a check, so the playhead sits on it. */
+  const goTo = (i: number) => {
+    const c = checks[i]
+    if (!c) return
+    stop()
+    setFocus(i)
+    scrollTo(c.start)
+    followTime(c.start)
+    seek(c.start)
   }
 
   const change = (next: Range[]) => {
@@ -483,7 +630,19 @@ export function CutsEditor({
           <div className="cuts-track">
             <div className="cuts-ruler" ref={ruler} style={{ width: duration * px }} onClick={() => setSelected(null)}>
               <Marks px={px} from={marksFrom} to={marksTo} />
-              <Track keep={keep} px={px} selected={selected} words={words} onSelect={setSelected} onHandleDown={onHandleDown} />
+              <Track
+                keep={keep}
+                px={px}
+                selected={selected}
+                words={words}
+                checks={checks}
+                peaks={peaks}
+                duration={duration}
+                focus={focus}
+                onFlag={goTo}
+                onSelect={setSelected}
+                onHandleDown={onHandleDown}
+              />
             </div>
           </div>
         </div>
@@ -521,7 +680,57 @@ export function CutsEditor({
           Undo
         </button>
       </div>
+      <div className="cuts-legend" aria-hidden>
+        <span><i className="swatch kept" /> kept</span>
+        <span><i className="swatch gone" /> cut out</span>
+        {checks.length > 0 ? <span><i className="swatch check" /> check this</span> : null}
+      </div>
       <p className="hint cuts-hint">Scroll to move through the video. Tap a part, then drag its edges to trim it.</p>
+
+      {noiseNote ? <p className="hint warn-text">{noiseNote}</p> : null}
+      {checks.length > 0 ? (
+        <div className="cuts-checks">
+          <div className="group-title">
+            Check these <span className="bank-count">{checks.filter((c) => c.kind !== 'noise').length}</span>
+          </div>
+          <p className="hint">
+            Sounds with no words in them that the cutter took out, or left in. Tap one to go there, listen, and put it back if it was you talking.
+          </p>
+          {checks.map((c, i) => ({ c, i }))
+            .filter(({ c }) => c.kind !== 'noise')
+            .map(({ c, i }) => (
+              <CheckRow
+                key={i}
+                check={c}
+                isCut={partAt(keep, (c.start + c.end) / 2) < 0}
+                focused={focus === i}
+                onGo={() => goTo(i)}
+                onListen={() => listenTo(c)}
+                onPutBack={() => change(putBack(keep, { start: c.start, end: c.end }))}
+                onCutIt={() => change(cutOut(keep, { start: c.start, end: c.end }))}
+              />
+            ))}
+          {checks.some((c) => c.kind === 'noise') ? (
+            <details className="cuts-noises">
+              <summary className="linkbtn">Short noises cut ({checks.filter((c) => c.kind === 'noise').length})</summary>
+              {checks.map((c, i) => ({ c, i }))
+                .filter(({ c }) => c.kind === 'noise')
+                .map(({ c, i }) => (
+                  <CheckRow
+                    key={i}
+                    check={c}
+                    isCut={partAt(keep, (c.start + c.end) / 2) < 0}
+                    focused={focus === i}
+                    onGo={() => goTo(i)}
+                    onListen={() => listenTo(c)}
+                    onPutBack={() => change(putBack(keep, { start: c.start, end: c.end }))}
+                    onCutIt={() => change(cutOut(keep, { start: c.start, end: c.end }))}
+                  />
+                ))}
+            </details>
+          ) : null}
+        </div>
+      ) : null}
     </section>
   )
 }
