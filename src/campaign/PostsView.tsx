@@ -189,9 +189,14 @@ function WaitingPost({
   busy: boolean
   editable: Record<string, number>
   onEdit: (key: string) => void
-  onAct: (action: PostAction, fields?: { caption?: string; at?: string }) => void
+  onAct: (action: PostAction, fields?: { caption?: string; at?: string; captions?: Record<string, { caption?: string }> }) => void
 }) {
   const [caption, setCaption] = useState(post.caption ?? '')
+  const [own, setOwn] = useState<Record<string, string>>(() =>
+    Object.fromEntries(Object.entries(post.captions ?? {}).map(([id, t]) => [id, t.caption ?? ''])),
+  )
+  const ownCaptions = () => Object.fromEntries(Object.entries(own).filter(([, text]) => text.trim()).map(([id, text]) => [id, { caption: text }]))
+  const ownEdited = JSON.stringify(ownCaptions()) !== JSON.stringify(Object.fromEntries(Object.entries(post.captions ?? {}).map(([id, t]) => [id, { caption: t.caption ?? '' }]).filter(([, t]) => (t as { caption: string }).caption.trim())))
   const [changingTime, setChangingTime] = useState(false)
   const [at, setAt] = useState(localInput(post.postAt))
   const [watching, setWatching] = useState(false)
@@ -200,6 +205,7 @@ function WaitingPost({
   const edited = caption !== (post.caption ?? '')
   const fields = () => ({
     ...(edited ? { caption } : {}),
+    ...(ownEdited ? { captions: ownCaptions() } : {}),
     ...(changingTime ? { at: new Date(at).toISOString() } : {}),
   })
 
@@ -207,7 +213,7 @@ function WaitingPost({
     <li className="post">
       <div className="post-head">
         <span className="dot now" aria-hidden />
-        <span className="post-title">{post.campaignName}</span>
+        <span className="post-title">{post.campaignName}{post.repost ? ' · repost' : ''}</span>
         <span className="post-when">{whenLabel(post.postAt)}</span>
       </div>
       <div className="post-line">
@@ -224,6 +230,27 @@ function WaitingPost({
         onChange={(e) => setCaption(e.target.value)}
         onBlur={() => edited && onAct('edit', { caption })}
       />
+      {post.accounts.filter((a) => !a.held).length > 1 ? (
+        <details className="per-platform">
+          <summary className="linkbtn">A different caption for one platform</summary>
+          {post.accounts
+            .filter((a) => !a.held)
+            .map((a) => (
+              <label key={a.id} className="field">
+                <span className="label">{accountLabel(a)}</span>
+                <textarea
+                  className="post-caption"
+                  rows={3}
+                  value={own[a.id] ?? ''}
+                  placeholder="Same as above"
+                  aria-label={`Caption for ${accountLabel(a)}`}
+                  onChange={(e) => setOwn({ ...own, [a.id]: e.target.value })}
+                  onBlur={() => ownEdited && onAct('edit', { captions: ownCaptions() })}
+                />
+              </label>
+            ))}
+        </details>
+      ) : null}
       {changingTime ? (
         <label className="field">
           <span className="label">Posts at</span>

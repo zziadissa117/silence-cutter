@@ -51,6 +51,7 @@ import {
   normalTag,
   type PostingRules,
 } from './caption.ts'
+import { cleanCaptions, cleanRepost, repostDueAt, textFor, variationNote, type AccountText } from './repost.ts'
 import { FAKE_CLAUDE, FakeError, fakeCaption, fakePostiz, isFakePostiz } from './fake.ts'
 import { batchChoices, batchInfo, batchSpan, type BatchInfo } from './batch.ts'
 import { handFields } from './hand.ts'
@@ -326,6 +327,11 @@ interface Post {
   /** He has had the one notification for its batch. */
   batch_told: boolean
   accounts: PostAccount[]
+  /** Per-account caption/title overrides, by account id. */
+  captions: Record<string, AccountText> | null
+  repost_of: string | null
+  repost_at: string | null
+  reposted_at: string | null
   media: Media | null
   postiz_ids: { postId: string; integration: string }[] | null
   release_urls: Record<string, string> | null
@@ -389,6 +395,8 @@ function postView(post: Post) {
     headline: post.headline,
     caption: post.caption,
     title: post.title,
+    captions: post.captions ?? {},
+    repost: post.repost_of !== null,
     postAt: post.post_at,
     accounts: post.accounts,
     videoUrl: post.media?.path ?? null,
@@ -589,11 +597,14 @@ async function releaseHeld(now: number): Promise<void> {
               date,
               shortLink: false,
               tags: [],
-              posts: accounts.map((account) => ({
-                integration: { id: account.id },
-                value: [{ content: owned.caption, image: [{ id: owned.media!.id, path: owned.media!.path }] }],
-                settings: settingsFor(account.platform, title),
-              })),
+              posts: accounts.map((account) => {
+                const text = textFor(owned, account.id)
+                return {
+                  integration: { id: account.id },
+                  value: [{ content: text.caption, image: [{ id: owned.media!.id, path: owned.media!.path }] }],
+                  settings: settingsFor(account.platform, finishTitle(text.title ?? '', [owned.headline ?? '', owned.campaign_name])),
+                }
+              }),
             }))
           ids.push(...(Array.isArray(made) ? made : []))
           for (const a of accounts) gone.add(a.id)
@@ -680,11 +691,14 @@ async function attachAccounts(profile: Profile, body: Record<string, unknown>): 
             date,
             shortLink: false,
             tags: [],
-            posts: extra.map((account) => ({
-              integration: { id: account.id },
-              value: [{ content: owned.caption, image: [{ id: owned.media!.id, path: owned.media!.path }] }],
-              settings: settingsFor(account.platform, title),
-            })),
+            posts: extra.map((account) => {
+              const text = textFor(owned, account.id)
+              return {
+                integration: { id: account.id },
+                value: [{ content: text.caption, image: [{ id: owned.media!.id, path: owned.media!.path }] }],
+                settings: settingsFor(account.platform, finishTitle(text.title ?? '', [owned.headline ?? '', owned.campaign_name])),
+              }
+            }),
           }))
         await update(owned.id, {
           accounts: [...owned.accounts, ...extra],
@@ -868,6 +882,7 @@ function cleanRules(value: unknown): PostingRules {
       .slice(0, 30),
     approval: r.approval === 'direct' || r.approval === 'brand' ? r.approval : 'me',
     remind: r.remind === true,
+    repost: cleanRepost(r.repost),
   }
 }
 
@@ -1015,7 +1030,12 @@ async function prepare(start: Post): Promise<Post> {
   const keys = await keysFor(profile.id)
 
   if (post.rules.caption === 'claude' && !post.caption) {
-    const written = await writeCaption(keys.anthropic, post)
+    let previous: string | null = null
+    if (post.repost_of) {
+      const { data: original } = await db.from('cutter_posts').select('caption').eq('id', post.repost_of).maybeSingle()
+      previous = (original as { caption: string | null } | null)?.caption ?? null
+    }
+    const written = await writeCaption(keys.anthropic, post, [], previous)
     post = await update(post.id, written)
   }
 
@@ -1220,6 +1240,8 @@ async function writeCaption(
   apiKey: string | null,
   post: Pick<Post, 'campaign_name' | 'rules' | 'headline' | 'transcript' | 'about'>,
   stills: string[] = [],
+  /** The caption this video went out with before, when this is a repost. */
+  previous: string | null = null,
 ): Promise<Partial<Post>> {
   if (!apiKey) throw new Problem('Your Anthropic key is missing - paste it in Settings, Posting.')
   if (apiKey === FAKE_CLAUDE) {
@@ -1247,7 +1269,7 @@ async function writeCaption(
               transcript: post.transcript ?? '',
               about: post.about ?? '',
               stills: stills.length,
-            }),
+            }) + variationNote(previous),
           },
         ],
       },
@@ -1365,11 +1387,14 @@ async function schedule(start: Post): Promise<Post> {
     date,
     shortLink: false,
     tags: [],
-    posts: post.accounts.map((account) => ({
-      integration: { id: account.id },
-      value: [{ content: post.caption, image: [{ id: post.media!.id, path: post.media!.path }] }],
-      settings: settingsFor(account.platform, title),
-    })),
+    posts: post.accounts.map((account) => {
+      const text = textFor(post, account.id)
+      return {
+        integration: { id: account.id },
+        value: [{ content: text.caption, image: [{ id: post.media!.id, path: post.media!.path }] }],
+        settings: settingsFor(account.platform, finishTitle(text.title ?? '', [post.headline ?? '', post.campaign_name])),
+      }
+    }),
   })
   return update(post.id, {
     status: 'scheduled',
@@ -1450,6 +1475,10 @@ function edits(post: Post, body: Record<string, unknown>): Partial<Post> {
   const fields: Partial<Post> = {}
   if (typeof body.caption === 'string') fields.caption = finishCaption(body.caption, post.rules.caption === 'paste' ? [] : post.rules.hashtags)
   if (typeof body.title === 'string') fields.title = body.title.slice(0, 100)
+  if (body.captions !== undefined) {
+    const hashtags = post.rules.caption === 'paste' ? [] : post.rules.hashtags
+    fields.captions = cleanCaptions(body.captions, (c) => finishCaption(c, hashtags))
+  }
   if (typeof body.at === 'string') {
     const at = Date.parse(body.at)
     if (!Number.isFinite(at)) throw new Problem('That time is not a real time.')
@@ -1583,6 +1612,7 @@ async function tick(): Promise<void> {
 
   await releaseHeld(now)
   await checkPosted(now)
+  await makeReposts(now)
   await remind(now)
 
   // "Posts to approve" held back while he was told a moment ago.
@@ -1621,6 +1651,10 @@ async function checkPosted(now: number): Promise<void> {
           fields.error = `Postiz couldn't publish it to ${errored.map((p) => p.integration?.name ?? 'an account').join(', ')}. Open Postiz to see why.`
         } else if (published) {
           fields.status = 'posted'
+          if (!post.repost_of) {
+            const due = repostDueAt(Date.now(), post.rules.repost)
+            if (due !== null && !post.reposted_at) fields.repost_at = new Date(due).toISOString()
+          }
           if (errored.length > 0) fields.error = `Not posted to ${errored.map((p) => p.integration?.name ?? 'an account').join(', ')}.`
         }
         const saved = await update(post.id, fields)
@@ -1658,6 +1692,45 @@ async function remind(now: number): Promise<void> {
       tag: `remind-${post.id}`,
       url: link ?? `/campaign.html#posts`,
     })
+  }
+}
+
+/** A repost is due: the same video, as a new post of its own, with a caption
+ *  written to read differently. It reuses the video Postiz already has, goes
+ *  through the same steps as any post (his approval when the campaign asks
+ *  for it) and is linked back with repost_of so nothing that counts posts
+ *  counts it twice. Each original is reposted once. */
+async function makeReposts(now: number): Promise<void> {
+  const { data } = await db
+    .from('cutter_posts')
+    .select('*')
+    .eq('status', 'posted')
+    .is('reposted_at', null)
+    .not('repost_at', 'is', null)
+    .lte('repost_at', new Date(now).toISOString())
+    .limit(10)
+  for (const original of (data ?? []) as Post[]) {
+    // Marked first: a run that stops half-way never makes two.
+    await db.from('cutter_posts').update({ reposted_at: new Date().toISOString() }).eq('id', original.id).is('reposted_at', null)
+    if (!original.media || !original.rules.repost?.on) continue
+    const { error } = await db.from('cutter_posts').insert({
+      profile_id: original.profile_id,
+      client_key: `repost-${original.id}`,
+      campaign_id: original.campaign_id,
+      campaign_name: original.campaign_name,
+      rules: original.rules,
+      status: 'writing',
+      parts: original.parts,
+      size: original.size,
+      file_name: original.file_name,
+      transcript: original.transcript,
+      headline: original.headline,
+      duration: original.duration,
+      about: original.about,
+      media: original.media,
+      repost_of: original.id,
+    })
+    if (error && error.code !== '23505') console.error('repost failed', original.id, error.message)
   }
 }
 

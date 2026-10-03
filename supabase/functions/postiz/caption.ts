@@ -23,6 +23,8 @@ export interface PostingRules {
   approval: 'me' | 'direct' | 'brand'
   /** A reminder when it goes live, to submit it to the brand. */
   remind: boolean
+  /** Opt-in: repost the video later with a different caption (repost.ts). */
+  repost?: { on: boolean; afterDays: number }
 }
 
 export const NO_RULES: PostingRules = { caption: 'claude', rules: '', hashtags: [], approval: 'me', remind: false }

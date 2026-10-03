@@ -66,6 +66,10 @@ export interface ServerPost {
   headline: string | null
   caption: string | null
   title: string | null
+  /** A caption (and title) written for one account, by account id; the rest use `caption`. */
+  captions?: Record<string, { caption?: string; title?: string }>
+  /** A repost of a video that already went out. */
+  repost?: boolean
   postAt: string | null
   /** `held`: paused or at its day's limit - not scheduled yet, and goes out by itself when free. */
   accounts: { id: string; name: string; platform: string; held?: 'paused' | 'cap' }[]
@@ -278,7 +282,7 @@ export type PostAction = 'edit' | 'approve' | 'reject' | 'unschedule' | 'retry'
 export async function postAction(
   action: PostAction,
   id: string,
-  fields: { caption?: string; title?: string; at?: string } = {},
+  fields: { caption?: string; title?: string; at?: string; captions?: Record<string, { caption?: string; title?: string }> } = {},
 ): Promise<ServerPost> {
   const { post } = await call<{ post: ServerPost }>(action, { profile: profileId(), id, ...fields })
   return post

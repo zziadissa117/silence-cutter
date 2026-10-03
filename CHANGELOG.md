@@ -3,6 +3,23 @@
 Newest first. Every change says what it does, how to use it, and how it works
 underneath. Kept up to date with each commit.
 
+## Auto-repost, and a caption per platform
+**Repost:** Off unless you turn it on. Campaign, Posting, Repost: "Post each video again
+later", after 3 / 7 / 14 / 30 days. When a post is confirmed posted, the scheduler books
+its repost; when due, the same video (the copy Postiz already has) becomes a new post
+with a caption Claude writes to read differently from the first, then goes through your
+usual approval. It is marked "repost" on the Posts screen, linked to the original
+(`repost_of`) so the planner bridge never counts it again, and each original is
+reposted once. It reuses the same file: a different cut or music needs a re-render,
+which only the phone can do.
+**Caption per platform:** On a waiting post with more than one account, "A different
+caption for one platform" lets you write one for just that account; accounts left blank
+use the main caption. Saved on the post (`captions`), used when it is sent to Postiz,
+including accounts linked late.
+**Needs deploying:** the `postiz` function (`npx supabase functions deploy postiz
+--project-ref uykuoibqdxmpbbrsmyad`). Database columns were applied 2 Oct.
+Files: `postiz/repost.ts` (+ test), `postiz/index.ts`, `PostingEditor.tsx`, `PostsView.tsx`.
+
 ## Move the captions (top / middle / bottom)
 **What:** Captions no longer have to sit where your face is.
 **Use it:** In the caption check (the editor), under the video: Top, Middle, Usual or
