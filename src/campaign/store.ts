@@ -111,6 +111,8 @@ interface StoredJob {
   /** A recording that is now part of a joined video, hidden until that is
    *  split apart or made. */
   joinedInto?: string
+  /** Wide clip he asked to only make 9:16, not cut. */
+  noCut?: boolean
   /** When it was made. Its recording, listening and edits are kept for
    *  EDIT_WINDOW_MS after, so he can fix a caption, a cut or the music and
    *  make it again - then they go. A made job is never picked up as one

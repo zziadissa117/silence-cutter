@@ -211,6 +211,9 @@ export async function planCampaignCut(
     /** A reaction's product clip: silent, or with no sound at all, is how a
      *  screen recording comes - kept whole, with nothing heard. */
     quietIsFine?: boolean
+    /** Keep every moment: nothing is cut, however long the pauses. Words are
+     *  still heard when asked for (captions, the logo). */
+    keepWhole?: boolean
     onAnalyseProgress?: (fraction: number) => void
     onModelDownload?: (fraction: number) => void
     onTranscribeProgress?: (fraction: number) => void
@@ -231,7 +234,7 @@ export async function planCampaignCut(
             : error
         },
       )
-      if (!audioTrack && options.quietIsFine) return keptWhole(d, options.cleanSpeech)
+      if (!audioTrack && (options.quietIsFine || options.keepWhole)) return keptWhole(d, options.cleanSpeech)
       if (!audioTrack) throw new SilenceCutError('This video has no sound, so there is nothing to detect silence from.')
       if (!(await audioTrack.canDecode())) throw new SilenceCutError(UNREADABLE_FORMAT)
       duration = d
@@ -291,6 +294,18 @@ export async function planCampaignCut(
     }
   }
 
+  if (options.keepWhole) {
+    return {
+      keep: [{ start: 0, end: duration }],
+      duration,
+      words,
+      ...(spoken ? { spoken, aligned } : {}),
+      silences: 0,
+      fillerWords: 0,
+      stutters: 0,
+      cleanSpeech: options.cleanSpeech,
+    }
+  }
   const toCut = mergeRanges([...silences, ...fillerWords, ...stutters])
   const keep = keepRanges(toCut, duration, settings.paddingSec)
   if (keep.length === 0 && options.quietIsFine) return { ...keptWhole(duration, options.cleanSpeech), words }

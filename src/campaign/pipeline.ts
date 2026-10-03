@@ -98,7 +98,8 @@ export async function listen(
     names,
     align = false,
     quietIsFine = false,
-  }: { cleanSpeech: boolean; hear: boolean; names: string[]; align?: boolean; quietIsFine?: boolean },
+    keepWhole = false,
+  }: { cleanSpeech: boolean; hear: boolean; names: string[]; align?: boolean; quietIsFine?: boolean; keepWhole?: boolean },
   callbacks: CampaignCallbacks = {},
 ): Promise<CampaignPlan> {
   if (hear && !isFillerWordDetectionSupported()) {
@@ -112,6 +113,7 @@ export async function listen(
     prompt: listeningPrompt(names),
     align,
     quietIsFine,
+    keepWhole,
     onAnalyseProgress: callbacks.onAnalyseProgress,
     onModelDownload: callbacks.onModelDownload,
     onTranscribeProgress: callbacks.onTranscribeProgress,
@@ -158,6 +160,8 @@ export async function make(
   skipPictures: readonly string[] = [],
   /** Where the captions sit on the frame. */
   captionPosition: CaptionPosition = 'usual',
+  /** Made 9:16 even when the Wide clips setting is Off (he asked for 9:16). */
+  forceVertical = false,
 ): Promise<CampaignResult> {
   refuseBroken(campaign, angle)
   const look = videoLook(campaign, angle, bank, defaults, skipPictures)
@@ -203,6 +207,7 @@ export async function make(
       gentle,
       captions,
       captionPosition,
+      forceVertical,
       voice,
       music: track ? { audio: track.audio, level: track.level } : null,
       clips: { before: clips.before, after: clips.after },
@@ -252,6 +257,10 @@ export async function makeCampaignVideo(
   gentle = false,
   voice = false,
   clips: JoinedClips = {},
+  /** Nothing is cut; it is only made 9:16 (a wide clip he did not want cut). */
+  noCut = false,
+  /** The effects for an angle that sets none; null for none. */
+  defaults: AngleEffects | null = null,
 ): Promise<CampaignResult> {
   refuseBroken(campaign, angle)
   const names = wordsToHear(videoLook(campaign, angle, bank))
@@ -263,10 +272,11 @@ export async function makeCampaignVideo(
       hear: names.length > 0 || cleanSpeech || Boolean(angle.headline.fromFirstLine),
       // The brand first, so the model knows it before anything else.
       names: [...campaign.brandWords, ...names],
+      keepWhole: noCut,
     },
     callbacks,
   )
-  return make(file, plan, campaign, angle, bank, headlineFor(angle, plan, headlineText), seed, callbacks.onRenderProgress, gentle, [], voice, undefined, clips)
+  return make(file, plan, campaign, angle, bank, headlineFor(angle, plan, headlineText), seed, callbacks.onRenderProgress, gentle, [], voice, undefined, clips, defaults, [], 'usual', noCut)
 }
 
 /** A reaction video: the reaction clip whole with the headline over it,

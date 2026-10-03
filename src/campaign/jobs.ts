@@ -77,6 +77,8 @@ export type Job = {
   /** When it was filmed (from the file) and how long it is. */
   filmedAt?: number
   seconds?: number
+  /** A wide clip he asked to only make 9:16: nothing is cut. */
+  noCut?: boolean
   /** Made again after an edit: which go this is, and the post it replaces. */
   version?: number
   replaces?: string

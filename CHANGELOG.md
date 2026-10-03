@@ -3,6 +3,20 @@
 Newest first. Every change says what it does, how to use it, and how it works
 underneath. Kept up to date with each commit.
 
+## Wide clips: cut them, or only make them 9:16
+**What:** When you drop in a video that is not 9:16, the cutter asks: "Cut them and make
+9:16", or "Only make 9:16 - don't cut" (every moment stays in). Videos that are already
+9:16 are never asked about and are always cut.
+**Use it:** Drop videos in as usual. If any are not 9:16, a screen lists them and asks once
+for the whole drop. "Don't add them" skips the wide ones (any 9:16 ones in the same drop
+are still added and cut).
+**How:** `filming.ts` reads the picture size (rotation applied) and sets `vertical`
+(`framing916.is916`). A clip whose size can't be read is treated as 9:16: no question, cut.
+"Don't cut" sets `noCut` on the video; `plan.ts` `keepWhole` keeps the whole recording
+(words are still heard for captions and the logo) and the render makes it 9:16 even when
+Settings, Wide clips is Off. Headline, captions and effects still go on; only the cutting is skipped.
+Files: `WideAsk.tsx`, `CampaignApp.tsx` (`commitAdd`), `plan.ts`, `pipeline.ts`, `render.ts`.
+
 ## Edit again for batch videos
 **What:** A batch video can be fixed after it was made: its headline and its music track.
 **Use it:** Posts, the video, "Edit again · ... left", change the headline or pick another

@@ -52,7 +52,7 @@ import {
 import { ClipsField } from './ClipsField'
 import { ClipsMaker, type Montage } from './ClipsMaker'
 import { JoinPicker } from './JoinPicker'
-import { filmingOf, joinSuggestions } from './filming'
+import { filmingOf, joinSuggestions, type Filming } from './filming'
 import { joinRecordings } from './joinRender'
 import { joinPlans, type CampaignPlan } from './plan'
 import { checkPhone } from './phoneCheck'
@@ -94,6 +94,7 @@ import {
 import { PostsView } from './PostsView'
 import { pushState, refreshPush, turnOnPush, type PushState } from './push'
 import { BatchEdit } from './BatchEdit'
+import { WideAsk } from './WideAsk'
 import { defaultEffects } from './defaultEffects'
 import { picturesHeard, type PictureChoice } from './skipPictures'
 import { talksIn } from './reaction'
@@ -467,6 +468,8 @@ export function CampaignApp() {
   const [cutting, setCutting] = useState<{ id: string } | null>(null)
   // Videos about to be checked, waiting on whether the hook gets captions.
   const [askingHook, setAskingHook] = useState<string[] | null>(null)
+  // Dropped videos that are not 9:16, waiting for: cut them too, or only 9:16?
+  const [askWide, setAskWide] = useState<{ order: { file: File; filming: Filming }[]; names: string[] } | null>(null)
   // A made batch video being fixed: its headline and track.
   const [batchEditing, setBatchEditing] = useState<{
     id: string
@@ -942,6 +945,7 @@ export function CampaignApp() {
         ...(p.failed ? { error: p.failed } : {}),
         ...(p.day ? { day: p.day } : {}),
         ...(p.later ? { later: true } : {}),
+        ...(p.noCut ? { noCut: true } : {}),
         ...(p.version ? { version: p.version } : {}),
         ...(p.replaces ? { replaces: p.replaces } : {}),
         ...(p.joinedInto ? { joinedInto: p.joinedInto } : {}),
@@ -1087,6 +1091,7 @@ export function CampaignApp() {
                 : dayWords(campaigns.filter((c) => !isReaction(c)), bankRef.current),
               align: captionsRef.current,
               quietIsFine: Boolean(next.reaction),
+              keepWhole: next.noCut === true,
             },
             {
               onAnalyseProgress: (p) => setPhase('reading', p),
@@ -1197,6 +1202,7 @@ export function CampaignApp() {
               next.day?.noEffects ? null : defaultEffects(),
               next.day?.skipPictures ?? [],
               next.day?.captionPosition ?? defaultCaptionPosition(),
+              next.noCut === true,
             ),
           )
         } else {
@@ -1220,6 +1226,8 @@ export function CampaignApp() {
             next.retried === true,
               voiceRef.current,
               await clipsFor(next),
+              next.noCut === true,
+              next.day?.noEffects ? null : defaultEffects(),
             ),
           )
         }
@@ -1420,6 +1428,7 @@ export function CampaignApp() {
       progress: 0,
       ...(reopened.day ? { day: reopened.day } : {}),
       ...(reopened.later ? { later: true } : {}),
+      ...(reopened.noCut ? { noCut: true } : {}),
       version: reopened.version,
       replaces: reopened.replaces,
     }
@@ -1433,24 +1442,10 @@ export function CampaignApp() {
     setReviewing([restored.id])
   }
 
-  const addFiles = useCallback(
-    (incoming: Iterable<File> | null, fromPicker = false) => {
-      if (!incoming || (mode === 'one' && (!campaign || !angle))) {
-        pickSaved()
-        return
-      }
-      // The picker only offers videos, so everything it hands over is kept:
-      // a file it names oddly then fails on its row, where he can see it,
-      // instead of vanishing.
-      const picked = fromPicker ? Array.from(incoming) : videoFilesFrom(incoming)
-      if (picked.length === 0) return
-      void (async () => {
-        // When each was filmed, from the file: the batch goes into the list in
-        // filming order, and recordings filmed moments apart are offered to be
-        // joined. A file that won't say keeps the picker's order for all.
-        const filming = await Promise.all(picked.map(filmingOf))
-        const order = picked.map((file, i) => ({ file, filming: filming[i] }))
-        if (order.every((o) => o.filming.filmedAt !== undefined)) order.sort((a, b) => a.filming.filmedAt! - b.filming.filmedAt!)
+  /** Adds the picked videos to the list. `cutWide`: a wide clip (not 9:16)
+   *  is cut like the rest; false means he asked to only make it 9:16. A clip
+   *  that is already 9:16 is always cut. */
+  const commitAdd = (order: { file: File; filming: Filming }[], cutWide: boolean) => {
         const files = order.map((o) => o.file)
         const settings = { ...PRESETS[preset] }
         const day = mode === 'day'
@@ -1473,6 +1468,8 @@ export function CampaignApp() {
           ...(day ? { day: { approved: false } } : check ? { day: { approved: false, chosen: true } } : {}),
           ...(laterNow ? { later: true } : {}),
           ...order[files.indexOf(file)].filming,
+          // A wide clip he asked to only make 9:16; a 9:16 one is always cut.
+          ...(!cutWide && order[files.indexOf(file)].filming.vertical === false ? { noCut: true } : {}),
         }))
         setJobs((current) => [...current, ...added])
         setNotice(null)
@@ -1490,6 +1487,7 @@ export function CampaignApp() {
             cleanSpeech: job.cleanSpeech,
             ...(job.day ? { day: job.day } : {}),
             ...(job.later ? { later: true } : {}),
+            ...(job.noCut ? { noCut: true } : {}),
             ...(job.filmedAt !== undefined ? { filmedAt: job.filmedAt } : {}),
             ...(job.seconds !== undefined ? { seconds: job.seconds } : {}),
           }).catch(() => {})
@@ -1497,6 +1495,36 @@ export function CampaignApp() {
           saving.push(saved)
         }
         void Promise.all(saving).finally(pickSaved)
+  }
+  const commitRef = useRef(commitAdd)
+  commitRef.current = commitAdd
+
+  const addFiles = useCallback(
+    (incoming: Iterable<File> | null, fromPicker = false) => {
+      if (!incoming || (mode === 'one' && (!campaign || !angle))) {
+        pickSaved()
+        return
+      }
+      // The picker only offers videos, so everything it hands over is kept:
+      // a file it names oddly then fails on its row, where he can see it,
+      // instead of vanishing.
+      const picked = fromPicker ? Array.from(incoming) : videoFilesFrom(incoming)
+      if (picked.length === 0) return
+      void (async () => {
+        // When each was filmed, from the file: the batch goes into the list in
+        // filming order, and recordings filmed moments apart are offered to be
+        // joined. A file that won't say keeps the picker's order for all.
+        const filming = await Promise.all(picked.map(filmingOf))
+        const order = picked.map((file, i) => ({ file, filming: filming[i] }))
+        if (order.every((o) => o.filming.filmedAt !== undefined)) order.sort((a, b) => a.filming.filmedAt! - b.filming.filmedAt!)
+        const wide = order.filter((o) => o.filming.vertical === false)
+        // A clip that is not 9:16: ask whether to cut it too. Already-9:16
+        // clips are never asked about and are always cut.
+        if (wide.length > 0) {
+          setAskWide({ order, names: wide.map((o) => o.file.name) })
+          return
+        }
+        commitRef.current(order, true)
       })()
     },
     [angle, campaign, captionsOn, cleanSpeech, headlineText, mode, preset, laterNow],
@@ -2383,6 +2411,25 @@ export function CampaignApp() {
   const screen =
     supported === false ? (
       <div className="error">This browser can't make video yet - it needs iOS 26 / Safari 26 or newer, or Chrome.</div>
+    ) : askWide ? (
+      <WideAsk
+        names={askWide.names}
+        total={askWide.order.length}
+        onCut={() => {
+          commitRef.current(askWide.order, true)
+          setAskWide(null)
+        }}
+        onOnly916={() => {
+          commitRef.current(askWide.order, false)
+          setAskWide(null)
+        }}
+        onCancel={() => {
+          // The wide ones are dropped; any 9:16 ones in the same drop are still added and cut.
+          const rest = askWide.order.filter((o) => o.filming.vertical !== false)
+          setAskWide(null)
+          if (rest.length > 0) commitRef.current(rest, true)
+        }}
+      />
     ) : batchEditing ? (
       <BatchEdit
         key={batchEditing.id}

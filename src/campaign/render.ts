@@ -135,6 +135,8 @@ export interface CampaignRenderInput {
   captions?: CaptionWord[]
   /** Where the captions sit on the frame; usual when not given. */
   captionPosition?: CaptionPosition
+  /** Make it 9:16 even when the Wide clips setting is Off. */
+  forceVertical?: boolean
   /** Makes the voice louder and clearer; see voice.ts. */
   voice?: boolean
   /** A track to play under the voice; see music.ts. */
@@ -175,6 +177,7 @@ export async function renderCampaignCut(
     gentle,
     captions = [],
     captionPosition = 'usual',
+    forceVertical = false,
     voice: boostVoice = false,
     music = null,
     clips: joining = {},
@@ -340,7 +343,7 @@ export async function renderCampaignCut(
     const afterGain = await levelFor(afterClip)
 
     // A wide clip (Meta glasses) becomes 9:16; one already 9:16 is untouched.
-    const mode = landscapeMode()
+    const mode = forceVertical && landscapeMode() === 'off' ? 'fill' : landscapeMode()
     const { width, height } = framedSize(displayWidth, displayHeight, mode)
     const framePlan = planFrame(displayWidth, displayHeight, width, height, mode)
     const backdrop = framePlan.blurred ? makeBlurBackdrop() : null

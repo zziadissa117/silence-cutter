@@ -8,10 +8,14 @@
 import { ALL_FORMATS, BlobSource, Input } from 'mediabunny'
 
 import { within } from '../media/within'
+import { is916 } from './framing916'
 
 export interface Filming {
   filmedAt?: number
   seconds?: number
+  /** Whether the picture is already 9:16 (see framing916). Absent when the
+   *  file would not say - treated as 9:16, so nothing is asked and it is cut. */
+  vertical?: boolean
 }
 
 /** The gap between two recordings of one video: flipping the camera and
@@ -25,8 +29,19 @@ export async function filmingOf(file: Blob): Promise<Filming> {
   const read = async (): Promise<Filming> => {
     const input = new Input({ source: new BlobSource(file), formats: ALL_FORMATS })
     try {
-      const [tags, seconds] = await Promise.all([input.getMetadataTags().catch(() => null), input.computeDuration()])
-      return { ...(tags?.date ? { filmedAt: tags.date.getTime() } : {}), seconds }
+      const [tags, seconds, size] = await Promise.all([
+        input.getMetadataTags().catch(() => null),
+        input.computeDuration(),
+        (async () => {
+          const track = await input.getPrimaryVideoTrack()
+          return track ? { width: await track.getDisplayWidth(), height: await track.getDisplayHeight() } : null
+        })().catch(() => null),
+      ])
+      return {
+        ...(tags?.date ? { filmedAt: tags.date.getTime() } : {}),
+        seconds,
+        ...(size && size.width > 0 && size.height > 0 ? { vertical: is916(size.width, size.height) } : {}),
+      }
     } finally {
       input.dispose()
     }
