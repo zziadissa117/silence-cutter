@@ -235,15 +235,15 @@ export function PostingEditor({
             onChange={(e) => change({ repost: { on: e.target.checked, afterDays: posting.repost?.afterDays ?? 7 } })}
           />
           <span>
-            <span className="label">Post each video again later</span>
+            <span className="label">Remind me to repost it</span>
             <span className="hint" style={{ display: 'block' }}>
-              The same video goes out a second time with a different caption. Off unless you turn it on.
+              A notification with the post's link, so you can tap the platform's own Repost button. Off unless you turn it on.
             </span>
           </span>
         </label>
         {posting.repost?.on ? (
           <label className="field">
-            <span className="label">Repost after</span>
+            <span className="label">Remind me after</span>
             <select
               value={posting.repost.afterDays}
               onChange={(e) => change({ repost: { on: true, afterDays: Number(e.target.value) } })}

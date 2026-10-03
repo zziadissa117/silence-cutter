@@ -397,6 +397,8 @@ function postView(post: Post) {
     title: post.title,
     captions: post.captions ?? {},
     repost: post.repost_of !== null,
+    // Told to repost it in the last few days: show "Time to repost".
+    repostDue: Boolean(post.reposted_at && post.status === 'posted' && Date.now() - new Date(post.reposted_at).getTime() < 3 * 24 * 60 * 60 * 1000),
     postAt: post.post_at,
     accounts: post.accounts,
     videoUrl: post.media?.path ?? null,
@@ -1612,7 +1614,7 @@ async function tick(): Promise<void> {
 
   await releaseHeld(now)
   await checkPosted(now)
-  await makeReposts(now)
+  await remindReposts(now)
   await remind(now)
 
   // "Posts to approve" held back while he was told a moment ago.
@@ -1695,12 +1697,13 @@ async function remind(now: number): Promise<void> {
   }
 }
 
-/** A repost is due: the same video, as a new post of its own, with a caption
- *  written to read differently. It reuses the video Postiz already has, goes
- *  through the same steps as any post (his approval when the campaign asks
- *  for it) and is linked back with repost_of so nothing that counts posts
- *  counts it twice. Each original is reposted once. */
-async function makeReposts(now: number): Promise<void> {
+/** Reposting is the platform's own button (TikTok, Instagram), which Postiz
+ *  cannot press for him and neither can this app. So when a repost is due -
+ *  the campaign's opt-in, N days after the post went live - he is told, with
+ *  the post's link, and does it himself in a couple of taps. Told once per
+ *  post; `reposted_at` records when, and the Posts screen shows "Time to
+ *  repost" for a few days after. */
+async function remindReposts(now: number): Promise<void> {
   const { data } = await db
     .from('cutter_posts')
     .select('*')
@@ -1708,29 +1711,18 @@ async function makeReposts(now: number): Promise<void> {
     .is('reposted_at', null)
     .not('repost_at', 'is', null)
     .lte('repost_at', new Date(now).toISOString())
-    .limit(10)
-  for (const original of (data ?? []) as Post[]) {
-    // Marked first: a run that stops half-way never makes two.
-    await db.from('cutter_posts').update({ reposted_at: new Date().toISOString() }).eq('id', original.id).is('reposted_at', null)
-    if (!original.media || !original.rules.repost?.on) continue
-    const { error } = await db.from('cutter_posts').insert({
-      profile_id: original.profile_id,
-      client_key: `repost-${original.id}`,
-      campaign_id: original.campaign_id,
-      campaign_name: original.campaign_name,
-      rules: original.rules,
-      status: 'writing',
-      parts: original.parts,
-      size: original.size,
-      file_name: original.file_name,
-      transcript: original.transcript,
-      headline: original.headline,
-      duration: original.duration,
-      about: original.about,
-      media: original.media,
-      repost_of: original.id,
+    .limit(50)
+  for (const post of (data ?? []) as Post[]) {
+    // Marked first: a run that stops half-way never tells him twice.
+    await db.from('cutter_posts').update({ reposted_at: new Date().toISOString() }).eq('id', post.id).is('reposted_at', null)
+    if (!post.rules.repost?.on) continue
+    const link = Object.values(post.release_urls ?? {})[0]
+    await notify(post.profile_id, {
+      title: `Time to repost your ${post.campaign_name} video`,
+      body: `It went live ${post.rules.repost.afterDays} days ago - open it and tap Repost.`,
+      tag: `repost-${post.id}`,
+      url: link ?? `/campaign.html#posts`,
     })
-    if (error && error.code !== '23505') console.error('repost failed', original.id, error.message)
   }
 }
 

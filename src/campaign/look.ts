@@ -169,8 +169,8 @@ export interface CampaignPosting {
   approval: 'me' | 'direct' | 'brand'
   /** A reminder the moment it goes live, to submit it to the brand. */
   remind: boolean
-  /** Opt-in: after `afterDays` days, the same video goes out again as a new
-   *  post with a different caption. Absent or off means never. */
+  /** Opt-in: after `afterDays` days he is reminded, with the post's link, to
+   *  tap the platform's own Repost button. Absent or off means never. */
   repost?: { on: boolean; afterDays: number }
 }
 

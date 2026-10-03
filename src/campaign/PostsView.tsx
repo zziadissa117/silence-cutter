@@ -331,6 +331,9 @@ function OtherPost({
           <Watch post={post} />
         </>
       ) : null}
+      {post.repostDue ? (
+        <div className="hint warn-text">Time to repost - open the post and tap Repost.</div>
+      ) : null}
       {links.length > 0 ? (
         <div className="post-links">
           {links.map(([name, href]) => (

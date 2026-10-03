@@ -70,6 +70,8 @@ export interface ServerPost {
   captions?: Record<string, { caption?: string; title?: string }>
   /** A repost of a video that already went out. */
   repost?: boolean
+  /** He was told to repost it (the platform's own button) in the last few days. */
+  repostDue?: boolean
   postAt: string | null
   /** `held`: paused or at its day's limit - not scheduled yet, and goes out by itself when free. */
   accounts: { id: string; name: string; platform: string; held?: 'paused' | 'cap' }[]
