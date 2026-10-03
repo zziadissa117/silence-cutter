@@ -1135,7 +1135,10 @@ export function CampaignApp() {
           const track = await montageMusic(next)
           setPhase('cutting', 0)
           result = await watched(
-            makeMontage([file, ...rest], jobCampaign, jobAngle, next.headlineText, track, (p) => setPhase('cutting', p)),
+            makeMontage([file, ...rest], jobCampaign, jobAngle, next.headlineText, track, (p) => setPhase('cutting', p), {
+              seed: next.id,
+              defaults: next.day?.noEffects ? null : defaultEffects(),
+            }),
           )
         } else if (next.reaction) {
           const productFile = await productOf(next)
@@ -1152,6 +1155,11 @@ export function CampaignApp() {
               captionsRef.current && plan ? drawnWords(captionsFor(next, plan), bareRef.current) : [],
               voiceRef.current,
               musicFor(next),
+              {
+                seed: next.id,
+                defaults: next.day?.noEffects ? null : defaultEffects(),
+                captionPosition: next.day?.captionPosition ?? defaultCaptionPosition(),
+              },
             ),
           )
         } else if (plan) {

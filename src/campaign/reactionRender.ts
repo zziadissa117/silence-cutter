@@ -29,7 +29,8 @@ import { createOutputSink } from '../media/outputSink'
 import { RangeReader, inTimestampOrder } from '../media/rangeReader'
 import { isSilenceCutSupported } from '../media/silenceCut'
 import type { Range } from '../media/silenceMath'
-import { CAPTION_LEAD, captionAt, drawCaption, type CaptionWord } from './captions'
+import { CAPTION_LEAD, captionAt, drawCaption, type CaptionPosition, type CaptionWord } from './captions'
+import { framingAt, planMotion, zoomPlace } from './effects'
 import { eachSound, openClip, type Clip } from './clipParts'
 import { headlineFontReady } from './headlineFont'
 import type { BuiltInSound, VideoLook } from './look'
@@ -61,6 +62,10 @@ export interface ReactionRenderInput {
   captions?: CaptionWord[]
   voice?: boolean
   music?: { audio: Blob; level: MusicLevel } | null
+  /** Makes this video's effect variations its own (look.effects says which). */
+  seed?: string
+  /** Where the captions sit on the product clip. */
+  captionPosition?: CaptionPosition
 }
 
 export interface ReactionRenderResult {
@@ -72,7 +77,7 @@ export interface ReactionRenderResult {
 }
 
 export async function renderReaction(
-  { reaction, product, productKeep, look, headlineText, switchSound, captions = [], voice: boostVoice = false, music = null }: ReactionRenderInput,
+  { reaction, product, productKeep, look, headlineText, switchSound, captions = [], voice: boostVoice = false, music = null, seed = '', captionPosition = 'usual' }: ReactionRenderInput,
   onProgress?: (fraction: number) => void,
 ): Promise<ReactionRenderResult> {
   if (!(await isSilenceCutSupported())) {
@@ -144,6 +149,10 @@ export async function renderReaction(
     await headlineFontReady()
     const headline = layoutHeadline(ctx, width, height, { ...look.headline, text: headlineText })
     const productPlace = cover(productClip.width, productClip.height, width, height)
+    // Zoom effects: two stretches - the reaction, then the product - so a punch
+    // can land at the switch, and the hook push opens the reaction.
+    const motion = planMotion(look.effects, [switchAt, Math.max(0.1, total - switchAt)], seed || 'reaction')
+    const reactionPlace = { x: 0, y: 0, width, height }
 
     const videoSource = new VideoSampleSource({ codec: 'avc', quality: QUALITY_HIGH })
     const audioSource = new AudioSampleSource({ codec: 'aac', quality: QUALITY_MEDIUM })
@@ -170,14 +179,16 @@ export async function renderReaction(
               const duration = sample.duration
               onProgress?.(Math.min(0.99, timestamp / total))
               if (part === 'reaction') {
-                sample.draw(ctx, 0, 0, width, height)
+                const spot = zoomPlace(reactionPlace, framingAt(motion, 0, timestamp, []), width, height)
+                sample.draw(ctx, spot.x, spot.y, spot.width, spot.height)
                 if (headline) drawHeadline(ctx, headline)
               } else {
                 ctx.fillStyle = '#000'
                 ctx.fillRect(0, 0, width, height)
-                sample.draw(ctx, productPlace.x, productPlace.y, productPlace.width, productPlace.height)
+                const spot = zoomPlace(productPlace, framingAt(motion, 1, timestamp - switchAt, []), width, height)
+                sample.draw(ctx, spot.x, spot.y, spot.width, spot.height)
                 const word = captionAt(captionTimes, captionWords, timestamp)
-                if (word >= 0) drawCaption(ctx, width, height, captionWords[word].text, timestamp + CAPTION_LEAD - captionTimes[word])
+                if (word >= 0) drawCaption(ctx, width, height, captionWords[word].text, timestamp + CAPTION_LEAD - captionTimes[word], false, captionPosition)
               }
               sample.close()
               const frame = new VideoSample(canvas, { timestamp, duration })

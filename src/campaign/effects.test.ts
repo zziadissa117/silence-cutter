@@ -123,3 +123,22 @@ describe('randomFrom', () => {
     expect(values.reduce((s, v) => s + v, 0) / values.length).toBeCloseTo(0.5, 1)
   })
 })
+
+import { zoomPlace } from './effects'
+
+describe('zoomPlace', () => {
+  const canvas = { w: 1080, h: 1920 }
+  it('leaves an unzoomed frame where it is', () => {
+    const place = { x: -100, y: 0, width: 1280, height: 1920 }
+    expect(zoomPlace(place, { scale: 1, dx: 0 }, canvas.w, canvas.h)).toBe(place)
+  })
+  it('a zoomed frame is bigger and still covers the canvas', () => {
+    const place = { x: -100, y: 0, width: 1280, height: 1920 }
+    const z = zoomPlace(place, { scale: 1.2, dx: 0 }, canvas.w, canvas.h)
+    expect(z.width).toBeCloseTo(1280 * 1.2)
+    expect(z.x).toBeLessThanOrEqual(0)
+    expect(z.x + z.width).toBeGreaterThanOrEqual(canvas.w)
+    expect(z.y).toBeLessThanOrEqual(0)
+    expect(z.y + z.height).toBeGreaterThanOrEqual(canvas.h)
+  })
+})

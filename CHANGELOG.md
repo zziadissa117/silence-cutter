@@ -3,6 +3,26 @@
 Newest first. Every change says what it does, how to use it, and how it works
 underneath. Kept up to date with each commit.
 
+## Reaction and montage videos get default effects and caption position
+**What:** The default effects (Settings) and the caption position now apply to batch
+videos too. Reaction: a slow push-in as it opens and a punch at the switch to the product.
+Montage: a punch at each clip change. Captions on a reaction's product clip sit where you
+chose.
+**How:** `effects.ts` `zoomPlace` zooms a cover-filled clip and keeps the canvas covered;
+`reactionRender.ts` / `montageRender.ts` plan one move per stretch with the same
+`planMotion` the talking videos use, seeded per video. The logo/picture spring-in and
+the brand punch do not apply (those renderers have no logo or brand words).
+**Note:** There is no per-video "No effects" for batch videos yet (their rows are not
+shown); turn the default off in Settings to stop them.
+
+## Reminder to repost (replaces the earlier "repost it again")
+**What:** Postiz cannot press the platform's own Repost button on TikTok or Instagram (its
+auto-repost is for X only), so the app reminds you instead. Campaign, Posting, Repost:
+"Remind me to repost it" after 3 / 7 / 14 / 30 days. When the time comes you get a
+notification with the post's link, and the post shows "Time to repost" for 3 days.
+**How:** `postiz/index.ts` `remindReposts` (runs on the 5-minute tick, told once per post).
+The earlier re-upload repost is gone.
+
 ## Auto-repost, and a caption per platform
 **Repost:** Off unless you turn it on. Campaign, Posting, Repost: "Post each video again
 later", after 3 / 7 / 14 / 30 days. When a post is confirmed posted, the scheduler books

@@ -169,6 +169,27 @@ export function placeFrame(framing: Framing, width: number, height: number): { x
   }
 }
 
+/** Where to draw a frame that already sits at `place` (cover-filled onto the
+ *  canvas) once it is zoomed by `framing` - bigger and toward the face, and
+ *  still covering the whole canvas. For clips that are not the one talking
+ *  head the render zooms itself (reaction and montage clips). */
+export function zoomPlace(
+  place: { x: number; y: number; width: number; height: number },
+  framing: Framing,
+  canvasWidth: number,
+  canvasHeight: number,
+): { x: number; y: number; width: number; height: number } {
+  if (framing.scale === 1 && framing.dx === 0) return place
+  const inner = placeFrame(framing, place.width, place.height)
+  const clamp = (value: number, min: number) => Math.min(0, Math.max(min, value))
+  return {
+    x: clamp(place.x + inner.x, canvasWidth - inner.width),
+    y: clamp(place.y + inner.y, canvasHeight - inner.height),
+    width: inner.width,
+    height: inner.height,
+  }
+}
+
 const POP = { in: 0.38, out: 0.18 } as const
 
 /** How the logo looks `since` seconds after it came up, with `left` seconds

@@ -24,6 +24,7 @@ import { contiguousAudio, forwardOnly } from '../media/forwardOnly'
 import { createOutputSink } from '../media/outputSink'
 import { isSilenceCutSupported } from '../media/silenceCut'
 import { openClip, writeWhole, type Clip } from './clipParts'
+import { framingAt, planMotion, zoomPlace } from './effects'
 import { headlineFontReady } from './headlineFont'
 import type { VideoLook } from './look'
 import { MusicBed, trackLoudness } from './music'
@@ -45,6 +46,8 @@ export interface MontageRenderInput {
   look: VideoLook
   headlineText: string
   music: { audio: Blob; name: string } | null
+  /** Makes this video's effect variations its own (look.effects says which). */
+  seed?: string
 }
 
 export interface MontageRenderResult {
@@ -72,7 +75,7 @@ export function soloMusicGain(trackLufs: number): number {
 }
 
 export async function renderMontage(
-  { clips: files, look, headlineText, music }: MontageRenderInput,
+  { clips: files, look, headlineText, music, seed = '' }: MontageRenderInput,
   onProgress?: (fraction: number) => void,
 ): Promise<MontageRenderResult> {
   if (files.length === 0) throw new SilenceCutError('Add at least one clip.')
@@ -120,6 +123,8 @@ export async function renderMontage(
     output.addAudioTrack(audioSource)
     await output.start()
 
+    // Zoom effects: each clip is a stretch, so a punch can land at every cut.
+    const motion = planMotion(look.effects, clips.map((c) => Math.max(0.1, c.duration - c.first)), seed || 'montage')
     const videoClock = forwardOnly()
     const audioClock = contiguousAudio()
     const seconds: number[] = []
@@ -137,7 +142,8 @@ export async function renderMontage(
           onProgress?.(Math.min(0.99, timestamp / total))
           ctx.fillStyle = '#000'
           ctx.fillRect(0, 0, width, height)
-          sample.draw(ctx, place.x, place.y, place.width, place.height)
+          const spot = zoomPlace(place, framingAt(motion, i, timestamp - start, []), width, height)
+          sample.draw(ctx, spot.x, spot.y, spot.width, spot.height)
           if (i === 0 && headline) drawHeadline(ctx, headline)
           const frame = new VideoSample(canvas, { timestamp, duration: sample.duration })
           await videoSource.add(frame)
