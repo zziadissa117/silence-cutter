@@ -3,6 +3,25 @@
 Newest first. Every change says what it does, how to use it, and how it works
 underneath. Kept up to date with each commit.
 
+## Re-check captions with Claude (optional, costs credits) + only review what's flagged
+**What:** A button in the caption check: "Use Claude to re-check captions · costs credits ·
+about N¢". It fixes words the phone's small speech model misheard (brand and product names
+above all) using the campaign's own names, and nothing else. Off unless you tap it, so use
+it when you're rushed. Needs posting set up (it uses your Anthropic key).
+**Cost:** The estimate before you tap is from the length of the captions (a normal video is
+a few cents). After it runs it says what it actually cost, from the tokens the API reported
+(Claude Opus 5 at $5 in / $25 out per million tokens, checked 2026-09-25).
+**Safe:** Claude must return the same number of phrases in order, and a fix is only taken
+if it stays close to what was heard (a spelling fix, not a rewrite; at most one word more or
+fewer). Anything else keeps the original phrase. Fixed phrases are highlighted green and
+there is an Undo.
+**Only review what's flagged:** "Only show the N to check" hides the rest. A phrase is
+flagged when Claude changed it, when a word nearly matches a campaign name (like "pump fund"
+for Pump.fun, or a name split in two), or when it sits next to a sound the cutter cut or was
+unsure about. Flagged ones have an amber edge.
+**Needs deploying:** the `postiz` function (new action `recheck-captions`).
+Files: `postiz/recheck.ts` (+ test), `captionFlags.ts` (+ test), `CaptionReview.tsx`.
+
 ## Cut noises, never words (with a checker) + a brighter cuts editor
 **What:** The cutter now also cuts sounds with no speech in them (cough, bump, room
 noise), and tells you about anything it cut that could have been a word.

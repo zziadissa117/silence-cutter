@@ -59,6 +59,8 @@ import { checkPhone } from './phoneCheck'
 import { PHASE_LABEL, canShareFiles, labelFor, labelOf, outputName, share, type Job } from './jobs'
 import {
   withGeneralAngle,
+  videoLook,
+  wordsToHear,
   LIMITS,
   NO_POSTING,
   blankCampaign,
@@ -84,6 +86,7 @@ import {
   placeFor,
   postAction,
   postingHere,
+  recheckCaptions,
   refreshProfile,
   saveCampaignPlace,
   sendsFrom,
@@ -2314,6 +2317,15 @@ export function CampaignApp() {
     void recordDay(id, day, { campaignId: job.campaignId, angleId: job.angleId, headlineText: job.headlineText })
   }
 
+  /** The names this video's campaign uses - brand words, the words that bring
+   *  up its logo and pictures - for spotting and fixing a name heard wrong. */
+  function vocabularyFor(job: Job): string[] {
+    const campaign = campaignsRef.current.find((c) => c.id === job.campaignId)
+    const angle = campaign?.angles.find((a) => a.id === job.angleId)
+    if (!campaign || !angle) return []
+    return [...new Set([...campaign.brandWords, ...wordsToHear(videoLook(campaign, angle, bankRef.current))])]
+  }
+
   /** The pictures a sorted video will show, for leaving any of them out. */
   function picturesFor(job: Job): PictureChoice[] {
     const plan = job.day?.plan
@@ -2545,6 +2557,9 @@ export function CampaignApp() {
           setCutting({ id: reviewJob.id })
         }}
         clips={clipsField(reviewJob, true)}
+        vocabulary={vocabularyFor(reviewJob)}
+        riskSpans={(reviewJob.day?.plan?.checks ?? []).filter((c) => c.kind !== 'noise').map((c) => ({ start: c.start, end: c.end }))}
+        onRecheck={posting ? (phrases) => recheckCaptions(phrases, vocabularyFor(reviewJob)) : undefined}
         position={reviewJob.day?.captionPosition ?? defaultCaptionPosition()}
         onPosition={(position) => setCaptionPosition(reviewJob.id, position)}
       />

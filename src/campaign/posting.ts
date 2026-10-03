@@ -290,6 +290,22 @@ export async function postAction(
   return post
 }
 
+export interface RecheckResult {
+  phrases: string[]
+  /** Indexes of the phrases Claude changed. */
+  changed: number[]
+  /** What the check cost, in cents, from the tokens the API reported. */
+  costCents: number
+  /** Said when Claude's answer could not be used. */
+  error?: string
+}
+
+/** Claude's second look at a video's burned-in captions: fixes words that were
+ *  misheard, using the campaign's names. Costs credits, so only on his tap. */
+export async function recheckCaptions(phrases: string[], vocabulary: string[]): Promise<RecheckResult> {
+  return call<RecheckResult>('recheck-captions', { profile: profileId(), phrases, vocabulary })
+}
+
 /** The caption Claude would write for a video he posts by hand, from the
  *  campaign's rules, stills from the video and anything he says it is
  *  about - for him to read and change before it goes. */

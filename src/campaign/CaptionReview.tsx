@@ -22,7 +22,9 @@ import {
   type CaptionPosition,
   type CaptionWord,
 } from './captions'
+import { centsLabel, estimateRecheckCents, flaggedPhrases, type Span } from './captionFlags'
 import { headlineFontReady } from './headlineFont'
+import type { RecheckResult } from './posting'
 import { ChevronLeft, PauseIcon, PlayIcon } from './icons'
 
 const textOf = (phrase: CaptionWord[]) =>
@@ -53,6 +55,9 @@ export function CaptionReview({
   bare = false,
   position = 'usual',
   onPosition,
+  onRecheck,
+  vocabulary = [],
+  riskSpans = [],
 }: {
   name: string
   /** The video itself, or null while it is being fetched from storage. */
@@ -75,6 +80,12 @@ export function CaptionReview({
   /** Where the caption sits on the frame, and a way to move it. */
   position?: CaptionPosition
   onPosition?: (position: CaptionPosition) => void
+  /** Claude's second look at the captions (costs credits). Absent when posting is not set up. */
+  onRecheck?: (phrases: string[]) => Promise<RecheckResult>
+  /** The campaign's names, for spotting a name heard wrong. */
+  vocabulary?: string[]
+  /** Moments of sounds the cutter cut or was unsure about. */
+  riskSpans?: Span[]
 }) {
   // The phrases as heard: each keeps its moment however it is retyped.
   const [heard] = useState(() => phrasesOf(initial))
@@ -86,6 +97,9 @@ export function CaptionReview({
   /** Which phrase each word is in. */
   const owner = useMemo(() => phrases.flatMap((p, k) => p.map(() => k)), [phrases])
 
+  const [checking, setChecking] = useState(false)
+  const [rechecked, setRechecked] = useState<{ changed: Set<number>; cents: number; before: string[]; error?: string } | null>(null)
+  const [onlyFlagged, setOnlyFlagged] = useState(false)
   const [current, setCurrent] = useState(0)
   const [playing, setPlaying] = useState(false)
   const [typing, setTyping] = useState(false)
@@ -201,6 +215,38 @@ export function CaptionReview({
     onChange(heard.flatMap((_, i) => (i === k ? phraseFor(i, text) : phrases[i])))
   }
 
+  /** Sets every phrase at once (Claude's fixes, or putting them back). */
+  const applyTexts = (next: string[]) => {
+    setTexts(next)
+    onChange(heard.flatMap((_, i) => phraseFor(i, next[i])))
+  }
+
+  const recheck = async () => {
+    if (!onRecheck || checking) return
+    setChecking(true)
+    const before = texts
+    try {
+      const out = await onRecheck(texts)
+      const changed = new Set(out.changed)
+      if (changed.size > 0) applyTexts(out.phrases)
+      setRechecked({ changed, cents: out.costCents, before, error: out.error })
+      if (changed.size > 0) setOnlyFlagged(true)
+    } catch (e) {
+      setRechecked({ changed: new Set(), cents: 0, before, error: e instanceof Error ? e.message : String(e) })
+    } finally {
+      setChecking(false)
+    }
+  }
+
+  const flagged = useMemo(
+    () =>
+      flaggedPhrases(
+        phrases.map((p, k) => ({ text: texts[k] ?? '', start: p[0]?.start ?? 0, end: p[p.length - 1]?.end ?? 0 })),
+        { vocabulary, changed: rechecked?.changed, risky: riskSpans },
+      ),
+    [phrases, texts, vocabulary, rechecked, riskSpans],
+  )
+
   /** On to the next phrase's box, or done after the last. */
   const next = (k: number) => {
     const box = list.current?.children[k + 1]?.querySelector('textarea')
@@ -285,9 +331,51 @@ export function CaptionReview({
         ) : null}
       </div>
 
+      {onRecheck ? (
+        <div className="recheck">
+          <button type="button" className="btn wide recheck-btn" disabled={checking} onClick={() => void recheck()}>
+            {checking ? 'Claude is checking…' : `Use Claude to re-check captions · costs credits · ${centsLabel(estimateRecheckCents(texts, vocabulary))}`}
+          </button>
+          {rechecked ? (
+            <p className={`hint${rechecked.error ? ' warn-text' : ''}`}>
+              {rechecked.error
+                ? rechecked.error
+                : rechecked.changed.size === 0
+                  ? 'Claude found nothing to fix.'
+                  : `Claude fixed ${rechecked.changed.size} phrase${rechecked.changed.size === 1 ? '' : 's'} - they are highlighted below.`}
+              {rechecked.cents > 0 ? ` It cost ${centsLabel(rechecked.cents)}.` : ''}
+              {rechecked.changed.size > 0 ? (
+                <>
+                  {' '}
+                  <button
+                    type="button"
+                    className="linkbtn"
+                    onClick={() => {
+                      applyTexts(rechecked.before)
+                      setRechecked({ ...rechecked, changed: new Set() })
+                    }}
+                  >
+                    Undo
+                  </button>
+                </>
+              ) : null}
+            </p>
+          ) : null}
+        </div>
+      ) : null}
+      {flagged.size > 0 && flagged.size < phrases.length ? (
+        <button type="button" className="linkbtn only-flagged" onClick={() => setOnlyFlagged((v) => !v)}>
+          {onlyFlagged ? `Show all ${phrases.length} phrases` : `Only show the ${flagged.size} to check`}
+        </button>
+      ) : null}
+
       <ol className="phrases" ref={list}>
         {phrases.map((phrase, k) => (
-          <li key={k} className={`phrase${k === current ? ' on' : ''}${phrase.length > 0 && !textOf(phrase) ? ' gone' : ''}`}>
+          <li
+            key={k}
+            hidden={onlyFlagged && flagged.size > 0 && !flagged.has(k)}
+            className={`phrase${k === current ? ' on' : ''}${phrase.length > 0 && !textOf(phrase) ? ' gone' : ''}${rechecked?.changed.has(k) ? ' fixed' : flagged.has(k) ? ' flag' : ''}`}
+          >
             <button
               type="button"
               className="phrase-play"

@@ -51,6 +51,7 @@ import {
   normalTag,
   type PostingRules,
 } from './caption.ts'
+import { RECHECK_SCHEMA, RECHECK_SYSTEM, acceptFix, costCents } from './recheck.ts'
 import { cleanCaptions, cleanRepost, repostDueAt, textFor, variationNote, type AccountText } from './repost.ts'
 import { FAKE_CLAUDE, FakeError, fakeCaption, fakePostiz, isFakePostiz } from './fake.ts'
 import { batchChoices, batchInfo, batchSpan, type BatchInfo } from './batch.ts'
@@ -970,6 +971,76 @@ async function captionFor(profile: Profile, body: Record<string, unknown>): Prom
   return reply({ caption: written.caption ?? '', title: written.title ?? '', error: written.error ?? null })
 }
 
+/** Claude's second look at a video's burned-in captions: fixes words the
+ *  phone's speech model misheard, using the campaign's own vocabulary, and
+ *  nothing more. Costs credits on his Anthropic key, so it only runs when he
+ *  asks. The reply says what changed and what it cost. */
+async function recheckCaptions(profile: Profile, body: Record<string, unknown>): Promise<Response> {
+  const phrases = (Array.isArray(body.phrases) ? body.phrases : [])
+    .filter((p): p is string => typeof p === 'string')
+    .slice(0, 200)
+    .map((p) => p.slice(0, 400))
+  if (phrases.length === 0) throw new Problem('There are no captions to check.')
+  const vocabulary = (Array.isArray(body.vocabulary) ? body.vocabulary : [])
+    .filter((v): v is string => typeof v === 'string' && v.trim() !== '')
+    .slice(0, 80)
+    .map((v) => v.trim().slice(0, 60))
+  const keys = await keysFor(profile.id)
+  if (!keys.anthropic) throw new Problem('Your Anthropic key is missing - paste it in Settings, Posting.')
+  if (keys.anthropic === FAKE_CLAUDE) return reply({ phrases, changed: [], costCents: 0 })
+
+  const client = new Anthropic({ apiKey: keys.anthropic, maxRetries: 2, timeout: 2 * MINUTE })
+  const request = {
+    model: MODEL,
+    max_tokens: 8000,
+    system: RECHECK_SYSTEM,
+    output_config: { effort: 'low', format: { type: 'json_schema', schema: RECHECK_SCHEMA } },
+    messages: [
+      {
+        role: 'user',
+        content: `Vocabulary: ${vocabulary.length > 0 ? vocabulary.join(', ') : '(none given)'}\n\nCaptions:\n${phrases.map((p, i) => `${i + 1}. ${p}`).join('\n')}`,
+      },
+    ],
+  }
+  let response
+  try {
+    response = await client.beta.messages.create({
+      ...request,
+      betas: ['server-side-fallback-2026-07-01'],
+      fallbacks: 'default',
+    } as never)
+  } catch (error) {
+    if (error instanceof Anthropic.BadRequestError && /fallback/i.test(error.message)) {
+      response = await client.beta.messages.create(request as never).catch(anthropicProblem)
+    } else anthropicProblem(error)
+  }
+  const message = response as {
+    stop_reason: string
+    content: { type: string; text?: string }[]
+    usage?: { input_tokens?: number; output_tokens?: number }
+  }
+  const said = message.content
+    .filter((b) => b.type === 'text')
+    .map((b) => b.text ?? '')
+    .join('')
+  let parsed: { phrases?: unknown } = {}
+  try {
+    parsed = JSON.parse(said)
+  } catch {
+    parsed = {}
+  }
+  const cost = costCents(message.usage?.input_tokens ?? 0, message.usage?.output_tokens ?? 0)
+  const fixed = Array.isArray(parsed.phrases) ? parsed.phrases : null
+  // Not the same number of phrases: nothing can be trusted to line up, so
+  // nothing changes. What it cost is still said.
+  if (message.stop_reason === 'refusal' || !fixed || fixed.length !== phrases.length) {
+    return reply({ phrases, changed: [], costCents: cost, error: "Claude's answer didn't line up with the captions, so nothing was changed." })
+  }
+  const result = phrases.map((original, i) => acceptFix(original, fixed[i]))
+  const changed = result.flatMap((text, i) => (text !== phrases[i] ? [i] : []))
+  return reply({ phrases: result, changed, costCents: cost })
+}
+
 async function sent(profile: Profile, body: Record<string, unknown>): Promise<Response> {
   const { data } = await db.from('cutter_posts').select('*').eq('profile_id', profile.id).eq('client_key', String(body.key ?? '')).maybeSingle()
   if (!data) throw new Problem('That video never arrived - it is being sent again.', true, 404)
@@ -1777,6 +1848,8 @@ Deno.serve(async (req) => {
         return await start(profile, body)
       case 'write-caption':
         return await captionFor(profile, body)
+      case 'recheck-captions':
+        return await recheckCaptions(profile, body)
       case 'sent':
         return await sent(profile, body)
       case 'posts':

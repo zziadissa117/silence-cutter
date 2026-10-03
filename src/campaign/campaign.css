@@ -561,3 +561,9 @@ input.bank-name { background: transparent; border: 0; border-bottom: 1px solid c
 .cuts-check-title { font-weight: 600; }
 .cuts-noises { margin-top: 4px; display: flex; flex-direction: column; gap: 8px; }
 .cuts-noises .cuts-check { margin-top: 8px; }
+
+.recheck { display: flex; flex-direction: column; gap: 6px; }
+.recheck-btn { min-height: 48px; font-weight: 600; }
+.only-flagged { align-self: flex-start; }
+.phrase.fixed textarea { border-color: var(--ok); box-shadow: inset 3px 0 0 var(--ok); }
+.phrase.flag textarea { border-color: var(--warn); box-shadow: inset 3px 0 0 var(--warn); }
