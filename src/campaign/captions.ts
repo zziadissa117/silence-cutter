@@ -285,6 +285,43 @@ export function popScale(since: number): number {
 /** One word, big and centred below his face, clear of TikTok's buttons and
  *  caption. */
 const CAPTION_Y = 0.63
+
+/** Where the caption sits, so it can be moved off his face: up near the top,
+ *  across the middle, where it has always been ("usual"), or low. The
+ *  numbers are the caption's centre as a share of the video's height. */
+export type CaptionPosition = 'top' | 'middle' | 'usual' | 'bottom'
+
+export const CAPTION_POSITIONS: { id: CaptionPosition; label: string; y: number }[] = [
+  { id: 'top', label: 'Top', y: 0.2 },
+  { id: 'middle', label: 'Middle', y: 0.5 },
+  { id: 'usual', label: 'Usual', y: CAPTION_Y },
+  { id: 'bottom', label: 'Bottom', y: 0.8 },
+]
+
+export function captionY(position: CaptionPosition): number {
+  return CAPTION_POSITIONS.find((p) => p.id === position)?.y ?? CAPTION_Y
+}
+
+const POSITION_KEY = 'cutter-caption-position'
+
+/** The position new videos start with: his choice in Settings, else usual. */
+export function defaultCaptionPosition(): CaptionPosition {
+  try {
+    const saved = localStorage.getItem(POSITION_KEY)
+    if (CAPTION_POSITIONS.some((p) => p.id === saved)) return saved as CaptionPosition
+  } catch {
+    // Storage blocked: the usual place.
+  }
+  return 'usual'
+}
+
+export function setDefaultCaptionPosition(position: CaptionPosition): void {
+  try {
+    localStorage.setItem(POSITION_KEY, position)
+  } catch {
+    // Not saved.
+  }
+}
 const CAPTION_SIZE = 0.088
 const CAPTION_WEIGHT = 800
 /** The light edge: a thin black line round each letter. */
@@ -292,7 +329,15 @@ const EDGE = 0.1
 
 /** Draws `text` as the caption, `since` seconds after it came in - with no
  *  punctuation at all when `bare`. */
-export function drawCaption(ctx: Ctx, width: number, height: number, text: string, since: number, bare = false): void {
+export function drawCaption(
+  ctx: Ctx,
+  width: number,
+  height: number,
+  text: string,
+  since: number,
+  bare = false,
+  position: CaptionPosition = 'usual',
+): void {
   const word = bare ? bareWord(text) : cleanWord(text)
   if (!word) return
   const base = Math.min(width, height * (9 / 16))
@@ -308,7 +353,7 @@ export function drawCaption(ctx: Ctx, width: number, height: number, text: strin
   }
   const scale = popScale(since)
   const x = width / 2
-  const y = height * CAPTION_Y
+  const y = height * captionY(position)
   ctx.translate(x, y)
   ctx.scale(scale, scale)
   ctx.globalAlpha = Math.min(1, Math.max(0, since / 0.04))

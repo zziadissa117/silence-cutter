@@ -278,3 +278,15 @@ describe('drawing a caption', () => {
     expect(drawn('what?!', true)).toEqual(['what'])
   })
 })
+
+import { CAPTION_POSITIONS, captionY } from './captions'
+
+describe('where the caption sits', () => {
+  it('goes top to bottom in order, and usual is where it has always been', () => {
+    const ys = CAPTION_POSITIONS.map((p) => p.y)
+    expect(ys).toEqual([...ys].sort((a, b) => a - b))
+    expect(captionY('usual')).toBe(0.63)
+    expect(captionY('top')).toBeLessThan(captionY('middle'))
+    expect(captionY('bottom')).toBeGreaterThan(captionY('usual'))
+  })
+})

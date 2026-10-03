@@ -3,6 +3,16 @@
 Newest first. Every change says what it does, how to use it, and how it works
 underneath. Kept up to date with each commit.
 
+## Move the captions (top / middle / bottom)
+**What:** Captions no longer have to sit where your face is.
+**Use it:** In the caption check (the editor), under the video: Top, Middle, Usual or
+Bottom. The preview moves at once and the video is made with that position. Settings,
+Captions sets where new videos start (Usual = where they have always been).
+**How:** `captions.ts` `CAPTION_POSITIONS` (caption centre at 20%, 50%, 63%, 80% of the
+height); the choice is saved on that video (`day.captionPosition`) and passed through
+`make` to the render. Files: `captions.ts`, `CaptionReview.tsx`, `render.ts`, `pipeline.ts`.
+**Limit:** Talking videos. Reaction videos still use the usual place.
+
 ## Leave one picture out of one video
 **What:** A photo that popped up on a word you said in passing can be dropped from
 that video only.

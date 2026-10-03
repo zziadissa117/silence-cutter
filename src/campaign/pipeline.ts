@@ -26,7 +26,7 @@ import {
   type BankPicture,
   type Campaign,
 } from './look'
-import { captionWords, type CaptionWord } from './captions'
+import { captionWords, type CaptionPosition, type CaptionWord } from './captions'
 import type { ClipPlace, JoinedClips } from './clips'
 import { planCampaignCut, type CampaignPlan } from './plan'
 import { renderMontage } from './montageRender'
@@ -156,6 +156,8 @@ export async function make(
   defaults: AngleEffects | null = null,
   /** Picture ids left out of this video. */
   skipPictures: readonly string[] = [],
+  /** Where the captions sit on the frame. */
+  captionPosition: CaptionPosition = 'usual',
 ): Promise<CampaignResult> {
   refuseBroken(campaign, angle)
   const look = videoLook(campaign, angle, bank, defaults, skipPictures)
@@ -200,6 +202,7 @@ export async function make(
       seed,
       gentle,
       captions,
+      captionPosition,
       voice,
       music: track ? { audio: track.audio, level: track.level } : null,
       clips: { before: clips.before, after: clips.after },

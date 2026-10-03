@@ -26,7 +26,7 @@ import {
 } from './look'
 import type { BankFile, BatchBank } from './batch'
 import type { MusicLevel } from './music'
-import type { CaptionWord } from './captions'
+import type { CaptionPosition, CaptionWord } from './captions'
 import type { CampaignPlan } from './plan'
 import type { Guess } from './sort'
 
@@ -80,6 +80,8 @@ interface StoredJob {
     noEffects?: boolean
     /** Picture ids left out of this video alone. */
     skipPictures?: string[]
+    /** Where this video's captions sit; absent = the Settings default. */
+    captionPosition?: CaptionPosition
     /** The videos joined on before and after this one: a clip's id, or
      *  "none". Absent means the angle's own - see clips.ts. */
     clips?: JobClips

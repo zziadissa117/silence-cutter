@@ -6,6 +6,7 @@ import { useEffect, useState } from 'react'
 import type { PresetName } from '../media/silenceMath'
 import type { Session, SyncState } from './cloud'
 import type { LocalPosting, Profile } from './posting'
+import { CAPTION_POSITIONS, defaultCaptionPosition, setDefaultCaptionPosition, type CaptionPosition } from './captions'
 import { PRESET_EFFECTS, defaultEffects, presetOf, setDefaultEffects, type DefaultPreset } from './defaultEffects'
 import type { AngleEffects, EffectLevel } from './effects'
 import { LANDSCAPE_MODES, landscapeMode, setLandscapeMode, type LandscapeMode } from './framing916'
@@ -94,6 +95,32 @@ function DefaultEffectsSetting() {
         <input type="checkbox" checked={effects.logoPop} onChange={(e) => change({ ...effects, logoPop: e.target.checked })} />
         <span className="label">Logo and pictures spring in</span>
       </label>
+    </>
+  )
+}
+
+function CaptionPlace() {
+  const [position, setPosition] = useState<CaptionPosition>(defaultCaptionPosition)
+  return (
+    <>
+      <div className="seg full" role="radiogroup" aria-label="Where captions sit">
+        {CAPTION_POSITIONS.map((p) => (
+          <button
+            key={p.id}
+            type="button"
+            role="radio"
+            aria-checked={position === p.id}
+            className={position === p.id ? 'active' : ''}
+            onClick={() => {
+              setDefaultCaptionPosition(p.id)
+              setPosition(p.id)
+            }}
+          >
+            {p.label}
+          </button>
+        ))}
+      </div>
+      <p className="hint">Where captions start on each video. You can move them for one video while checking its captions.</p>
     </>
   )
 }
@@ -275,6 +302,7 @@ export function SettingsView({
       <WideClips />
 
       <div className="list-title">Captions</div>
+      <CaptionPlace />
       <label className="toggle">
         <input type="checkbox" checked={captions} onChange={(e) => onCaptions(e.target.checked)} />
         <span>

@@ -33,7 +33,7 @@ import { JobRow } from './JobRow'
 import { CaptionReview } from './CaptionReview'
 import { CutsEditor } from './CutsEditor'
 import { HookQuestion } from './HookQuestion'
-import { captionWords, captionedIndices, drawnWords, type CaptionWord } from './captions'
+import { captionWords, captionedIndices, defaultCaptionPosition, drawnWords, type CaptionPosition, type CaptionWord } from './captions'
 import {
   CLIP_PLACES,
   addClip,
@@ -1173,6 +1173,7 @@ export function CampaignApp() {
               await clipsFor(next),
               next.day?.noEffects ? null : defaultEffects(),
               next.day?.skipPictures ?? [],
+              next.day?.captionPosition ?? defaultCaptionPosition(),
             ),
           )
         } else {
@@ -2224,6 +2225,15 @@ export function CampaignApp() {
     void recordDay(id, day, { campaignId: job.campaignId, angleId: job.angleId, headlineText: job.headlineText })
   }
 
+  /** Moves this video's captions (top, middle, usual, bottom). */
+  const setCaptionPosition = (id: string, captionPosition: CaptionPosition) => {
+    const job = jobs.find((j) => j.id === id)
+    if (!job?.day) return
+    const day = { ...job.day, captionPosition }
+    setJobs((js) => js.map((j) => (j.id === id ? { ...j, day } : j)))
+    void recordDay(id, day, { campaignId: job.campaignId, angleId: job.angleId, headlineText: job.headlineText })
+  }
+
   const setNoEffects = (id: string, noEffects: boolean) => {
     const job = jobs.find((j) => j.id === id)
     if (!job?.day) return
@@ -2395,6 +2405,8 @@ export function CampaignApp() {
           setCutting({ id: reviewJob.id })
         }}
         clips={clipsField(reviewJob, true)}
+        position={reviewJob.day?.captionPosition ?? defaultCaptionPosition()}
+        onPosition={(position) => setCaptionPosition(reviewJob.id, position)}
       />
     ) : showPosts && posting ? (
       <PostsView

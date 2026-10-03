@@ -12,7 +12,16 @@
 
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 
-import { CAPTION_LEAD, captionAt, drawCaption, phrasesOf, retimePhrase, type CaptionWord } from './captions'
+import {
+  CAPTION_LEAD,
+  CAPTION_POSITIONS,
+  captionAt,
+  drawCaption,
+  phrasesOf,
+  retimePhrase,
+  type CaptionPosition,
+  type CaptionWord,
+} from './captions'
 import { headlineFontReady } from './headlineFont'
 import { ChevronLeft, PauseIcon, PlayIcon } from './icons'
 
@@ -42,6 +51,8 @@ export function CaptionReview({
   onCuts,
   clips,
   bare = false,
+  position = 'usual',
+  onPosition,
 }: {
   name: string
   /** The video itself, or null while it is being fetched from storage. */
@@ -61,6 +72,9 @@ export function CaptionReview({
   clips?: ReactNode
   /** Captions with no punctuation: the preview shows them as they'll be. */
   bare?: boolean
+  /** Where the caption sits on the frame, and a way to move it. */
+  position?: CaptionPosition
+  onPosition?: (position: CaptionPosition) => void
 }) {
   // The phrases as heard: each keeps its moment however it is retyped.
   const [heard] = useState(() => phrasesOf(initial))
@@ -85,6 +99,8 @@ export function CaptionReview({
   wordsRef.current = words
   const ownerRef = useRef(owner)
   ownerRef.current = owner
+  const positionRef = useRef(position)
+  positionRef.current = position
 
   useEffect(() => {
     if (!file) return
@@ -110,7 +126,7 @@ export function CaptionReview({
     if (!ctx) return
     ctx.clearRect(0, 0, w, h)
     const word = wordsRef.current[shown]
-    if (word) drawCaption(ctx, w, h, word.text, since, bare)
+    if (word) drawCaption(ctx, w, h, word.text, since, bare, positionRef.current)
   }, [bare])
 
   /** The first word of phrase `k` that has anything to show. */
@@ -128,7 +144,7 @@ export function CaptionReview({
     const v = video.current
     if (first >= 0 && v && v.readyState >= 1) v.currentTime = words[first].start + 0.02
     paint(first, 1)
-  }, [current, playing, words, paint]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [current, playing, words, paint, position]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Painted again once TikTok Sans is here; later paints already have it.
   useEffect(() => {
@@ -251,6 +267,22 @@ export function CaptionReview({
             </span>
           ) : null}
         </div>
+        {onPosition ? (
+          <div className="seg full caption-position" role="radiogroup" aria-label="Where the captions sit">
+            {CAPTION_POSITIONS.map((p) => (
+              <button
+                key={p.id}
+                type="button"
+                role="radio"
+                aria-checked={position === p.id}
+                className={position === p.id ? 'active' : ''}
+                onClick={() => onPosition(p.id)}
+              >
+                {p.label}
+              </button>
+            ))}
+          </div>
+        ) : null}
       </div>
 
       <ol className="phrases" ref={list}>
