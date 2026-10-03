@@ -974,6 +974,40 @@ export async function expireMade(now = Date.now()): Promise<number> {
   return old.length
 }
 
+/** A made batch video's row, still inside the edit window, without changing
+ *  anything - for showing what can be edited. Null when it has expired or
+ *  is not a batch video. */
+export async function peekMadeBatch(id: string): Promise<PendingJob | null> {
+  const row = await db.jobs.get(id)
+  if (!row?.madeAt || !row.montage?.bank || !row.batch) return null
+  if (Date.now() - row.madeAt >= EDIT_WINDOW_MS) return null
+  const { addedAt: _added, ...meta } = row
+  return meta
+}
+
+/** Takes a made batch video back to be made again with a new headline and
+ *  track: back in the queue, its post a new version replacing the old. */
+export async function reopenBatchJob(
+  id: string,
+  replaces: string,
+  fields: { headlineText: string; music: BankFile | null },
+): Promise<PendingJob | null> {
+  const row = await db.jobs.get(id)
+  if (!row?.madeAt || !row.montage?.bank) return null
+  if (Date.now() - row.madeAt >= EDIT_WINDOW_MS) return null
+  await db.jobs.update(id, {
+    madeAt: undefined,
+    version: (row.version ?? 1) + 1,
+    replaces,
+    attempts: 0,
+    failed: undefined,
+    headlineText: fields.headlineText,
+    montage: { ...row.montage, bank: { ...row.montage.bank, music: fields.music } },
+  })
+  const { addedAt: _added, ...meta } = (await db.jobs.get(id))!
+  return meta
+}
+
 /** Takes a made job back to be edited: it is a job to make again, its next
  *  post a new version replacing the old. Null when it has expired. */
 export async function reopenJob(id: string, replaces: string): Promise<PendingJob | null> {

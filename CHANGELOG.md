@@ -3,6 +3,19 @@
 Newest first. Every change says what it does, how to use it, and how it works
 underneath. Kept up to date with each commit.
 
+## Edit again for batch videos
+**What:** A batch video can be fixed after it was made: its headline and its music track.
+**Use it:** Posts, the video, "Edit again · ... left", change the headline or pick another
+track (or none), "Make it again". The old post is replaced if it hasn't gone out; if it
+already posted, the edit goes out as a new post and says so.
+**How:** The batch video's footage is the bank's and is kept while a job row names it, so the
+(small) row is kept for the 2-hour window (`markMade`) instead of being forgotten, and the
+bank sweep leaves the footage alone until it expires. `store.peekMadeBatch` /
+`reopenBatchJob`, `BatchEdit.tsx`, `CampaignApp.makeBatchAgain`. Same replace-the-post path
+as talking videos (`id~2`, `retireOld`).
+**Not covered:** swapping which reaction or product clip it uses (that is a different
+video).
+
 ## Reaction and montage videos get default effects and caption position
 **What:** The default effects (Settings) and the caption position now apply to batch
 videos too. Reaction: a slow push-in as it opens and a punch at the switch to the product.
@@ -24,14 +37,7 @@ notification with the post's link, and the post shows "Time to repost" for 3 day
 The earlier re-upload repost is gone.
 
 ## Auto-repost, and a caption per platform
-**Repost:** Off unless you turn it on. Campaign, Posting, Repost: "Post each video again
-later", after 3 / 7 / 14 / 30 days. When a post is confirmed posted, the scheduler books
-its repost; when due, the same video (the copy Postiz already has) becomes a new post
-with a caption Claude writes to read differently from the first, then goes through your
-usual approval. It is marked "repost" on the Posts screen, linked to the original
-(`repost_of`) so the planner bridge never counts it again, and each original is
-reposted once. It reuses the same file: a different cut or music needs a re-render,
-which only the phone can do.
+**Repost:** replaced - see "Reminder to repost" above. (It first re-uploaded the video as a new post; that was not what was wanted.)
 **Caption per platform:** On a waiting post with more than one account, "A different
 caption for one platform" lets you write one for just that account; accounts left blank
 use the main caption. Saved on the post (`captions`), used when it is sent to Postiz,

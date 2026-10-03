@@ -93,6 +93,7 @@ import {
 } from './posting'
 import { PostsView } from './PostsView'
 import { pushState, refreshPush, turnOnPush, type PushState } from './push'
+import { BatchEdit } from './BatchEdit'
 import { defaultEffects } from './defaultEffects'
 import { picturesHeard, type PictureChoice } from './skipPictures'
 import { talksIn } from './reaction'
@@ -110,9 +111,12 @@ import {
   jobOfPostKey,
   keepJobVideo,
   markMade,
+  peekMadeBatch,
   postKeyOf,
+  reopenBatchJob,
   reopenJob,
   loadBank,
+  loadBatchBank,
   loadCampaigns,
   loadBankFile,
   loadJobFile,
@@ -463,6 +467,16 @@ export function CampaignApp() {
   const [cutting, setCutting] = useState<{ id: string } | null>(null)
   // Videos about to be checked, waiting on whether the hook gets captions.
   const [askingHook, setAskingHook] = useState<string[] | null>(null)
+  // A made batch video being fixed: its headline and track.
+  const [batchEditing, setBatchEditing] = useState<{
+    id: string
+    postKey: string
+    name: string
+    headline: string
+    music: BankFile | null
+    options: BankFile[]
+    posted: boolean
+  } | null>(null)
   // Posting to Postiz: this phone's setup, the Posts screen, the keys.
   const [posting, setPosting] = useState<LocalPosting | null>(postingHere)
   // Videos added while this is on are for the next days: they take their
@@ -508,8 +522,9 @@ export function CampaignApp() {
   // Made videos whose recording is still on the phone, so they can be edited
   // and made again: job id -> when made. They go EDIT_WINDOW_MS after.
   const [editable, setEditable] = useState<Record<string, number>>({})
+  const sweepBankRef = useRef<() => void>(() => {})
   const refreshEditable = useCallback(async () => {
-    await expireMade().catch(() => 0)
+    if ((await expireMade().catch(() => 0)) > 0) sweepBankRef.current()
     setEditable(await editableJobs().catch(() => ({})))
   }, [])
   useEffect(() => {
@@ -1222,7 +1237,11 @@ export function CampaignApp() {
         sendToPostiz(next, jobCampaign, result)
         // A talking video keeps its recording and edits for a couple of hours,
         // so a caption, a cut or the music can be fixed and it made again.
-        if (plan && !next.reaction && !next.montage && !next.batch && !next.prejoin && !next.day?.parts) {
+        const keepTalking = plan && !next.reaction && !next.montage && !next.batch && !next.prejoin && !next.day?.parts
+        // A batch video's footage is the bank's, kept while a job row names it,
+        // so keeping the (small) row keeps the footage for the edit window.
+        const keepBatch = Boolean(next.batch && next.montage?.bank)
+        if (keepTalking || keepBatch) {
           await markMade(next.id)
           void refreshEditable()
         } else await forgetJob(next.id)
@@ -1331,9 +1350,55 @@ export function CampaignApp() {
     }
   }
 
+  /** Makes a batch video again with the headline and track he changed; its
+   *  post is replaced when it is sent. */
+  const makeBatchAgain = async (edit: NonNullable<typeof batchEditing>, fields: { headline: string; music: BankFile | null }) => {
+    const row = await reopenBatchJob(edit.id, edit.postKey, { headlineText: fields.headline, music: fields.music })
+    setBatchEditing(null)
+    if (!row?.montage || !row.batch) {
+      setNotice(`The footage is only kept for ${EDIT_WINDOW_MS / 3_600_000} hours after a video is made, and this one's is gone.`)
+      void refreshEditable()
+      return
+    }
+    const campaign = campaignsRef.current.find((c) => c.id === row.campaignId)
+    const angle = campaign?.angles.find((a) => a.id === row.angleId)
+    const job: Job = {
+      id: row.id,
+      name: row.fileName,
+      file: null,
+      campaignId: row.campaignId,
+      angleId: row.angleId,
+      label: campaign && angle ? labelOf(campaign, angle) : '',
+      headlineText: row.headlineText,
+      settings: row.settings,
+      cleanSpeech: false,
+      status: 'queued',
+      phase: 'cutting',
+      progress: 0,
+      montage: row.montage,
+      batch: row.batch,
+      version: row.version,
+      replaces: row.replaces,
+    }
+    setJobs((js) => [...js.filter((j) => j.id !== job.id), job])
+    void refreshEditable()
+    setNotice('Making it again. Its old post is replaced when this one is sent.')
+  }
+
   /** Opens a made video's cuts, captions and music again, from the post it
    *  went out as. Making it again replaces that post if it hasn't gone out. */
   const editAgain = async (postKey: string) => {
+    const batchRow = await peekMadeBatch(jobOfPostKey(postKey))
+    if (batchRow?.montage?.bank) {
+      const bank = await loadBatchBank(batchRow.campaignId).catch(() => null)
+      const current = batchRow.montage.bank.music
+      const options = [...(bank?.music ?? [])]
+      if (current && !options.some((o) => o.id === current.id)) options.unshift(current)
+      const old = lastPosts().find((p) => p.key === postKey)
+      setShowPosts(false)
+      setBatchEditing({ id: batchRow.id, postKey, name: batchRow.fileName, headline: batchRow.headlineText, music: current, options, posted: old?.status === 'posted' })
+      return
+    }
     const reopened = await reopenJob(jobOfPostKey(postKey), postKey)
     if (!reopened) {
       setNotice(`The original recording is only kept for ${EDIT_WINDOW_MS / 3_600_000} hours after a video is made, and this one's is gone.`)
@@ -1717,6 +1782,7 @@ export function CampaignApp() {
   jobsNow.current = jobs
   /** Deletes the footage a spent bank let go of, once nothing needs it. */
   const sweepBank = () => {
+    sweepBankRef.current = sweepBank
     const inUse = jobsNow.current.flatMap((j) => (j.montage?.bank && j.status !== 'done' ? [j.montage.bank.reaction.id, j.montage.bank.product.id] : []))
     void sweepRetiredBankFiles(inUse)
   }
@@ -2317,6 +2383,17 @@ export function CampaignApp() {
   const screen =
     supported === false ? (
       <div className="error">This browser can't make video yet - it needs iOS 26 / Safari 26 or newer, or Chrome.</div>
+    ) : batchEditing ? (
+      <BatchEdit
+        key={batchEditing.id}
+        name={batchEditing.name}
+        headline={batchEditing.headline}
+        music={batchEditing.music}
+        options={batchEditing.options}
+        posted={batchEditing.posted}
+        onMake={(fields) => void makeBatchAgain(batchEditing, fields)}
+        onCancel={() => setBatchEditing(null)}
+      />
     ) : editing?.kind === 'campaign' ? (
       <CampaignEditor
         key={editing.campaign.id}
