@@ -3,6 +3,12 @@
 Newest first. Every change says what it does, how to use it, and how it works
 underneath. Kept up to date with each commit.
 
+## Fix: "Cannot access 'nr' before initialization" crash
+The Videos list crashed the whole page when it had a video row. Cause: the per-video
+pictures list (added with "leave one picture out") was called while the page was being
+drawn, but defined further down in the same component. Now declared as a function so it
+exists when the list draws. Videos waiting come back on reload, as the error says.
+
 ## Wide clips: cut them, or only make them 9:16
 **What:** When you drop in a video that is not 9:16, the cutter asks: "Cut them and make
 9:16", or "Only make 9:16 - don't cut" (every moment stays in). Videos that are already

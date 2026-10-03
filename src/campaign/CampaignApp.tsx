@@ -2310,7 +2310,7 @@ export function CampaignApp() {
   }
 
   /** The pictures a sorted video will show, for leaving any of them out. */
-  const picturesFor = (job: Job): PictureChoice[] => {
+  function picturesFor(job: Job): PictureChoice[] {
     const plan = job.day?.plan
     const campaign = campaignsRef.current.find((c) => c.id === job.campaignId)
     const angle = campaign?.angles.find((a) => a.id === job.angleId)
