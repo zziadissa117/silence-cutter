@@ -256,6 +256,9 @@ export interface SendEntry {
      *  with the rest of its batch - with his caption or none for Claude to
      *  write, and what it is about. */
     byHand?: { at: string | null; caption: string; about: string; spread?: boolean }
+    /** A video made again from an earlier post (music added): what he had
+     *  already written for it, so it is not written again. */
+    carry?: { caption: string | null; title: string | null; captions?: Record<string, { caption?: string; title?: string }> }
     /** Made from the Batch tab: waits for his approval, for this day and time. */
     batch?: JobBatch
   }

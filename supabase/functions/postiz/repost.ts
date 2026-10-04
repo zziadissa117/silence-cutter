@@ -65,3 +65,20 @@ export function variationNote(previous: string | null): string {
   if (!previous?.trim()) return ''
   return `\n\nThis video is being reposted. It went out before with this caption:\n"""\n${previous.slice(0, 2000)}\n"""\nWrite a clearly different caption: a different opening and different wording, the same facts, and every rule above still applies.`
 }
+
+/** What a post made again from an earlier one keeps: the caption he already
+ *  read and fixed, the title, and any per-account captions - so a video with
+ *  music added is not rewritten by Claude or asked for again. `finish` applies
+ *  the campaign's caption rules (hashtags). */
+export function carryOver(
+  value: unknown,
+  finish: (caption: string) => string,
+): { caption: string | null; title: string | null; captions: Record<string, AccountText> | null } | null {
+  if (!value || typeof value !== 'object') return null
+  const v = value as Record<string, unknown>
+  const caption = typeof v.caption === 'string' && v.caption.trim() ? finish(v.caption.slice(0, 5000)) : null
+  const title = typeof v.title === 'string' && v.title.trim() ? v.title.slice(0, 100) : null
+  const captions = cleanCaptions(v.captions, finish)
+  const any = caption !== null || title !== null || Object.keys(captions).length > 0
+  return any ? { caption, title, captions: Object.keys(captions).length > 0 ? captions : null } : null
+}

@@ -3,6 +3,26 @@
 Newest first. Every change says what it does, how to use it, and how it works
 underneath. Kept up to date with each commit.
 
+## Add music after the video is finished (Posts screen)
+**What:** On a post waiting in Posts (waiting for approval, approved, or scheduled for later)
+you can add music to the finished video.
+**Use it:** Posts, the post, "Add music": pick a track (an angle's, one from the batch bank,
+or "From my phone"), Normal or Quieter, "Add music". It takes seconds. The new version is
+sent and the old post is taken back. The caption, title and per-platform captions you
+already had come with it, and a batch video keeps its day and time.
+**How:** `addMusic.ts` copies the video's encoded picture across untouched (no re-render, no
+quality loss) and only redoes the sound: the video's own sound with the track mixed under
+it exactly as music goes under a voice when a video is made (set under the voice, dipping
+while you talk, fading in and out, looping if short, through the limiter). The video comes
+from this phone's copy, or Postiz's if the phone has let go of it. The post is replaced the
+same way Edit again does it (new key `id~2`, old one rejected after the new one is safely
+queued).
+**Limits:** Music goes on top of whatever sound the video already has; to swap a track, use
+Edit again. A post that already went out can't be changed. The new version takes the next
+free posting time rather than the exact time the old one had (a batch video keeps its slot).
+**Needs deploying:** the `postiz` function (the new version carries the caption over).
+Files: `addMusic.ts`, `musicAfter.ts`, `MusicAfter.tsx`, `PostsView.tsx`, `postiz/repost.ts`.
+
 ## Caption size
 **What:** Captions can be made smaller or bigger, as well as moved.
 **Use it:** In the caption check, under the Top / Middle / Usual / Bottom row: Small,

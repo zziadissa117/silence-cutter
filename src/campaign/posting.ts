@@ -83,6 +83,8 @@ export interface ServerPost {
   createdAt: string
   /** Made by hand from New post. */
   byHand?: boolean
+  /** Made from the Batch tab, for this day and time. */
+  batch?: { id: string; date: string; time: string; size: number } | null
 }
 
 /** This phone's posting: whose profile, and whether it sends its finished

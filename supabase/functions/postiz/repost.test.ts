@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { cleanCaptions, cleanRepost, repostDueAt, textFor, variationNote } from './repost.ts'
+import { carryOver, cleanCaptions, cleanRepost, repostDueAt, textFor, variationNote } from './repost.ts'
 
 describe('cleanRepost', () => {
   it('is off unless turned on, and keeps days sane', () => {
@@ -44,5 +44,16 @@ describe('variationNote', () => {
     expect(variationNote('Old words')).toContain('Old words')
     expect(variationNote('Old words')).toContain('different')
     expect(variationNote(null)).toBe('')
+  })
+})
+
+describe('carryOver', () => {
+  it('keeps the caption, title and per-account captions, with the rules applied', () => {
+    const out = carryOver({ caption: ' Hi ', title: 'T', captions: { a: { caption: 'x' } } }, (c) => c.trim() + '!')
+    expect(out).toEqual({ caption: 'Hi!', title: 'T', captions: { a: { caption: 'x!' } } })
+  })
+  it('is null when there is nothing to keep', () => {
+    expect(carryOver(undefined, (c) => c)).toBeNull()
+    expect(carryOver({ caption: '  ' }, (c) => c)).toBeNull()
   })
 })

@@ -17,6 +17,8 @@ import { ChevronLeft } from './icons'
 import type { Campaign } from './look'
 import { NewPost } from './NewPost'
 import { jobOfPostKey, EDIT_WINDOW_MS } from './store'
+import { MusicAfter } from './MusicAfter'
+import { canAddMusic } from './musicAfter'
 import { copyKind, forgetSend, kick, localVideo, sending, tidySends, watchSending, type Sending } from './outbox'
 import {
   PostingError,
@@ -184,11 +186,15 @@ function WaitingPost({
   onAct,
   editable,
   onEdit,
+  campaigns,
+  onChanged,
 }: {
   post: ServerPost
   busy: boolean
   editable: Record<string, number>
   onEdit: (key: string) => void
+  campaigns: Campaign[]
+  onChanged: (message: string) => void
   onAct: (action: PostAction, fields?: { caption?: string; at?: string; captions?: Record<string, { caption?: string }> }) => void
 }) {
   const [caption, setCaption] = useState(post.caption ?? '')
@@ -198,6 +204,7 @@ function WaitingPost({
   const ownCaptions = () => Object.fromEntries(Object.entries(own).filter(([, text]) => text.trim()).map(([id, text]) => [id, { caption: text }]))
   const ownEdited = JSON.stringify(ownCaptions()) !== JSON.stringify(Object.fromEntries(Object.entries(post.captions ?? {}).map(([id, t]) => [id, { caption: t.caption ?? '' }]).filter(([, t]) => (t as { caption: string }).caption.trim())))
   const [changingTime, setChangingTime] = useState(false)
+  const [addingMusic, setAddingMusic] = useState(false)
   const [at, setAt] = useState(localInput(post.postAt))
   const [watching, setWatching] = useState(false)
   const brand = post.approval === 'brand'
@@ -258,6 +265,7 @@ function WaitingPost({
         </label>
       ) : null}
       {watching ? <Watch post={post} /> : null}
+      {addingMusic ? <MusicAfter post={post} campaigns={campaigns} onDone={onChanged} onClose={() => setAddingMusic(false)} /> : null}
       <div className="post-actions">
         <button
           type="button"
@@ -269,6 +277,11 @@ function WaitingPost({
         </button>
         <SaveVideo post={post} primary={brand} />
         <EditAgain post={post} editable={editable} onEdit={onEdit} />
+        {canAddMusic(post) ? (
+          <button type="button" className="linkbtn" onClick={() => setAddingMusic((m) => !m)}>
+            {addingMusic ? 'Hide music' : 'Add music'}
+          </button>
+        ) : null}
         <button type="button" className="linkbtn" onClick={() => setWatching((w) => !w)}>
           {watching ? 'Hide' : 'Watch'}
         </button>
@@ -294,14 +307,19 @@ function OtherPost({
   onAct,
   editable,
   onEdit,
+  campaigns,
+  onChanged,
 }: {
   post: ServerPost
   busy: boolean
   editable: Record<string, number>
   onEdit: (key: string) => void
+  campaigns: Campaign[]
+  onChanged: (message: string) => void
   onAct: (action: PostAction) => void
 }) {
   const [open, setOpen] = useState(false)
+  const [addingMusic, setAddingMusic] = useState(false)
   const tone =
     post.status === 'posted' ? (post.error ? 'warn' : 'ok') : post.status === 'error' || post.status === 'failed' ? 'bad' : 'later'
   const line =
@@ -343,9 +361,15 @@ function OtherPost({
           ))}
         </div>
       ) : null}
+      {addingMusic ? <MusicAfter post={post} campaigns={campaigns} onDone={onChanged} onClose={() => setAddingMusic(false)} /> : null}
       <div className="post-actions">
         <SaveVideo post={post} />
         <EditAgain post={post} editable={editable} onEdit={onEdit} />
+        {canAddMusic(post) ? (
+          <button type="button" className="linkbtn" onClick={() => setAddingMusic((m) => !m)}>
+            {addingMusic ? 'Hide music' : 'Add music'}
+          </button>
+        ) : null}
         {post.status === 'failed' ? (
           <button type="button" className="btn small" disabled={busy} onClick={() => onAct('retry')}>
             {busy ? 'Trying…' : 'Try again'}
@@ -414,6 +438,7 @@ export function PostsView({
   const [making, setMaking] = useState(false)
   const profile = postingHere()?.profile ?? null
   const [problem, setProblem] = useState<string | null>(null)
+  const [said, setSaid] = useState<string | null>(null)
   const [busy, setBusy] = useState<Set<string>>(new Set())
   const [approvingAll, setApprovingAll] = useState(false)
   const outgoing = useSending()
@@ -428,6 +453,12 @@ export function PostsView({
       setProblem(error instanceof PostingError && error.later ? 'No connection - showing the posts as they last were.' : String((error as Error).message ?? error))
     }
   }, [])
+
+  /** Music was added to a post and sent as a new version: say so, and look again. */
+  const onMusicDone = (message: string) => {
+    setSaid(message)
+    void load()
+  }
 
   useEffect(() => {
     void load()
@@ -513,6 +544,14 @@ export function PostsView({
         </button>
       ) : null}
 
+      {said ? (
+        <div className="notice">
+          <span>{said}</span>
+          <button type="button" className="linkbtn" onClick={() => setSaid(null)}>
+            Dismiss
+          </button>
+        </div>
+      ) : null}
       {problem ? (
         <div className="notice">
           <span>{problem}</span>
@@ -535,7 +574,7 @@ export function PostsView({
           <div className="list-title">To approve</div>
           <ul className="posts-list">
             {waiting.map((post) => (
-              <WaitingPost key={post.id} editable={editable} onEdit={onEditAgain} post={post} busy={busy.has(post.id)} onAct={(action, fields) => void act(post, action, fields)} />
+              <WaitingPost key={post.id} editable={editable} onEdit={onEditAgain} campaigns={campaigns} onChanged={onMusicDone} post={post} busy={busy.has(post.id)} onAct={(action, fields) => void act(post, action, fields)} />
             ))}
           </ul>
         </>
@@ -549,7 +588,7 @@ export function PostsView({
               <SendingRow key={item.entry.key} item={item} onRemove={() => void forgetSend(item.entry.key)} />
             ))}
             {working.map((post) => (
-              <OtherPost key={post.id} editable={editable} onEdit={onEditAgain} post={post} busy={busy.has(post.id)} onAct={(action) => void act(post, action)} />
+              <OtherPost key={post.id} editable={editable} onEdit={onEditAgain} campaigns={campaigns} onChanged={onMusicDone} post={post} busy={busy.has(post.id)} onAct={(action) => void act(post, action)} />
             ))}
           </ul>
         </>
@@ -560,7 +599,7 @@ export function PostsView({
           <div className="list-title">Failed</div>
           <ul className="posts-list">
             {failed.map((post) => (
-              <OtherPost key={post.id} editable={editable} onEdit={onEditAgain} post={post} busy={busy.has(post.id)} onAct={(action) => void act(post, action)} />
+              <OtherPost key={post.id} editable={editable} onEdit={onEditAgain} campaigns={campaigns} onChanged={onMusicDone} post={post} busy={busy.has(post.id)} onAct={(action) => void act(post, action)} />
             ))}
           </ul>
         </>
@@ -571,7 +610,7 @@ export function PostsView({
           <div className="list-title">Scheduled</div>
           <ul className="posts-list">
             {scheduled.map((post) => (
-              <OtherPost key={post.id} editable={editable} onEdit={onEditAgain} post={post} busy={busy.has(post.id)} onAct={(action) => void act(post, action)} />
+              <OtherPost key={post.id} editable={editable} onEdit={onEditAgain} campaigns={campaigns} onChanged={onMusicDone} post={post} busy={busy.has(post.id)} onAct={(action) => void act(post, action)} />
             ))}
           </ul>
         </>
@@ -582,7 +621,7 @@ export function PostsView({
           <div className="list-title">Posted</div>
           <ul className="posts-list">
             {done.map((post) => (
-              <OtherPost key={post.id} editable={editable} onEdit={onEditAgain} post={post} busy={busy.has(post.id)} onAct={(action) => void act(post, action)} />
+              <OtherPost key={post.id} editable={editable} onEdit={onEditAgain} campaigns={campaigns} onChanged={onMusicDone} post={post} busy={busy.has(post.id)} onAct={(action) => void act(post, action)} />
             ))}
           </ul>
         </>

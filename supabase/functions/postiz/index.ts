@@ -52,7 +52,7 @@ import {
   type PostingRules,
 } from './caption.ts'
 import { RECHECK_SCHEMA, RECHECK_SYSTEM, acceptFix, costCents } from './recheck.ts'
-import { cleanCaptions, cleanRepost, repostDueAt, textFor, variationNote, type AccountText } from './repost.ts'
+import { carryOver, cleanCaptions, cleanRepost, repostDueAt, textFor, variationNote, type AccountText } from './repost.ts'
 import { FAKE_CLAUDE, FakeError, fakeCaption, fakePostiz, isFakePostiz } from './fake.ts'
 import { batchChoices, batchInfo, batchSpan, type BatchInfo } from './batch.ts'
 import { handFields } from './hand.ts'
@@ -408,7 +408,7 @@ function postView(post: Post) {
     retryAt: post.retry_at,
     createdAt: post.created_at,
     byHand: post.by_hand,
-    batch: post.batch ? { date: post.batch.date, time: post.batch.time } : null,
+    batch: post.batch ? { id: post.batch.id, date: post.batch.date, time: post.batch.time, size: post.batch.size } : null,
   }
 }
 
@@ -903,6 +903,7 @@ async function start(profile: Profile, body: Record<string, unknown>): Promise<R
   const rules = cleanRules(campaign.posting)
   const hand = handFields(meta.byHand, rules, text(campaign.name, 200) ?? 'Campaign')
   const batch = hand ? null : batchInfo(meta.batch)
+  const carry = carryOver(meta.carry, (c) => finishCaption(c, rules.caption === 'paste' ? [] : rules.hashtags))
 
   let { data: post } = await db.from('cutter_posts').select('*').eq('profile_id', profile.id).eq('client_key', key).maybeSingle()
   if (!post) {
@@ -923,6 +924,8 @@ async function start(profile: Profile, body: Record<string, unknown>): Promise<R
         headline: text(meta.headline, 500),
         duration: Number.isFinite(Number(meta.duration)) ? Number(meta.duration) : null,
         later: meta.later === true,
+        // A video made again from an earlier post keeps what he already wrote.
+        ...(carry ?? {}),
         ...(hand ?? {}),
         ...(batch ? { batch } : {}),
       })
