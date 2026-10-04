@@ -3,6 +3,24 @@
 Newest first. Every change says what it does, how to use it, and how it works
 underneath. Kept up to date with each commit.
 
+## Put a picture on the video at a moment you pick
+**What:** In the cuts editor you can add a picture that comes up at a time you choose, from
+the picture bank or from your phone.
+**Use it:** Open the video's cuts (Edit cuts, or Cuts from the caption check). Scroll the
+timeline so the playhead is where the picture should come up (on a kept part), tap
+"+ Picture", then "From my phone" or tap one from the bank. It appears on the timeline as a
+small picture bar and on the video preview while the playhead is over it. Under "Pictures on
+this video" set how long (1-8 s), where (top, corners, middle) and how big, tap one to jump
+to it, or Remove. It starts with the angle's picture-bank spot, size and length.
+**How:** A picture put on by hand is another picture cue for the render, shown at the
+moment you picked instead of when a word is said, so it gets the same spots and spring-in
+as the angle's pictures. Phone pictures are kept with that video for the 2-hour edit window
+(then go with it); bank pictures are the bank's own. If a picture's image can't be found when
+the video is made, it is left off and you are told. Edit again keeps your pictures.
+**Limits:** Talking videos (the ones with a cuts editor). A moment that ends up in a part
+you later cut out comes up at the start of the next kept part.
+Files: `manualPictures.ts` (+ test), `CutsEditor.tsx`, `pipeline.ts`, `store.ts`.
+
 ## Re-check captions with Claude (optional, costs credits) + only review what's flagged
 **What:** A button in the caption check: "Use Claude to re-check captions · costs credits ·
 about N¢". It fixes words the phone's small speech model misheard (brand and product names

@@ -97,6 +97,7 @@ import {
 import { PostsView } from './PostsView'
 import { pushState, refreshPush, turnOnPush, type PushState } from './push'
 import { BatchEdit } from './BatchEdit'
+import type { ManualPicture } from './manualPictures'
 import { WideAsk } from './WideAsk'
 import { defaultEffects } from './defaultEffects'
 import { picturesHeard, type PictureChoice } from './skipPictures'
@@ -121,6 +122,9 @@ import {
   reopenJob,
   loadBank,
   loadBatchBank,
+  loadOverlayFile,
+  saveOverlayFile,
+  deleteOverlayFile,
   loadCampaigns,
   loadBankFile,
   loadJobFile,
@@ -1206,6 +1210,7 @@ export function CampaignApp() {
               next.day?.skipPictures ?? [],
               next.day?.captionPosition ?? defaultCaptionPosition(),
               next.noCut === true,
+              await manualPicturesFor(next),
             ),
           )
         } else {
@@ -2317,6 +2322,32 @@ export function CampaignApp() {
     void recordDay(id, day, { campaignId: job.campaignId, angleId: job.angleId, headlineText: job.headlineText })
   }
 
+  /** Where a picture he puts on starts: the angle's picture-bank spot. */
+  function angleBankDefaults(job: Job) {
+    const campaign = campaignsRef.current.find((c) => c.id === job.campaignId)
+    const angle = campaign?.angles.find((a) => a.id === job.angleId)
+    return angle ? { position: angle.bank.position, widthPct: angle.bank.widthPct, seconds: angle.bank.seconds } : undefined
+  }
+
+  /** The pictures he put on this video by hand, with their images: a bank
+   *  picture from the bank, one from his phone from storage. A picture whose
+   *  image is gone is left off - and he is told, not left wondering. */
+  async function manualPicturesFor(job: Job): Promise<{ picture: ManualPicture; image: Blob }[]> {
+    const found: { picture: ManualPicture; image: Blob }[] = []
+    let lost = 0
+    for (const picture of job.day?.overlays ?? []) {
+      let image: Blob | null | undefined = null
+      if (picture.source.kind === 'bank') {
+        const id = picture.source.pictureId
+        image = bankRef.current.find((b) => b.id === id)?.image
+      } else image = await loadOverlayFile(job.id, picture.id, picture.source.type).catch(() => null)
+      if (image) found.push({ picture, image })
+      else lost++
+    }
+    if (lost > 0) setNotice(`${lost} picture${lost === 1 ? '' : 's'} you put on this video could not be found, so ${lost === 1 ? 'it was' : 'they were'} left off.`)
+    return found
+  }
+
   /** The names this video's campaign uses - brand words, the words that bring
    *  up its logo and pictures - for spotting and fixing a name heard wrong. */
   function vocabularyFor(job: Job): string[] {
@@ -2362,11 +2393,16 @@ export function CampaignApp() {
   }
 
   /** The kept parts as he fixed them, or none when they are the plan's own. */
-  const keepCuts = (id: string, keep: Range[]) => {
+  const keepCuts = (id: string, keep: Range[], overlays: ManualPicture[] = [], files: Map<string, Blob> = new Map()) => {
     const job = jobs.find((j) => j.id === id)
     if (!job?.day?.plan) return
     const same = JSON.stringify(keep) === JSON.stringify(job.day.plan.keep)
-    const day = { ...job.day, keep: same ? undefined : keep }
+    // Pictures picked from the phone are kept under this video; ones he took
+    // off are let go.
+    const kept = new Set(overlays.map((o) => o.id))
+    for (const [pictureId, blob] of files) if (kept.has(pictureId)) void saveOverlayFile(id, pictureId, blob).catch(() => {})
+    for (const old of job.day.overlays ?? []) if (old.source.kind === 'phone' && !kept.has(old.id)) void deleteOverlayFile(id, old.id).catch(() => {})
+    const day = { ...job.day, keep: same ? undefined : keep, overlays: overlays.length > 0 ? overlays : undefined }
     setJobs((js) => js.map((j) => (j.id === id ? { ...j, day } : j)))
     void recordDay(id, day, { campaignId: job.campaignId, angleId: job.angleId, headlineText: job.headlineText })
   }
@@ -2519,8 +2555,12 @@ export function CampaignApp() {
         peaks={cutsJob.day!.plan!.peaks}
         noiseNote={cutsJob.day!.plan!.noiseNote}
         words={captionWords(cutsJob.day!.plan!.spoken ?? cutsJob.day!.plan!.words, [{ start: 0, end: cutsJob.day!.plan!.duration }])}
-        onDone={(keep) => {
-          keepCuts(cutsJob.id, keep)
+        overlays={cutsJob.day!.overlays}
+        bank={bankRef.current}
+        defaults={angleBankDefaults(cutsJob)}
+        loadImage={(m) => (m.source.kind === 'phone' ? loadOverlayFile(cutsJob.id, m.id, m.source.type) : Promise.resolve(null))}
+        onDone={(keep, overlays, files) => {
+          keepCuts(cutsJob.id, keep, overlays, files)
           setCutting(null)
         }}
         onCancel={() => setCutting(null)}

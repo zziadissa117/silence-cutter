@@ -567,3 +567,23 @@ input.bank-name { background: transparent; border: 0; border-bottom: 1px solid c
 .only-flagged { align-self: flex-start; }
 .phrase.fixed textarea { border-color: var(--ok); box-shadow: inset 3px 0 0 var(--ok); }
 .phrase.flag textarea { border-color: var(--warn); box-shadow: inset 3px 0 0 var(--warn); }
+
+/* Pictures put on by hand: a marker on the timeline, a preview on the frame,
+   a picker and a list. */
+.cuts-ruler { height: 188px; }
+.cuts-pic { position: absolute; top: 162px; height: 22px; box-sizing: border-box; padding: 0; overflow: hidden; border: 2px solid var(--now); border-radius: 6px; background: rgb(255 255 255 / 0.12); cursor: pointer; }
+.cuts-pic img { height: 100%; width: auto; object-fit: cover; display: block; }
+.cuts-pic.on { background: rgb(255 255 255 / 0.3); }
+.cuts-pic-preview { pointer-events: none; z-index: 2; border-radius: 6px; }
+.pic-picker, .pic-list { display: flex; flex-direction: column; gap: 10px; }
+.pic-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(84px, 1fr)); gap: 8px; }
+.pic-cell { display: flex; flex-direction: column; gap: 4px; align-items: center; padding: 6px; border: 1px solid var(--edge); border-radius: 10px; background: var(--surface); color: inherit; font: inherit; font-size: 12px; cursor: pointer; }
+.pic-cell img { width: 100%; height: 64px; object-fit: contain; }
+.pic-row { display: flex; flex-direction: column; gap: 8px; padding: 10px; border: 1px solid var(--edge); border-radius: 10px; background: var(--surface); }
+.pic-row.on { border-color: var(--now); }
+.pic-row-main { display: flex; align-items: center; gap: 10px; background: none; border: 0; padding: 0; color: inherit; font: inherit; text-align: left; cursor: pointer; }
+.pic-row-main img { width: 44px; height: 44px; object-fit: contain; border-radius: 6px; background: rgb(255 255 255 / 0.06); }
+.pic-missing { display: inline-flex; width: 44px; height: 44px; align-items: center; justify-content: center; border: 1px dashed var(--warn); border-radius: 6px; color: var(--warn); }
+.pic-row-title { font-weight: 600; }
+.pic-row-controls { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.pic-row-controls select { min-height: 36px; }

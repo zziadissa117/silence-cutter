@@ -47,6 +47,15 @@ import {
   trimPart,
 } from './cuts'
 import { ChevronLeft, PauseIcon, PlayIcon } from './icons'
+import type { BankPicture } from './look'
+import {
+  DURATIONS,
+  POSITIONS,
+  SIZES,
+  newPictureId,
+  previewStyle,
+  type ManualPicture,
+} from './manualPictures'
 
 /** How much timeline a second takes at first: room enough to read the words. */
 const START_PX = 110
@@ -257,6 +266,10 @@ export function CutsEditor({
   checks = [],
   peaks,
   noiseNote,
+  overlays: initialOverlays = [],
+  bank = [],
+  defaults,
+  loadImage,
   onDone,
   onCancel,
 }: {
@@ -274,7 +287,15 @@ export function CutsEditor({
   /** The sound's loudness over the recording, for drawing under the timeline. */
   peaks?: number[]
   noiseNote?: string
-  onDone: (keep: Range[]) => void
+  /** Pictures already put on this video by hand. */
+  overlays?: ManualPicture[]
+  /** The picture bank, to pick from. */
+  bank?: BankPicture[]
+  /** Where and how big a new picture starts: the angle's bank placement. */
+  defaults?: { position: ManualPicture['position']; widthPct: number; seconds: number }
+  /** The image of a picture picked from the phone, from storage. */
+  loadImage?: (picture: ManualPicture) => Promise<Blob | null>
+  onDone: (keep: Range[], overlays: ManualPicture[], newFiles: Map<string, Blob>) => void
   onCancel: () => void
 }) {
   const [keep, setKeep] = useState(initial)
@@ -287,6 +308,15 @@ export function CutsEditor({
   const [url, setUrl] = useState<string | null>(null)
   const [viewWidth, setViewWidth] = useState(400)
   const [focus, setFocus] = useState<number | null>(null)
+  const [overlays, setOverlays] = useState<ManualPicture[]>(initialOverlays)
+  const [picking, setPicking] = useState(false)
+  const [selectedPic, setSelectedPic] = useState<string | null>(null)
+  const [picNote, setPicNote] = useState<string | null>(null)
+  // Pictures picked from the phone in this visit, kept until he is done.
+  const newFiles = useRef(new Map<string, Blob>())
+  // Object URLs for showing pictures: the bank's and the video's own.
+  const [urls, setUrls] = useState<Record<string, string>>({})
+  const made = useRef<string[]>([])
   const video = useRef<HTMLVideoElement>(null)
   const strip = useRef<HTMLDivElement>(null)
   const ruler = useRef<HTMLDivElement>(null)
@@ -394,6 +424,88 @@ export function CutsEditor({
     followTime(to)
     seek(to)
   }
+
+  // Images to show: bank pictures from the bank, the video's own from storage.
+  useEffect(() => {
+    let alive = true
+    const want = overlays.filter((o) => !urls[o.id])
+    if (want.length === 0) return
+    void (async () => {
+      const next: Record<string, string> = {}
+      for (const o of want) {
+        let blob: Blob | null | undefined = null
+        if (o.source.kind === 'bank') {
+          const id = o.source.pictureId
+          blob = bank.find((b) => b.id === id)?.image
+        } else blob = newFiles.current.get(o.id) ?? (await loadImage?.(o).catch(() => null))
+        if (blob) {
+          const url = URL.createObjectURL(blob)
+          made.current.push(url)
+          next[o.id] = url
+        }
+      }
+      if (alive && Object.keys(next).length > 0) setUrls((u) => ({ ...u, ...next }))
+    })()
+    return () => {
+      alive = false
+    }
+  }, [overlays, bank, loadImage, urls])
+  useEffect(
+    () => () => {
+      for (const url of made.current) URL.revokeObjectURL(url)
+    },
+    [],
+  )
+
+  /** The bank's pictures as thumbnails, while choosing. */
+  const [bankUrls, setBankUrls] = useState<Record<string, string>>({})
+  useEffect(() => {
+    if (!picking) return
+    const next: Record<string, string> = {}
+    for (const b of bank) next[b.id] = URL.createObjectURL(b.image)
+    setBankUrls(next)
+    return () => {
+      for (const url of Object.values(next)) URL.revokeObjectURL(url)
+    }
+  }, [picking, bank])
+
+  /** Puts a picture on the video at the playhead: it comes up there, so the
+   *  playhead has to be on a part of the video that is kept. */
+  const addPicture = (source: ManualPicture['source'], file?: Blob) => {
+    if (partAt(keepRef.current, tRef.current) < 0) {
+      setPicNote('Move the playhead onto a part of the video that is kept - a picture can only come up there.')
+      return
+    }
+    const id = newPictureId()
+    if (file) newFiles.current.set(id, file)
+    const picture: ManualPicture = {
+      id,
+      source,
+      at: Math.round(tRef.current * 100) / 100,
+      seconds: defaults?.seconds ?? 3,
+      position: defaults?.position ?? 'top-right',
+      widthPct: defaults?.widthPct ?? 40,
+    }
+    setOverlays((list) => [...list, picture].sort((a, b) => a.at - b.at))
+    setSelectedPic(id)
+    setPicking(false)
+    setPicNote(null)
+  }
+  const updatePicture = (id: string, patch: Partial<ManualPicture>) =>
+    setOverlays((list) => list.map((o) => (o.id === id ? { ...o, ...patch } : o)).sort((a, b) => a.at - b.at))
+  const removePicture = (id: string) => {
+    newFiles.current.delete(id)
+    setOverlays((list) => list.filter((o) => o.id !== id))
+    setSelectedPic((s) => (s === id ? null : s))
+  }
+  const goToPicture = (o: ManualPicture) => {
+    stop()
+    setSelectedPic(o.id)
+    scrollTo(o.at)
+    followTime(o.at)
+    seek(o.at)
+  }
+  const showing = overlays.find((o) => t >= o.at && t < o.at + o.seconds)
 
   /** Plays just this stretch, with sound, a moment either side - the way to
    *  hear whether a cut sound was a word. */
@@ -589,7 +701,7 @@ export function CutsEditor({
           <span className="review-count cuts-timer">
             {formatPrecise(outputTime(keep, t))} / {formatPrecise(total)}
           </span>
-          <button type="button" className="btn small primary" onClick={() => onDone(keep)}>
+          <button type="button" className="btn small primary" onClick={() => onDone(keep, overlays, newFiles.current)}>
             Done
           </button>
         </div>
@@ -616,6 +728,9 @@ export function CutsEditor({
               {missing ? "This video isn't on the phone any more, so there's nothing to cut." : 'Opening the video…'}
             </div>
           )}
+          {showing && urls[showing.id] ? (
+            <img className="cuts-pic-preview" alt="" src={urls[showing.id]} style={previewStyle(showing.position, showing.widthPct)} />
+          ) : null}
           {inPart < 0 ? <span className="cuts-out">Cut out</span> : null}
           {url ? (
             <span className="review-playing" aria-hidden>
@@ -643,6 +758,21 @@ export function CutsEditor({
                 onSelect={setSelected}
                 onHandleDown={onHandleDown}
               />
+              {overlays.map((o) => (
+                <button
+                  key={o.id}
+                  type="button"
+                  aria-label={`Picture at ${formatPrecise(o.at)}`}
+                  className={`cuts-pic${selectedPic === o.id ? ' on' : ''}`}
+                  style={{ left: o.at * px, width: Math.max(24, o.seconds * px) }}
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    goToPicture(o)
+                  }}
+                >
+                  {urls[o.id] ? <img alt="" src={urls[o.id]} /> : null}
+                </button>
+              ))}
             </div>
           </div>
         </div>
@@ -679,6 +809,9 @@ export function CutsEditor({
         <button type="button" className="btn" disabled={history.length === 0} onClick={undo}>
           Undo
         </button>
+        <button type="button" className="btn" onClick={() => setPicking((p) => !p)}>
+          + Picture
+        </button>
       </div>
       <div className="cuts-legend" aria-hidden>
         <span><i className="swatch kept" /> kept</span>
@@ -687,6 +820,90 @@ export function CutsEditor({
       </div>
       <p className="hint cuts-hint">Scroll to move through the video. Tap a part, then drag its edges to trim it.</p>
 
+      {picNote ? <p className="hint warn-text">{picNote}</p> : null}
+      {picking ? (
+        <div className="pic-picker">
+          <div className="group-title">Put a picture on at {formatPrecise(t)}</div>
+          <label className="btn wide pic-phone">
+            From my phone
+            <input
+              type="file"
+              accept="image/*"
+              hidden
+              onChange={(e) => {
+                const file = e.target.files?.[0]
+                e.target.value = ''
+                if (file) addPicture({ kind: 'phone', name: file.name, type: file.type || 'image/png' }, file)
+              }}
+            />
+          </label>
+          {bank.length > 0 ? (
+            <>
+              <span className="hint">Or from the picture bank:</span>
+              <div className="pic-grid">
+                {bank.map((b) => (
+                  <button key={b.id} type="button" className="pic-cell" onClick={() => addPicture({ kind: 'bank', pictureId: b.id })}>
+                    {bankUrls[b.id] ? <img alt="" src={bankUrls[b.id]} /> : null}
+                    <span>{b.words[0] ?? ''}</span>
+                  </button>
+                ))}
+              </div>
+            </>
+          ) : (
+            <p className="hint">The picture bank is empty. Add pictures in the Pictures tab to pick from them here.</p>
+          )}
+          <button type="button" className="linkbtn" onClick={() => setPicking(false)}>
+            Cancel
+          </button>
+        </div>
+      ) : null}
+      {overlays.length > 0 ? (
+        <div className="pic-list">
+          <div className="group-title">
+            Pictures on this video <span className="bank-count">{overlays.length}</span>
+          </div>
+          {overlays.map((o) => (
+            <div key={o.id} className={`pic-row${selectedPic === o.id ? ' on' : ''}`}>
+              <button type="button" className="pic-row-main" onClick={() => goToPicture(o)}>
+                {urls[o.id] ? <img alt="" src={urls[o.id]} /> : <span className="pic-missing">?</span>}
+                <span>
+                  <span className="pic-row-title">At {formatPrecise(o.at)}</span>
+                  <span className="hint" style={{ display: 'block' }}>
+                    {o.source.kind === 'bank' ? 'From the bank' : o.source.name}
+                  </span>
+                </span>
+              </button>
+              <div className="pic-row-controls">
+                <select aria-label="How long" value={o.seconds} onChange={(e) => updatePicture(o.id, { seconds: Number(e.target.value) })}>
+                  {DURATIONS.map((d) => (
+                    <option key={d} value={d}>
+                      {d}s
+                    </option>
+                  ))}
+                </select>
+                <select aria-label="Where" value={o.position} onChange={(e) => updatePicture(o.id, { position: e.target.value as ManualPicture['position'] })}>
+                  {POSITIONS.map((p) => (
+                    <option key={p.id} value={p.id}>
+                      {p.label}
+                    </option>
+                  ))}
+                </select>
+                <select aria-label="How big" value={SIZES.find((s) => s.widthPct === o.widthPct)?.widthPct ?? o.widthPct} onChange={(e) => updatePicture(o.id, { widthPct: Number(e.target.value) })}>
+                  {SIZES.map((s) => (
+                    <option key={s.widthPct} value={s.widthPct}>
+                      {s.label}
+                    </option>
+                  ))}
+                  {SIZES.some((s) => s.widthPct === o.widthPct) ? null : <option value={o.widthPct}>{o.widthPct}%</option>}
+                </select>
+                <button type="button" className="btn small" onClick={() => removePicture(o.id)}>
+                  Remove
+                </button>
+              </div>
+            </div>
+          ))}
+        </div>
+      ) : null}
       {noiseNote ? <p className="hint warn-text">{noiseNote}</p> : null}
       {checks.length > 0 ? (
         <div className="cuts-checks">

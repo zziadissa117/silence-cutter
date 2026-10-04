@@ -25,6 +25,7 @@ import {
   type PictureCue,
 } from './look'
 import type { BankFile, BatchBank } from './batch'
+import type { ManualPicture } from './manualPictures'
 import type { MusicLevel } from './music'
 import type { CaptionPosition, CaptionWord } from './captions'
 import type { CampaignPlan } from './plan'
@@ -80,6 +81,8 @@ interface StoredJob {
     noEffects?: boolean
     /** Picture ids left out of this video alone. */
     skipPictures?: string[]
+    /** Pictures he put on this video himself, in the cuts editor. */
+    overlays?: ManualPicture[]
     /** Where this video's captions sit; absent = the Settings default. */
     captionPosition?: CaptionPosition
     /** The videos joined on before and after this one: a clip's id, or
@@ -701,7 +704,7 @@ export async function forgetFile(id: string): Promise<void> {
  *  reaction video's product clip goes too, once no other video uses it, and
  *  a joined video's recordings go with it. */
 export async function forgetJob(id: string): Promise<void> {
-  await db.transaction('rw', db.jobs, db.videos, async () => {
+  await db.transaction('rw', db.jobs, db.videos, db.clipParts, async () => {
     const gone: string[] = []
     const products = new Set<string>()
     const forget = async (jobId: string) => {
@@ -714,6 +717,7 @@ export async function forgetJob(id: string): Promise<void> {
     await db.jobs.bulkDelete(gone)
     await db.videos.bulkDelete(gone)
     for (const jobId of gone) await db.videos.where('id').startsWith(montagePrefix(jobId)).delete()
+    for (const jobId of gone) await db.clipParts.where('key').startsWith(`overlay-${jobId}-`).delete()
     for (const productId of products) {
       if (!(await db.jobs.filter((j) => j.reaction?.productId === productId).first())) await db.videos.delete(productKey(productId))
     }
@@ -862,6 +866,39 @@ export async function loadBankFile(file: BankFile): Promise<File | null> {
 
 export async function deleteBankFile(id: string): Promise<void> {
   await db.clipParts.where('key').startsWith(bankPrefix(id)).delete()
+}
+
+// --- Pictures put on a video by hand ----------------------------------------
+//
+// A picture picked from the phone for one video is kept under that video's id,
+// as bytes a piece at a time like the bank's files, and goes when the video's
+// job does. (A bank picture is the bank's own - nothing is kept twice.)
+
+const overlayPrefix = (jobId: string, id: string) => `overlay-${jobId}-${id}#`
+
+export async function saveOverlayFile(jobId: string, id: string, file: Blob): Promise<void> {
+  try {
+    for (let at = 0, i = 0; at < file.size; at += PIECE_BYTES, i++) {
+      const bytes = await file.slice(at, at + PIECE_BYTES).arrayBuffer()
+      await db.clipParts.put({ key: `${overlayPrefix(jobId, id)}${String(i).padStart(5, '0')}`, bytes })
+    }
+  } catch (error) {
+    await db.clipParts.where('key').startsWith(overlayPrefix(jobId, id)).delete().catch(() => {})
+    throw error
+  }
+}
+
+export async function loadOverlayFile(jobId: string, id: string, type: string): Promise<Blob | null> {
+  const pieces = await orTimeout(db.clipParts.where('key').startsWith(overlayPrefix(jobId, id)).sortBy('key'), 20_000, 'Reading a picture')
+  const blob = new Blob(
+    pieces.map((p) => p.bytes),
+    { type },
+  )
+  return blob.size > 0 ? blob : null
+}
+
+export async function deleteOverlayFile(jobId: string, id: string): Promise<void> {
+  await db.clipParts.where('key').startsWith(overlayPrefix(jobId, id)).delete()
 }
 
 const RETIRED_KEY = 'batch:retired'

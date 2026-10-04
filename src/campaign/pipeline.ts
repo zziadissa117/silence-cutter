@@ -26,6 +26,7 @@ import {
   type BankPicture,
   type Campaign,
 } from './look'
+import { manualCues, type ManualPicture } from './manualPictures'
 import { cutNoiseOn } from './noiseSetting'
 import { captionWords, type CaptionPosition, type CaptionWord } from './captions'
 import type { ClipPlace, JoinedClips } from './clips'
@@ -174,9 +175,15 @@ export async function make(
   captionPosition: CaptionPosition = 'usual',
   /** Made 9:16 even when the Wide clips setting is Off (he asked for 9:16). */
   forceVertical = false,
+  /** Pictures he put on this video by hand, each with its image. */
+  manual: { picture: ManualPicture; image: Blob }[] = [],
 ): Promise<CampaignResult> {
   refuseBroken(campaign, angle)
-  const look = videoLook(campaign, angle, bank, defaults, skipPictures)
+  const base = videoLook(campaign, angle, bank, defaults, skipPictures)
+  // A picture put on by hand is just another picture cue, shown at the moment
+  // he picked instead of when words are said.
+  const hand = manualCues(manual.map((m) => m.picture), new Map(manual.map((m) => [m.picture.id, m.image])))
+  const look = { ...base, pictures: [...base.pictures, ...hand.cues] }
   const track = music === undefined ? (angle.music ?? null) : music
 
   const notHeard: string[] = []
@@ -186,6 +193,8 @@ export async function make(
     look.effects.brandHit === 'off' ? [] : firing(findMentions(plan.words, look.brandWords), look.mentions)
   if (look.effects.brandHit !== 'off' && brandMoments.length === 0) notHeard.push(...look.brandWords)
   const pictureMoments = look.pictures.map((picture) => {
+    const handAt = hand.at.get(picture.id)
+    if (handAt !== undefined) return [handAt]
     const moments = firing(findMentions(plan.words, picture.words), look.mentions)
     if (moments.length === 0) notHeard.push(...picture.words)
     return moments
