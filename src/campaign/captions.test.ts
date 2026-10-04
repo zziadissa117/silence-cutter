@@ -279,7 +279,7 @@ describe('drawing a caption', () => {
   })
 })
 
-import { CAPTION_POSITIONS, captionY } from './captions'
+import { CAPTION_POSITIONS, CAPTION_SIZES, captionScale, captionY } from './captions'
 
 describe('where the caption sits', () => {
   it('goes top to bottom in order, and usual is where it has always been', () => {
@@ -288,5 +288,15 @@ describe('where the caption sits', () => {
     expect(captionY('usual')).toBe(0.63)
     expect(captionY('top')).toBeLessThan(captionY('middle'))
     expect(captionY('bottom')).toBeGreaterThan(captionY('usual'))
+  })
+})
+
+describe('caption size', () => {
+  it('normal is what captions have always been, and sizes grow in order', () => {
+    expect(captionScale('normal')).toBe(1)
+    const scales = CAPTION_SIZES.map((s) => s.scale)
+    expect(scales).toEqual([...scales].sort((a, b) => a - b))
+    expect(captionScale('small')).toBeLessThan(1)
+    expect(captionScale('huge')).toBeGreaterThan(captionScale('large'))
   })
 })

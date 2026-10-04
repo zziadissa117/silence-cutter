@@ -4,7 +4,7 @@
 import type { Range, SilenceSettings } from '../media/silenceMath'
 import type { Angle, Campaign } from './look'
 import type { CampaignResult } from './pipeline'
-import type { CaptionPosition, CaptionWord } from './captions'
+import type { CaptionPosition, CaptionSize, CaptionWord } from './captions'
 import type { CampaignPlan } from './plan'
 import type { ManualPicture } from './manualPictures'
 import type { Guess } from './sort'
@@ -51,6 +51,8 @@ export type Job = {
     overlays?: ManualPicture[]
     /** Where this video's captions sit; absent = the Settings default. */
     captionPosition?: CaptionPosition
+    /** How big this video's captions are; absent = the Settings default. */
+    captionSize?: CaptionSize
     /** The videos joined on before and after it: a clip's id, or "none".
      *  Absent means the angle's own - see clips.ts. */
     clips?: JobClips

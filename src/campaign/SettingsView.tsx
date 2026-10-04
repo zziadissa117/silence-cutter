@@ -6,7 +6,16 @@ import { useEffect, useState } from 'react'
 import type { PresetName } from '../media/silenceMath'
 import type { Session, SyncState } from './cloud'
 import type { LocalPosting, Profile } from './posting'
-import { CAPTION_POSITIONS, defaultCaptionPosition, setDefaultCaptionPosition, type CaptionPosition } from './captions'
+import {
+  CAPTION_POSITIONS,
+  CAPTION_SIZES,
+  defaultCaptionPosition,
+  defaultCaptionSize,
+  setDefaultCaptionPosition,
+  setDefaultCaptionSize,
+  type CaptionPosition,
+  type CaptionSize,
+} from './captions'
 import { PRESET_EFFECTS, defaultEffects, presetOf, setDefaultEffects, type DefaultPreset } from './defaultEffects'
 import type { AngleEffects, EffectLevel } from './effects'
 import { cutNoiseOn, setCutNoise } from './noiseSetting'
@@ -128,6 +137,7 @@ function NoiseCutting() {
 
 function CaptionPlace() {
   const [position, setPosition] = useState<CaptionPosition>(defaultCaptionPosition)
+  const [size, setSize] = useState<CaptionSize>(defaultCaptionSize)
   return (
     <>
       <div className="seg full" role="radiogroup" aria-label="Where captions sit">
@@ -147,7 +157,24 @@ function CaptionPlace() {
           </button>
         ))}
       </div>
-      <p className="hint">Where captions start on each video. You can move them for one video while checking its captions.</p>
+      <div className="seg full" role="radiogroup" aria-label="How big captions are" style={{ marginTop: 8 }}>
+        {CAPTION_SIZES.map((s) => (
+          <button
+            key={s.id}
+            type="button"
+            role="radio"
+            aria-checked={size === s.id}
+            className={size === s.id ? 'active' : ''}
+            onClick={() => {
+              setDefaultCaptionSize(s.id)
+              setSize(s.id)
+            }}
+          >
+            {s.label}
+          </button>
+        ))}
+      </div>
+      <p className="hint">Where and how big captions start on each video. You can change both for one video while checking its captions.</p>
     </>
   )
 }

@@ -302,6 +302,42 @@ export function captionY(position: CaptionPosition): number {
   return CAPTION_POSITIONS.find((p) => p.id === position)?.y ?? CAPTION_Y
 }
 
+/** How big the caption is, as a share of the video's width (see CAPTION_SIZE:
+ *  "normal" is what captions have always been). */
+export type CaptionSize = 'small' | 'normal' | 'large' | 'huge'
+
+export const CAPTION_SIZES: { id: CaptionSize; label: string; scale: number }[] = [
+  { id: 'small', label: 'Small', scale: 0.75 },
+  { id: 'normal', label: 'Normal', scale: 1 },
+  { id: 'large', label: 'Large', scale: 1.25 },
+  { id: 'huge', label: 'Huge', scale: 1.55 },
+]
+
+export function captionScale(size: CaptionSize): number {
+  return CAPTION_SIZES.find((s) => s.id === size)?.scale ?? 1
+}
+
+const SIZE_KEY = 'cutter-caption-size'
+
+/** The size new videos start with: his choice in Settings, else normal. */
+export function defaultCaptionSize(): CaptionSize {
+  try {
+    const saved = localStorage.getItem(SIZE_KEY)
+    if (CAPTION_SIZES.some((s) => s.id === saved)) return saved as CaptionSize
+  } catch {
+    // Storage blocked: the usual size.
+  }
+  return 'normal'
+}
+
+export function setDefaultCaptionSize(size: CaptionSize): void {
+  try {
+    localStorage.setItem(SIZE_KEY, size)
+  } catch {
+    // Not saved.
+  }
+}
+
 const POSITION_KEY = 'cutter-caption-position'
 
 /** The position new videos start with: his choice in Settings, else usual. */
@@ -337,11 +373,12 @@ export function drawCaption(
   since: number,
   bare = false,
   position: CaptionPosition = 'usual',
+  size: CaptionSize = 'normal',
 ): void {
   const word = bare ? bareWord(text) : cleanWord(text)
   if (!word) return
   const base = Math.min(width, height * (9 / 16))
-  let fontPx = Math.round(base * CAPTION_SIZE)
+  let fontPx = Math.round(base * CAPTION_SIZE * captionScale(size))
   ctx.save()
   ctx.font = `${CAPTION_WEIGHT} ${fontPx}px ${HEADLINE_FAMILY}`
   // A long word shrinks to fit rather than running off the side.

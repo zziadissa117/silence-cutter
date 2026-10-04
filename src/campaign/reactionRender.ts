@@ -29,7 +29,7 @@ import { createOutputSink } from '../media/outputSink'
 import { RangeReader, inTimestampOrder } from '../media/rangeReader'
 import { isSilenceCutSupported } from '../media/silenceCut'
 import type { Range } from '../media/silenceMath'
-import { CAPTION_LEAD, captionAt, drawCaption, type CaptionPosition, type CaptionWord } from './captions'
+import { CAPTION_LEAD, captionAt, drawCaption, type CaptionPosition, type CaptionSize, type CaptionWord } from './captions'
 import { framingAt, planMotion, zoomPlace } from './effects'
 import { eachSound, openClip, type Clip } from './clipParts'
 import { headlineFontReady } from './headlineFont'
@@ -66,6 +66,8 @@ export interface ReactionRenderInput {
   seed?: string
   /** Where the captions sit on the product clip. */
   captionPosition?: CaptionPosition
+  /** How big the captions are. */
+  captionSize?: CaptionSize
 }
 
 export interface ReactionRenderResult {
@@ -77,7 +79,7 @@ export interface ReactionRenderResult {
 }
 
 export async function renderReaction(
-  { reaction, product, productKeep, look, headlineText, switchSound, captions = [], voice: boostVoice = false, music = null, seed = '', captionPosition = 'usual' }: ReactionRenderInput,
+  { reaction, product, productKeep, look, headlineText, switchSound, captions = [], voice: boostVoice = false, music = null, seed = '', captionPosition = 'usual', captionSize = 'normal' }: ReactionRenderInput,
   onProgress?: (fraction: number) => void,
 ): Promise<ReactionRenderResult> {
   if (!(await isSilenceCutSupported())) {
@@ -188,7 +190,7 @@ export async function renderReaction(
                 const spot = zoomPlace(productPlace, framingAt(motion, 1, timestamp - switchAt, []), width, height)
                 sample.draw(ctx, spot.x, spot.y, spot.width, spot.height)
                 const word = captionAt(captionTimes, captionWords, timestamp)
-                if (word >= 0) drawCaption(ctx, width, height, captionWords[word].text, timestamp + CAPTION_LEAD - captionTimes[word], false, captionPosition)
+                if (word >= 0) drawCaption(ctx, width, height, captionWords[word].text, timestamp + CAPTION_LEAD - captionTimes[word], false, captionPosition, captionSize)
               }
               sample.close()
               const frame = new VideoSample(canvas, { timestamp, duration })

@@ -27,7 +27,7 @@ import {
 import type { BankFile, BatchBank } from './batch'
 import type { ManualPicture } from './manualPictures'
 import type { MusicLevel } from './music'
-import type { CaptionPosition, CaptionWord } from './captions'
+import type { CaptionPosition, CaptionSize, CaptionWord } from './captions'
 import type { CampaignPlan } from './plan'
 import type { Guess } from './sort'
 
@@ -85,6 +85,8 @@ interface StoredJob {
     overlays?: ManualPicture[]
     /** Where this video's captions sit; absent = the Settings default. */
     captionPosition?: CaptionPosition
+    /** How big this video's captions are; absent = the Settings default. */
+    captionSize?: CaptionSize
     /** The videos joined on before and after this one: a clip's id, or
      *  "none". Absent means the angle's own - see clips.ts. */
     clips?: JobClips

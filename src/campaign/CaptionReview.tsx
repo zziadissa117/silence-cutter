@@ -15,11 +15,13 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, typ
 import {
   CAPTION_LEAD,
   CAPTION_POSITIONS,
+  CAPTION_SIZES,
   captionAt,
   drawCaption,
   phrasesOf,
   retimePhrase,
   type CaptionPosition,
+  type CaptionSize,
   type CaptionWord,
 } from './captions'
 import { centsLabel, estimateRecheckCents, flaggedPhrases, type Span } from './captionFlags'
@@ -55,6 +57,8 @@ export function CaptionReview({
   bare = false,
   position = 'usual',
   onPosition,
+  size = 'normal',
+  onSize,
   onRecheck,
   vocabulary = [],
   riskSpans = [],
@@ -80,6 +84,9 @@ export function CaptionReview({
   /** Where the caption sits on the frame, and a way to move it. */
   position?: CaptionPosition
   onPosition?: (position: CaptionPosition) => void
+  /** How big the caption is on the frame, and a way to change it. */
+  size?: CaptionSize
+  onSize?: (size: CaptionSize) => void
   /** Claude's second look at the captions (costs credits). Absent when posting is not set up. */
   onRecheck?: (phrases: string[]) => Promise<RecheckResult>
   /** The campaign's names, for spotting a name heard wrong. */
@@ -115,6 +122,8 @@ export function CaptionReview({
   ownerRef.current = owner
   const positionRef = useRef(position)
   positionRef.current = position
+  const sizeRef = useRef(size)
+  sizeRef.current = size
 
   useEffect(() => {
     if (!file) return
@@ -140,7 +149,7 @@ export function CaptionReview({
     if (!ctx) return
     ctx.clearRect(0, 0, w, h)
     const word = wordsRef.current[shown]
-    if (word) drawCaption(ctx, w, h, word.text, since, bare, positionRef.current)
+    if (word) drawCaption(ctx, w, h, word.text, since, bare, positionRef.current, sizeRef.current)
   }, [bare])
 
   /** The first word of phrase `k` that has anything to show. */
@@ -158,7 +167,7 @@ export function CaptionReview({
     const v = video.current
     if (first >= 0 && v && v.readyState >= 1) v.currentTime = words[first].start + 0.02
     paint(first, 1)
-  }, [current, playing, words, paint, position]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [current, playing, words, paint, position, size]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Painted again once TikTok Sans is here; later paints already have it.
   useEffect(() => {
@@ -325,6 +334,22 @@ export function CaptionReview({
                 onClick={() => onPosition(p.id)}
               >
                 {p.label}
+              </button>
+            ))}
+          </div>
+        ) : null}
+        {onSize ? (
+          <div className="seg full caption-size" role="radiogroup" aria-label="How big the captions are">
+            {CAPTION_SIZES.map((s) => (
+              <button
+                key={s.id}
+                type="button"
+                role="radio"
+                aria-checked={size === s.id}
+                className={size === s.id ? 'active' : ''}
+                onClick={() => onSize(s.id)}
+              >
+                {s.label}
               </button>
             ))}
           </div>

@@ -587,3 +587,4 @@ input.bank-name { background: transparent; border: 0; border-bottom: 1px solid c
 .pic-row-title { font-weight: 600; }
 .pic-row-controls { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
 .pic-row-controls select { min-height: 36px; }
+.caption-size { margin-top: 8px; }

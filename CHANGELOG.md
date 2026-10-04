@@ -3,6 +3,15 @@
 Newest first. Every change says what it does, how to use it, and how it works
 underneath. Kept up to date with each commit.
 
+## Caption size
+**What:** Captions can be made smaller or bigger, as well as moved.
+**Use it:** In the caption check, under the Top / Middle / Usual / Bottom row: Small,
+Normal, Large, Huge. The preview changes at once. Settings, Captions sets where new videos
+start. Normal is what captions have always been; the others are 0.75x, 1.25x and 1.55x.
+A long word still shrinks to fit the screen.
+**How:** `captions.ts` `CAPTION_SIZES`, saved per video (`day.captionSize`), used by talking
+and reaction videos.
+
 ## Put a picture on the video at a moment you pick
 **What:** In the cuts editor you can add a picture that comes up at a time you choose, from
 the picture bank or from your phone.

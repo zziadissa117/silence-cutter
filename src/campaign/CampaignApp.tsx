@@ -33,7 +33,7 @@ import { JobRow } from './JobRow'
 import { CaptionReview } from './CaptionReview'
 import { CutsEditor } from './CutsEditor'
 import { HookQuestion } from './HookQuestion'
-import { captionWords, captionedIndices, defaultCaptionPosition, drawnWords, type CaptionPosition, type CaptionWord } from './captions'
+import { captionWords, captionedIndices, defaultCaptionPosition, defaultCaptionSize, drawnWords, type CaptionPosition, type CaptionSize, type CaptionWord } from './captions'
 import {
   CLIP_PLACES,
   addClip,
@@ -1186,6 +1186,7 @@ export function CampaignApp() {
                 seed: next.id,
                 defaults: next.day?.noEffects ? null : defaultEffects(),
                 captionPosition: next.day?.captionPosition ?? defaultCaptionPosition(),
+                captionSize: next.day?.captionSize ?? defaultCaptionSize(),
               },
             ),
           )
@@ -1211,6 +1212,7 @@ export function CampaignApp() {
               next.day?.captionPosition ?? defaultCaptionPosition(),
               next.noCut === true,
               await manualPicturesFor(next),
+              next.day?.captionSize ?? defaultCaptionSize(),
             ),
           )
         } else {
@@ -2375,6 +2377,15 @@ export function CampaignApp() {
     void recordDay(id, day, { campaignId: job.campaignId, angleId: job.angleId, headlineText: job.headlineText })
   }
 
+  /** Makes this video's captions bigger or smaller. */
+  const setCaptionSize = (id: string, captionSize: CaptionSize) => {
+    const job = jobs.find((j) => j.id === id)
+    if (!job?.day) return
+    const day = { ...job.day, captionSize }
+    setJobs((js) => js.map((j) => (j.id === id ? { ...j, day } : j)))
+    void recordDay(id, day, { campaignId: job.campaignId, angleId: job.angleId, headlineText: job.headlineText })
+  }
+
   /** Moves this video's captions (top, middle, usual, bottom). */
   const setCaptionPosition = (id: string, captionPosition: CaptionPosition) => {
     const job = jobs.find((j) => j.id === id)
@@ -2602,6 +2613,8 @@ export function CampaignApp() {
         onRecheck={posting ? (phrases) => recheckCaptions(phrases, vocabularyFor(reviewJob)) : undefined}
         position={reviewJob.day?.captionPosition ?? defaultCaptionPosition()}
         onPosition={(position) => setCaptionPosition(reviewJob.id, position)}
+        size={reviewJob.day?.captionSize ?? defaultCaptionSize()}
+        onSize={(size) => setCaptionSize(reviewJob.id, size)}
       />
     ) : showPosts && posting ? (
       <PostsView

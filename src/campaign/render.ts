@@ -51,7 +51,7 @@ import { RangeReader, inTimestampOrder } from '../media/rangeReader'
 import { isSilenceCutSupported } from '../media/silenceCut'
 import { totalDuration, type Range } from '../media/silenceMath'
 import type { VideoLook } from './look'
-import { CAPTION_LEAD, captionAt, drawCaption, type CaptionPosition, type CaptionWord } from './captions'
+import { CAPTION_LEAD, captionAt, drawCaption, type CaptionPosition, type CaptionSize, type CaptionWord } from './captions'
 import { decoderGaveUp, eachSound, openClip, pause, visibleAgain, wholeOf, writeWhole, type Clip } from './clipParts'
 import type { ClipPlace } from './clips'
 import { framingAt, logoPop, placeFrame, planMotion } from './effects'
@@ -135,6 +135,8 @@ export interface CampaignRenderInput {
   captions?: CaptionWord[]
   /** Where the captions sit on the frame; usual when not given. */
   captionPosition?: CaptionPosition
+  /** How big the captions are. */
+  captionSize?: CaptionSize
   /** Make it 9:16 even when the Wide clips setting is Off. */
   forceVertical?: boolean
   /** Makes the voice louder and clearer; see voice.ts. */
@@ -177,6 +179,7 @@ export async function renderCampaignCut(
     gentle,
     captions = [],
     captionPosition = 'usual',
+    captionSize = 'normal',
     forceVertical = false,
     voice: boostVoice = false,
     music = null,
@@ -568,7 +571,7 @@ export async function renderCampaignCut(
                 // The caption on top of everything: it is what is being said.
                 const word = captionAt(captionPlacer.times, captions, timestamp)
                 if (word >= 0) {
-                  drawCaption(ctx, width, height, captions[word].text, timestamp + CAPTION_LEAD - captionPlacer.times[word], false, captionPosition)
+                  drawCaption(ctx, width, height, captions[word].text, timestamp + CAPTION_LEAD - captionPlacer.times[word], false, captionPosition, captionSize)
                 }
                 // The new sample copies the canvas, so one canvas does every frame.
                 const frame = new VideoSample(canvas, { timestamp, duration })
