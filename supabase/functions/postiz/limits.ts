@@ -35,6 +35,9 @@ export interface PostAccount {
   id: string
   name: string
   platform: string
+  /** The account's username on the platform, so accounts that share a name
+   *  can be told apart. Absent on posts made before it was kept. */
+  profile?: string
   /** Not scheduled yet, and why. Absent: it goes with the video. */
   held?: HeldReason
 }

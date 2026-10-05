@@ -653,7 +653,7 @@ async function attachAccounts(profile: Profile, body: Record<string, unknown>): 
     .filter((id): id is string => typeof id === 'string' && chosen.has(id))
     .map((id) => profile.accounts.find((a) => a.id === id))
     .filter((a): a is Account => Boolean(a))
-    .map((a) => ({ id: a.id, name: a.name, platform: a.platform }))
+    .map((a) => ({ id: a.id, name: a.name, platform: a.platform, profile: a.profile }))
   if (accounts.length === 0) return reply({ added: 0, scheduled: 0, left: 0 })
   const wanted = accounts.map((a) => a.id)
 
@@ -1126,7 +1126,7 @@ async function prepare(start: Post): Promise<Post> {
   const accounts = (chosen?.accounts ?? [])
     .map((accountId) => profile.accounts.find((a) => a.id === accountId))
     .filter((a): a is Account => Boolean(a))
-    .map((a) => ({ id: a.id, name: a.name, platform: a.platform }))
+    .map((a) => ({ id: a.id, name: a.name, platform: a.platform, profile: a.profile }))
   if (accounts.length === 0) {
     throw new Problem(`No accounts are picked for ${post.campaign_name} - pick them in the campaign's Posting, then Try again.`)
   }

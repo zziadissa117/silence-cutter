@@ -3,6 +3,19 @@
 Newest first. Every change says what it does, how to use it, and how it works
 underneath. Kept up to date with each commit.
 
+## Usernames, not just names, on your Postiz accounts
+**What:** Accounts are listed by their username first - "@kari.ugc · TikTok (Kari)" -
+wherever you pick or see them (campaign posting setup, daily limits, Posts, late-account
+catch-up), so accounts that share a name can be told apart. With no username it falls back
+to "Kari · TikTok".
+**How:** Postiz already sends each account's username (`profile`); the app was only showing
+the name. `accountLabel` now leads with it, and new posts keep it with their accounts (older
+posts show the name as before).
+**Note:** The username comes from Postiz's own account list. If one account shows no
+username there, it shows its name.
+**Needs deploying:** the `postiz` function (so posts keep the username).
+Files: `posting.ts` (`accountLabel`, `handleOf`), `postiz/index.ts`, `postiz/limits.ts`.
+
 ## Add music after the video is finished (Posts screen)
 **What:** On a post waiting in Posts (waiting for approval, approved, or scheduled for later)
 you can add music to the finished video.

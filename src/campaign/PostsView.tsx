@@ -23,6 +23,7 @@ import { copyKind, forgetSend, kick, localVideo, sending, tidySends, watchSendin
 import {
   PostingError,
   accountLabel,
+  handleOf,
   lastPosts,
   listPosts,
   localInput,
@@ -324,7 +325,7 @@ function OtherPost({
     post.status === 'posted' ? (post.error ? 'warn' : 'ok') : post.status === 'error' || post.status === 'failed' ? 'bad' : 'later'
   const line =
     post.status === 'posted'
-      ? `Posted · ${post.accounts.filter((a) => !a.held).map((a) => a.name).join(', ')}`
+      ? `Posted · ${post.accounts.filter((a) => !a.held).map((a) => (handleOf(a) ? `@${handleOf(a)}` : a.name)).join(', ')}`
       : post.status === 'scheduled'
         ? post.accounts.map(accountLabel).join(', ')
         : post.status === 'failed' || post.status === 'error'

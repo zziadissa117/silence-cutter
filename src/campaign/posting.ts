@@ -74,7 +74,7 @@ export interface ServerPost {
   repostDue?: boolean
   postAt: string | null
   /** `held`: paused or at its day's limit - not scheduled yet, and goes out by itself when free. */
-  accounts: { id: string; name: string; platform: string; held?: 'paused' | 'cap' }[]
+  accounts: { id: string; name: string; platform: string; profile?: string; held?: 'paused' | 'cap' }[]
   /** Postiz's own copy of the video, for when this phone has none. */
   videoUrl: string | null
   links: Record<string, string>
@@ -382,9 +382,20 @@ export function platformName(platform: string): string {
   return PLATFORMS[platform] ?? platform.charAt(0).toUpperCase() + platform.slice(1)
 }
 
-/** "fake.tiktok (TikTok)" - which account, on what. */
-export function accountLabel(account: { name: string; platform: string }): string {
-  return `${account.name} · ${platformName(account.platform)}`
+/** The account's username without a leading @, or '' when it has none. */
+export function handleOf(account: { profile?: string }): string {
+  return (account.profile ?? '').trim().replace(/^@+/, '')
+}
+
+/** "@kari.ugc · TikTok (Kari)" - the username first, because accounts often
+ *  share a name and the username is what tells them apart; the name follows
+ *  when it adds anything. With no username it is "Kari · TikTok". */
+export function accountLabel(account: { name: string; platform: string; profile?: string }): string {
+  const handle = handleOf(account)
+  const on = platformName(account.platform)
+  if (!handle) return `${account.name} · ${on}`
+  const same = handle.toLowerCase() === account.name.trim().replace(/^@+/, '').toLowerCase()
+  return `@${handle} · ${on}${same || !account.name.trim() ? '' : ` (${account.name.trim()})`}`
 }
 
 /** "Today 6:04 PM", "Tomorrow 9:03 AM", "Mon 9:03 AM" - in the phone's time. */
