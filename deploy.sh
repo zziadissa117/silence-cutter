@@ -21,6 +21,6 @@ npx supabase functions deploy postiz --project-ref "$PROJECT"
 
 echo "4/4  Deploying the cutter app"
 npm ci --ignore-scripts
-npx netlify deploy --build --prod
+npx netlify deploy --prod
 
 echo "Done. Open the cutter and try a wrong password: it should say 'Wrong login or password.'"
