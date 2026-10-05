@@ -18,7 +18,7 @@ import type { Campaign } from './look'
 import { NewPost } from './NewPost'
 import { jobOfPostKey, EDIT_WINDOW_MS } from './store'
 import { MusicAfter } from './MusicAfter'
-import { canAddMusic } from './musicAfter'
+import { canAddMusic } from './musicAfterSend'
 import { copyKind, forgetSend, kick, localVideo, sending, tidySends, watchSending, type Sending } from './outbox'
 import {
   PostingError,

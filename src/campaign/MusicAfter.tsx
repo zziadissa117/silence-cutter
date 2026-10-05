@@ -1,13 +1,13 @@
 // "Add music" on a post waiting in Posts: pick a track (an angle's, one from
 // the batch bank, or one from the phone), how loud, and it is mixed under the
-// finished video and sent as a new version - see musicAfter.ts.
+// finished video and sent as a new version - see musicAfterSend.ts.
 
 import { useEffect, useState } from 'react'
 
 import type { Campaign } from './look'
 import type { MusicLevel } from './music'
 import { loadBankFile, loadBatchBank } from './store'
-import { sendWithMusic } from './musicAfter'
+import { sendWithMusic } from './musicAfterSend'
 import type { ServerPost } from './posting'
 
 interface Option {
