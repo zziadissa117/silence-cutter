@@ -3,6 +3,19 @@
 Newest first. Every change says what it does, how to use it, and how it works
 underneath. Kept up to date with each commit.
 
+## Fix: cutting "um"s could take a quietly said word out with it
+**What:** With "Also cut "um"s and stumbles" on, an "um" cut checks the sound it is about to remove and
+refuses when there is more in it than an "um" could make - that is what stops a mistimed "um" taking a real
+word with it. But it judged "sound" by the slider's fixed number (-35 dB), while the pauses have long been
+found with a line measured on each take, because his quieter words sit at -35 to -39 dB. In a quiet take a
+quiet word looked like silence to the "um" check, so a word the speech model ran into the "um" was cut with
+it (a test reproduces it: "so um this works" lost "this").
+**Fix:** the "um" and stumble checks, and the word timings for the logo, pictures and captions, now use the
+take's own line. A normally loud take's line is the slider's number, so nothing changes for it.
+**Not changed:** the plain cutter, which has the same check, is left exactly as it is (it is kept unchanged
+on purpose); say if it should get this too.
+Files: `plan.ts` (`fromHeard`), `plan.test.ts`.
+
 ## Fix: a setup change could miss the other phone; the word-timing step starts more reliably; a clearer message for clips with no talking
 **What:**
 - **Sync between the two phones.** A change to a campaign, angle or bank picture is stamped with the time the

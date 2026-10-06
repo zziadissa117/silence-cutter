@@ -227,3 +227,38 @@ describe('cutting a talking-head take with noise cutting on', () => {
     expectWordsWhole(take, out.keep)
   })
 })
+
+describe('cutting "um"s in a quiet take', () => {
+  /** He talks quietly (-40 dB) in a quiet room (-58 dB): "so um this works".
+   *  The speech model heard "um" running on over "this" and missed "this". */
+  function quietTake(): { levels: Level[]; duration: number; heard: WordChunk[]; said: Said[] } {
+    const rand = wobble(3)
+    const said: Said[] = [
+      { text: 'so', start: 0.5, end: 0.8 },
+      { text: 'um', start: 1.0, end: 1.3 },
+      { text: 'this', start: 1.4, end: 1.65 },
+      { text: 'works', start: 2.0, end: 2.4 },
+    ]
+    const duration = 3
+    const levels: Level[] = []
+    for (let time = 0; time < duration; time += STEP) {
+      let db = -58 + (rand() - 0.5) * 4
+      for (const w of said) if (time >= w.start && time < w.end) db = -40 + (rand() - 0.5) * 3
+      levels.push({ time, db })
+    }
+    const heard = [
+      { text: ' so', start: 0.5, end: 0.8 },
+      { text: ' um', start: 1.0, end: 1.65 },
+      { text: ' works', start: 2.0, end: 2.4 },
+    ]
+    return { levels, duration, heard, said }
+  }
+
+  it('never takes a quietly said word out with the "um"', () => {
+    const take = quietTake()
+    const settings = { ...PRESETS.balanced }
+    const { fillerWords } = fromHeard(take.heard, take.levels, settings, take.duration, true)
+    const missed = take.said.find((w) => w.text === 'this')!
+    for (const cut of fillerWords) expect(overlap(cut, missed), 'the cut holds "this"').toBeLessThan(0.05)
+  })
+})
