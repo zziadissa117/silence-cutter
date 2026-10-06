@@ -410,16 +410,7 @@ export function fromHeard(
   duration: number,
   cleanSpeech: boolean,
 ): { words: WordChunk[]; fillerWords: Range[]; stutters: Range[]; spoken: WordChunk[] } {
-  // What counts as his voice, for every check below: this take's own line
-  // between a pause and speech (silenceLineDb), the one the pauses are found
-  // with - not the slider's fixed number. In a quiet take his words sit
-  // under that number (-35 to -39 dB on a real one), and judged by it a word
-  // looked like silence: the "um" check, which refuses a cut that holds more
-  // sound than the "um" could make, did not see a quiet word inside the cut,
-  // and took it out with the "um". A loud take's line is the slider's number,
-  // so nothing changes for it.
-  const voiceDb = silenceLineDb(levels, settings)
-  let words = alignToAudio(heard, levels, voiceDb)
+  let words = alignToAudio(heard, levels, settings.thresholdDb)
   let fillerWords: Range[] = []
   let stutters: Range[] = []
   if (cleanSpeech) {
@@ -427,13 +418,20 @@ export function fromHeard(
       start: Math.max(0, range.start - settings.paddingSec),
       end: Math.min(duration, range.end + settings.paddingSec),
     })
-    const cutOptions = { guardSec: 0.04, quietBelowDb: voiceDb }
+    // What counts as quiet for the "um" checks: this take's own line between
+    // a pause and speech (silenceLineDb), the one the pauses are found with -
+    // never above the slider's number. In a quiet take his words sit under
+    // that number (-35 to -39 dB on a real one), and judged by it a word
+    // looked like silence: the check that refuses a cut holding more sound
+    // than the "um" could make did not see a quiet word inside the cut, and
+    // took it out with the "um". The line only ever makes the check stricter.
+    const cutOptions = { guardSec: 0.04, quietBelowDb: silenceLineDb(levels, settings) }
     fillerWords = fillerWordRanges(words, levels, cutOptions).map(uncramp)
     stutters = stutterRanges(words, levels, cutOptions).map(uncramp)
   }
   // Starts pulled onto the moment his voice starts, for the logo and the
   // pictures. After the "um"s are found, so what is cut never moves.
-  words = snapToOnsets(words, levels, voiceDb)
+  words = snapToOnsets(words, levels, settings.thresholdDb)
   // The captions' own timing, straight from what was heard: the shift the
   // cut's alignment finds moves some takes the wrong way for a caption.
   return { words, fillerWords, stutters, spoken: spokenWords(heard) }

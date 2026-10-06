@@ -10,8 +10,8 @@ word with it. But it judged "sound" by the slider's fixed number (-35 dB), while
 found with a line measured on each take, because his quieter words sit at -35 to -39 dB. In a quiet take a
 quiet word looked like silence to the "um" check, so a word the speech model ran into the "um" was cut with
 it (a test reproduces it: "so um this works" lost "this").
-**Fix:** the "um" and stumble checks, and the word timings for the logo, pictures and captions, now use the
-take's own line. A normally loud take's line is the slider's number, so nothing changes for it.
+**Fix:** the "um" and stumble checks now use the take's own line. It is never above the slider's number, so
+the check can only get stricter: an "um" is left in rather than a word taken out. Nothing else changes.
 **Not changed:** the plain cutter, which has the same check, is left exactly as it is (it is kept unchanged
 on purpose); say if it should get this too.
 Files: `plan.ts` (`fromHeard`), `plan.test.ts`.
