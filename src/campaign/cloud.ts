@@ -284,14 +284,36 @@ async function pushAll(token: string): Promise<void> {
   }
 }
 
+/** How far back each sync looks again. A change is stamped with the time the
+ *  server handled it, not the time it was saved, so one saved while the other
+ *  phone was reading could land just behind where that phone had read to -
+ *  and never reach it. Taking anything twice is harmless: a change is only
+ *  ever kept when it is newer than what is here (applyRemote). */
+export const PULL_OVERLAP_MS = 120_000
+
+/** Where to ask from: a little before where the last sync read to. */
+export function pullFrom(since: string | null): string | null {
+  const at = since ? Date.parse(since) : NaN
+  return Number.isFinite(at) ? new Date(at - PULL_OVERLAP_MS).toISOString() : since
+}
+
+/** Read to the later of the two - so looking back never moves it back. */
+export function readTo(since: string | null, until: string | null): string | null {
+  if (!until) return since
+  if (!since) return until
+  return Date.parse(until) > Date.parse(since) ? until : since
+}
+
 async function pullAll(token: string): Promise<boolean> {
   let since = await getMeta(LAST_PULL)
   let changed = false
+  // Only the first page looks back; the pages after it carry straight on.
+  let ask = pullFrom(since)
   for (;;) {
     const { items, until } = await call<{
       items: (WireItem & { server_at: string })[]
       until: string | null
-    }>('pull', { token, since })
+    }>('pull', { token, since: ask })
     for (const item of items) {
       const updatedAt = Number(item.updated_at)
       if (item.deleted || item.data === null) {
@@ -302,9 +324,11 @@ async function pullAll(token: string): Promise<boolean> {
       const row = fromWire(item.data, files) as StoredRow
       changed = (await applyRemote(item.kind, item.id, updatedAt, row)) || changed
     }
-    since = until
-    if (since) await setMeta(LAST_PULL, since)
+    const next = readTo(since, until)
+    if (next && next !== since) await setMeta(LAST_PULL, next)
+    since = next
     if (items.length < 1000) break
+    ask = until
   }
   return changed
 }

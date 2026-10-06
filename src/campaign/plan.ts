@@ -126,6 +126,11 @@ async function transcribe(
 /** How long the letter model may go without a word before it is given up
  *  on, and the captions keep the speech model's own times. */
 const ALIGN_QUIET_MS = 60_000
+/** A breath between the speech model's worker ending and the letter model's
+ *  starting, for the phone to take the first one's memory back - and a
+ *  longer one before trying again when it still could not. */
+const ALIGN_AFTER_MS = 1_500
+const ALIGN_RETRY_MS = 4_000
 
 /** Times every heard word exactly, in its own worker - see align.ts. The
  *  words go in as heard (pieces already joined), in order, and come back in
@@ -283,11 +288,27 @@ export async function planCampaignCut(
     })
     ;({ words, fillerWords, stutters, spoken } = fromHeard(heard, levels, settings, duration, options.cleanSpeech))
     if (forAligning && heard.length > 0) {
-      try {
-        const timed = await alignWords(forAligning, windows, spokenWords(heard, 0), silences, {
+      const align = (samples: Float32Array) =>
+        alignWords(samples, windows, spokenWords(heard, 0), silences, {
           onModelDownload: options.onModelDownload,
           onProgress: (p) => options.onTranscribeProgress?.(share + (1 - share) * p),
         })
+      try {
+        // The speech model's worker has only just been ended, and a phone
+        // hands its memory back a moment later, not at once: the letter model
+        // starting straight after it ran out of memory on both phones ("no
+        // available backend found ... Out of memory"). So it waits a moment,
+        // and has one more go if it still could not start for memory.
+        const spare = forAligning.slice()
+        await new Promise((resolve) => setTimeout(resolve, ALIGN_AFTER_MS))
+        let timed: TimedWord[]
+        try {
+          timed = await align(forAligning)
+        } catch (error) {
+          if (!/out of memory/i.test(error instanceof Error ? error.message : String(error))) throw error
+          await new Promise((resolve) => setTimeout(resolve, ALIGN_RETRY_MS))
+          timed = await align(spare)
+        }
         spoken = spokenWords(timed, ALIGNED_LATE_SEC)
         aligned = true
       } catch (error) {
@@ -314,7 +335,14 @@ export async function planCampaignCut(
   }
   let keep = plainKeep(silences, fillerWords, stutters, duration, settings)
   if (keep.length === 0 && options.quietIsFine) return { ...keptWhole(duration, options.cleanSpeech), words, peaks }
-  if (keep.length === 0) throw new SilenceCutError('The whole video looks silent. Try recording somewhere quieter.')
+  // Nothing loud enough to be talking anywhere in it: a clip with no talking
+  // (b-roll, a screen recording) or one recorded very far from the phone.
+  // "Record somewhere quieter" was the wrong advice for both.
+  if (keep.length === 0) {
+    throw new SilenceCutError(
+      "No talking could be heard in this video - it is silent or very quiet, so cutting the pauses would leave nothing. A clip with no talking goes in Batch; if you do talk in it, record closer to the phone.",
+    )
+  }
 
   // Sounds with no speech in them (noiseCuts.ts): a heard word is never cut,
   // each stretch that might be noise is listened to a second time before it

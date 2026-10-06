@@ -3,6 +3,21 @@
 Newest first. Every change says what it does, how to use it, and how it works
 underneath. Kept up to date with each commit.
 
+## Fix: a setup change could miss the other phone; the word-timing step starts more reliably; a clearer message for clips with no talking
+**What:**
+- **Sync between the two phones.** A change to a campaign, angle or bank picture is stamped with the time the
+  server handled it, not the moment it was saved. One saved while the other phone was reading could land just
+  behind where that phone had read to, and never reach it (until it was edited again). Each sync now looks
+  back two minutes; taking a change twice is harmless, since only a newer change is ever kept.
+- **Word timing ("letter model") running out of memory as it starts.** It started the instant the speech
+  model's worker ended, before the phone had taken that memory back ("no available backend found ... Out of
+  memory", on both phones). It now waits a moment first, and has one more go if it still can't start for
+  memory.
+- **"The whole video looks silent. Try recording somewhere quieter."** shown for 33 clips in a minute on
+  Oct 2 - clips with no talking in them. The advice was backwards. It now says no talking could be heard,
+  that a clip with no talking goes in Batch, and to record closer to the phone if you do talk in it.
+Files: `cloud.ts` (`pullFrom`, `readTo`), `cloudPull.test.ts`, `plan.ts`.
+
 ## Fix: the plain cutter no longer loses a whole batch when the phone is short of memory, and picks up after the decoder gives up
 **What:** Three failures from the app's own error log:
 - **Twelve videos failed in six seconds.** On the plain cutter (this morning, 08:05), the speech model
