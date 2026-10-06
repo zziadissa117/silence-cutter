@@ -43,6 +43,7 @@ import {
 import { contiguousAudio, forwardOnly } from './forwardOnly'
 import { createOutputSink } from './outputSink'
 import { RangeReader, inTimestampOrder } from './rangeReader'
+import { decoderGaveUp, pause, visibleAgain } from './recovery'
 import {
   BALANCED_SETTINGS,
   findSilentRanges,
@@ -57,6 +58,10 @@ import {
 import { transcribeOnDevice } from './transcribe'
 
 export { SilenceCutError }
+
+/** How many times a video's decoder giving up is picked up again before the
+ *  cut fails - the campaign renders' number. */
+const MAX_RECOVERIES = 4
 
 /** The 10-bit HDR encoder said it could and then could not. Only this is
  *  worth a second go without HDR - any other failure would just fail again,
@@ -211,6 +216,9 @@ export interface SilenceCutResult {
    *  file, precisely so a transcription mistake can be fixed without
    *  re-cutting the video. */
   captionCues?: CaptionCue[]
+  /** How many times the phone's video decoder gave up partway and was
+   *  started again from the last frame; absent when it never did. */
+  recovered?: number
 }
 
 export interface CutOptions {
@@ -338,7 +346,7 @@ export async function cutSilence(
   file: Blob,
   keep: Range[],
   onProgress?: (fraction: number) => void,
-): Promise<{ blob: Blob; storedAs: string | null }> {
+): Promise<{ blob: Blob; storedAs: string | null; recovered: number }> {
   try {
     return await renderCut(file, keep, onProgress, true)
   } catch (error) {
@@ -356,7 +364,7 @@ async function renderCut(
   keep: Range[],
   onProgress: ((fraction: number) => void) | undefined,
   allowHdr: boolean,
-): Promise<{ blob: Blob; storedAs: string | null }> {
+): Promise<{ blob: Blob; storedAs: string | null; recovered: number }> {
   if (!(await isSilenceCutSupported())) {
     throw new SilenceCutError(
       "This browser can't cut video yet. Update to the newest iOS/Safari, or use the Mac version.",
@@ -453,7 +461,6 @@ async function renderCut(
     const spanEnd = keep[keep.length - 1].end
     videoFrames = new RangeReader(inTimestampOrder(new VideoSampleSink(videoTrack).samples(spanStart, spanEnd)))
     audioFrames = new RangeReader(inTimestampOrder(new AudioSampleSink(audioTrack).samples(spanStart, spanEnd)))
-    const videoReader = videoFrames
     const audioReader = audioFrames
     // Where a decoder seeking to each range's start would have begun - an
     // index lookup, no decoding - so a range starting a hair before a key
@@ -472,6 +479,11 @@ async function renderCut(
     let cursor = 0
     const videoClock = forwardOnly()
     const audioClock = contiguousAudio()
+    // The phone's decoder can give up partway through a long video ("Decoder
+    // failure" on 90-335 MB iPhone takes). It is picked up again from the
+    // last frame written, a few times at most - as the campaign renders do.
+    let lastWritten = -Infinity
+    let recovered = 0
 
     for (const { start, end } of keep) {
       // Video and audio frames rarely land exactly on `start` - a decoder
@@ -489,27 +501,58 @@ async function renderCut(
 
       await Promise.all([
         (async () => {
-          for await (const sample of videoReader.range(start, end, videoFrom)) {
-            // Driven by the video, not the audio: audio decodes far faster
-            // than frames encode, so reporting on audio ran the bar up to
-            // near the end of a range and then left it there.
-            report((doneSoFar + (sample.timestamp - start)) / total)
-            videoShift ??= cursor - sample.timestamp
-            const timestamp = videoClock(sample.timestamp + videoShift)
-            videoEnd = timestamp + sample.duration
-            if (ctx && canvas) {
-              // Drawing to the canvas is what performs the colour
-              // conversion. The new sample copies the canvas's pixels, so
-              // one canvas can be reused for every frame.
-              sample.draw(ctx, 0, 0)
-              const converted = new VideoSample(canvas, { timestamp, duration: sample.duration })
-              sample.close()
-              await videoSource.add(converted)
-              converted.close()
-            } else {
-              sample.setTimestamp(timestamp)
-              await videoSource.add(sample)
-              sample.close()
+          let from = start
+          let decodeFrom = videoFrom
+          for (;;) {
+            try {
+              for await (const sample of videoFrames!.range(from, end, decodeFrom)) {
+                // Written before the decoder gave up.
+                if (sample.timestamp <= lastWritten) {
+                  sample.close()
+                  continue
+                }
+                // Driven by the video, not the audio: audio decodes far faster
+                // than frames encode, so reporting on audio ran the bar up to
+                // near the end of a range and then left it there.
+                report((doneSoFar + (sample.timestamp - start)) / total)
+                videoShift ??= cursor - sample.timestamp
+                const timestamp = videoClock(sample.timestamp + videoShift)
+                videoEnd = timestamp + sample.duration
+                const decodedAt = sample.timestamp
+                if (ctx && canvas) {
+                  // Drawing to the canvas is what performs the colour
+                  // conversion. The new sample copies the canvas's pixels, so
+                  // one canvas can be reused for every frame.
+                  sample.draw(ctx, 0, 0)
+                  const converted = new VideoSample(canvas, { timestamp, duration: sample.duration })
+                  sample.close()
+                  await videoSource.add(converted)
+                  converted.close()
+                } else {
+                  sample.setTimestamp(timestamp)
+                  await videoSource.add(sample)
+                  sample.close()
+                }
+                lastWritten = decodedAt
+              }
+              return
+            } catch (error) {
+              if (!decoderGaveUp(error)) throw error
+              await videoFrames?.dispose().catch(() => {})
+              if (document.visibilityState !== 'visible') {
+                // Taken away because the page went to the background: not the
+                // video's fault, and not counted. It carries on on return.
+                await visibleAgain()
+              } else {
+                if (recovered >= MAX_RECOVERIES) throw error
+                recovered++
+                // A breath for the phone, then a fresh decoder from where
+                // this one stopped.
+                await pause(500)
+              }
+              from = Math.max(start, lastWritten)
+              videoFrames = new RangeReader(inTimestampOrder(new VideoSampleSink(videoTrack).samples(from, spanEnd)))
+              decodeFrom = await keyAt(videoPackets, from)
             }
           }
         })(),
@@ -535,7 +578,7 @@ async function renderCut(
     if (blob.size === 0) throw new SilenceCutError('Rendering finished but produced no file. Try again.')
     finished = true
     onProgress?.(1)
-    return { blob, storedAs: sink.storedAs }
+    return { blob, storedAs: sink.storedAs, recovered }
   } catch (error) {
     if (keepingHdr && !(error instanceof SilenceCutError)) throw new HdrEncodeFailed(error)
     throw error
@@ -559,10 +602,11 @@ export async function cutSilenceFromFile(
   options: CutOptions = {},
 ): Promise<SilenceCutResult> {
   const { keep, duration, silences, fillerWords, stutters, words } = await planCut(file, settings, options)
-  const { blob, storedAs } = await cutSilence(file, keep, onProgress)
+  const { blob, storedAs, recovered } = await cutSilence(file, keep, onProgress)
   return {
     blob,
     storedAs,
+    ...(recovered > 0 ? { recovered } : {}),
     originalDurationSec: duration,
     newDurationSec: totalDuration(keep),
     cuts: silences,

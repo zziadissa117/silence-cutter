@@ -3,6 +3,26 @@
 Newest first. Every change says what it does, how to use it, and how it works
 underneath. Kept up to date with each commit.
 
+## Fix: the plain cutter no longer loses a whole batch when the phone is short of memory, and picks up after the decoder gives up
+**What:** Three failures from the app's own error log:
+- **Twelve videos failed in six seconds.** On the plain cutter (this morning, 08:05), the speech model
+  could not get the memory it needs to start ("Out of memory"), and every video in line after it failed the
+  same way within a second - and was dropped from the list. Now a video whose speech model can't start is
+  still cut (pauses only) and says what it went without: "The phone had no memory left for the speech model,
+  so only the pauses were cut - "um"s were left in. Close other apps, reload this page and add it again to
+  try with it."
+- **"Decoder failure" on long videos.** The plain cutter failed outright when the phone's video decoder gave
+  up partway through a long take (90-335 MB, Oct 1 and today). It now picks up from the last frame written,
+  up to four times (waiting first if the app was in the background) - what the campaign videos already do
+  ("Decoder gave up 1 time(s) mid-video; carried on from the last frame and finished").
+- **Joining recordings failed** on a phone whose encoder would not take the very high quality used for the
+  joined file ("This specific encoder configuration ... is not supported"). It now steps down to the quality
+  every other video is made at.
+**Note:** Safari's "Can't find variable: EmptyRanges" error in the log comes from inside Safari's own video
+code at the moment one of its encoders or decoders fails; the app only reports it.
+Files: `App.tsx`, `media/silenceCut.ts`, `media/recovery.ts` (shared with `campaign/clipParts.ts`),
+`campaign/joinRender.ts`.
+
 ## Fix: captions on the wrong word because the word-timing step kept failing on phones
 **What:** Captions are timed by a second, small model that finds each word's exact moment (the "letter
 model"). On phones it kept giving up: the app's error log has it running out of memory or going quiet for

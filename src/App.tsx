@@ -71,6 +71,8 @@ type Job = {
   result?: SilenceCutResult
   url?: string
   error?: string
+  /** Said on a finished video that was cut without what was asked for. */
+  note?: string
   /** The phase this video was last seen entering, for a `held` video only -
    *  see recordPhase's own comment for why this exists and where it comes
    *  from. Undefined for a video that has never been tried. */
@@ -216,6 +218,8 @@ export function App() {
       if (progress === 0) void recordPhase(next.id, phase)
     }
 
+    // The video in hand, once read, for cutting it without the speech model.
+    let source: Blob | null = null
     void (async () => {
       try {
         // A stuck save never holds a video up: it is cut from the copy in
@@ -239,6 +243,7 @@ export function App() {
           await forgetJob(next.id)
           return
         }
+        source = file
 
         // The cut is written into the space this site is allowed on the
         // phone, and a long video's cut is nearly as big as the video. Short
@@ -277,18 +282,59 @@ export function App() {
           },
         )
         patch({ status: 'done', result, url: URL.createObjectURL(result.blob) })
+        if (result.recovered) {
+          report({
+            page: 'cut',
+            kind: 'retried',
+            phase: 'cutting',
+            message: `Decoder gave up ${result.recovered} time(s) mid-video; carried on from the last frame and finished`,
+            video: next.file,
+          })
+        }
         await forgetJob(next.id)
       } catch (err) {
         // Cut short by the page going away: it comes back on the next load.
         if (pageLeaving()) return
+        // Set from the callbacks while the work ran, which TypeScript cannot see.
+        const failedIn = phase as Job['phase']
+        const why = err instanceof Error ? err.message : String(err)
+        // The speech model could not get the memory it needs to start. On a
+        // phone that is the page already holding a lot, and it stays that
+        // way: every video after this one failed the same way within a
+        // second - twelve in a row. So the video is cut anyway, pauses only,
+        // and says what it went without.
+        let plainWhy = ''
+        if (source && failedIn === 'model' && /out of memory/i.test(why)) {
+          try {
+            setPhase('reading', 0)
+            const result = await cutSilenceFromFile(source, (progress) => setPhase('cutting', progress), next.settings, {
+              onAnalyseProgress: (progress) => setPhase('reading', progress),
+            })
+            const without = [next.cleanSpeech ? '"um"s were left in' : '', next.wantCaptions ? 'no captions were written' : '']
+              .filter(Boolean)
+              .join(' and ')
+            patch({
+              status: 'done',
+              result,
+              url: URL.createObjectURL(result.blob),
+              note: `The phone had no memory left for the speech model, so only the pauses were cut${without ? ` - ${without}` : ''}. Close other apps, reload this page and add it again to try with it.`,
+            })
+            report({ page: 'cut', kind: 'fallback', phase: failedIn, message: why, video: next.file })
+            await forgetJob(next.id)
+            return
+          } catch (plainErr) {
+            if (pageLeaving()) return
+            plainWhy = ` Cutting it without the speech model failed too (${plainErr instanceof Error ? plainErr.message : String(plainErr)}).`
+          }
+        }
         // The real reason, not just "something went wrong" - it is the only
         // way to know what failed on a phone nobody can attach a debugger to.
         const message =
           err instanceof SilenceCutError
             ? err.message
-            : `Something went wrong while ${PHASE_LABEL[phase]} (${err instanceof Error ? err.message : String(err)}). Version ${__APP_VERSION__}.`
+            : `Something went wrong while ${PHASE_LABEL[failedIn]} (${why}).${plainWhy} Version ${__APP_VERSION__}.`
         patch({ status: 'failed', error: message })
-        report({ page: 'cut', kind: 'failed', phase, message, video: next.file })
+        report({ page: 'cut', kind: 'failed', phase: failedIn, message, video: next.file })
         await forgetJob(next.id)
       } finally {
         processing.current = false
@@ -756,6 +802,7 @@ function JobCard({
               {job.result.fillerWords ? ` · ${job.result.fillerWords} "um"` : ''}
               {job.result.stutters ? ` · ${job.result.stutters} stumble` : ''} removed
             </span>
+            {job.note ? <span className="hint">{job.note}</span> : null}
             {job.result.captionCues ? null : canSend && !shareFailed ? (
               <button type="button" className="btn primary" onClick={() => void send()}>
                 Send

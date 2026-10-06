@@ -12,6 +12,7 @@ import {
   AudioSample,
   AudioSampleSource,
   canEncodeAudio,
+  canEncodeVideo,
   Mp4OutputFormat,
   Output,
   QUALITY_HIGH,
@@ -67,7 +68,12 @@ export async function joinRecordings(files: Blob[], onProgress?: (fraction: numb
     const ctx = canvas.getContext('2d')
     if (!ctx) throw new SilenceCutError("This browser couldn't prepare a canvas to put the parts together.")
 
-    const videoSource = new VideoSampleSource({ codec: 'avc', quality: QUALITY_VERY_HIGH })
+    // Very high, since the joined file is made again with the look - but not
+    // every phone's encoder takes it at this size ("This specific encoder
+    // configuration ... is not supported", and the join failed), and then the
+    // quality every other video is made at does.
+    const quality = (await canEncodeVideo('avc', { width, height, quality: QUALITY_VERY_HIGH })) ? QUALITY_VERY_HIGH : QUALITY_HIGH
+    const videoSource = new VideoSampleSource({ codec: 'avc', quality })
     const audioSource = new AudioSampleSource({ codec: 'aac', quality: QUALITY_HIGH })
     output.addVideoTrack(videoSource)
     output.addAudioTrack(audioSource)
