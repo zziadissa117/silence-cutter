@@ -174,7 +174,9 @@ existed live; apply new ones by hand and show them first).
 
 Client-side (IndexedDB, Dexie): campaign looks/angles/bank + queue in
 `campaign/store.ts` (synced via `campaign/cloud.ts`), plain-cutter queue in
-`media/jobStore.ts`.
+`media/jobStore.ts`. Sync pulls by `server_at`, which the function stamps before
+the write commits, so each pull looks back `PULL_OVERLAP_MS` (2 min) and the read
+point only moves forward (`pullFrom`/`readTo`); `applyRemote` keeps only newer rows.
 
 ## Env / secrets (names only)
 
@@ -220,7 +222,10 @@ public/push-sw.js              service-worker push handler
 - A finished video is copied to private storage the moment it is made; do not
   rely on the list for it.
 - `render.ts` is a *sibling* of `media/silenceCut.ts`; the plain cutter must
-  keep working exactly as it did.
+  keep working exactly as it did. Shared by both: `media/recovery.ts` (decoder
+  gave up -> fresh decoder from the last frame written, up to 4 times; waits for
+  the page to be visible first). The plain cutter also cuts pauses-only when the
+  speech model cannot start for memory (`App.tsx`, says so on the row).
 - Postiz refuses browser calls and only takes MP4 (`toMp4.ts`).
 
 ## Edit again (Phase 5 / 4.1 / 3.2)
