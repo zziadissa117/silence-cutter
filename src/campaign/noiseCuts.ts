@@ -50,9 +50,11 @@ export const SHORT_SEC = 0.35
 export const LONG_SEC = 2.5
 /** Room kept around a word that had to be brought back. */
 export const WORD_ROOM_SEC = 0.06
-/** A heard word with at least this share of it still in the video is left as
- *  it is: see protectWords. */
+/** A heard word with at least this share of its first HEAD_SEC still in the
+ *  video is left as it is: see protectWords. */
 const MOSTLY_KEPT = 0.5
+/** How much of a word's start is looked at, and brought back if it was cut. */
+const HEAD_SEC = 0.5
 /** The most that noise cutting may take out of what was kept. More than this
  *  means the model heard almost nothing, and its silence cannot be trusted. */
 export const MAX_NOISE_SHARE = 0.4
@@ -86,14 +88,17 @@ export function protectWords(
     if (!(word.end > word.start)) continue
     const middle = (word.start + word.end) / 2
     if (meantToCut.some((r) => middle >= r.start && middle <= r.end)) continue
-    // Only a word that was mostly cut is brought back. The speech model runs a
-    // word on into the pause after it, so a word mostly inside a kept stretch
-    // with its end hanging over a cut is the model's timing, not a word that
-    // was cut: bringing that back put the tail of every pause back in and left
-    // the silences longer than the cutter had made them.
-    const inside = keep.reduce((sum, r) => sum + Math.max(0, Math.min(r.end, word.end) - Math.max(r.start, word.start)), 0)
-    if (inside / (word.end - word.start) < MOSTLY_KEPT) {
-      extra.push({ start: Math.max(0, word.start - room), end: Math.min(duration, word.end + room) })
+    // Judged by its start, not its whole span. The speech model stretches a
+    // word's end over the pause after it - often right up to the next word -
+    // so a word whose tail hangs over a cut is the model's timing, not a word
+    // that was cut; restoring the whole span put the pauses back in and left
+    // them nearly as long as before. A word is a cut word when most of its
+    // first HEAD_SEC (about as long as any one word lasts) is outside what is
+    // kept, and only that much is brought back.
+    const head = { start: word.start, end: Math.min(word.end, word.start + HEAD_SEC) }
+    const inside = keep.reduce((sum, r) => sum + Math.max(0, Math.min(r.end, head.end) - Math.max(r.start, head.start)), 0)
+    if (inside / (head.end - head.start) < MOSTLY_KEPT) {
+      extra.push({ start: Math.max(0, head.start - room), end: Math.min(duration, head.end + room) })
     }
   }
   if (extra.length === 0) return { keep: keep.map((r) => ({ ...r })), broughtBack: 0 }

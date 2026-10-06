@@ -3,15 +3,17 @@
 Newest first. Every change says what it does, how to use it, and how it works
 underneath. Kept up to date with each commit.
 
-## Fix: pauses were not being cut as short as before
-**What:** Silences were coming out longer than the cutter used to leave them - a little of every pause
-was put back in.
-**Why:** The noise step I added protects every word the speech model heard, using its word times. The
-model runs a word on into the pause after it, so a word that was mostly kept but whose end hung over a
-cut was "brought back", and with it the tail of that pause.
-**Fix:** A heard word is now only brought back when most of it (half or more) was cut. A word that is
-mostly in the video with its end over a pause is left alone, so pauses are cut as tight as before.
-Words that really were cut (a quiet word inside a silence) are still protected.
+## Fix: pauses were not being cut in talking videos (the Cuts view looked uncut)
+**What:** In a talking video, the Cuts view showed most pauses still in - the cuts were far shorter than the
+cutter used to make, or missing.
+**Why:** The noise step I added protects every word the speech model heard, by its start and end times. The model
+stretches a word's end across the pause after it, often right up to the next word, so the "protected" span covered
+the whole pause and the pause was put back.
+**Fix:** A word is now judged by its start: it counts as cut only when most of its first half second was cut, and
+only that half second is brought back. A long tail over a pause is ignored, so pauses are cut as before. A quiet word
+that really was cut inside a silence is still protected.
+**Note:** A video that was already read keeps the cuts it was read with. Add it again (or use Edit again) to get the
+new cuts.
 Files: `noiseCuts.ts` (`protectWords`), `noiseCuts.test.ts`.
 
 ## Usernames, not just names, on your Postiz accounts

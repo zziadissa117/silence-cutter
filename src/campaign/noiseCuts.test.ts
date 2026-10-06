@@ -32,6 +32,18 @@ describe('protectWords (a heard word is never cut)', () => {
     expect(out.broughtBack).toBe(0)
     expect(out.keep).toEqual(keep)
   })
+  it('does not put a whole pause back when the model stretches a word across it', () => {
+    // "month" heard from 1.7 s to 4.9 s, the start of the next word: the pause is 2-5.
+    const keep = [r(0, 2), r(5, 6)]
+    const out = protectWords(keep, [{ start: 1.7, end: 4.9 }], [], 6)
+    expect(out.broughtBack).toBe(0)
+    expect(out.keep).toEqual(keep)
+  })
+  it('brings back only the start of a long word that was cut', () => {
+    const out = protectWords([r(0, 2), r(8, 9)], [{ start: 3, end: 6.5 }], [], 9)
+    expect(out.broughtBack).toBe(1)
+    expect(out.keep.some((k) => k.start <= 3 && k.end >= 3.5 && k.end < 4)).toBe(true)
+  })
   it('still brings back a word that was mostly cut', () => {
     const out = protectWords([r(0, 2), r(4, 6)], [{ start: 2.1, end: 2.6 }], [], 6)
     expect(out.broughtBack).toBe(1)
