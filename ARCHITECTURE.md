@@ -98,6 +98,15 @@ attempt before it starts (a video that kills the tab cannot loop).
   display size (rotation applied), Fill (crop, default) / Fit (blurred backdrop) / Off,
   stored in localStorage `cutter-landscape-mode`, set in Settings, used by render.ts.
   Clips already 9:16 are never touched. Join/montage/reaction already cover-fill.
+  On adding, only clips that are not phone-upright (`isUpright`: landscape, square,
+  3:4) get `WideAsk` ("cut" or "only make 9:16" -> job `noCut`, plan `keepWhole`);
+  a portrait phone clip (9:16, 9:19.5) is never asked and always cut. A `noCut` row
+  says "not cut, only made 9:16".
+- Cut decisions: `campaign/plan.ts` `planCampaignCut` decodes and listens, then runs
+  the pure steps `fromHeard` (word times, "um"s, caption words), `plainKeep` (the cut;
+  the whole cut when noise cutting is off, the default) and, with noise cutting on,
+  `noiseCandidates` + `noiseCuts.cutNoise`. `plan.test.ts` runs them on a synthetic
+  talking-head take (stretched word ends, a cough): pauses cut, words whole.
 - Effects: `campaign/effects.ts`, `EffectsSection.tsx` (opt-in, with examples).
 
 **Duplicates (Phase 1.1).** `campaign/fingerprint.ts` = size + SHA-256 of three

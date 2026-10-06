@@ -112,11 +112,16 @@ export interface Candidate {
   peakDb?: number
 }
 
-/** The kept parts with no word in them: the sounds that might be noise. */
+/** The kept parts with no word in them: the sounds that might be noise. A
+ *  word is where it starts (its first HEAD_SEC), as in protectWords: the
+ *  model stretches a word's end over the pause after it, and judged by that
+ *  stretched end a cough in the pause looked like part of the word and was
+ *  never cut. */
 export function loneSounds(keep: readonly Range[], words: readonly WordSpan[], peakOf?: (r: Range) => number | undefined): Candidate[] {
   const out: Candidate[] = []
+  const heads = words.map((w) => ({ start: w.start, end: Math.min(w.end, w.start + HEAD_SEC) }))
   keep.forEach((range, part) => {
-    if (words.some((w) => overlaps(range, w, 0.05))) return
+    if (heads.some((w) => overlaps(range, w, 0.05))) return
     out.push({ range, part, peakDb: peakOf?.(range) })
   })
   return out

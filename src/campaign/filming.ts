@@ -8,13 +8,15 @@
 import { ALL_FORMATS, BlobSource, Input } from 'mediabunny'
 
 import { within } from '../media/within'
-import { is916 } from './framing916'
+import { isUpright } from './framing916'
 
 export interface Filming {
   filmedAt?: number
   seconds?: number
-  /** Whether the picture is already 9:16 (see framing916). Absent when the
-   *  file would not say - treated as 9:16, so nothing is asked and it is cut. */
+  /** Whether the picture is upright, phone-shaped (9:16 or near it, see
+   *  framing916 isUpright). False only for landscape, square or 3:4 - the
+   *  clips asked about. Absent when the file would not say - treated as
+   *  upright, so nothing is asked and it is cut. */
   vertical?: boolean
 }
 
@@ -40,7 +42,7 @@ export async function filmingOf(file: Blob): Promise<Filming> {
       return {
         ...(tags?.date ? { filmedAt: tags.date.getTime() } : {}),
         seconds,
-        ...(size && size.width > 0 && size.height > 0 ? { vertical: is916(size.width, size.height) } : {}),
+        ...(size && size.width > 0 && size.height > 0 ? { vertical: isUpright(size.width, size.height) } : {}),
       }
     } finally {
       input.dispose()

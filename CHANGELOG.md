@@ -3,6 +3,29 @@
 Newest first. Every change says what it does, how to use it, and how it works
 underneath. Kept up to date with each commit.
 
+## Checked: cuts and captions match the cutter before noise cutting; a portrait clip is never left uncut by mistake
+**What was checked:** the whole path from reading a video to the cut and the captions, against the
+version just before noise cutting existed. With noise cutting off (the default) the pause finding, the
+"um"/stumble cuts, the word timing and the caption words run the very same code as before - the only
+additions are the loudness picture under the Cuts timeline and the caption size, which don't change what is
+cut or heard. Nothing else in that path changed.
+**New tests** (`plan.test.ts`): a made-up talking video - room hiss, words fading in and out, short breaths
+inside sentences, real pauses between them - with the speech model's words timed the way it really times
+them (a bit early or late, each word's end stretched over the pause after it). They check every pause is
+cut, every word is kept whole (a quiet one too), the breaths inside a sentence stay, and the caption words
+are exactly what was said with nothing added. Run against the noise-cutting version that made the cuts
+worse, they fail exactly the way you saw it ("pause left 0.90 s"); now they pass.
+**Fix (noise cutting, when you turn it on):** a cough or bump in a pause was never cut, for the same reason
+the pauses came back - the speech model's stretched word ends made the cough look like part of a word. A
+word now counts only where it starts, so the cough is cut (and listed).
+**Fix (wide clips):** "Only make 9:16 - don't cut" leaves every pause in, so it is now only asked about
+clips that really are wide: landscape, square or 3:4 (Meta glasses). A clip filmed on a phone held upright
+- 9:16, or a taller phone screen like 9:19.5 - is never asked and always cut (it is still cropped to exact
+9:16). A video you did choose "only make 9:16" for now says "not cut, only made 9:16" on its row.
+**To test:** a video already read keeps the cuts and captions it was read with. Add videos fresh.
+Files: `plan.ts` (`fromHeard`, `plainKeep`, `noiseCandidates` - the same steps, now testable),
+`plan.test.ts`, `noiseCuts.ts` (`loneSounds`), `framing916.ts` (`isUpright`), `filming.ts`, `JobRow.tsx`.
+
 ## Fix: cuts and captions are back to how they were (noise cutting is now off by default)
 **What:** After the noise-cutting update, talking videos cut worse than before and the caption words got
 worse too. Noise cutting is now **off by default**: cuts and captions run exactly the code they ran before it

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { framedSize, is916, planFrame } from './framing916'
+import { framedSize, is916, isUpright, planFrame } from './framing916'
 
 describe('is916', () => {
   it('accepts 9:16 and near it, nothing else', () => {
@@ -7,6 +7,21 @@ describe('is916', () => {
     expect(is916(720, 1280)).toBe(true)
     expect(is916(1920, 1080)).toBe(false)
     expect(is916(1080, 1440)).toBe(false)
+  })
+})
+
+describe('isUpright (which clips are asked whether to cut)', () => {
+  it('never asks about a clip filmed on a phone in portrait', () => {
+    expect(isUpright(1080, 1920)).toBe(true) // 9:16
+    expect(isUpright(1080, 2340)).toBe(true) // a taller phone screen
+    expect(isUpright(1170, 2532)).toBe(true) // an iPhone screen recording
+    expect(isUpright(1080, 1600)).toBe(true) // 2:3, trimmed
+  })
+  it('asks about landscape, square and 3:4', () => {
+    expect(isUpright(1920, 1080)).toBe(false)
+    expect(isUpright(1080, 1080)).toBe(false)
+    expect(isUpright(1080, 1440)).toBe(false) // Meta glasses
+    expect(isUpright(0, 0)).toBe(false)
   })
 })
 

@@ -33,7 +33,7 @@ import { report } from '../report'
 import type { TimedWord } from './align'
 import type { AlignMessage, AlignRequest } from './align.worker'
 import { ALIGNED_LATE_SEC, snapToOnsets, spokenWords } from './captions'
-import { LONG_SEC, TINY_SEC, cutNoise, loneSounds, peakDbIn, peaksOf, protectWords, type CutCheck } from './noiseCuts'
+import { LONG_SEC, TINY_SEC, cutNoise, loneSounds, peakDbIn, peaksOf, protectWords, type CutCheck, type WordSpan } from './noiseCuts'
 import type { TranscribeMessage, TranscribeRequest } from './transcribe.worker'
 
 const UNREADABLE_FORMAT =
@@ -279,22 +279,7 @@ export async function planCampaignCut(
       onModelDownload: options.onModelDownload,
       onProgress: (p) => options.onTranscribeProgress?.(p * share),
     })
-    words = alignToAudio(heard, levels, settings.thresholdDb)
-    if (options.cleanSpeech) {
-      const uncramp = (range: Range) => ({
-        start: Math.max(0, range.start - settings.paddingSec),
-        end: Math.min(duration, range.end + settings.paddingSec),
-      })
-      const cutOptions = { guardSec: 0.04, quietBelowDb: settings.thresholdDb }
-      fillerWords = fillerWordRanges(words, levels, cutOptions).map(uncramp)
-      stutters = stutterRanges(words, levels, cutOptions).map(uncramp)
-    }
-    // Starts pulled onto the moment his voice starts, for the logo and the
-    // pictures. After the "um"s are found, so what is cut never moves.
-    words = snapToOnsets(words, levels, settings.thresholdDb)
-    // The captions' own timing, straight from what was heard: the shift the
-    // cut's alignment finds moves some takes the wrong way for a caption.
-    spoken = spokenWords(heard)
+    ;({ words, fillerWords, stutters, spoken } = fromHeard(heard, levels, settings, duration, options.cleanSpeech))
     if (forAligning && heard.length > 0) {
       try {
         const timed = await alignWords(forAligning, windows, spokenWords(heard, 0), {
@@ -325,8 +310,7 @@ export async function planCampaignCut(
       peaks,
     }
   }
-  const toCut = mergeRanges([...silences, ...fillerWords, ...stutters])
-  let keep = keepRanges(toCut, duration, settings.paddingSec)
+  let keep = plainKeep(silences, fillerWords, stutters, duration, settings)
   if (keep.length === 0 && options.quietIsFine) return { ...keptWhole(duration, options.cleanSpeech), words, peaks }
   if (keep.length === 0) throw new SilenceCutError('The whole video looks silent. Try recording somewhere quieter.')
 
@@ -336,15 +320,10 @@ export async function planCampaignCut(
   let checks: CutCheck[] | undefined
   let noiseNote: string | undefined
   if (options.cutNoise && forRecheck && words.length > 0) {
-    const wordList = [...words, ...(spoken ?? [])]
-    const meant = mergeRanges([...fillerWords, ...stutters])
-    keep = protectWords(keep, wordList, meant, duration).keep
-    const lone = loneSounds(keep, wordList, (range) => peakDbIn(levels, range))
+    const found = noiseCandidates(keep, [...words, ...(spoken ?? [])], mergeRanges([...fillerWords, ...stutters]), levels, duration)
+    keep = found.keep
+    const { lone, worth } = found
     const heardAgain = new Set<number>()
-    const worth = lone.flatMap((c, i) => {
-      const length = c.range.end - c.range.start
-      return length >= TINY_SEC && length <= LONG_SEC ? [{ c, i }] : []
-    })
     if (worth.length > 0) {
       try {
         const again = await transcribe(
@@ -386,6 +365,58 @@ export async function planCampaignCut(
     ...(checks ? { checks } : {}),
     ...(noiseNote ? { noiseNote } : {}),
   }
+}
+
+/** What the words heard decide, from the speech model's words and the
+ *  loudness curve: the words moved onto his voice (for the logo and the
+ *  pictures), the "um"s and stumbles to cut when asked, and the words timed
+ *  for captions. Pure - the part of planCampaignCut that can be tested on a
+ *  made-up take (plan.test.ts). */
+export function fromHeard(
+  heard: WordChunk[],
+  levels: Level[],
+  settings: SilenceSettings,
+  duration: number,
+  cleanSpeech: boolean,
+): { words: WordChunk[]; fillerWords: Range[]; stutters: Range[]; spoken: WordChunk[] } {
+  let words = alignToAudio(heard, levels, settings.thresholdDb)
+  let fillerWords: Range[] = []
+  let stutters: Range[] = []
+  if (cleanSpeech) {
+    const uncramp = (range: Range) => ({
+      start: Math.max(0, range.start - settings.paddingSec),
+      end: Math.min(duration, range.end + settings.paddingSec),
+    })
+    const cutOptions = { guardSec: 0.04, quietBelowDb: settings.thresholdDb }
+    fillerWords = fillerWordRanges(words, levels, cutOptions).map(uncramp)
+    stutters = stutterRanges(words, levels, cutOptions).map(uncramp)
+  }
+  // Starts pulled onto the moment his voice starts, for the logo and the
+  // pictures. After the "um"s are found, so what is cut never moves.
+  words = snapToOnsets(words, levels, settings.thresholdDb)
+  // The captions' own timing, straight from what was heard: the shift the
+  // cut's alignment finds moves some takes the wrong way for a caption.
+  return { words, fillerWords, stutters, spoken: spokenWords(heard) }
+}
+
+/** What is kept: everything but the pauses, "um"s and stumbles, padded. This
+ *  is the whole cut when noise cutting is off. */
+export function plainKeep(silences: Range[], fillerWords: Range[], stutters: Range[], duration: number, settings: SilenceSettings): Range[] {
+  return keepRanges(mergeRanges([...silences, ...fillerWords, ...stutters]), duration, settings.paddingSec)
+}
+
+/** Noise cutting's first step: heard words brought back if they were cut,
+ *  the kept stretches with no word in them, and which of those are worth the
+ *  model's second listen (the rest are too short to be a word or too long to
+ *  cut). */
+export function noiseCandidates(keep: Range[], words: WordSpan[], meantToCut: Range[], levels: Level[], duration: number) {
+  const protectedKeep = protectWords(keep, words, meantToCut, duration).keep
+  const lone = loneSounds(protectedKeep, words, (range) => peakDbIn(levels, range))
+  const worth = lone.flatMap((c, i) => {
+    const length = c.range.end - c.range.start
+    return length >= TINY_SEC && length <= LONG_SEC ? [{ c, i }] : []
+  })
+  return { keep: protectedKeep, lone, worth }
 }
 
 /** What was heard in each recording of a video filmed in parts, moved to

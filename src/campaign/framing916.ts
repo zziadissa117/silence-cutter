@@ -47,6 +47,20 @@ export function is916(width: number, height: number): boolean {
   return height > 0 && Math.abs(width / height - 9 / 16) <= TOLERANCE * (9 / 16)
 }
 
+/** Narrower than this (width over height) is a phone held upright: 9:16, a
+ *  taller phone screen (9:19.5) or a little off either. 3:4 (0.75), square
+ *  and landscape are not. */
+const UPRIGHT_BELOW = 0.7
+
+/** Whether a clip is shaped like a phone held upright. Only the other shapes
+ *  - landscape, square, 3:4 (Meta glasses) - are asked about when added
+ *  (WideAsk): a clip filmed on a phone in portrait is a talking video, and
+ *  asking about it only gave a way to leave its pauses in by mistake. It is
+ *  still cropped to exactly 9:16 when it is made (is916 above decides that). */
+export function isUpright(width: number, height: number): boolean {
+  return height > 0 && width / height < UPRIGHT_BELOW
+}
+
 /** The finished frame for a source of `width`×`height`. */
 export function framedSize(width: number, height: number, mode: LandscapeMode): { width: number; height: number } {
   if (mode === 'off' || is916(width, height)) return outputSize(width, height)

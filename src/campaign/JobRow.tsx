@@ -145,7 +145,10 @@ export function JobRow({
                 ? 'Stopped the page twice - left alone'
                 : (job.error ?? 'Failed')
 
-  const shownLine = job.later && job.status !== 'failed' && job.status !== 'held' ? `${line} · for the next days` : line
+  const fine = job.status !== 'failed' && job.status !== 'held'
+  // A wide clip he asked to only make 9:16 says so, so a video with its
+  // pauses still in is never a surprise.
+  const shownLine = `${line}${job.noCut && fine ? ' · not cut, only made 9:16' : ''}${job.later && fine ? ' · for the next days' : ''}`
 
   const send = async () => {
     if (!file) return
