@@ -304,7 +304,7 @@ export function App() {
         // second - twelve in a row. So the video is cut anyway, pauses only,
         // and says what it went without.
         let plainWhy = ''
-        if (source && failedIn === 'model' && /out of memory/i.test(why)) {
+        if (source && /speech model/i.test(why) && /out of memory/i.test(why)) {
           try {
             setPhase('reading', 0)
             const result = await cutSilenceFromFile(source, (progress) => setPhase('cutting', progress), next.settings, {
