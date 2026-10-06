@@ -25,6 +25,17 @@ describe('protectWords (a heard word is never cut)', () => {
     expect(out.broughtBack).toBe(0)
     expect(out.keep).toEqual([r(0, 2), r(4, 6)])
   })
+  it('does not put a pause back because a word runs on into it', () => {
+    // The speech model's end for "month" hangs 0.3 s over the cut after it.
+    const keep = [r(0, 2), r(4, 6)]
+    const out = protectWords(keep, [{ start: 1.5, end: 2.3 }, { start: 3.8, end: 4.4 }], [], 6)
+    expect(out.broughtBack).toBe(0)
+    expect(out.keep).toEqual(keep)
+  })
+  it('still brings back a word that was mostly cut', () => {
+    const out = protectWords([r(0, 2), r(4, 6)], [{ start: 2.1, end: 2.6 }], [], 6)
+    expect(out.broughtBack).toBe(1)
+  })
   it('stays inside the recording', () => {
     const out = protectWords([r(1, 2)], [{ start: 0.02, end: 0.5 }], [], 3)
     expect(out.keep[0].start).toBeGreaterThanOrEqual(0)

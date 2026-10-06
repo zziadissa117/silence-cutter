@@ -3,6 +3,17 @@
 Newest first. Every change says what it does, how to use it, and how it works
 underneath. Kept up to date with each commit.
 
+## Fix: pauses were not being cut as short as before
+**What:** Silences were coming out longer than the cutter used to leave them - a little of every pause
+was put back in.
+**Why:** The noise step I added protects every word the speech model heard, using its word times. The
+model runs a word on into the pause after it, so a word that was mostly kept but whose end hung over a
+cut was "brought back", and with it the tail of that pause.
+**Fix:** A heard word is now only brought back when most of it (half or more) was cut. A word that is
+mostly in the video with its end over a pause is left alone, so pauses are cut as tight as before.
+Words that really were cut (a quiet word inside a silence) are still protected.
+Files: `noiseCuts.ts` (`protectWords`), `noiseCuts.test.ts`.
+
 ## Usernames, not just names, on your Postiz accounts
 **What:** Accounts are listed by their username first - "@kari.ugc · TikTok (Kari)" -
 wherever you pick or see them (campaign posting setup, daily limits, Posts, late-account
