@@ -3,6 +3,29 @@
 Newest first. Every change says what it does, how to use it, and how it works
 underneath. Kept up to date with each commit.
 
+## Fix: captions on the wrong word because the word-timing step kept failing on phones
+**What:** Captions are timed by a second, small model that finds each word's exact moment (the "letter
+model"). On phones it kept giving up: the app's error log has it running out of memory or going quiet for
+over a minute 7 times since Sept 28, on both phones that use the cutter, 3 of them since Oct 5 (one this
+morning, on the newest version). Every time it gave up, that video's captions fell back to the speech
+model's rough times: words come up about 0.2 s off and the last word before a pause can be lost, so on fast
+talk the word on screen is often not the word being said.
+**Why:** it listened to a whole listening window at once - up to 25 s of sound. The memory it needs, and the
+time before it says anything, grow with that length; 25 s was too much for an iPhone.
+**Fix:** it now hears each window in pieces of at most 8 s, always cut in the middle of a pause (never in a
+word), and reports in after each piece and once it has loaded. The letters it hears are joined back up and
+the words are laid along the whole window at once, exactly as before - tested to give the same times as
+hearing the window whole.
+**Not a setting:** no setting changed the words. The caption text stored with every video posted since
+Sept 28 (both posting accounts) is as accurate as on day one. The one setting that did hurt was "Also cut
+sounds that aren't speech" (on by default from Oct 3 until the Oct 6 02:13 update); it is off now.
+**Reaction videos:** their captions come from the product clip's sound, not the face clip. If the product
+clip is a screen recording with music or quiet narration, the words heard from it can be wrong - check them
+in the caption check, or make that video without captions.
+**To test:** update the app (tap the update banner), then add videos fresh - a video already read keeps the
+times it was read with.
+Files: `align.ts` (`pieceCuts`, `joinPieces`, `placeWordsAt`), `align.worker.ts`, `plan.ts`, `align.test.ts`.
+
 ## Checked: cuts and captions match the cutter before noise cutting; a portrait clip is never left uncut by mistake
 **What was checked:** the whole path from reading a video to the cut and the captions, against the
 version just before noise cutting existed. With noise cutting off (the default) the pause finding, the

@@ -30,7 +30,7 @@ import {
   type SilenceSettings,
 } from '../media/silenceMath'
 import { report } from '../report'
-import type { TimedWord } from './align'
+import { pieceCuts, type TimedWord } from './align'
 import type { AlignMessage, AlignRequest } from './align.worker'
 import { ALIGNED_LATE_SEC, snapToOnsets, spokenWords } from './captions'
 import { LONG_SEC, TINY_SEC, cutNoise, loneSounds, peakDbIn, peaksOf, protectWords, type CutCheck, type WordSpan } from './noiseCuts'
@@ -134,10 +134,12 @@ async function alignWords(
   samples: Float32Array,
   windows: Range[],
   words: WordChunk[],
+  silences: Range[],
   { onModelDownload, onProgress }: { onModelDownload?: (f: number) => void; onProgress?: (f: number) => void },
 ): Promise<TimedWord[]> {
-  // Each word goes with the stretch it was heard in.
-  const grouped = windows.map((w) => ({ ...w, words: [] as TimedWord[] }))
+  // Each word goes with the stretch it was heard in, which the letter model
+  // hears a piece at a time, cut in its pauses.
+  const grouped = windows.map((w) => ({ ...w, words: [] as TimedWord[], cuts: pieceCuts(w, silences) }))
   for (const word of words) {
     const window = grouped.find((w) => word.start >= w.start && word.start < w.end) ?? grouped[grouped.length - 1]
     window?.words.push(word)
@@ -282,7 +284,7 @@ export async function planCampaignCut(
     ;({ words, fillerWords, stutters, spoken } = fromHeard(heard, levels, settings, duration, options.cleanSpeech))
     if (forAligning && heard.length > 0) {
       try {
-        const timed = await alignWords(forAligning, windows, spokenWords(heard, 0), {
+        const timed = await alignWords(forAligning, windows, spokenWords(heard, 0), silences, {
           onModelDownload: options.onModelDownload,
           onProgress: (p) => options.onTranscribeProgress?.(share + (1 - share) * p),
         })

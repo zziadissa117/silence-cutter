@@ -165,9 +165,29 @@ export interface TimedWord {
  *  each frame `frameSec` long. A word that got no span keeps its place
  *  between its neighbours. */
 export function placeWords(words: TimedWord[], spans: Span[], frameSec: number, offset: number): TimedWord[] {
+  return place(
+    words,
+    spans,
+    (frame) => offset + frame * frameSec,
+    (frame) => offset + (frame + 1) * frameSec,
+  )
+}
+
+/** The same, for frames with times of their own: `starts[f]` and `ends[f]`
+ *  are when frame f begins and ends on the video (see joinPieces). */
+export function placeWordsAt(words: TimedWord[], spans: Span[], starts: readonly number[], ends: readonly number[]): TimedWord[] {
+  return place(
+    words,
+    spans,
+    (frame) => starts[frame],
+    (frame) => ends[frame],
+  )
+}
+
+function place(words: TimedWord[], spans: Span[], startOf: (frame: number) => number, endOf: (frame: number) => number): TimedWord[] {
   const placed = words.map((w, i) => {
     const span = spans[i]
-    return span ? { text: w.text, start: offset + span.first * frameSec, end: offset + (span.last + 1) * frameSec } : null
+    return span ? { text: w.text, start: startOf(span.first), end: endOf(span.last) } : null
   })
   return words.map((w, i) => {
     const got = placed[i]
@@ -177,4 +197,68 @@ export function placeWords(words: TimedWord[], spans: Span[], frameSec: number, 
     const start = before ? before.end : after ? after.start : w.start
     return { text: w.text, start, end: Math.max(start, after ? after.start : start) }
   })
+}
+
+/** The longest stretch the letter model hears in one go. What it needs - its
+ *  memory, and the time before it can say anything - grows with the length
+ *  of what it hears, and a whole listening window (up to 25 s) was too much
+ *  for a phone: on his friend's iPhone it ran out of memory or went quiet for
+ *  over a minute, again and again, and every time the captions fell back to
+ *  the speech model's rough times - words coming up late, or on the wrong
+ *  word. */
+export const ALIGN_PIECE_SEC = 8
+
+/** Where to cut a listening window into pieces for the letter model: always
+ *  in the middle of a pause, never in a word, so each piece is at most
+ *  `maxSec` where the pauses allow it (talk with no pause in it stays whole),
+ *  and none is shorter than `minSec`. The letters heard in the pieces are put
+ *  back together (joinPieces) before the words are laid along them, so the
+ *  words are still placed over the whole window at once, as before. */
+export function pieceCuts(
+  window: { start: number; end: number },
+  silences: readonly { start: number; end: number }[],
+  maxSec = ALIGN_PIECE_SEC,
+  minSec = 1,
+): number[] {
+  const points = silences
+    .filter((s) => s.start > window.start && s.end < window.end)
+    .map((s) => (s.start + s.end) / 2)
+    .sort((a, b) => a - b)
+  const cuts: number[] = []
+  let from = window.start
+  while (window.end - from > maxSec) {
+    const usable = points.filter((p) => p >= from + minSec && window.end - p >= minSec)
+    const within = usable.filter((p) => p <= from + maxSec)
+    // The furthest pause it can reach; failing that, the first one after.
+    const next = within.length > 0 ? within[within.length - 1] : usable[0]
+    if (next === undefined) break
+    cuts.push(next)
+    from = next
+  }
+  return cuts
+}
+
+/** What the letter model heard in each piece of a window, as one: the
+ *  letters' scores frame after frame, and when each frame starts and ends on
+ *  the video. Each piece's frames share its length out evenly, as a whole
+ *  window's did. */
+export function joinPieces(
+  pieces: readonly { logProbs: Float32Array; frames: number; start: number; end: number }[],
+  letters: number,
+): { logProbs: Float32Array; frames: number; starts: number[]; ends: number[] } {
+  const frames = pieces.reduce((n, p) => n + p.frames, 0)
+  const logProbs = new Float32Array(frames * letters)
+  const starts: number[] = []
+  const ends: number[] = []
+  let at = 0
+  for (const piece of pieces) {
+    logProbs.set(piece.logProbs.subarray(0, piece.frames * letters), at * letters)
+    const frameSec = piece.frames > 0 ? (piece.end - piece.start) / piece.frames : 0
+    for (let f = 0; f < piece.frames; f++) {
+      starts.push(piece.start + f * frameSec)
+      ends.push(piece.start + (f + 1) * frameSec)
+    }
+    at += piece.frames
+  }
+  return { logProbs, frames, starts, ends }
 }
