@@ -355,12 +355,11 @@ export async function planCampaignCut(
         )
         for (const { c, i } of worth) {
           const found = again.filter((w) => w.start < c.range.end + 0.1 && w.end > c.range.start - 0.1)
-          if (found.length > 0) {
-            heardAgain.add(i)
-            // Speech the first listen missed: it is words for the captions too.
-            words = [...words, ...found].sort((a, b) => a.start - b.start)
-            if (spoken) spoken = [...spoken, ...found].sort((a, b) => a.start - b.start)
-          }
+          // Something was heard in it, so it is left in. What was heard is not
+          // added to the words: a speech model listening to a stray sound on
+          // its own makes words up ("you", "thank you"), and they would come
+          // out in the captions, at the wrong times.
+          if (found.length > 0) heardAgain.add(i)
         }
       } catch (error) {
         // The second listen failing means nothing is known about these

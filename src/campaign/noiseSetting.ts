@@ -1,13 +1,15 @@
 // Whether the cutter also cuts sounds with no speech in them (a cough, a bump,
-// the room). On unless he turns it off in Settings. See noiseCuts.ts.
+// the room). Off unless he turns it on in Settings: it was on by default and
+// made the cuts and captions worse than they had been, so the ordinary cut is
+// the default again. See noiseCuts.ts.
 
 const KEY = 'cutter-cut-noise'
 
 export function cutNoiseOn(): boolean {
   try {
-    return localStorage.getItem(KEY) !== 'off'
+    return localStorage.getItem(KEY) === 'on'
   } catch {
-    return true
+    return false
   }
 }
 

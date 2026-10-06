@@ -3,6 +3,20 @@
 Newest first. Every change says what it does, how to use it, and how it works
 underneath. Kept up to date with each commit.
 
+## Fix: cuts and captions are back to how they were (noise cutting is now off by default)
+**What:** After the noise-cutting update, talking videos cut worse than before and the caption words got
+worse too. Noise cutting is now **off by default**: cuts and captions run exactly the code they ran before it
+existed (nothing else in the cutting or caption-hearing code changed). You can still turn it on in Setup
+("Also cut sounds that aren't speech").
+**Why it hurt:** the noise step re-listened to stray sounds with the speech model, and whatever that second
+listen "heard" was added to the caption words - models make words up from noise ("you", "thank you") - at
+the wrong times. It also protected words by their stretched timings, which put pauses back (fixed earlier).
+**Fix:** off by default; and when on, the second listen only decides whether a stretch stays - it never adds
+words to the captions.
+**Note:** if you had switched it on yourself before, it stays on. A video already read keeps its old cuts and
+captions: add it again.
+Files: `noiseSetting.ts`, `plan.ts`, `SettingsView.tsx`.
+
 ## Fix: pauses were not being cut in talking videos (the Cuts view looked uncut)
 **What:** In a talking video, the Cuts view showed most pauses still in - the cuts were far shorter than the
 cutter used to make, or missing.

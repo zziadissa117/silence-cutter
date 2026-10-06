@@ -124,10 +124,11 @@ function NoiseCutting() {
           }}
         />
         <span>
-          <span className="label">Cut sounds that aren't speech</span>
+          <span className="label">Also cut sounds that aren't speech (off by default)</span>
           <span className="hint" style={{ display: 'block' }}>
-            Coughs, bumps and room noise go. It never cuts a word it heard, listens a second time to anything it is unsure
-            about, and lists what it cut so you can listen and put it back. Takes a little longer: every video is listened to.
+            Coughs, bumps and room noise go as well as the pauses. Leave it off for the plain cut that always worked. It never
+            cuts a word it heard, listens a second time to anything it is unsure about, and lists what it cut so you can
+            listen and put it back. Takes a little longer: every video is listened to.
           </span>
         </span>
       </label>
