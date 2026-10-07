@@ -3,6 +3,22 @@
 Newest first. Every change says what it does, how to use it, and how it works
 underneath. Kept up to date with each commit.
 
+## Fix: black strip under the tab bar (undoes the change below)
+**What:** the "frame the size of the screen" from the last update left a dead black strip at the bottom of the
+iPhone, with the bar - Videos, Batch, Campaigns, Pictures, Settings - a block up from where it belongs. It is back
+to how it was: fixed to the bottom of the screen, the page scrolling under it.
+**Why the bar misbehaved at all:** on iOS 26 an app added to the Home Screen is told the screen is a status bar's
+height shorter than it is (a WebKit bug, 301108, set off by this app's see-through status bar). A frame sized to
+"the screen" stops that much short - the black strip. A short screen (Batch, Pictures, a short Videos list) ends
+that much short too, and the bar sits on its end instead of the bottom of the phone and moves as you scroll - the
+"stays with me, doesn't stay all the way down" from before. The one size iOS gets right there is the "large
+viewport" (`lvh`), so in the Home Screen app the page is now always at least that tall, and the bar should sit
+on the bottom on every screen. In a Safari tab nothing changes.
+**Checked:** in a phone-sized Chromium the bar is at the very bottom on short and long screens and while
+scrolled, and the new rule is read by the browser. Not on an iPhone: whether the bar now sits on the bottom of a
+short screen in the Home Screen app needs your phone.
+Files: `CampaignApp.tsx`, `TabBar.tsx`, `campaign.css`.
+
 ## Deploying no longer needs Supabase (no more keychain box)
 **What:** `./deploy.sh` now only ships the app: it gets the latest code and puts it on Netlify. It no longer
 runs the Supabase command, which is what asked for a "keychain" password on the Mac - and since the script

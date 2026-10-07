@@ -25,7 +25,10 @@ export function TabBar({ tab, onTab }: { tab: Tab; onTab: (tab: Tab) => void }) 
           type="button"
           className={t.tab === tab ? 'active' : ''}
           aria-current={t.tab === tab ? 'page' : undefined}
-          onClick={() => onTab(t.tab)}
+          onClick={() => {
+            onTab(t.tab)
+            window.scrollTo({ top: 0 })
+          }}
         >
           {t.icon}
           <span>{t.label}</span>

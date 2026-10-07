@@ -138,21 +138,7 @@
    language: black ground, hairlines, a dot for each row's state, colour only
    where it says something. */
 
-/* The frame for the tabbed screens: the size of the screen, never moving,
-   the page scrolling inside it and the tab bar its bottom row - see
-   CampaignApp. A bar fixed to the bottom of a scrolling page rode up the
-   screen on an iPhone as Safari's viewport moved with the scroll. */
-.page.framed {
-  position: fixed; inset: 0;
-  display: flex; flex-direction: column;
-}
-.page.framed > .page-scroll {
-  flex: 1; min-height: 0;
-  overflow-y: auto;
-  /* Scrolling past the end bounces the list, not the whole screen. */
-  overscroll-behavior: contain;
-}
-main.tabbed { padding-bottom: 32px; }
+main.tabbed { padding-bottom: calc(env(safe-area-inset-bottom) + 96px); }
 .hint, .lede, .quote { text-wrap: pretty; }
 .linkbtn { min-height: 44px; }
 
@@ -178,9 +164,19 @@ main.tabbed { padding-bottom: 32px; }
   margin-left: -6px; padding: 0 6px; background: none; border: 0; color: var(--dim); font: inherit; font-size: 16px; cursor: pointer;
 }
 
-/* The bottom tab bar: the frame's bottom row. */
+/* The bottom tab bar, fixed to the bottom of the page as it scrolls. Never
+   put it in a fixed frame the size of the screen: on iOS 26 the home-screen
+   app sizes such a frame - and 100%, svh and dvh - a status bar's height
+   short, which left the bar a block up with a dead black strip under it.
+   For the same reason a short screen (Batch, Pictures) ended above the
+   bottom and took the bar up with it; the installed app's page is made at
+   least as tall as the screen (lvh), so the bar sits on the bottom there
+   too. */
+@media (display-mode: standalone), (display-mode: fullscreen) {
+  html, body { min-height: 100vh; min-height: 100lvh; }
+}
 .tabbar {
-  flex: none; position: relative; z-index: 10;
+  position: fixed; left: 0; right: 0; bottom: 0; z-index: 10;
   display: flex; justify-content: center;
   padding: 6px 8px calc(env(safe-area-inset-bottom) + 6px);
   background: var(--ink);

@@ -221,9 +221,13 @@ public/push-sw.js              service-worker push handler
 
 - Only one page runs at a time; never add a long-running second queue.
 - Never auto-update the service worker (UpdateBanner owns reloads).
-- The campaign page's tabbed screens live in a fixed full-screen frame (`.page.framed`): the screen scrolls
-  inside `.page-scroll` and `.tabbar` is the frame's bottom row - never `position: fixed` on a scrolling page
-  (it rode up the screen on iOS). Screens without the bar (`inFlow`) scroll as the document, as before.
+- The campaign page scrolls as the document and `.tabbar` is `position: fixed` to its bottom. Never size a
+  container to the screen (a fixed `inset: 0` frame, `100%`, `100svh`/`100dvh`): on iOS 26 the home-screen
+  app (viewport-fit=cover + black-translucent status bar, WebKit bug 301108) reports those a status bar's
+  height short, which left the bar a block up with a dead black strip under it. Only `100lvh` is the full
+  screen there; the installed app's html/body are at least that tall so short screens reach the bottom.
+  Changing the status-bar meta would fix it at the root, but iOS reads it only when the app is added to the
+  Home Screen, and removing the app to add it again can wipe its storage (videos not yet sent with it).
 - A change to a render function must keep preview and real frames on the same code.
 - A finished video is copied to private storage the moment it is made; do not
   rely on the list for it.
