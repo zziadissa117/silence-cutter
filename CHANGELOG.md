@@ -3,6 +3,14 @@
 Newest first. Every change says what it does, how to use it, and how it works
 underneath. Kept up to date with each commit.
 
+## Change the headline when you edit a video again
+**What:** The screen you land on after "Edit again" (the captions screen, with the Cuts button) now has a
+**Headline** box under the video, beside the caption position and size. Change the words there and make the video
+again; the new headline is on the new video and replaces the old post (if it hasn't gone out).
+**Before:** the headline could only be changed in the video's list row, which you had to open and find. Batch
+videos already had a headline box in their own Edit screen.
+**How:** the box is the same headline the list row edits (`setHeadline`/`saveHeadline`), saved when you leave it.
+Files: `CaptionReview.tsx`, `CampaignApp.tsx`.
 ## Fix: cutting "um"s could take a quietly said word out with it
 **What:** With "Also cut "um"s and stumbles" on, an "um" cut checks the sound it is about to remove and
 refuses when there is more in it than an "um" could make - that is what stops a mistimed "um" taking a real

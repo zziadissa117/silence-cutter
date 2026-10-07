@@ -28,6 +28,7 @@ import { centsLabel, estimateRecheckCents, flaggedPhrases, type Span } from './c
 import { headlineFontReady } from './headlineFont'
 import type { RecheckResult } from './posting'
 import { ChevronLeft, PauseIcon, PlayIcon } from './icons'
+import { LIMITS } from './look'
 
 const textOf = (phrase: CaptionWord[]) =>
   phrase
@@ -54,6 +55,9 @@ export function CaptionReview({
   onClose,
   onCuts,
   clips,
+  headline = '',
+  onHeadline,
+  onHeadlineDone,
   bare = false,
   position = 'usual',
   onPosition,
@@ -79,6 +83,11 @@ export function CaptionReview({
   onCuts?: (words: CaptionWord[]) => void
   /** What is joined onto the video - its Add list - under the header. */
   clips?: ReactNode
+  /** The headline over the video, and a way to change it. `onHeadlineDone`
+   *  runs when he leaves the box, so it is saved with the rest. */
+  headline?: string
+  onHeadline?: (text: string) => void
+  onHeadlineDone?: () => void
   /** Captions with no punctuation: the preview shows them as they'll be. */
   bare?: boolean
   /** Where the caption sits on the frame, and a way to move it. */
@@ -322,6 +331,19 @@ export function CaptionReview({
             </span>
           ) : null}
         </div>
+        {onHeadline ? (
+          <label className="field review-headline">
+            <span className="label">Headline</span>
+            <input
+              type="text"
+              value={headline}
+              maxLength={LIMITS.headlineChars}
+              placeholder="No headline"
+              onChange={(e) => onHeadline(e.target.value)}
+              onBlur={onHeadlineDone}
+            />
+          </label>
+        ) : null}
         {onPosition ? (
           <div className="seg full caption-position" role="radiogroup" aria-label="Where the captions sit">
             {CAPTION_POSITIONS.map((p) => (

@@ -2608,6 +2608,9 @@ export function CampaignApp() {
           setCutting({ id: reviewJob.id })
         }}
         clips={clipsField(reviewJob, true)}
+        headline={reviewJob.headlineText}
+        onHeadline={(text) => setHeadline(reviewJob.id, text)}
+        onHeadlineDone={() => saveHeadline(reviewJob.id)}
         vocabulary={vocabularyFor(reviewJob)}
         riskSpans={(reviewJob.day?.plan?.checks ?? []).filter((c) => c.kind !== 'noise').map((c) => ({ start: c.start, end: c.end }))}
         onRecheck={posting ? (phrases) => recheckCaptions(phrases, vocabularyFor(reviewJob)) : undefined}
