@@ -15,7 +15,7 @@ import { SilenceCutError } from '../media/errors'
 import { isFillerWordDetectionSupported } from '../media/fillerWords'
 import { cutSilence, cutSilenceFromFile } from '../media/silenceCut'
 import { totalDuration, type SilenceSettings } from '../media/silenceMath'
-import { findMentions, firing, listeningPrompt } from './keywords'
+import { listeningPrompt } from './keywords'
 import {
   angleProblems,
   campaignProblems,
@@ -27,6 +27,7 @@ import {
   type Campaign,
 } from './look'
 import { manualCues, type ManualPicture } from './manualPictures'
+import { wordMoments } from './moments'
 import { cutNoiseOn } from './noiseSetting'
 import { captionWords, type CaptionPosition, type CaptionSize, type CaptionWord } from './captions'
 import type { ClipPlace, JoinedClips } from './clips'
@@ -188,32 +189,9 @@ export async function make(
   const look = { ...base, pictures: [...base.pictures, ...hand.cues] }
   const track = music === undefined ? (angle.music ?? null) : music
 
-  const notHeard: string[] = []
-  const logoMoments = look.logo.image ? firing(findMentions(plan.words, look.logo.words), look.mentions) : []
-  if (look.logo.image && logoMoments.length === 0) notHeard.push(...look.logo.words)
-  const brandMoments =
-    look.effects.brandHit === 'off' ? [] : firing(findMentions(plan.words, look.brandWords), look.mentions)
-  if (look.effects.brandHit !== 'off' && brandMoments.length === 0) notHeard.push(...look.brandWords)
-  const pictureMoments = look.pictures.map((picture) => {
-    const handAt = hand.at.get(picture.id)
-    if (handAt !== undefined) return [handAt]
-    const moments = firing(findMentions(plan.words, picture.words), look.mentions)
-    if (moments.length === 0) notHeard.push(...picture.words)
-    return moments
-  })
-  // Only the bank pictures actually mentioned go to the render - a big bank
-  // costs nothing for the pictures a video never uses.
-  const bankCues = look.bankPictures
-    .map((picture) => ({ image: picture.image, moments: firing(findMentions(plan.words, picture.words), look.mentions) }))
-    .filter((cue) => cue.moments.length > 0)
-  const anyPicture = [...pictureMoments.flat(), ...bankCues.flatMap((c) => c.moments)].sort((a, b) => a - b)
-  const soundMoments = look.sounds.map((sound) => {
-    if (sound.trigger.kind === 'picture') return anyPicture
-    if (sound.trigger.kind !== 'words') return []
-    const moments = firing(findMentions(plan.words, sound.trigger.words), look.mentions)
-    if (moments.length === 0) notHeard.push(...sound.trigger.words)
-    return moments
-  })
+  // Timed from the captions' exact words, pictures a touch before - see moments.ts.
+  const moments = wordMoments(plan, look, hand.at)
+  const { notHeard } = moments
 
   const rendered = await renderCampaignCut(
     file,
@@ -221,11 +199,11 @@ export async function make(
       keep: plan.keep,
       look,
       headlineText,
-      logoMoments,
-      soundMoments,
-      brandMoments,
-      pictureMoments,
-      bankCues,
+      logoMoments: moments.logo,
+      soundMoments: moments.sounds,
+      brandMoments: moments.brand,
+      pictureMoments: moments.pictures,
+      bankCues: moments.bank,
       seed,
       gentle,
       captions,

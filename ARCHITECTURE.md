@@ -102,6 +102,9 @@ attempt before it starts (a video that kills the tab cannot loop).
   3:4) get `WideAsk` ("cut" or "only make 9:16" -> job `noCut`, plan `keepWhole`);
   a portrait phone clip (9:16, 9:19.5) is never asked and always cut. A `noCut` row
   says "not cut, only made 9:16".
+- Picture/logo/sound timing: `campaign/moments.ts` `wordMoments` - from `plan.spoken` (the captions' words,
+  letter-model timed when it ran), falling back per cue to `plan.words`; pictures and the logo lead the word by
+  `PICTURE_LEAD_SEC` (0.1 s), sounds and the brand-hit zoom land on it; hand-placed pictures keep their time.
 - Caption timing: `campaign/align.ts` + `align.worker.ts` (wav2vec2 letter model, forced alignment). Each
   speech-model window is heard in pieces of at most `ALIGN_PIECE_SEC` (8 s) cut mid-pause (`pieceCuts`), the
   letter scores joined (`joinPieces`) and the words aligned over the whole window. If it fails or goes quiet

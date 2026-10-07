@@ -3,6 +3,22 @@
 Newest first. Every change says what it does, how to use it, and how it works
 underneath. Kept up to date with each commit.
 
+## Fix: pictures and the logo came up late after the word
+**What:** Say "Hershey's" and its picture came up a good part of a second later, while the caption was already
+on the word. Pictures (the angle's and the bank's) and the logo now come up the moment the word is said - a
+touch before it, in fact, so they are fully on screen as it lands.
+**Why:** the captions are timed by the letter model, which places each word within a frame or two of your voice,
+but the pictures were still timed from the speech model's rough times - about 0.2 s late on average and wandering
+0.2 s either way, worst in the middle of a sentence, where nothing pulls a word back onto your voice. On top of
+that, a picture fades in over its first 0.12 s, so it was seen later still.
+**Fix:** everything that comes up on a word - pictures, bank pictures, the logo, sounds and the brand-hit zoom -
+is timed from the same exact words as the captions. Pictures and the logo start 0.1 s before the word; sounds and
+the zoom land on the word itself. A picture you put on by hand stays exactly where you put it.
+**Note:** a video already read keeps its words, and those already have the exact times if captions were on - so
+making it again (or Edit again) is enough; it does not need adding fresh. If the letter model could not run, the
+pictures use the same timing as the captions did.
+Files: `moments.ts` (new), `moments.test.ts`, `pipeline.ts`.
+
 ## Change the headline when you edit a video again
 **What:** The screen you land on after "Edit again" (the captions screen, with the Cuts button) now has a
 **Headline** box under the video, beside the caption position and size. Change the words there and make the video
