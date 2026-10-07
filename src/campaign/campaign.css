@@ -138,7 +138,21 @@
    language: black ground, hairlines, a dot for each row's state, colour only
    where it says something. */
 
-main.tabbed { padding-bottom: calc(env(safe-area-inset-bottom) + 96px); }
+/* The frame for the tabbed screens: the size of the screen, never moving,
+   the page scrolling inside it and the tab bar its bottom row - see
+   CampaignApp. A bar fixed to the bottom of a scrolling page rode up the
+   screen on an iPhone as Safari's viewport moved with the scroll. */
+.page.framed {
+  position: fixed; inset: 0;
+  display: flex; flex-direction: column;
+}
+.page.framed > .page-scroll {
+  flex: 1; min-height: 0;
+  overflow-y: auto;
+  /* Scrolling past the end bounces the list, not the whole screen. */
+  overscroll-behavior: contain;
+}
+main.tabbed { padding-bottom: 32px; }
 .hint, .lede, .quote { text-wrap: pretty; }
 .linkbtn { min-height: 44px; }
 
@@ -164,9 +178,9 @@ main.tabbed { padding-bottom: calc(env(safe-area-inset-bottom) + 96px); }
   margin-left: -6px; padding: 0 6px; background: none; border: 0; color: var(--dim); font: inherit; font-size: 16px; cursor: pointer;
 }
 
-/* The bottom tab bar. */
+/* The bottom tab bar: the frame's bottom row. */
 .tabbar {
-  position: fixed; left: 0; right: 0; bottom: 0; z-index: 10;
+  flex: none; position: relative; z-index: 10;
   display: flex; justify-content: center;
   padding: 6px 8px calc(env(safe-area-inset-bottom) + 6px);
   background: var(--ink);

@@ -221,6 +221,9 @@ public/push-sw.js              service-worker push handler
 
 - Only one page runs at a time; never add a long-running second queue.
 - Never auto-update the service worker (UpdateBanner owns reloads).
+- The campaign page's tabbed screens live in a fixed full-screen frame (`.page.framed`): the screen scrolls
+  inside `.page-scroll` and `.tabbar` is the frame's bottom row - never `position: fixed` on a scrolling page
+  (it rode up the screen on iOS). Screens without the bar (`inFlow`) scroll as the document, as before.
 - A change to a render function must keep preview and real frames on the same code.
 - A finished video is copied to private storage the moment it is made; do not
   rely on the list for it.

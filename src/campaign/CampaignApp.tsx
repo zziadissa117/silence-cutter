@@ -10,7 +10,7 @@
 // Its own page, its own queue, its own storage. The plain cutter is not
 // touched by any of this; see ModeNav.tsx for why the two are separate pages.
 
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 
 import { forgetCut } from '../media/outputSink'
 import { SilenceCutError, isSilenceCutSupported } from '../media/silenceCut'
@@ -2718,14 +2718,43 @@ export function CampaignApp() {
     (showPosts && posting !== null) ||
     askingHook !== null || Boolean(cutsJob && cutting) || Boolean(reviewJob && reviewing)
 
+  // With the tab bar: a frame the size of the screen that never moves, the
+  // page scrolling inside it and the bar its bottom row. A bar fixed to the
+  // bottom of a scrolling page moves with Safari's own viewport as it
+  // scrolls - on an iPhone it rode up the screen and did not stay at the
+  // bottom. The screens without the bar (checking captions, the editors)
+  // scroll as the page, as they always have. Where the list was scrolled to
+  // is kept while one of those is open.
+  const scroller = useRef<HTMLDivElement>(null)
+  // Kept as it scrolls: by the time a screen without the bar is up, the frame
+  // has already stopped scrolling and says 0.
+  const listAt = useRef(0)
+  useLayoutEffect(() => {
+    if (!inFlow && scroller.current) scroller.current.scrollTop = listAt.current
+  }, [inFlow])
+
   return (
-    <>
-      {inFlow ? null : <ModeNav current="campaign" workToLose={workToLose} />}
-      <main className={inFlow ? 'flow' : 'tabbed'}>
-        <UpdateBanner safeToReload={jobs.every((j) => j.status === 'held' || j.status === 'failed')} />
-        {screen}
-      </main>
-      {inFlow ? null : <TabBar tab={tab} onTab={setTab} />}
-    </>
+    <div className={inFlow ? 'page' : 'page framed'}>
+      <div
+        className="page-scroll"
+        ref={scroller}
+        onScroll={inFlow ? undefined : (event) => (listAt.current = event.currentTarget.scrollTop)}
+      >
+        {inFlow ? null : <ModeNav current="campaign" workToLose={workToLose} />}
+        <main className={inFlow ? 'flow' : 'tabbed'}>
+          <UpdateBanner safeToReload={jobs.every((j) => j.status === 'held' || j.status === 'failed')} />
+          {screen}
+        </main>
+      </div>
+      {inFlow ? null : (
+        <TabBar
+          tab={tab}
+          onTab={(next) => {
+            setTab(next)
+            if (scroller.current) scroller.current.scrollTop = 0
+          }}
+        />
+      )}
+    </div>
   )
 }

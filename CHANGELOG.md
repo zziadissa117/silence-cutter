@@ -3,6 +3,20 @@
 Newest first. Every change says what it does, how to use it, and how it works
 underneath. Kept up to date with each commit.
 
+## Fix: the tab bar rode up the screen when scrolling
+**What:** On an iPhone, scrolling down a long screen (Settings, the Videos list) made the bar along the bottom -
+Videos, Batch, Campaigns, Pictures, Settings - move with the scroll instead of staying at the very bottom.
+**Why:** the bar was fixed to the bottom of a page that scrolls, and Safari moves that page's own viewport as it
+scrolls (its toolbars, the bounce), taking the bar with it.
+**Fix:** the screens with the bar are now a frame the size of the screen that never moves: the screen scrolls
+inside it and the bar is its bottom row, so there is nothing for the bar to move with. Scrolling past the end
+bounces the list, not the whole screen. The last line of every screen still clears the bar. Opening something
+full-screen (checking captions, an editor, posting setup) and coming back leaves the list where it was; switching
+tabs starts the new tab at its top, as before. The full-screen views scroll as they always have.
+**Checked:** in a phone-sized Chromium, Settings (2,647 px tall) scrolled to the bottom with the bar staying at
+exactly the bottom of the screen, and the list kept its place across posting setup. Not yet on an iPhone.
+Files: `CampaignApp.tsx`, `TabBar.tsx`, `campaign.css`.
+
 ## Fix: pictures and the logo came up late after the word
 **What:** Say "Hershey's" and its picture came up a good part of a second later, while the caption was already
 on the word. Pictures (the angle's and the bank's) and the logo now come up the moment the word is said - a
