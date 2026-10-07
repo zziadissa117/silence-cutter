@@ -2574,6 +2574,17 @@ export function CampaignApp() {
           keepCuts(cutsJob.id, keep, overlays, files)
           setCutting(null)
         }}
+        onCaptions={
+          captionsOn
+            ? (keep, overlays, files) => {
+                keepCuts(cutsJob.id, keep, overlays, files)
+                setCutting(null)
+                // Opened from its captions: back to them. From the list: on
+                // to them the way the list's Check captions goes.
+                if (reviewing?.[0] !== cutsJob.id) startCheck([cutsJob.id])
+              }
+            : undefined
+        }
         onCancel={() => setCutting(null)}
       />
     ) : askingHook ? (

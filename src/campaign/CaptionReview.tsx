@@ -6,6 +6,11 @@
 // Approving sends it to be made; if the captions are no good it can be made
 // without them.
 //
+// Only the video is held at the top. Where the captions sit, how big they
+// are, the headline and what is joined on come after the phrases: held at
+// the top with the video they filled a phone's screen, and the phrases
+// scrolled by out of sight behind them.
+//
 // The frame is the phone's own video player, not the page's decoder, and
 // nothing is made while this is open - see CampaignApp - so the two never
 // compete for the phone's video hardware.
@@ -81,7 +86,7 @@ export function CaptionReview({
   onClose: (words: CaptionWord[]) => void
   /** Leaves for the video's cuts, keeping the captions as they are. */
   onCuts?: (words: CaptionWord[]) => void
-  /** What is joined onto the video - its Add list - under the header. */
+  /** What is joined onto the video - its Add list - with the look, after the phrases. */
   clips?: ReactNode
   /** The headline over the video, and a way to change it. `onHeadlineDone`
    *  runs when he leaves the box, so it is saved with the rest. */
@@ -303,7 +308,6 @@ export function CaptionReview({
             </button>
           ) : null}
         </div>
-        {clips}
         <div className="review-frame" style={{ aspectRatio: String(aspect) }} onClick={() => playFrom(current)}>
           {url ? (
             <video
@@ -331,51 +335,6 @@ export function CaptionReview({
             </span>
           ) : null}
         </div>
-        {onHeadline ? (
-          <label className="field review-headline">
-            <span className="label">Headline</span>
-            <input
-              type="text"
-              value={headline}
-              maxLength={LIMITS.headlineChars}
-              placeholder="No headline"
-              onChange={(e) => onHeadline(e.target.value)}
-              onBlur={onHeadlineDone}
-            />
-          </label>
-        ) : null}
-        {onPosition ? (
-          <div className="seg full caption-position" role="radiogroup" aria-label="Where the captions sit">
-            {CAPTION_POSITIONS.map((p) => (
-              <button
-                key={p.id}
-                type="button"
-                role="radio"
-                aria-checked={position === p.id}
-                className={position === p.id ? 'active' : ''}
-                onClick={() => onPosition(p.id)}
-              >
-                {p.label}
-              </button>
-            ))}
-          </div>
-        ) : null}
-        {onSize ? (
-          <div className="seg full caption-size" role="radiogroup" aria-label="How big the captions are">
-            {CAPTION_SIZES.map((s) => (
-              <button
-                key={s.id}
-                type="button"
-                role="radio"
-                aria-checked={size === s.id}
-                className={size === s.id ? 'active' : ''}
-                onClick={() => onSize(s.id)}
-              >
-                {s.label}
-              </button>
-            ))}
-          </div>
-        ) : null}
       </div>
 
       {onRecheck ? (
@@ -460,6 +419,55 @@ export function CaptionReview({
           </li>
         ))}
       </ol>
+
+      <div className="review-look">
+        {clips}
+        {onHeadline ? (
+          <label className="field review-headline">
+            <span className="label">Headline</span>
+            <input
+              type="text"
+              value={headline}
+              maxLength={LIMITS.headlineChars}
+              placeholder="No headline"
+              onChange={(e) => onHeadline(e.target.value)}
+              onBlur={onHeadlineDone}
+            />
+          </label>
+        ) : null}
+        {onPosition ? (
+          <div className="seg full caption-position" role="radiogroup" aria-label="Where the captions sit">
+            {CAPTION_POSITIONS.map((p) => (
+              <button
+                key={p.id}
+                type="button"
+                role="radio"
+                aria-checked={position === p.id}
+                className={position === p.id ? 'active' : ''}
+                onClick={() => onPosition(p.id)}
+              >
+                {p.label}
+              </button>
+            ))}
+          </div>
+        ) : null}
+        {onSize ? (
+          <div className="seg full caption-size" role="radiogroup" aria-label="How big the captions are">
+            {CAPTION_SIZES.map((s) => (
+              <button
+                key={s.id}
+                type="button"
+                role="radio"
+                aria-checked={size === s.id}
+                className={size === s.id ? 'active' : ''}
+                onClick={() => onSize(s.id)}
+              >
+                {s.label}
+              </button>
+            ))}
+          </div>
+        ) : null}
+      </div>
 
       <div className="editor-foot sticky">
         <button type="button" className="btn primary wide" onClick={() => onApprove(words)}>

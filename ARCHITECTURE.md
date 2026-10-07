@@ -228,6 +228,8 @@ public/push-sw.js              service-worker push handler
   screen there; the installed app's html/body are at least that tall so short screens reach the bottom.
   Changing the status-bar meta would fix it at the root, but iOS reads it only when the app is added to the
   Home Screen, and removing the app to add it again can wipe its storage (videos not yet sent with it).
+- CutsEditor and CaptionReview hold only their head row and the video at the top (`.review-top`, sticky);
+  anything else there (the caption look, the headline, the picture picker) left no room on a phone.
 - A change to a render function must keep preview and real frames on the same code.
 - A finished video is copied to private storage the moment it is made; do not
   rely on the list for it.

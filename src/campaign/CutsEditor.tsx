@@ -271,6 +271,7 @@ export function CutsEditor({
   defaults,
   loadImage,
   onDone,
+  onCaptions,
   onCancel,
 }: {
   name: string
@@ -296,6 +297,9 @@ export function CutsEditor({
   /** The image of a picture picked from the phone, from storage. */
   loadImage?: (picture: ManualPicture) => Promise<Blob | null>
   onDone: (keep: Range[], overlays: ManualPicture[], newFiles: Map<string, Blob>) => void
+  /** Keeps the cuts as they are, like Done, and goes on to the captions.
+   *  Absent when captions are off. */
+  onCaptions?: (keep: Range[], overlays: ManualPicture[], newFiles: Map<string, Blob>) => void
   onCancel: () => void
 }) {
   const [keep, setKeep] = useState(initial)
@@ -318,6 +322,10 @@ export function CutsEditor({
   const [urls, setUrls] = useState<Record<string, string>>({})
   const made = useRef<string[]>([])
   const video = useRef<HTMLVideoElement>(null)
+  const top = useRef<HTMLDivElement>(null)
+  const phonePicker = useRef<HTMLInputElement>(null)
+  const notePanel = useRef<HTMLParagraphElement>(null)
+  const picPanel = useRef<HTMLDivElement>(null)
   const strip = useRef<HTMLDivElement>(null)
   const ruler = useRef<HTMLDivElement>(null)
   const frame = useRef(0)
@@ -469,11 +477,40 @@ export function CutsEditor({
     }
   }, [picking, bank])
 
+  const onCutPart = 'Move the playhead onto a part of the video that is kept - a picture can only come up there.'
+
+  /** Opens the picture picker - or, with the playhead on a part that is cut
+   *  out, says so at once, not after a picture has been chosen. */
+  const togglePicker = () => {
+    if (picking) {
+      setPicking(false)
+      return
+    }
+    if (partAt(keepRef.current, tRef.current) < 0) {
+      setPicNote(onCutPart)
+      return
+    }
+    setPicNote(null)
+    setPicking(true)
+  }
+
+  // The picker (or the note) opens under the buttons, which on a phone is
+  // below the bottom of the screen: + Picture looked as if it did nothing.
+  // Brought up to just under the video held at the top.
+  useEffect(() => {
+    const panel = notePanel.current ?? picPanel.current
+    if (!panel) return
+    const held = top.current?.getBoundingClientRect().bottom ?? 0
+    const box = panel.getBoundingClientRect()
+    if (box.top >= held && box.bottom <= window.innerHeight) return
+    window.scrollBy({ top: box.top - held - 12, behavior: 'smooth' })
+  }, [picking, picNote])
+
   /** Puts a picture on the video at the playhead: it comes up there, so the
    *  playhead has to be on a part of the video that is kept. */
   const addPicture = (source: ManualPicture['source'], file?: Blob) => {
     if (partAt(keepRef.current, tRef.current) < 0) {
-      setPicNote('Move the playhead onto a part of the video that is kept - a picture can only come up there.')
+      setPicNote(onCutPart)
       return
     }
     const id = newPictureId()
@@ -693,17 +730,21 @@ export function CutsEditor({
 
   return (
     <section className="screen cuts" aria-label={`Cuts for ${name}`}>
-      <div className="review-top">
+      <div className="review-top" ref={top}>
         <div className="review-head">
           <button type="button" className="back" onClick={onCancel}>
             <ChevronLeft /> Back
           </button>
-          <span className="review-count cuts-timer">
-            {formatPrecise(outputTime(keep, t))} / {formatPrecise(total)}
-          </span>
-          <button type="button" className="btn small primary" onClick={() => onDone(keep, overlays, newFiles.current)}>
-            Done
-          </button>
+          <div className="cuts-head-actions">
+            {onCaptions ? (
+              <button type="button" className="btn small" onClick={() => onCaptions(keep, overlays, newFiles.current)}>
+                Captions
+              </button>
+            ) : null}
+            <button type="button" className="btn small primary" onClick={() => onDone(keep, overlays, newFiles.current)}>
+              Done
+            </button>
+          </div>
         </div>
         <div className="review-frame" style={{ aspectRatio: String(aspect) }} onClick={play}>
           {url ? (
@@ -780,7 +821,9 @@ export function CutsEditor({
       </div>
 
       <div className="cuts-zoom">
-        <span className="hint">Pinch the timeline to zoom</span>
+        <span className="review-count cuts-timer">
+          {formatPrecise(outputTime(keep, t))} / {formatPrecise(total)}
+        </span>
         <div className="cuts-zoom-buttons">
           <button type="button" className="btn small" aria-label="Zoom out" disabled={px <= MIN_PX * 1.01} onClick={() => zoom(-1)}>
             −
@@ -809,34 +852,33 @@ export function CutsEditor({
         <button type="button" className="btn" disabled={history.length === 0} onClick={undo}>
           Undo
         </button>
-        <button type="button" className="btn" onClick={() => setPicking((p) => !p)}>
+        <button type="button" className={`btn${picking ? ' primary' : ''}`} aria-expanded={picking} onClick={togglePicker}>
           + Picture
         </button>
       </div>
-      <div className="cuts-legend" aria-hidden>
-        <span><i className="swatch kept" /> kept</span>
-        <span><i className="swatch gone" /> cut out</span>
-        {checks.length > 0 ? <span><i className="swatch check" /> check this</span> : null}
-      </div>
-      <p className="hint cuts-hint">Scroll to move through the video. Tap a part, then drag its edges to trim it.</p>
 
-      {picNote ? <p className="hint warn-text">{picNote}</p> : null}
+      {picNote ? (
+        <p className="hint warn-text" ref={notePanel}>
+          {picNote}
+        </p>
+      ) : null}
       {picking ? (
-        <div className="pic-picker">
+        <div className="pic-picker" ref={picPanel}>
           <div className="group-title">Put a picture on at {formatPrecise(t)}</div>
-          <label className="btn wide pic-phone">
+          <button type="button" className="btn wide pic-phone" onClick={() => phonePicker.current?.click()}>
             From my phone
-            <input
-              type="file"
-              accept="image/*"
-              hidden
-              onChange={(e) => {
-                const file = e.target.files?.[0]
-                e.target.value = ''
-                if (file) addPicture({ kind: 'phone', name: file.name, type: file.type || 'image/png' }, file)
-              }}
-            />
-          </label>
+          </button>
+          <input
+            ref={phonePicker}
+            type="file"
+            accept="image/*"
+            hidden
+            onChange={(e) => {
+              const file = e.target.files?.[0]
+              e.target.value = ''
+              if (file) addPicture({ kind: 'phone', name: file.name, type: file.type || 'image/png' }, file)
+            }}
+          />
           {bank.length > 0 ? (
             <>
               <span className="hint">Or from the picture bank:</span>
@@ -857,6 +899,13 @@ export function CutsEditor({
           </button>
         </div>
       ) : null}
+
+      <div className="cuts-legend" aria-hidden>
+        <span><i className="swatch kept" /> kept</span>
+        <span><i className="swatch gone" /> cut out</span>
+        {checks.length > 0 ? <span><i className="swatch check" /> check this</span> : null}
+      </div>
+      <p className="hint cuts-hint">Scroll to move through the video and pinch to zoom. Tap a part, then drag its edges to trim it.</p>
       {overlays.length > 0 ? (
         <div className="pic-list">
           <div className="group-title">

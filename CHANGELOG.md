@@ -3,6 +3,25 @@
 Newest first. Every change says what it does, how to use it, and how it works
 underneath. Kept up to date with each commit.
 
+## Fix: adding a picture on the cuts screen, a way to the captions, and room to fix captions
+**Cuts screen - adding a picture:** "+ Picture" opened its picker below the bottom edge of the phone, so pressing
+it looked like nothing happened. The picker now opens right under the video, with "From my phone" and the
+picture bank in view. If the playhead is on a part that is cut out, it says so straight away (move it onto a
+kept part), instead of after you have chosen a photo and then dropping it.
+**Cuts screen - to the captions:** a **Captions** button next to Done. It keeps your cut changes and pictures, the
+same as Done, and opens that video's captions (asking first whether the hook gets captions, as the list does).
+Opened from the captions screen, it goes back to them. The running time moved down next to the zoom buttons to
+make room.
+**Captions screen:** only the video stays held at the top now. The headline box, Top/Middle/Usual/Bottom,
+Small/Normal/Large/Huge and "+ Add" moved under the list of captions, just above Approve: held at the top with the
+video they filled the phone's screen, and the captions scrolled by behind them out of sight. On a phone-sized
+screen 4-5 captions now show at once (none did before); changing position or size from down there still shows
+on the video at the top.
+**Checked:** in a phone-sized Chromium - the picker and the "move the playhead" note opening fully in view; a bank
+picture and a phone photo added (on the video, on the timeline, in the list); Captions handing back the cuts and
+both pictures; the captions screen with 4-5 phrases in view and the look controls working from the bottom.
+Files: `CutsEditor.tsx`, `CaptionReview.tsx`, `CampaignApp.tsx`, `campaign.css`.
+
 ## Fix: black strip under the tab bar (undoes the change below)
 **What:** the "frame the size of the screen" from the last update left a dead black strip at the bottom of the
 iPhone, with the bar - Videos, Batch, Campaigns, Pictures, Settings - a block up from where it belongs. It is back
