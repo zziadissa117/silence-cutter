@@ -11,6 +11,7 @@ again; the new headline is on the new video and replaces the old post (if it has
 videos already had a headline box in their own Edit screen.
 **How:** the box is the same headline the list row edits (`setHeadline`/`saveHeadline`), saved when you leave it.
 Files: `CaptionReview.tsx`, `CampaignApp.tsx`.
+
 ## Fix: cutting "um"s could take a quietly said word out with it
 **What:** With "Also cut "um"s and stumbles" on, an "um" cut checks the sound it is about to remove and
 refuses when there is more in it than an "um" could make - that is what stops a mistimed "um" taking a real
