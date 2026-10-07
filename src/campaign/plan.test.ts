@@ -229,7 +229,7 @@ describe('cutting a talking-head take with noise cutting on', () => {
 })
 
 describe('cutting "um"s in a quiet take', () => {
-  /** He talks quietly (-40 dB) in a quiet room (-58 dB): "so um this works".
+  /** Quiet talk (-40 dB) in a quiet room (-58 dB): "so um this works".
    *  The speech model heard "um" running on over "this" and missed "this". */
   function quietTake(): { levels: Level[]; duration: number; heard: WordChunk[]; said: Said[] } {
     const rand = wobble(3)

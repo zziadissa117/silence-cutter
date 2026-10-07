@@ -202,7 +202,7 @@ function place(words: TimedWord[], spans: Span[], startOf: (frame: number) => nu
 /** The longest stretch the letter model hears in one go. What it needs - its
  *  memory, and the time before it can say anything - grows with the length
  *  of what it hears, and a whole listening window (up to 25 s) was too much
- *  for a phone: on his friend's iPhone it ran out of memory or went quiet for
+ *  for a phone: on the friend's iPhone it ran out of memory or went quiet for
  *  over a minute, again and again, and every time the captions fell back to
  *  the speech model's rough times - words coming up late, or on the wrong
  *  word. */

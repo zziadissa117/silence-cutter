@@ -18,6 +18,11 @@ npm run dev | npm test | npx tsc -b | npm run lint | npm run build
 git checkout tsconfig.tsbuildinfo   # after builds (tracked file)
 ```
 
+Shipping is done from the owner's Mac: `./deploy.sh` ships the app (Netlify login
+only, no Supabase); `./deploy-server.sh` ships the `postiz` and `cutter` functions
+(`--no-verify-jwt`), and `deploy.sh` says when it is needed. When a change touches
+`supabase/functions`, say "Needs deploying: run ./deploy-server.sh" in the CHANGELOG.
+
 ## Hard rules
 
 1. **Security first.** The login gate (`campaign/LoginGate.tsx`) is the front

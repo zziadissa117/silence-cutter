@@ -3,6 +3,20 @@
 Newest first. Every change says what it does, how to use it, and how it works
 underneath. Kept up to date with each commit.
 
+## Deploying no longer needs Supabase (no more keychain box)
+**What:** `./deploy.sh` now only ships the app: it gets the latest code and puts it on Netlify. It no longer
+runs the Supabase command, which is what asked for a "keychain" password on the Mac - and since the script
+stopped there, nothing after it was going live either.
+**Use it:** `cd /Users/ziadissa/Projects/silence-cutter && git pull && ./deploy.sh`, then reload the cutter on
+the phone. Netlify may ask you to log in once in the browser.
+**The server:** the two server functions (posting, and the shared login) rarely change. When an update does
+change them, `./deploy.sh` ends with "Run: ./deploy-server.sh". That one still uses Supabase: if the Mac asks
+for a keychain password, it is your Mac's own login password - type it and press "Always Allow". The planner
+bridge setting it used to set every time is already set and stays set.
+**Now:** nothing on the server has changed since the last deploy (Oct 6), so `./deploy.sh` is all that is
+needed today.
+Files: `deploy.sh`, `deploy-server.sh` (new), `.gitignore`, `AGENTS.md`.
+
 ## Fix: the tab bar rode up the screen when scrolling
 **What:** On an iPhone, scrolling down a long screen (Settings, the Videos list) made the bar along the bottom -
 Videos, Batch, Campaigns, Pictures, Settings - move with the scroll instead of staying at the very bottom.
@@ -46,7 +60,7 @@ Files: `CaptionReview.tsx`, `CampaignApp.tsx`.
 **What:** With "Also cut "um"s and stumbles" on, an "um" cut checks the sound it is about to remove and
 refuses when there is more in it than an "um" could make - that is what stops a mistimed "um" taking a real
 word with it. But it judged "sound" by the slider's fixed number (-35 dB), while the pauses have long been
-found with a line measured on each take, because his quieter words sit at -35 to -39 dB. In a quiet take a
+found with a line measured on each take, because quieter words sit at -35 to -39 dB. In a quiet take a
 quiet word looked like silence to the "um" check, so a word the speech model ran into the "um" was cut with
 it (a test reproduces it: "so um this works" lost "this").
 **Fix:** the "um" and stumble checks now use the take's own line. It is never above the slider's number, so

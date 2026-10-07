@@ -7,7 +7,7 @@ const image = new Blob(['x'], { type: 'image/png' })
 const w = (text: string, start: number, end = start + 0.4) => ({ text: ` ${text}`, start, end })
 
 /** "My favourite is Hershey's, honestly" - the speech model put "Hershey's"
- *  0.45 s late; the letter model put it on his voice, at 2.10 s. */
+ *  0.45 s late; the letter model put it on the voice, at 2.10 s. */
 const rough = [w('My', 1.0), w('favourite', 1.25), w('is', 1.75), w("Hershey's", 2.55), w('honestly', 3.1)]
 const exact = [w('My', 0.98), w('favourite', 1.2), w('is', 1.62), w("Hershey's", 2.1), w('honestly', 2.7)]
 
@@ -44,7 +44,7 @@ describe('when pictures come up', () => {
     const { sounds } = wordMoments({ words: rough, spoken: exact }, look)
     expect(sounds[0][0]).toBeCloseTo(2.1, 5)
   })
-  it('keeps a picture put on by hand exactly where he put it', () => {
+  it('keeps a picture put on by hand exactly where it was put', () => {
     const look = lookWith({ pictures: [picture] })
     const { pictures } = wordMoments({ words: rough, spoken: exact }, look, new Map([['p', 1.5]]))
     expect(pictures[0]).toEqual([1.5])

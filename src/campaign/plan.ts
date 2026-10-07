@@ -420,7 +420,7 @@ export function fromHeard(
     })
     // What counts as quiet for the "um" checks: this take's own line between
     // a pause and speech (silenceLineDb), the one the pauses are found with -
-    // never above the slider's number. In a quiet take his words sit under
+    // never above the slider's number. In a quiet take the words sit under
     // that number (-35 to -39 dB on a real one), and judged by it a word
     // looked like silence: the check that refuses a cut holding more sound
     // than the "um" could make did not see a quiet word inside the cut, and

@@ -2,10 +2,10 @@
 // angle's own and the bank's), the brand-hit zoom and the sounds.
 //
 // Timed from the captions' own words - placed by the letter model when it ran,
-// within a frame or two of his voice (align.ts) - not from the speech model's
+// within a frame or two of the voice (align.ts) - not from the speech model's
 // rough times, which run about 0.2 s late and wander 0.2 s either way, worst
-// in the middle of a sentence where nothing pulls them back onto his voice.
-// On those, he said "Hershey's" and the picture came up a good part of a
+// in the middle of a sentence where nothing pulls them back onto the voice.
+// On those, "Hershey's" was said and the picture came up a good part of a
 // second later, while the caption was already on the word.
 
 import type { WordChunk } from '../media/fillerWords'
@@ -33,7 +33,7 @@ export interface WordMoments {
 }
 
 /** Every moment, in seconds on the raw recording. `handAt` holds the pictures
- *  he put on by hand, at the moment he picked - those keep it exactly. */
+ *  put on by hand, at the moment picked - those keep it exactly. */
 export function wordMoments(
   plan: { words: WordChunk[]; spoken?: WordChunk[] },
   look: VideoLook,

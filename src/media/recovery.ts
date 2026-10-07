@@ -13,7 +13,7 @@ export const pause = (ms: number) => new Promise((resolve) => setTimeout(resolve
 
 /** Resolves once the page is in front again. iOS takes the decoder away
  *  from a page in the background - sending a finished video to TikTok does
- *  it - so a fresh one is only worth starting on his return. */
+ *  it - so a fresh one is only worth starting once the app is back in front. */
 export function visibleAgain(): Promise<void> {
   if (document.visibilityState === 'visible') return Promise.resolve()
   return new Promise((resolve) => {

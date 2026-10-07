@@ -1,26 +1,29 @@
 #!/usr/bin/env bash
-# One command to ship the cutter from your Mac:  ./deploy.sh
-# Needs: `npx supabase login` done once, and a Netlify login (it asks if not).
+# One command to ship the cutter app from your Mac:  ./deploy.sh
+# Needs only a Netlify login (it asks the first time, in the browser).
+# No Supabase login and no keychain: the server functions rarely change, and
+# when they do this says so at the end - then run ./deploy-server.sh too.
 set -euo pipefail
 
-PROJECT=uykuoibqdxmpbbrsmyad
 BRANCH=claude/cutter-lockdown-and-map
+SERVER_MARK=.last-server-deploy
 
-echo "1/4  Getting the latest code ($BRANCH)"
+echo "1/2  Getting the latest code ($BRANCH)"
 git fetch origin
 git checkout "$BRANCH"
+before=$(git rev-parse HEAD)
 git pull origin "$BRANCH"
 
-echo "2/4  Turning the planner bridge on for both your planner accounts"
-npx supabase secrets set \
-  CUTTER_BRIDGE_USER_IDS=00cf1d16-ffb1-4bb8-b3d8-2882f52e8c9c,0cd83d67-c455-46bf-8fa8-8075fa5148c1 \
-  --project-ref "$PROJECT"
-
-echo "3/4  Deploying the posting function"
-npx supabase functions deploy postiz --project-ref "$PROJECT"
-
-echo "4/4  Deploying the cutter app"
+echo "2/2  Deploying the cutter app"
 npm ci --ignore-scripts
 npx netlify deploy --prod
 
-echo "Done. Open the cutter and try a wrong password: it should say 'Wrong login or password.'"
+# The server code, compared with the last time ./deploy-server.sh ran (or, if
+# it never has on this Mac, with what was here before this update).
+since=$( [ -s "$SERVER_MARK" ] && cat "$SERVER_MARK" || echo "$before" )
+if git cat-file -e "$since^{commit}" 2>/dev/null && ! git diff --quiet "$since" HEAD -- supabase/functions; then
+  echo
+  echo "Done - and the server code changed too. Run:  ./deploy-server.sh"
+else
+  echo "Done. Open the cutter and reload it to get the new version."
+fi
