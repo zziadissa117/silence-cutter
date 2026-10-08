@@ -27,7 +27,9 @@ only, no Supabase); `./deploy-server.sh` ships the `postiz` and `cutter` functio
 
 1. **Security first.** The login gate (`campaign/LoginGate.tsx`) is the front
    door; the server is the lock. Never add a route, table grant or function
-   action that exposes data without a valid cutter login token. Never re-add
+   action that exposes data without a valid cutter login token (the two
+   server-to-server exceptions: `tick`, by its `cutter_config` secret, and
+   `channels`, by the project's service key - see ARCHITECTURE.md). Never re-add
    login creation. All `cutter_*` tables: RLS on, **no policies, no anon/authenticated
    privileges**. Secrets (Postiz/Anthropic keys, admin password) never go in code,
    the client, or git.

@@ -3,6 +3,18 @@
 Newest first. Every change says what it does, how to use it, and how it works
 underneath. Kept up to date with each commit.
 
+## New: the planner can see which Postiz channels a finished campaign still holds
+**What:** when you archive a campaign in the planner, it now lists that campaign's Postiz accounts - connected or
+disabled - with "Channels in use: N of 30", which other campaign still posts to the same account (keep those), and
+how many posts are still due on them. You disable them in Postiz yourself (Postiz has no way for an app to switch a
+channel off - the only call that touches one deletes it for good, with its scheduled posts), then press Check
+again. Restoring a campaign shows the reverse, so you can switch them back on.
+**How it works:** a new `channels` action on the posting function. Only the planner's own server function can call
+it, proving itself with the Supabase project's service key (which already seals every Postiz key here, so it opens
+nothing new); it reads Postiz's account list with your saved key and changes nothing there. No key leaves the server.
+**Needs deploying: run ./deploy-server.sh** (the planner shows nothing for it until this is out).
+Files: `supabase/functions/postiz/channels.ts` (+ test), `supabase/functions/postiz/index.ts`.
+
 ## Fix: adding a picture on the cuts screen, a way to the captions, and room to fix captions
 **Cuts screen - adding a picture:** "+ Picture" opened its picker below the bottom edge of the phone, so pressing
 it looked like nothing happened. The picker now opens right under the video, with "From my phone" and the

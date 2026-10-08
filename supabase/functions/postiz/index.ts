@@ -36,6 +36,8 @@
 //   edit / approve { profile, id, caption?, title?, at? } -> { post }
 //   reject / unschedule / retry { profile, id } -> { post }
 //   tick           { secret }                   (the scheduler; no token)
+//   channels       { cutterCampaignId }         (the planner's server; no token - see bridgeAllowed)
+//                  -> { profiles: [{ id, inUse, accounts }] }  which Postiz channels a campaign holds
 // and GET /postiz/video/<id>.mp4?e=&s= - the video, for Postiz to fetch.
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
@@ -59,6 +61,7 @@ import { handFields } from './hand.ts'
 import { endOfDay, lastTimeToday, nextSlot, normalTimes, pickTime, spreadDay, type OtherPost, type Spread, addDays, localDate, localTime, zoned } from './slots.ts'
 import { attachMove, summarise, type AttachMove } from './attach.ts'
 import { cleanLimits, firstDayWithRoom, heldNote, releasable, split, usedOn, type Limits, type PostAccount } from './limits.ts'
+import { PENDING_STATUSES, channelReport, type PendingPost } from './channels.ts'
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!
 const SERVICE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
@@ -1800,6 +1803,68 @@ async function remindReposts(now: number): Promise<void> {
   }
 }
 
+// --- The planner's bridge -----------------------------------------------------
+//
+// The planner (ugc-planner, same Supabase project) asks which Postiz channels
+// a finished campaign still holds, so he can free them on his 30-channel plan
+// (its planner-postiz function, owner only). Server to server: the planner
+// function proves itself with the project's service key, which this function
+// already holds and which already seals every key in cutter_profile_secrets -
+// so accepting it opens nothing that key did not already open, and there is
+// no second secret to set or rotate. Read-only toward Postiz: it lists
+// accounts and never changes one, and no Postiz key leaves this function.
+
+async function bridgeAllowed(req: Request): Promise<boolean> {
+  const sent = req.headers.get('x-planner-bridge')
+  if (!sent || sent.length < 20) return false
+  const [a, b] = await Promise.all([sha256(sent), sha256(SERVICE_KEY)])
+  return a === b
+}
+
+async function channels(body: Record<string, unknown>): Promise<Response> {
+  const campaignId = typeof body.cutterCampaignId === 'string' ? body.cutterCampaignId.trim() : ''
+  if (campaignId === '') return reply({ error: 'cutterCampaignId is required.' }, 400)
+
+  const { data: rows, error } = await db.from('cutter_profiles').select('id, settings')
+  if (error) throw new Problem('Could not read the posting profiles.', true, 502)
+  const linked = ((rows ?? []) as Pick<Profile, 'id' | 'settings'>[]).filter(
+    (p) => (p.settings?.campaigns?.[campaignId]?.accounts ?? []).length > 0,
+  )
+  if (linked.length === 0) return reply({ profiles: [] })
+
+  const ids = linked.map((p) => p.id)
+  const [{ data: pending }, { data: named }] = await Promise.all([
+    db
+      .from('cutter_posts')
+      .select('profile_id, campaign_id, status, post_at, accounts')
+      .in('profile_id', ids)
+      .in('status', [...PENDING_STATUSES])
+      .limit(2000),
+    db
+      .from('cutter_posts')
+      .select('campaign_id, campaign_name, created_at')
+      .in('profile_id', ids)
+      .order('created_at', { ascending: false })
+      .limit(1000),
+  ])
+  const names = new Map<string, string>()
+  for (const row of named ?? []) if (!names.has(row.campaign_id)) names.set(row.campaign_id, row.campaign_name)
+
+  const now = Date.now()
+  const profiles = await Promise.all(
+    linked.map(async (p) => {
+      try {
+        const integrations = await listAccounts((await keysFor(p.id)).postiz)
+        const posts = ((pending ?? []) as (PendingPost & { profile_id: string })[]).filter((r) => r.profile_id === p.id)
+        return { id: p.id, ...channelReport(campaignId, p.settings?.campaigns ?? {}, integrations, posts, names, now) }
+      } catch (error) {
+        return { id: p.id, error: error instanceof Error ? error.message : String(error) }
+      }
+    }),
+  )
+  return reply({ profiles })
+}
+
 async function tickAllowed(secret: unknown): Promise<boolean> {
   if (typeof secret !== 'string' || secret.length < 20) return false
   const { data } = await db.from('cutter_config').select('value').eq('key', 'tick_secret').maybeSingle()
@@ -1824,6 +1889,10 @@ Deno.serve(async (req) => {
       if (!(await tickAllowed(body.secret))) return reply({ error: 'No.' }, 403)
       later(tick())
       return reply({ ok: true })
+    }
+    if (body.action === 'channels') {
+      if (!(await bridgeAllowed(req))) return reply({ error: 'No.' }, 403)
+      return await channels(body)
     }
     const spaceId = await spaceFor(body.token)
     if (!spaceId) return reply({ error: 'signed-out' }, 401)

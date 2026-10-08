@@ -54,7 +54,10 @@ first when something would be lost.
 - Both functions are `verify_jwt = false`: the cutter login token (HMAC-signed
   with the service key, bound to the space + a piece of its password hash) is
   checked inside. Open routes: `login`, `report` (insert-only, capped), signed
-  video GETs, and `tick` (secret-gated cron).
+  video GETs, `tick` (secret-gated cron), and `channels` (the planner's
+  `planner-postiz` function, same project, gated by the project's service key
+  in `x-planner-bridge`; read-only toward Postiz, returns which channels a
+  cutter campaign holds - `postiz/channels.ts`).
 - Per-person **Postiz and Anthropic keys** are AES-GCM sealed by the postiz
   function and stored in `cutter_profile_secrets`; never on the phone.
 - **Deploy hazard:** `supabase/functions/cutter/index.ts` in the repo must be
