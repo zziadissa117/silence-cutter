@@ -7,6 +7,7 @@ import { useState } from 'react'
 
 import { EditorFrame, useSaver } from './Editors'
 import { NO_POSTING, type Campaign, type CampaignPosting } from './look'
+import { MAX_PER_DAY, cleanWindow, type PostingWindow } from '../../supabase/functions/postiz/window.ts'
 import {
   PostingError,
   accountLabel,
@@ -63,6 +64,12 @@ export function PostingEditor({
   const [catchUpOn, setCatchUpOn] = useState(true)
   const behind = accountsBehind(campaign.id, place.accounts)
   const [newTime, setNewTime] = useState('')
+  // His own times, or random ones inside a window. A campaign that has a
+  // window and none of its own times opens on Random.
+  const [timing, setTiming] = useState<'own' | 'random'>(place.times.length === 0 && place.window ? 'random' : 'own')
+  // What the window boxes show until he changes them - only a starting
+  // point, nothing is saved unless he picks Random times and saves.
+  const [windowDraft, setWindowDraft] = useState<PostingWindow>(place.window ?? { from: '10:00', to: '22:00', perDay: 2 })
   const [refreshing, setRefreshing] = useState(false)
   const [refreshProblem, setRefreshProblem] = useState<string | null>(null)
   const [saving, problems, run] = useSaver()
@@ -86,14 +93,18 @@ export function PostingEditor({
       saving={saving}
       saveLabel="Save posting"
       onSave={() =>
-        void run([], async () => {
+        void run(timing === 'random' && !cleanWindow(windowDraft) ? ['Random times need a window that ends at least 10 minutes after it starts.'] : [], async () => {
           const hashtags = hashtagText
             .split(/[\s,]+/)
             .map((t) => t.replace(/^#+/, ''))
             .filter(Boolean)
             .map((t) => `#${t}`)
+          // Own times and a window never both: whichever he picked is saved.
+          let saved: CampaignPlace = { accounts: place.accounts, times: place.times }
+          const window = timing === 'random' ? cleanWindow(windowDraft) : null
+          if (window) saved = { accounts: place.accounts, times: [], window }
           try {
-            await onSave({ ...posting, rules: posting.rules.trim(), hashtags }, local ? place : null, catchUpOn ? behind.accounts : [])
+            await onSave({ ...posting, rules: posting.rules.trim(), hashtags }, local ? saved : null, catchUpOn ? behind.accounts : [])
           } catch (error) {
             throw new Error(error instanceof PostingError ? error.message : String(error))
           }
@@ -169,32 +180,88 @@ export function PostingEditor({
       {local ? (
         <div className="group">
           <div className="group-title">Your times</div>
-          {place.times.length > 0 ? (
-            <div className="seg chips">
-              {place.times.map((time) => (
-                <button
-                  key={time}
-                  type="button"
-                  className="active"
-                  aria-label={`Remove ${timeLabel(time)}`}
-                  onClick={() => setPlace((p) => ({ ...p, times: p.times.filter((t) => t !== time) }))}
-                >
-                  {timeLabel(time)} ✕
-                </button>
-              ))}
-            </div>
-          ) : null}
-          <div className="time-add">
-            <input type="time" value={newTime} aria-label="A time to post at" onChange={(e) => setNewTime(e.target.value)} />
-            <button type="button" className="btn small" disabled={!newTime} onClick={addTime}>
-              Add time
+          <div className="seg" role="radiogroup" aria-label="When it posts">
+            <button type="button" role="radio" aria-checked={timing === 'own'} className={timing === 'own' ? 'active' : ''} onClick={() => setTiming('own')}>
+              My own times
+            </button>
+            <button
+              type="button"
+              role="radio"
+              aria-checked={timing === 'random'}
+              className={timing === 'random' ? 'active' : ''}
+              onClick={() => setTiming('random')}
+            >
+              Random times
             </button>
           </div>
-          <div className="hint">
-            {place.times.length === 0
-              ? "No times: each post goes as soon as it's ready."
-              : 'Each video takes the next free time, a few minutes after it.'}
-          </div>
+          {timing === 'own' ? (
+            <>
+              {place.times.length > 0 ? (
+                <div className="seg chips">
+                  {place.times.map((time) => (
+                    <button
+                      key={time}
+                      type="button"
+                      className="active"
+                      aria-label={`Remove ${timeLabel(time)}`}
+                      onClick={() => setPlace((p) => ({ ...p, times: p.times.filter((t) => t !== time) }))}
+                    >
+                      {timeLabel(time)} ✕
+                    </button>
+                  ))}
+                </div>
+              ) : null}
+              <div className="time-add">
+                <input type="time" value={newTime} aria-label="A time to post at" onChange={(e) => setNewTime(e.target.value)} />
+                <button type="button" className="btn small" disabled={!newTime} onClick={addTime}>
+                  Add time
+                </button>
+              </div>
+              {place.times.length === 0 ? (
+                <div className="hint warn-text">No times - every video posts the moment it's ready.</div>
+              ) : (
+                <div className="hint">Each video takes the next free time, a few minutes after it.</div>
+              )}
+            </>
+          ) : (
+            <>
+              <div className="time-add">
+                <span className="label">Between</span>
+                <input
+                  type="time"
+                  value={windowDraft.from}
+                  aria-label="Earliest random time"
+                  onChange={(e) => setWindowDraft((w) => ({ ...w, from: e.target.value }))}
+                />
+                <span className="label">and</span>
+                <input
+                  type="time"
+                  value={windowDraft.to}
+                  aria-label="Latest random time"
+                  onChange={(e) => setWindowDraft((w) => ({ ...w, to: e.target.value }))}
+                />
+              </div>
+              <label className="time-add">
+                <select
+                  value={windowDraft.perDay}
+                  aria-label="Random times a day"
+                  onChange={(e) => setWindowDraft((w) => ({ ...w, perDay: Number(e.target.value) }))}
+                >
+                  {Array.from({ length: MAX_PER_DAY }, (_, i) => i + 1).map((n) => (
+                    <option key={n} value={n}>
+                      {n}
+                    </option>
+                  ))}
+                </select>
+                <span className="label">a day</span>
+              </label>
+              {cleanWindow(windowDraft) ? (
+                <div className="hint">A different random time each day, at least 30 minutes apart. Videos beyond that spread out to midnight.</div>
+              ) : (
+                <div className="hint warn-text">The window has to end at least 10 minutes after it starts.</div>
+              )}
+            </>
+          )}
         </div>
       ) : null}
 

@@ -188,4 +188,15 @@ describe('when a batch posts', () => {
   it('makes nothing with no posting times', () => {
     expect(planSlots({ times: [], perDay: 3, days: 7 })).toEqual([])
   })
+
+  it("takes each day's own times from a campaign's random window", () => {
+    const own: Record<string, string[]> = { '2026-10-07': ['11:12', '16:40'], '2026-10-08': ['09:55', '19:03'] }
+    const slots = planSlots({ times: (date) => own[date] ?? [], perDay: 2, days: 2, madeThrough: '2026-10-06', now: new Date(2026, 8, 30, 9, 0) })
+    expect(slots).toEqual([
+      { date: '2026-10-07', time: '11:12' },
+      { date: '2026-10-07', time: '16:40' },
+      { date: '2026-10-08', time: '09:55' },
+      { date: '2026-10-08', time: '19:03' },
+    ])
+  })
 })

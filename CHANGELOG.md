@@ -3,6 +3,24 @@
 Newest first. Every change says what it does, how to use it, and how it works
 underneath. Kept up to date with each commit.
 
+## New: random posting times, so a campaign never posts the moment a video is ready
+**What:** a campaign's Posting now has two choices under Your times: **My own times** (as before) or **Random times**
+- "between 10 AM and 10 PM, 2 a day" (change all three). Each day gets its own random times inside that window, at
+least 30 minutes apart, different every day and different from your other campaigns. A video takes the next free
+one, exactly like your own times; more videos than that on a day spread out to midnight, as extra videos always
+have. A campaign with neither now says so in red - on its Posting screen and on its row in Campaigns: "No times -
+each video posts the moment it's ready".
+**How to use it:** Campaigns, open the campaign, Posting, Postiz, Your times, tap Random times, set the window and
+how many a day, Save posting. The Batch tab and New post use the same random times (Batch shows today's).
+**How it works:** `supabase/functions/postiz/window.ts` turns a window into a day's times from the campaign and the
+date, so the same day always gives the same times and a time is still a slot that holds one video. The server and
+the phone both use that one file, so what the Batch tab shows is what the server does. Your own times always win
+over a window; only one is saved.
+**Needs deploying: run ./deploy-server.sh** - until then the server ignores the window and those campaigns still
+post at once, so deploy before relying on it.
+Files: `postiz/window.ts` (+ test), `postiz/slots.ts`, `postiz/batch.ts`, `postiz/index.ts`, `PostingEditor.tsx`
+(+ test), `posting.ts`, `batch.ts`, `BatchView.tsx`, `NewPost.tsx`, `CampaignApp.tsx`, `CampaignsView.tsx`.
+
 ## New: the planner can see which Postiz channels a finished campaign still holds
 **What:** when you archive a campaign in the planner, it now lists that campaign's Postiz accounts - connected or
 disabled - with "Channels in use: N of 30", which other campaign still posts to the same account (keep those), and

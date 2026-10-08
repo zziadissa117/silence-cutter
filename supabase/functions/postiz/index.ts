@@ -24,7 +24,8 @@
 //   connect        { postizKey, anthropicKey?, timezone? } -> profile
 //   profile        { profile }                  -> profile
 //   accounts       { profile }                  -> profile (accounts listed again)
-//   save-campaign  { profile, campaignId, accounts, times } -> profile
+//   save-campaign  { profile, campaignId, accounts, times, window? } -> profile
+//                  window { from, to, perDay }: random times each day for a campaign with no times of its own (window.ts)
 //   save-limits    { profile, limits }          -> profile   (pause / posts-a-day, per platform and per account: limits.ts)
 //   attach-accounts { profile, campaignId, accounts } -> { added, scheduled, left }
 //                  videos already made for the campaign get an account linked later
@@ -58,7 +59,8 @@ import { carryOver, cleanCaptions, cleanRepost, repostDueAt, textFor, variationN
 import { FAKE_CLAUDE, FakeError, fakeCaption, fakePostiz, isFakePostiz } from './fake.ts'
 import { batchChoices, batchInfo, batchSpan, type BatchInfo } from './batch.ts'
 import { handFields } from './hand.ts'
-import { endOfDay, lastTimeToday, nextSlot, normalTimes, pickTime, spreadDay, type OtherPost, type Spread, addDays, localDate, localTime, zoned } from './slots.ts'
+import { endOfDay, lastTimeToday, nextSlot, normalTimes, pickTime, spreadDay, timesFor, type OtherPost, type Spread, addDays, localDate, localTime, zoned } from './slots.ts'
+import { cleanWindow, type PostingWindow } from './window.ts'
 import { attachMove, summarise, type AttachMove } from './attach.ts'
 import { cleanLimits, firstDayWithRoom, heldNote, releasable, split, usedOn, type Limits, type PostAccount } from './limits.ts'
 import { PENDING_STATUSES, channelReport, type PendingPost } from './channels.ts'
@@ -294,7 +296,7 @@ interface Profile {
   space_id: string
   accounts: Account[]
   accounts_at: string | null
-  settings: { campaigns?: Record<string, { accounts?: string[]; times?: string[] }>; limits?: Limits }
+  settings: { campaigns?: Record<string, { accounts?: string[]; times?: string[]; window?: PostingWindow }>; limits?: Limits }
   timezone: string
 }
 
@@ -513,9 +515,12 @@ async function saveCampaign(profile: Profile, body: Record<string, unknown>): Pr
   const known = new Set(profile.accounts.map((a) => a.id))
   const accounts = (Array.isArray(body.accounts) ? body.accounts : []).filter((a): a is string => typeof a === 'string' && known.has(a))
   const times = normalTimes((Array.isArray(body.times) ? body.times : []).filter((t): t is string => typeof t === 'string'))
+  // A window is kept only beside no times of his own: his own times win,
+  // and keeping both would leave a window that silently does nothing.
+  const window = times.length === 0 ? cleanWindow(body.window) : null
   const campaigns = { ...(profile.settings.campaigns ?? {}) }
-  if (accounts.length === 0 && times.length === 0) delete campaigns[campaignId]
-  else campaigns[campaignId] = { accounts, times }
+  if (accounts.length === 0 && times.length === 0 && !window) delete campaigns[campaignId]
+  else campaigns[campaignId] = window ? { accounts, times, window } : { accounts, times }
   const { data, error } = await db
     .from('cutter_profiles')
     .update({ settings: { ...profile.settings, campaigns }, updated_at: new Date().toISOString() })
@@ -1156,7 +1161,7 @@ async function prepare(start: Post): Promise<Post> {
  *  one of them taken it still goes at its own time. */
 async function takeBatchSlot(post: Post, profile: Profile): Promise<Post> {
   const batch = post.batch!
-  const times = profile.settings.campaigns?.[post.campaign_id]?.times ?? []
+  const times = timesFor(profile.settings.campaigns?.[post.campaign_id], post.campaign_id)
   const choices = batchChoices(batch, times, profile.timezone)
   for (const choice of choices) {
     const { data, error } = await db
@@ -1202,7 +1207,7 @@ async function notifyBatch(profileId: string, batchId: string, stragglers = fals
  *  "as soon as it's ready" when it has no times. A brand's late yes takes
  *  the next time today, or goes at once. */
 async function takeSlot(post: Post, profile: Profile, { leadMinutes, todayOnly = false }: { leadMinutes: number; todayOnly?: boolean }): Promise<Post> {
-  const times = profile.settings.campaigns?.[post.campaign_id]?.times ?? []
+  const times = timesFor(profile.settings.campaigns?.[post.campaign_id], post.campaign_id)
   for (let tries = 0; tries < 5; tries++) {
     const { data: rows } = await db
       .from('cutter_posts')
@@ -1267,7 +1272,7 @@ async function respread(profile: Profile, campaignId: string, date: string): Pro
     .not('status', 'in', '(rejected,failed)')
     .order('created_at', { ascending: true })
   const rows = (data ?? []) as Pick<Post, 'id' | 'spread' | 'post_at' | 'status' | 'creating_at' | 'created_at'>[]
-  const times = profile.settings.campaigns?.[campaignId]?.times ?? []
+  const times = timesFor(profile.settings.campaigns?.[campaignId], campaignId)
   const end = endOfDay(date, profile.timezone)
   const now = Date.now()
   for (const kind of ['late', 'extra'] as const) {

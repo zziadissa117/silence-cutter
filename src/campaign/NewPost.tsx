@@ -19,7 +19,7 @@ import { formatTime } from './jobs'
 import { NO_POSTING, type Campaign } from './look'
 import { fingerprint, handPostKey, newOnes, skippedNotice } from './fingerprint'
 import { fingerprintsFor, isQueued, queueSend } from './outbox'
-import { PostingError, accountLabel, localInput, placeFor, timeLabel, whenLabel, writeCaptionFor, type Profile } from './posting'
+import { PostingError, accountLabel, localInput, hasTimes, placeFor, timeLabel, whenLabel, windowLabel, writeCaptionFor, type Profile } from './posting'
 import { stillsOf } from './stills'
 import { asMp4 } from './toMp4'
 
@@ -177,16 +177,20 @@ export function NewPost({
 
   const posting = campaign?.posting ?? NO_POSTING
   const paste = posting.caption === 'paste'
-  const times = campaign ? placeFor(profile, campaign.id).times : []
+  const place = campaign ? placeFor(profile, campaign.id) : null
+  const times = place?.times ?? []
+  // His own times, or random ones from the campaign's window: either way
+  // several videos can be spread instead of all going at once.
+  const timed = place ? hasTimes(place) : false
   const many = items.length > 1
 
   // Several at once spread over the campaign's times unless he says otherwise.
   const wasMany = useRef(false)
   useEffect(() => {
-    if (many && !wasMany.current) setWhen(times.length > 0 ? 'spread' : 'now')
+    if (many && !wasMany.current) setWhen(timed ? 'spread' : 'now')
     if (!many && wasMany.current) setWhen('now')
     wasMany.current = many
-  }, [many, times.length])
+  }, [many, timed])
 
   if (!campaign) {
     return (
@@ -206,7 +210,7 @@ export function NewPost({
     .map((id) => profile.accounts.find((a) => a.id === id))
     .filter((a) => a !== undefined)
   const whenChoices: { value: When; label: string }[] = many
-    ? times.length > 0
+    ? timed
       ? [
           { value: 'spread', label: 'Spread them' },
           { value: 'now', label: 'All now' },
@@ -455,10 +459,10 @@ export function NewPost({
           {many ? (
             <p className="hint new-post-to">
               {chosen === 'spread'
-                ? `On ${campaign.name}'s times (${times.map(timeLabel).join(', ')}), and once those have gone, spread evenly to midnight - like videos made late.`
-                : times.length > 0
+                ? `On ${campaign.name}'s ${times.length > 0 ? `times (${times.map(timeLabel).join(', ')})` : place?.window ? `random times (${windowLabel(place.window)})` : 'times'}, and once those have gone, spread evenly to midnight - like videos made late.`
+                : timed
                   ? 'All of them go out at once.'
-                  : `${campaign.name} has no posting times, so they all go at once. Add times in its Posting to spread them.`}
+                  : `${campaign.name} has no posting times, so they all go at once. Add your own or random times in its Posting to spread them.`}
             </p>
           ) : null}
         </>

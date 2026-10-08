@@ -225,7 +225,8 @@ export interface BatchSlot {
 
 /** Where a batch goes: `days` days of `perDay` times each, from the day
  *  after the last batch - or from today, with only the times still an hour
- *  or more away, when there is no batch yet for today. */
+ *  or more away, when there is no batch yet for today. `times` is his own
+ *  list, or a rule giving each day its own (a campaign's random window). */
 export function planSlots({
   times,
   perDay,
@@ -233,7 +234,7 @@ export function planSlots({
   madeThrough,
   now = new Date(),
 }: {
-  times: string[]
+  times: string[] | ((date: string) => string[])
   perDay: number
   days: number
   madeThrough?: string
@@ -241,15 +242,15 @@ export function planSlots({
 }): BatchSlot[] {
   const today = todayHere(now)
   const nowMinutes = now.getHours() * 60 + now.getMinutes()
-  const daily = dayTimes(times, perDay)
-  if (daily.length === 0 || days < 1) return []
+  const daily = (date: string) => dayTimes(typeof times === 'function' ? times(date) : times, perDay)
+  if ((Array.isArray(times) && daily(today).length === 0) || days < 1) return []
   let first = madeThrough && madeThrough >= today ? addDays(madeThrough, 1) : today
-  const leftToday = (date: string) => daily.filter((t) => date !== today || minutes(t) >= nowMinutes + LEAD_MINUTES)
-  if (leftToday(first).length === 0) first = addDays(first, 1)
+  const leftOn = (date: string) => daily(date).filter((t) => date !== today || minutes(t) >= nowMinutes + LEAD_MINUTES)
+  if (leftOn(first).length === 0) first = addDays(first, 1)
   const slots: BatchSlot[] = []
   for (let d = 0; d < days; d++) {
     const date = addDays(first, d)
-    for (const time of leftToday(date)) slots.push({ date, time })
+    for (const time of leftOn(date)) slots.push({ date, time })
   }
   return slots
 }

@@ -113,7 +113,8 @@ export function CampaignsView({
             <button type="button" className="row-link" onClick={() => onPosting(open)}>
               <span className="row-text">
                 <span className="row-name">Postiz</span>
-                <span className="row-line">{postingLine(open)}</span>
+                {/* Red when nothing holds its videos back: no times means they post the moment they're ready. */}
+                <span className={postingLine(open).startsWith('No times') ? 'row-line warn-text' : 'row-line'}>{postingLine(open)}</span>
               </span>
               <ChevronRight />
             </button>

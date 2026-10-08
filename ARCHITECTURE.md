@@ -153,7 +153,8 @@ phone (outbox.ts, posting.ts)          Edge Function postiz            Postiz
  finished MP4 in parts  ----------->  join parts, check MP4
  client_key per video (idempotent)    Claude writes caption (caption.ts)
                                       pick the time (slots.ts: campaign's own
-                                        times; late days -> even spread;
+                                        times, or window.ts random ones in its
+                                        window; none -> at once; late days -> even spread;
                                         hand.ts: New post; batch.ts: Batch tab)
  PostsView: approve/edit/reject <---  status: uploading->writing->waiting->
                                         approved->scheduled->posted | error|failed
@@ -215,7 +216,8 @@ src/media/                     the plain cutter's engine, reused by campaign/
 src/{report,leaving,opening,CrashGuard,UpdateBanner,VideoPicker,pick*}.ts(x)  shell helpers
 supabase/functions/cutter      login + shared-setup sync (Edge Function)
 supabase/functions/postiz      posting, captions, scheduler, push (Edge Function);
-                               slots.ts times, attach.ts late-account rules, batch.ts, hand.ts, caption.ts
+                               slots.ts times, window.ts random times (also imported by the phone's
+                               posting.ts/batch views), attach.ts late-account rules, batch.ts, hand.ts, caption.ts
 supabase/migrations            SQL
 public/push-sw.js              service-worker push handler
 ```

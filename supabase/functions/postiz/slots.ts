@@ -5,10 +5,33 @@
 // post itself goes a few minutes after the hour (different each day) so a
 // week of posts doesn't all land on the dot.
 //
-// Plain TypeScript with no imports: the edge function runs it on Deno, and
-// the unit tests run it under Vitest.
+// Plain TypeScript, importing only window.ts: the edge function runs it on
+// Deno, and the unit tests run it under Vitest.
+//
+// A campaign's times are either his own list, the same every day, or - with
+// none of his own and a window set - each day's own random times inside it
+// (window.ts). `Times` carries either; `timesOn` reads one day of it.
+
+import { cleanWindow, windowTimes } from './window.ts'
 
 const MINUTE = 60_000
+
+/** His own times, or a rule giving each date its times. */
+export type Times = string[] | ((date: string) => string[])
+
+/** One day's times, valid and in order. */
+export function timesOn(times: Times, date: string): string[] {
+  return normalTimes(typeof times === 'function' ? times(date) : times)
+}
+
+/** What a campaign's posting place says its times are: his own when he has
+ *  any, else the window's random ones, else none ("as soon as ready"). */
+export function timesFor(place: { times?: string[]; window?: unknown } | undefined, campaignId: string): Times {
+  const own = normalTimes(place?.times ?? [])
+  if (own.length > 0) return own
+  const window = cleanWindow(place?.window)
+  return window ? (date: string) => windowTimes(window, campaignId, date) : []
+}
 
 /** "HH:MM" times, valid and in order, each once. */
 export function normalTimes(times: string[]): string[] {
@@ -87,7 +110,7 @@ export interface SlotChoice {
 }
 
 export interface SlotQuery {
-  times: string[]
+  times: Times
   /** Slots already holding a video of this campaign. */
   taken: Set<string>
   now: Date
@@ -103,13 +126,12 @@ export interface SlotQuery {
 
 /** The first free slot, or null when there is none in range. */
 export function nextSlot({ times, taken, now, tz, leadMinutes = 10, days = 14, todayOnly = false }: SlotQuery): SlotChoice | null {
-  const sorted = normalTimes(times)
-  if (sorted.length === 0) return null
+  if (Array.isArray(times) && normalTimes(times).length === 0) return null
   const today = localDate(now, tz)
   const earliest = now.getTime() + leadMinutes * MINUTE
   for (let d = 0; d < (todayOnly ? 1 : days); d++) {
     const date = addDays(today, d)
-    for (const time of sorted) {
+    for (const time of timesOn(times, date)) {
       const slot = `${date} ${time}`
       if (taken.has(slot)) continue
       const at = new Date(zoned(date, time, tz).getTime() + jitterMinutes(slot) * MINUTE)
@@ -144,15 +166,15 @@ export type TimeChoice =
   | { kind: 'spread'; spread: Spread; slot: string }
 
 /** A campaign's times today, where they fall. */
-function todaysTimes(times: string[], date: string, tz: string): { slot: string; at: number }[] {
-  return normalTimes(times).map((time) => {
+function todaysTimes(times: Times, date: string, tz: string): { slot: string; at: number }[] {
+  return timesOn(times, date).map((time) => {
     const slot = `${date} ${time}`
     return { slot, at: zoned(date, time, tz).getTime() + jitterMinutes(slot) * MINUTE }
   })
 }
 
 /** The moment today's last time falls, or null with no times. */
-export function lastTimeToday(times: string[], date: string, tz: string): number | null {
+export function lastTimeToday(times: Times, date: string, tz: string): number | null {
   const today = todaysTimes(times, date, tz)
   return today.length > 0 ? today[today.length - 1].at : null
 }
@@ -173,7 +195,7 @@ export function pickTime({
   later = false,
   leadMinutes = 10,
 }: {
-  times: string[]
+  times: Times
   /** The campaign's other videos that have a time. */
   others: OtherPost[]
   now: Date
@@ -182,7 +204,7 @@ export function pickTime({
   later?: boolean
   leadMinutes?: number
 }): TimeChoice | null {
-  if (normalTimes(times).length === 0) return null
+  if (timesOn(times, localDate(now, tz)).length === 0) return null
   const taken = new Set(others.map((o) => o.slot))
   if (later) {
     const tomorrow = zoned(addDays(localDate(now, tz), 1), '00:00', tz)

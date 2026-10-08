@@ -18,6 +18,7 @@ import {
   headlinesFrom,
   pickBatch,
   planSlots,
+  todayHere,
   spend,
   type BankFile,
   type BatchBank,
@@ -26,7 +27,7 @@ import { filmingOf } from './filming'
 import { fingerprint, skippedNotice } from './fingerprint'
 import { formatTime, labelOf, type Job } from './jobs'
 import type { Angle, Campaign } from './look'
-import { accountLabel, placeFor, timeLabel, type LocalPosting } from './posting'
+import { accountLabel, hasTimes, placeFor, placeTimesOn, timeLabel, windowLabel, type LocalPosting } from './posting'
 import { deleteBankFile, loadBatchBank, saveBankFile, saveBatchBank, type JobBatch } from './store'
 
 const LAST_KEY = 'batch.campaign'
@@ -138,7 +139,10 @@ export function BatchView({
 
   const place = placeFor(profile, campaign.id)
   const accounts = place.accounts.map((id) => profile.accounts.find((a) => a.id === id)).filter((a) => a !== undefined)
-  const times = place.times
+  // His own times, or each day's random ones from the campaign's window.
+  const timesOnDate = (date: string) => placeTimesOn(place, campaign.id, date)
+  const times = timesOnDate(todayHere())
+  const random = place.times.length === 0 && Boolean(place.window)
   const angle = campaign.angles.find((a) => a.id === bank?.angleId) ?? campaign.angles[0]
 
   const add = async (kind: Kind, files: File[]) => {
@@ -195,7 +199,7 @@ export function BatchView({
     keep({ ...bank, [kind]: bank[kind].filter((f) => f.id !== file.id) })
   }
 
-  const wanted = bank ? planSlots({ times, perDay: bank.perDay, days: bank.days, madeThrough: bank.madeThrough }) : []
+  const wanted = bank ? planSlots({ times: timesOnDate, perDay: bank.perDay, days: bank.days, madeThrough: bank.madeThrough }) : []
   // Never a video twice: a batch stops at the last different one left.
   const { total: different, left } = bank ? combos(bank) : { total: 0, left: 0 }
   const slots = Number.isFinite(left) ? wanted.slice(0, left) : wanted
@@ -211,7 +215,7 @@ export function BatchView({
   const failed = jobs.filter((j) => j.status === 'failed' || j.status === 'held')
   const total = [...new Map(jobs.map((j) => [j.batch!.id, j.batch!.size])).values()].reduce((a, b) => a + b, 0)
   const working = jobs.find((j) => j.status === 'working')
-  const canMake = Boolean(bank) && missing.length === 0 && slots.length > 0 && times.length > 0 && saving === null
+  const canMake = Boolean(bank) && missing.length === 0 && slots.length > 0 && hasTimes(place) && saving === null
 
   const make = () => {
     if (!bank || !canMake) return
@@ -337,7 +341,11 @@ export function BatchView({
         ) : null}
         <p className="hint new-post-to">
           To {accounts.map(accountLabel).join(', ')}
-          {times.length > 0 ? ` · at ${times.map(timeLabel).join(', ')}` : ''}
+          {random && place.window
+            ? ` · ${windowLabel(place.window)}`
+            : times.length > 0
+              ? ` · at ${times.map(timeLabel).join(', ')}`
+              : ''}
         </p>
       </div>
 
@@ -385,8 +393,10 @@ export function BatchView({
 
           <div className="group">
             <div className="group-title">Posting</div>
-            {times.length === 0 ? (
-              <p className="hint warn-text">{campaign.name} has no posting times. Add them first: Campaigns, {campaign.name}, Posting.</p>
+            {!hasTimes(place) ? (
+              <p className="hint warn-text">
+                {campaign.name} has no posting times. Add your own or random ones first: Campaigns, {campaign.name}, Posting.
+              </p>
             ) : (
               <>
                 <div className="field">
@@ -405,7 +415,11 @@ export function BatchView({
                       </button>
                     ))}
                   </div>
-                  <span className="hint">At {dayTimes(times, bank.perDay).map(timeLabel).join(', ')}.</span>
+                  <span className="hint">
+                    {random
+                      ? `At random times inside the window, different each day - today ${dayTimes(times, bank.perDay).map(timeLabel).join(', ')}.`
+                      : `At ${dayTimes(times, bank.perDay).map(timeLabel).join(', ')}.`}
+                  </span>
                 </div>
                 <div className="field">
                   <span className="label">Days</span>

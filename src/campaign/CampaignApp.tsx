@@ -91,7 +91,10 @@ import {
   saveCampaignPlace,
   sendsFrom,
   setSendHere,
+  hasTimes,
   timeLabel,
+  windowLabel,
+  type CampaignPlace,
   type LocalPosting,
 } from './posting'
 import { PostsView } from './PostsView'
@@ -1671,7 +1674,7 @@ export function CampaignApp() {
 
   /** The brand's rules go with the campaign, to both phones; his own
    *  accounts and times go to his profile. */
-  const savePosting = async (owner: Campaign, rules: CampaignPosting, place: { accounts: string[]; times: string[] } | null, catchUp: string[] = []) => {
+  const savePosting = async (owner: Campaign, rules: CampaignPosting, place: CampaignPlace | null, catchUp: string[] = []) => {
     if (place) {
       await saveCampaignPlace(owner.id, place)
       setPosting(postingHere())
@@ -1700,7 +1703,9 @@ export function CampaignApp() {
     if (!posting) return owner.posting ? `Not set up on this phone · ${approval}` : 'Not set up - finished videos stay on the phone'
     const place = placeFor(posting.profile, owner.id)
     if (place.accounts.length === 0) return 'No accounts picked - its videos are not sent'
-    const times = place.times.length > 0 ? place.times.map(timeLabel).join(', ') : 'as soon as ready'
+    // No times of his own and no window: say plainly that it goes at once.
+    if (!hasTimes(place)) return `No times - each video posts the moment it's ready · ${approval}`
+    const times = place.times.length > 0 ? place.times.map(timeLabel).join(', ') : windowLabel(place.window!)
     return `${place.accounts.length} account${place.accounts.length === 1 ? '' : 's'} · ${times} · ${approval}`
   }
 

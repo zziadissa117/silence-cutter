@@ -8,6 +8,7 @@
 // it posts at are each person's own, kept in their profile on the server.
 // The phone keeps only which profile is its own, and whether it sends.
 
+import { cleanWindow, windowTimes, type PostingWindow } from '../../supabase/functions/postiz/window.ts'
 import { PUBLISHABLE_KEY, currentSession } from './cloud'
 import type { Campaign, CampaignPosting } from './look'
 
@@ -23,10 +24,14 @@ export interface PostizAccount {
   disabled: boolean
 }
 
-/** Where and when one campaign posts, for one person. */
+/** Where and when one campaign posts, for one person. Its own times, or -
+ *  with none - a window that gives each day random times inside it
+ *  (supabase/functions/postiz/window.ts, shared with the server). Neither:
+ *  each video posts as soon as it is ready. */
 export interface CampaignPlace {
   accounts: string[]
   times: string[]
+  window?: PostingWindow
 }
 
 /** Pause and posts-a-day, per platform and per account. The server holds a
@@ -250,7 +255,27 @@ export function disconnect(): void {
 
 export function placeFor(profile: Profile | undefined, campaignId: string): CampaignPlace {
   const place = profile?.settings.campaigns?.[campaignId]
-  return { accounts: place?.accounts ?? [], times: place?.times ?? [] }
+  const window = cleanWindow(place?.window)
+  return { accounts: place?.accounts ?? [], times: place?.times ?? [], ...(window ? { window } : {}) }
+}
+
+/** A campaign's times on one date, as the server will use them: its own,
+ *  else the window's random ones for that day, else none. */
+export function placeTimesOn(place: CampaignPlace, campaignId: string, date: string): string[] {
+  if (place.times.length > 0) return place.times
+  const window = cleanWindow(place.window)
+  return window ? windowTimes(window, campaignId, date) : []
+}
+
+/** Whether its videos wait for a time at all - false means each one posts
+ *  the moment it is ready. */
+export function hasTimes(place: CampaignPlace): boolean {
+  return place.times.length > 0 || cleanWindow(place.window) !== null
+}
+
+/** "2 a day at random, 10 AM - 10 PM". */
+export function windowLabel(window: PostingWindow): string {
+  return `${window.perDay} a day at random, ${timeLabel(window.from)} - ${timeLabel(window.to)}`
 }
 
 /** Whether this phone sends this campaign's finished videos to Postiz. */
