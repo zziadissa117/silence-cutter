@@ -36,6 +36,7 @@
 //   posts          { profile }                  -> { posts }
 //   edit / approve { profile, id, caption?, title?, at? } -> { post }
 //   reject / unschedule / retry { profile, id } -> { post }
+//   stop-campaign  { profile, campaignId }   -> { stopped, failed }  every post of one campaign not out yet, rejected
 //   tick           { secret }                   (the scheduler; no token)
 //   channels       { cutterCampaignId }         (the planner's server; no token - see bridgeAllowed)
 //                  -> { profiles: [{ id, inUse, accounts }] }  which Postiz channels a campaign holds
@@ -63,7 +64,7 @@ import { endOfDay, lastTimeToday, nextSlot, normalTimes, pickTime, spreadDay, ti
 import { cleanWindow, type PostingWindow } from './window.ts'
 import { attachMove, summarise, type AttachMove } from './attach.ts'
 import { cleanLimits, firstDayWithRoom, heldNote, releasable, split, usedOn, type Limits, type PostAccount } from './limits.ts'
-import { PENDING_STATUSES, channelReport, type PendingPost } from './channels.ts'
+import { PENDING_STATUSES, channelReport, isPending, type PendingPost } from './channels.ts'
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!
 const SERVICE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
@@ -1652,6 +1653,42 @@ async function act(profile: Profile, action: string, body: Record<string, unknow
   throw new Problem('Unknown action.')
 }
 
+/** Every post of one campaign that has not gone out yet, stopped: taken out
+ *  of Postiz when it is scheduled there, and marked rejected - the same as
+ *  Reject on each one. For a finished campaign. Only this person's posts of
+ *  that campaign; every other campaign's are untouched, and ones whose time
+ *  has already come stay as they are (they have gone out, or are going). */
+async function stopCampaign(profile: Profile, body: Record<string, unknown>): Promise<Response> {
+  const campaignId = typeof body.campaignId === 'string' ? body.campaignId : ''
+  if (!campaignId || campaignId.length > 200) throw new Problem('Which campaign?')
+  const { data, error } = await db
+    .from('cutter_posts')
+    .select('*')
+    .eq('profile_id', profile.id)
+    .eq('campaign_id', campaignId)
+    .in('status', [...PENDING_STATUSES])
+  if (error) throw new Problem('Its posts could not be read. Try again.', true, 500)
+  const now = Date.now()
+  const pending = ((data ?? []) as Post[]).filter((p) => isPending(p, now))
+  let key: string | null = null
+  let stopped = 0
+  const failed: string[] = []
+  for (const post of pending) {
+    try {
+      if (post.status === 'scheduled' && post.postiz_ids?.[0]) {
+        key ??= (await keysFor(profile.id)).postiz
+        await deleteScheduled(key, post)
+      }
+      if (post.status === 'uploading' || post.status === 'writing') await removeParts(post).catch(() => {})
+      await update(post.id, { status: 'rejected', error: null, retry_at: null })
+      stopped++
+    } catch (error) {
+      failed.push(`${post.file_name ?? 'A video'}: ${error instanceof Error ? error.message : String(error)}`)
+    }
+  }
+  return reply({ stopped, failed })
+}
+
 // --- The scheduler ------------------------------------------------------------
 
 async function tick(): Promise<void> {
@@ -1937,6 +1974,8 @@ Deno.serve(async (req) => {
       case 'unschedule':
       case 'retry':
         return await act(profile, action, body)
+      case 'stop-campaign':
+        return await stopCampaign(profile, body)
       default:
         return reply({ error: 'Unknown action.' }, 400)
     }

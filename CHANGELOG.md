@@ -3,6 +3,19 @@
 Newest first. Every change says what it does, how to use it, and how it works
 underneath. Kept up to date with each commit.
 
+## New: stop all of one campaign's posts
+**What:** for a finished campaign, one button stops every post of it that hasn't gone out yet - waiting for approval,
+approved, or scheduled in Postiz. Scheduled ones are taken out of Postiz; all of them are marked rejected, the same
+as tapping Reject on each. Only that campaign's posts: every other campaign keeps its schedule, and posts whose time
+has already come are left alone.
+**How to use it:** Campaigns, open the campaign, under Posting: **Stop all [campaign] posts**. It asks first, then
+says how many it stopped. Deleting a campaign now also asks "Also stop every [campaign] post that hasn't gone out
+yet?" - before, deleting it left its scheduled posts going out. Archiving in the planner does not stop anything;
+do this first.
+**How it works:** a `stop-campaign` action on the posting function, for your own posting profile only.
+**Needs deploying: run ./deploy-server.sh** (and ./deploy.sh for the button).
+Files: `supabase/functions/postiz/index.ts`, `posting.ts`, `CampaignsView.tsx`, `CampaignApp.tsx`.
+
 ## New: random posting times, so a campaign never posts the moment a video is ready
 **What:** a campaign's Posting now has two choices under Your times: **My own times** (as before) or **Random times**
 - "between 10 AM and 10 PM, 2 a day" (change all three). Each day gets its own random times inside that window, at

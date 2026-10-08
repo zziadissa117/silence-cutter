@@ -42,6 +42,7 @@ export function CampaignsView({
   onNewAngle,
   onDeleteCampaign,
   onPosting,
+  onStopPosts,
   postingLine,
   shared,
 }: {
@@ -56,6 +57,9 @@ export function CampaignsView({
   onDeleteCampaign: (campaign: Campaign) => void
   /** Opens where and when its videos are posted. */
   onPosting: (campaign: Campaign) => void
+  /** Stops every post of the campaign not out yet, and says what it did.
+   *  Absent when posting is not set up on this phone. */
+  onStopPosts?: (campaign: Campaign) => Promise<string>
   /** One line on how it posts, e.g. "2 accounts · 6 PM, 8 PM · you approve". */
   postingLine: (campaign: Campaign) => string
   /** Signed in to the shared login, so a deletion reaches the other phone. */
@@ -120,6 +124,7 @@ export function CampaignsView({
             </button>
           </li>
         </ul>
+        {onStopPosts ? <StopPosts campaign={open} onStop={onStopPosts} /> : null}
         {!open.general ? (
           // Down at the bottom, away from everything else, so it is never hit
           // by mistake.
@@ -171,5 +176,33 @@ export function CampaignsView({
         ))}
       </ul>
     </section>
+  )
+}
+
+/** For a finished campaign: every post of it still waiting or scheduled,
+ *  stopped in one go. Only this campaign's - nothing else is touched. */
+function StopPosts({ campaign, onStop }: { campaign: Campaign; onStop: (campaign: Campaign) => Promise<string> }) {
+  const [busy, setBusy] = useState(false)
+  const [said, setSaid] = useState<string | null>(null)
+  return (
+    <div className="actions-row">
+      <button
+        type="button"
+        className="btn danger"
+        disabled={busy}
+        onClick={() => {
+          if (!window.confirm(`Stop every ${campaign.name} post that hasn't gone out yet? Ones scheduled in Postiz are taken out. Other campaigns' posts are not touched.`)) return
+          setBusy(true)
+          setSaid(null)
+          onStop(campaign)
+            .then(setSaid)
+            .catch((error: unknown) => setSaid(error instanceof Error ? error.message : String(error)))
+            .finally(() => setBusy(false))
+        }}
+      >
+        {busy ? 'Stopping…' : `Stop all ${campaign.name} posts`}
+      </button>
+      {said ? <div className="hint">{said}</div> : null}
+    </div>
   )
 }

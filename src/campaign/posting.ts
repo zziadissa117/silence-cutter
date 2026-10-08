@@ -317,6 +317,12 @@ export async function postAction(
   return post
 }
 
+/** Stops every post of one campaign that has not gone out yet - out of
+ *  Postiz and marked rejected. Other campaigns' posts are not touched. */
+export async function stopCampaignPosts(campaignId: string): Promise<{ stopped: number; failed: string[] }> {
+  return call<{ stopped: number; failed: string[] }>('stop-campaign', { profile: profileId(), campaignId })
+}
+
 export interface RecheckResult {
   phrases: string[]
   /** Indexes of the phrases Claude changed. */

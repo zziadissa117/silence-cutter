@@ -91,6 +91,7 @@ import {
   saveCampaignPlace,
   sendsFrom,
   setSendHere,
+  stopCampaignPosts,
   hasTimes,
   timeLabel,
   windowLabel,
@@ -1709,6 +1710,14 @@ export function CampaignApp() {
     return `${place.accounts.length} account${place.accounts.length === 1 ? '' : 's'} · ${times} · ${approval}`
   }
 
+  /** Every post of one campaign not out yet, stopped - what it did, in words. */
+  const stopPosts = async (owner: Campaign): Promise<string> => {
+    const { stopped, failed } = await stopCampaignPosts(owner.id)
+    countPosts()
+    const done = stopped === 0 ? `No ${owner.name} posts were waiting or scheduled.` : `Stopped ${stopped} ${owner.name} post${stopped === 1 ? '' : 's'}.`
+    return failed.length > 0 ? `${done} Not stopped: ${failed.join('; ')}` : done
+  }
+
   const removeCampaign = async (id: string) => {
     await deleteCampaign(id)
     const rest = ordered((campaigns ?? []).filter((c) => c.id !== id))
@@ -2664,10 +2673,16 @@ export function CampaignApp() {
         onEditAngle={(c, a) => setEditing({ kind: 'angle', campaign: c, angle: a, isNew: false })}
         onNewAngle={(c) => newAngle(c, c.angles.find((a) => a.id === angleId) ?? c.angles[0])}
         onDeleteCampaign={(c) => {
-          void removeCampaign(c.id)
+          // Deleting it here does not stop what was already sent up, so ask:
+          // a finished campaign usually has posts left that should not go out.
+          const stop =
+            posting !== null &&
+            window.confirm(`Also stop every ${c.name} post that hasn't gone out yet? Cancel keeps them scheduled.`)
+          void (stop ? stopPosts(c).catch(() => '') : Promise.resolve('')).then(() => removeCampaign(c.id))
           setOpenCampaignId(null)
         }}
         onPosting={(c) => setEditing({ kind: 'posting', campaign: c })}
+        onStopPosts={posting ? stopPosts : undefined}
         postingLine={postingLine}
         shared={session !== null}
       />
