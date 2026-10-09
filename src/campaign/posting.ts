@@ -324,6 +324,21 @@ export async function stopCampaignPosts(campaignId: string): Promise<{ stopped: 
   return call<{ stopped: number; unposting: number }>('stop-campaign', { profile: profileId(), campaignId })
 }
 
+/** Posts that can still be stopped: not gone out, not failed or posted. A
+ *  scheduled one only while its time is ahead (the server's rule too). */
+export function stoppable(posts: readonly ServerPost[], now = Date.now()): ServerPost[] {
+  return posts.filter(
+    (p) =>
+      ['uploading', 'writing', 'waiting', 'approved'].includes(p.status) ||
+      (p.status === 'scheduled' && (!p.postAt || Date.parse(p.postAt) > now)),
+  )
+}
+
+/** Stops the posts he ticked on the Posts screen, the same way. */
+export async function stopPosts(ids: string[]): Promise<{ stopped: number; unposting: number }> {
+  return call<{ stopped: number; unposting: number }>('stop-posts', { profile: profileId(), ids })
+}
+
 export interface RecheckResult {
   phrases: string[]
   /** Indexes of the phrases Claude changed. */

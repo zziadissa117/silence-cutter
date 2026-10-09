@@ -16,6 +16,7 @@ import { canShareFiles, share } from './jobs'
 import { ChevronLeft } from './icons'
 import type { Campaign } from './look'
 import { NewPost } from './NewPost'
+import { StopPicker } from './StopPicker'
 import { jobOfPostKey, EDIT_WINDOW_MS } from './store'
 import { MusicAfter } from './MusicAfter'
 import { canAddMusic } from './musicAfterSend'
@@ -29,6 +30,7 @@ import {
   localInput,
   postAction,
   postingHere,
+  stoppable,
   whenLabel,
   type PostAction,
   type ServerPost,
@@ -442,6 +444,8 @@ export function PostsView({
   const [said, setSaid] = useState<string | null>(null)
   const [busy, setBusy] = useState<Set<string>>(new Set())
   const [approvingAll, setApprovingAll] = useState(false)
+  // Ticking posts to stop - a whole campaign, or one by one.
+  const [stopping, setStopping] = useState(false)
   const outgoing = useSending()
 
   const load = useCallback(async () => {
@@ -522,6 +526,7 @@ export function PostsView({
   }
 
   const nothing = posts.length === 0 && sendingNow.length === 0
+  const canStop = stoppable(posts)
 
   return (
     <section className="screen posts">
@@ -530,13 +535,36 @@ export function PostsView({
       </button>
       <div className="screen-head">
         <h1>Posts</h1>
-        {approvable.length > 1 ? (
-          <button type="button" className="btn small primary" disabled={approvingAll} onClick={() => void approveAll()}>
-            {approvingAll ? 'Approving…' : `Approve all ${approvable.length}`}
-          </button>
-        ) : null}
+        <div className="actions-row">
+          {approvable.length > 1 && !stopping ? (
+            <button type="button" className="btn small primary" disabled={approvingAll} onClick={() => void approveAll()}>
+              {approvingAll ? 'Approving…' : `Approve all ${approvable.length}`}
+            </button>
+          ) : null}
+          {canStop.length > 0 && !stopping ? (
+            <button type="button" className="btn small" onClick={() => setStopping(true)}>
+              Select
+            </button>
+          ) : null}
+        </div>
       </div>
 
+      {stopping ? (
+        <StopPicker
+          posts={canStop}
+          onCancel={() => setStopping(false)}
+          onDone={(message) => {
+            setStopping(false)
+            setSaid(message)
+            void load()
+          }}
+        />
+      ) : null}
+
+      {/* While picking, only the picker: the lists below would be the same
+          posts twice. */}
+      {stopping ? null : (
+      <>
       {profile && making ? (
         <NewPost campaigns={campaigns} profile={profile} onDone={() => setMaking(false)} onCancel={() => setMaking(false)} />
       ) : profile ? (
@@ -627,6 +655,8 @@ export function PostsView({
           </ul>
         </>
       ) : null}
+      </>
+      )}
     </section>
   )
 }

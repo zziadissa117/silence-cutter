@@ -38,6 +38,7 @@
 //   reject / unschedule / retry { profile, id } -> { post }
 //   stop-campaign  { profile, campaignId }   -> { stopped, unposting }  every post of one campaign not out yet, rejected at once;
 //                  the ones Postiz holds are taken out of it in the background (and on each tick)
+//   stop-posts     { profile, ids }          -> { stopped, unposting }  the same, for the posts he ticked
 //   tick           { secret }                   (the scheduler; no token)
 //   channels       { cutterCampaignId }         (the planner's server; no token - see bridgeAllowed)
 //                  -> { profiles: [{ id, inUse, accounts }] }  which Postiz channels a campaign holds
@@ -1677,7 +1678,30 @@ async function stopCampaign(profile: Profile, body: Record<string, unknown>): Pr
     .eq('campaign_id', campaignId)
     .in('status', [...PENDING_STATUSES])
   if (error) throw new Problem('Its posts could not be read. Try again.', true, 500)
-  const rows = (data ?? []) as Post[]
+  return await stopRows(profile, (data ?? []) as Post[])
+}
+
+/** The posts he ticked on the Posts screen, stopped the same way - only his
+ *  own, and only the ones that have not gone out. */
+async function stopPicked(profile: Profile, body: Record<string, unknown>): Promise<Response> {
+  const ids = (Array.isArray(body.ids) ? body.ids : []).filter((id): id is string => typeof id === 'string' && /^[0-9a-f-]{36}$/.test(id))
+  if (ids.length === 0) throw new Problem('Tick the posts to stop first.')
+  if (ids.length > 500) throw new Problem('Stop at most 500 at a time.')
+  const rows: Post[] = []
+  for (let i = 0; i < ids.length; i += 200) {
+    const { data, error } = await db
+      .from('cutter_posts')
+      .select('*')
+      .eq('profile_id', profile.id)
+      .in('id', ids.slice(i, i + 200))
+      .in('status', [...PENDING_STATUSES])
+    if (error) throw new Problem('Those posts could not be read. Try again.', true, 500)
+    rows.push(...((data ?? []) as Post[]))
+  }
+  return await stopRows(profile, rows)
+}
+
+async function stopRows(profile: Profile, rows: Post[]): Promise<Response> {
   const { reject, unpost } = splitStop(rows, Date.now())
   const at = new Date().toISOString()
   // In chunks: the ids go in the request's address, which has a length limit.
@@ -2026,6 +2050,8 @@ Deno.serve(async (req) => {
         return await act(profile, action, body)
       case 'stop-campaign':
         return await stopCampaign(profile, body)
+      case 'stop-posts':
+        return await stopPicked(profile, body)
       default:
         return reply({ error: 'Unknown action.' }, 400)
     }

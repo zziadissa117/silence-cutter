@@ -3,6 +3,17 @@
 Newest first. Every change says what it does, how to use it, and how it works
 underneath. Kept up to date with each commit.
 
+## New: select posts on the Posts screen and stop them in one go
+**What:** the Posts screen has a **Select** button. It lists every post that can still be stopped (to approve, on
+the way, scheduled), with a chip per campaign - "Inflow 64", "Vertus 12" - that ticks all of that campaign's posts in
+one tap, and **All**. Tick or untick any post by hand, then **Stop N posts**. They stop at once and none of them goes
+out; the ones in Postiz are taken out of it in the background over the next few minutes. Posts already out, failed,
+or past their time aren't in the list.
+**How it works:** a `stop-posts { ids }` action on the posting function - the same stop as "Stop all [campaign]
+posts", for the ticked posts (your own only, up to 500 at a time).
+**Needs deploying: run ./deploy-server.sh** (and ./deploy.sh for the screen).
+Files: `StopPicker.tsx` (+ test), `PostsView.tsx`, `posting.ts`, `postiz/index.ts`, `index.css`, `campaign.css`.
+
 ## New: Highlight captions - the phrase at once, the word being said in yellow
 **What:** a second caption style. Instead of one word at a time, the phrase (up to 4 words, on one or two lines)
 is on screen together, white with the usual dark edge, and the word being said turns yellow with a small pop. It

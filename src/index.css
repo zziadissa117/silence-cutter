@@ -209,6 +209,8 @@ input[type=range] { width: 100%; accent-color: var(--now); }
   color: var(--now);
   box-shadow: 0 0 0 1px rgb(255 255 255 / 0.12), 0 0 18px -6px var(--now);
 }
+/* Stops something for good: red, with the reason said next to it. */
+.btn.danger { border-color: rgb(242 86 76 / 0.7); color: var(--bad); }
 .btn:disabled { color: var(--muted); border-color: var(--edge); box-shadow: none; cursor: default; }
 
 /* Down is immediate; the let-go is the spring. */
