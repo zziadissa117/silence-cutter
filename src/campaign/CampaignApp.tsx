@@ -1712,10 +1712,13 @@ export function CampaignApp() {
 
   /** Every post of one campaign not out yet, stopped - what it did, in words. */
   const stopPosts = async (owner: Campaign): Promise<string> => {
-    const { stopped, failed } = await stopCampaignPosts(owner.id)
+    const { stopped, unposting } = await stopCampaignPosts(owner.id)
     countPosts()
-    const done = stopped === 0 ? `No ${owner.name} posts were waiting or scheduled.` : `Stopped ${stopped} ${owner.name} post${stopped === 1 ? '' : 's'}.`
-    return failed.length > 0 ? `${done} Not stopped: ${failed.join('; ')}` : done
+    if (stopped === 0) return `No ${owner.name} posts were waiting or scheduled.`
+    const done = `Stopped ${stopped} ${owner.name} post${stopped === 1 ? '' : 's'} - none of them will go out.`
+    return unposting > 0
+      ? `${done} ${unposting} ${unposting === 1 ? 'is' : 'are'} being taken out of Postiz over the next few minutes.`
+      : done
   }
 
   const removeCampaign = async (id: string) => {

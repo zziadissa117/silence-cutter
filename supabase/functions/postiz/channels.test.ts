@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { channelReport, isPending, type Integration, type PendingPost } from './channels'
+import { channelReport, isPending, splitStop, type Integration, type PendingPost } from './channels'
 
 const NOW = Date.parse('2026-10-08T12:00:00Z')
 const at = (minutes: number) => new Date(NOW + minutes * 60_000).toISOString()
@@ -94,3 +94,29 @@ describe('isPending', () => {
     expect(isPending({ status: 'rejected', post_at: at(60) }, NOW)).toBe(false)
   })
 })
+
+describe('splitStop', () => {
+  const row = (id: string, status: string, postAt: string | null, inPostiz: boolean) => ({
+    id,
+    status,
+    post_at: postAt,
+    postiz_ids: inPostiz ? [{ postId: `p-${id}` }] : null,
+  })
+
+  it('rejects what Postiz never had, queues what it holds, and leaves what has gone out', () => {
+    expect(
+      splitStop(
+        [
+          row('waiting', 'waiting', null, false),
+          row('approved', 'approved', at(30), false),
+          row('in-postiz', 'scheduled', at(120), true),
+          row('held', 'scheduled', at(120), false),
+          row('gone', 'scheduled', at(-5), true),
+          row('posted', 'posted', at(-60), true),
+        ],
+        NOW,
+      ),
+    ).toEqual({ reject: ['waiting', 'approved', 'held'], unpost: ['in-postiz'] })
+  })
+})
+

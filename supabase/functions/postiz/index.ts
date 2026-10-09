@@ -36,7 +36,8 @@
 //   posts          { profile }                  -> { posts }
 //   edit / approve { profile, id, caption?, title?, at? } -> { post }
 //   reject / unschedule / retry { profile, id } -> { post }
-//   stop-campaign  { profile, campaignId }   -> { stopped, failed }  every post of one campaign not out yet, rejected
+//   stop-campaign  { profile, campaignId }   -> { stopped, unposting }  every post of one campaign not out yet, rejected at once;
+//                  the ones Postiz holds are taken out of it in the background (and on each tick)
 //   tick           { secret }                   (the scheduler; no token)
 //   channels       { cutterCampaignId }         (the planner's server; no token - see bridgeAllowed)
 //                  -> { profiles: [{ id, inUse, accounts }] }  which Postiz channels a campaign holds
@@ -64,7 +65,7 @@ import { endOfDay, lastTimeToday, nextSlot, normalTimes, pickTime, spreadDay, ti
 import { cleanWindow, type PostingWindow } from './window.ts'
 import { attachMove, summarise, type AttachMove } from './attach.ts'
 import { cleanLimits, firstDayWithRoom, heldNote, releasable, split, usedOn, type Limits, type PostAccount } from './limits.ts'
-import { PENDING_STATUSES, channelReport, isPending, type PendingPost } from './channels.ts'
+import { PENDING_STATUSES, channelReport, splitStop, type PendingPost } from './channels.ts'
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!
 const SERVICE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
@@ -1653,11 +1654,19 @@ async function act(profile: Profile, action: string, body: Record<string, unknow
   throw new Problem('Unknown action.')
 }
 
-/** Every post of one campaign that has not gone out yet, stopped: taken out
- *  of Postiz when it is scheduled there, and marked rejected - the same as
- *  Reject on each one. For a finished campaign. Only this person's posts of
- *  that campaign; every other campaign's are untouched, and ones whose time
- *  has already come stay as they are (they have gone out, or are going). */
+/** What a stopped post says on the Posts screen until Postiz no longer holds
+ *  it - and how unpostStopped finds the ones still to take out. */
+const STOPPING = 'Stopped - taking it out of Postiz'
+const UNPOST_BATCH = 20
+
+/** Every post of one campaign that has not gone out yet, stopped - at once,
+ *  in two updates, however many there are. Ones Postiz holds are marked
+ *  STOPPING and taken out of Postiz afterwards (unpostStopped), in the
+ *  background and on every tick, so a stop of a hundred posts never waits on
+ *  a hundred Postiz calls and a run that is cut off finishes by itself.
+ *  Only this person's posts of that campaign; ones whose time has come are
+ *  left as they are. Nothing stopped can go out: the scheduler only moves
+ *  waiting, approved and scheduled posts. */
 async function stopCampaign(profile: Profile, body: Record<string, unknown>): Promise<Response> {
   const campaignId = typeof body.campaignId === 'string' ? body.campaignId : ''
   if (!campaignId || campaignId.length > 200) throw new Problem('Which campaign?')
@@ -1668,25 +1677,64 @@ async function stopCampaign(profile: Profile, body: Record<string, unknown>): Pr
     .eq('campaign_id', campaignId)
     .in('status', [...PENDING_STATUSES])
   if (error) throw new Problem('Its posts could not be read. Try again.', true, 500)
-  const now = Date.now()
-  const pending = ((data ?? []) as Post[]).filter((p) => isPending(p, now))
-  let key: string | null = null
-  let stopped = 0
-  const failed: string[] = []
-  for (const post of pending) {
-    try {
-      if (post.status === 'scheduled' && post.postiz_ids?.[0]) {
-        key ??= (await keysFor(profile.id)).postiz
-        await deleteScheduled(key, post)
-      }
-      if (post.status === 'uploading' || post.status === 'writing') await removeParts(post).catch(() => {})
-      await update(post.id, { status: 'rejected', error: null, retry_at: null })
-      stopped++
-    } catch (error) {
-      failed.push(`${post.file_name ?? 'A video'}: ${error instanceof Error ? error.message : String(error)}`)
+  const rows = (data ?? []) as Post[]
+  const { reject, unpost } = splitStop(rows, Date.now())
+  const at = new Date().toISOString()
+  // In chunks: the ids go in the request's address, which has a length limit.
+  const mark = async (ids: string[], fields: Partial<Post>) => {
+    for (let i = 0; i < ids.length; i += 200) {
+      const { error: failed } = await db
+        .from('cutter_posts')
+        .update({ ...fields, status: 'rejected', retry_at: null, updated_at: at })
+        .in('id', ids.slice(i, i + 200))
+      if (failed) throw new Problem('They could not all be stopped. Press Stop again to finish.', true, 500)
     }
   }
-  return reply({ stopped, failed })
+  await mark(reject, { error: null })
+  await mark(unpost, { error: STOPPING, attempts: 0 })
+  // Their uploaded parts, and Postiz, after the answer.
+  const unfinished = rows.filter((p) => reject.includes(p.id) && (p.status === 'uploading' || p.status === 'writing'))
+  later(
+    (async () => {
+      for (const post of unfinished) await removeParts(post).catch(() => {})
+      // A batch at a time until none is left. A batch that takes nothing
+      // out (Postiz refusing) stops the loop; the tick tries those again.
+      while ((await unpostStopped(profile.id)) > 0) {
+        /* next batch */
+      }
+    })(),
+  )
+  return reply({ stopped: reject.length + unpost.length, unposting: unpost.length })
+}
+
+/** Takes up to one batch of stopped posts out of Postiz; how many it took out.
+ *  A post Postiz will not let go of is tried again on the next ticks, then
+ *  left with a plain message to delete it in Postiz - never silently. */
+async function unpostStopped(profileId?: string): Promise<number> {
+  let query = db.from('cutter_posts').select('*').eq('status', 'rejected').eq('error', STOPPING).limit(UNPOST_BATCH)
+  if (profileId) query = query.eq('profile_id', profileId)
+  const { data } = await query
+  const posts = (data ?? []) as Post[]
+  const keys = new Map<string, string>()
+  let done = 0
+  for (const post of posts) {
+    try {
+      if (!keys.has(post.profile_id)) keys.set(post.profile_id, (await keysFor(post.profile_id)).postiz)
+      if (post.postiz_ids?.[0]) await deleteScheduled(keys.get(post.profile_id)!, post)
+      await update(post.id, { postiz_ids: null, error: null })
+      done++
+    } catch (error) {
+      const attempts = post.attempts + 1
+      await update(post.id, {
+        attempts,
+        error:
+          attempts >= MAX_ATTEMPTS
+            ? `Couldn't take it out of Postiz (${error instanceof Error ? error.message : String(error)}) - delete it there.`
+            : STOPPING,
+      })
+    }
+  }
+  return done
 }
 
 // --- The scheduler ------------------------------------------------------------
@@ -1732,6 +1780,8 @@ async function tick(): Promise<void> {
   for (const [batchId, profileId] of owed) await notifyBatch(profileId, batchId, true)
 
   await releaseHeld(now)
+  // Stopped posts Postiz still holds - a stop's own run may have been cut off.
+  await unpostStopped()
   await checkPosted(now)
   await remindReposts(now)
   await remind(now)

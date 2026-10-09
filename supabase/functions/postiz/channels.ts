@@ -90,3 +90,22 @@ export function channelReport(
 
   return { inUse: integrations.filter((i) => !i.disabled).length, accounts }
 }
+
+/** How a campaign's stop splits its posts: the ones never handed to Postiz
+ *  are simply rejected; the ones Postiz holds are rejected too, and then
+ *  taken out of Postiz in the background (index.ts unpostStopped), so a stop
+ *  of a hundred posts never waits on a hundred Postiz calls. */
+export function splitStop<P extends Pick<PendingPost, 'status' | 'post_at'> & { id: string; postiz_ids: unknown[] | null }>(
+  posts: readonly P[],
+  now: number,
+): { reject: string[]; unpost: string[] } {
+  const reject: string[] = []
+  const unpost: string[] = []
+  for (const post of posts) {
+    if (!isPending(post, now)) continue
+    if (post.status === 'scheduled' && (post.postiz_ids?.length ?? 0) > 0) unpost.push(post.id)
+    else reject.push(post.id)
+  }
+  return { reject, unpost }
+}
+

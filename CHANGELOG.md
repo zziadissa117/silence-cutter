@@ -12,7 +12,11 @@ has already come are left alone.
 says how many it stopped. Deleting a campaign now also asks "Also stop every [campaign] post that hasn't gone out
 yet?" - before, deleting it left its scheduled posts going out. Archiving in the planner does not stop anything;
 do this first.
-**How it works:** a `stop-campaign` action on the posting function, for your own posting profile only.
+**How it works:** a `stop-campaign` action on the posting function, for your own posting profile only. It stops
+every post in one go however many there are - a hundred is as quick as one - so nothing can go out after you press
+it. Posts already in Postiz are then taken out of it in the background, 20 at a time; each shows "Stopped - taking
+it out of Postiz" on the Posts screen until it's gone, and if the run is cut off the 5-minute scheduler finishes the
+rest. One Postiz won't let go of says so after a few tries: "Couldn't take it out of Postiz - delete it there".
 **Needs deploying: run ./deploy-server.sh** (and ./deploy.sh for the button).
 Files: `supabase/functions/postiz/index.ts`, `posting.ts`, `CampaignsView.tsx`, `CampaignApp.tsx`.
 

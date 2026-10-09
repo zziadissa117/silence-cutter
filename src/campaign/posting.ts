@@ -317,10 +317,11 @@ export async function postAction(
   return post
 }
 
-/** Stops every post of one campaign that has not gone out yet - out of
- *  Postiz and marked rejected. Other campaigns' posts are not touched. */
-export async function stopCampaignPosts(campaignId: string): Promise<{ stopped: number; failed: string[] }> {
-  return call<{ stopped: number; failed: string[] }>('stop-campaign', { profile: profileId(), campaignId })
+/** Stops every post of one campaign that has not gone out yet, at once.
+ *  The ones Postiz holds are taken out of it in the background over the next
+ *  few minutes (`unposting` of them). Other campaigns' posts are not touched. */
+export async function stopCampaignPosts(campaignId: string): Promise<{ stopped: number; unposting: number }> {
+  return call<{ stopped: number; unposting: number }>('stop-campaign', { profile: profileId(), campaignId })
 }
 
 export interface RecheckResult {
