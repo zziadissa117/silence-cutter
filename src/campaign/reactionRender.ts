@@ -29,7 +29,7 @@ import { createOutputSink } from '../media/outputSink'
 import { RangeReader, inTimestampOrder } from '../media/rangeReader'
 import { isSilenceCutSupported } from '../media/silenceCut'
 import type { Range } from '../media/silenceMath'
-import { CAPTION_LEAD, captionAt, drawCaption, type CaptionPosition, type CaptionSize, type CaptionWord } from './captions'
+import { CAPTION_LEAD, captionAt, drawStyledCaption, phraseRanges, type CaptionPosition, type CaptionSize, type CaptionStyle, type CaptionWord } from './captions'
 import { framingAt, planMotion, zoomPlace } from './effects'
 import { eachSound, openClip, type Clip } from './clipParts'
 import { headlineFontReady } from './headlineFont'
@@ -68,6 +68,8 @@ export interface ReactionRenderInput {
   captionPosition?: CaptionPosition
   /** How big the captions are. */
   captionSize?: CaptionSize
+  /** One word at a time, or the phrase with the spoken word lit. */
+  captionStyle?: CaptionStyle
 }
 
 export interface ReactionRenderResult {
@@ -79,7 +81,7 @@ export interface ReactionRenderResult {
 }
 
 export async function renderReaction(
-  { reaction, product, productKeep, look, headlineText, switchSound, captions = [], voice: boostVoice = false, music = null, seed = '', captionPosition = 'usual', captionSize = 'normal' }: ReactionRenderInput,
+  { reaction, product, productKeep, look, headlineText, switchSound, captions = [], voice: boostVoice = false, music = null, seed = '', captionPosition = 'usual', captionSize = 'normal', captionStyle = 'word' }: ReactionRenderInput,
   onProgress?: (fraction: number) => void,
 ): Promise<ReactionRenderResult> {
   if (!(await isSilenceCutSupported())) {
@@ -143,6 +145,7 @@ export async function renderReaction(
       .filter((c): c is { word: CaptionWord; at: number } => c.at !== null)
     const captionWords = shown.map((c) => c.word)
     const captionTimes = shown.map((c) => c.at)
+    const captionPhrases = phraseRanges(captionWords)
 
     const { width, height } = outputSize(reactionClip.width, reactionClip.height)
     const canvas = new OffscreenCanvas(width, height)
@@ -190,7 +193,10 @@ export async function renderReaction(
                 const spot = zoomPlace(productPlace, framingAt(motion, 1, timestamp - switchAt, []), width, height)
                 sample.draw(ctx, spot.x, spot.y, spot.width, spot.height)
                 const word = captionAt(captionTimes, captionWords, timestamp)
-                if (word >= 0) drawCaption(ctx, width, height, captionWords[word].text, timestamp + CAPTION_LEAD - captionTimes[word], false, captionPosition, captionSize)
+                if (word >= 0) {
+                  const since = timestamp + CAPTION_LEAD - captionTimes[word]
+                  drawStyledCaption(ctx, width, height, captionWords, captionPhrases, word, since, false, captionPosition, captionSize, captionStyle)
+                }
               }
               sample.close()
               const frame = new VideoSample(canvas, { timestamp, duration })

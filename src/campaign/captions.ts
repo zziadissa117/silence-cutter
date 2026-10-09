@@ -1,5 +1,6 @@
-// Captions burned into a campaign video: one word at a time, in TikTok Sans,
-// white with a light black edge, popping in the moment he says it.
+// Captions burned into a campaign video, in TikTok Sans, white with a light
+// black edge. Two styles: one word at a time, popping in the moment he says
+// it; or Highlight - the phrase up at once, the word being said lit yellow.
 //
 // The words come from the listen that sorted the video. He checks them
 // before the video is made, a phrase at a time the way TikTok's own caption
@@ -170,7 +171,7 @@ const PHRASE_PAUSE_SEC = 0.5
  *  stop, a question or a pause, and after a comma once there are a few
  *  words. Anything longer than PHRASE_WORDS is split evenly - "putting this
  *  on / is gonna fix it", never a word left on its own. */
-export function phrasesOf(words: CaptionWord[]): CaptionWord[][] {
+export function phrasesOf(words: CaptionWord[], maxWords = PHRASE_WORDS): CaptionWord[][] {
   const runs: CaptionWord[][] = []
   let run: CaptionWord[] = []
   words.forEach((w, i) => {
@@ -190,7 +191,7 @@ export function phrasesOf(words: CaptionWord[]): CaptionWord[][] {
   })
   if (run.length > 0) runs.push(run)
   return runs.flatMap((r) => {
-    const size = Math.ceil(r.length / Math.ceil(r.length / PHRASE_WORDS))
+    const size = Math.ceil(r.length / Math.ceil(r.length / maxWords))
     const parts: CaptionWord[][] = []
     for (let i = 0; i < r.length; i += size) parts.push(r.slice(i, i + size))
     return parts
@@ -408,3 +409,189 @@ export function drawCaption(
   ctx.fillText(word, 0, 0)
   ctx.restore()
 }
+
+// --- Highlight ----------------------------------------------------------------
+//
+// The phrase is on screen at once and the word being said lights up. Which
+// word is up still comes from captionAt, so the lead, the hold, words taken
+// out and the hook all work exactly as for one word at a time.
+
+export type CaptionStyle = 'word' | 'highlight'
+
+export const CAPTION_STYLES: { id: CaptionStyle; label: string }[] = [
+  { id: 'word', label: 'One word' },
+  { id: 'highlight', label: 'Highlight' },
+]
+
+const STYLE_KEY = 'cutter-caption-style'
+
+/** The style new videos start with: the last one he picked, else one word. */
+export function defaultCaptionStyle(): CaptionStyle {
+  try {
+    const saved = localStorage.getItem(STYLE_KEY)
+    if (CAPTION_STYLES.some((s) => s.id === saved)) return saved as CaptionStyle
+  } catch {
+    // Storage blocked: one word.
+  }
+  return 'word'
+}
+
+export function setDefaultCaptionStyle(style: CaptionStyle): void {
+  try {
+    localStorage.setItem(STYLE_KEY, style)
+  } catch {
+    // Not saved.
+  }
+}
+
+/** A phrase of at most this many words fits two lines at the normal size. */
+export const HIGHLIGHT_WORDS = 4
+
+/** Each phrase as [first, end) indexes into `words` - phrasesOf, kept as
+ *  positions so the word captionAt picks can be found in its phrase. */
+export function phraseRanges(words: CaptionWord[], maxWords = HIGHLIGHT_WORDS): [number, number][] {
+  const ranges: [number, number][] = []
+  let at = 0
+  for (const phrase of phrasesOf(words, maxWords)) {
+    ranges.push([at, at + phrase.length])
+    at += phrase.length
+  }
+  return ranges
+}
+
+/** The phrase word `index` is in, or null. */
+export function phraseAt(ranges: readonly [number, number][], index: number): [number, number] | null {
+  if (index < 0) return null
+  return ranges.find(([from, to]) => index >= from && index < to) ?? null
+}
+
+/** The lit word. */
+const HIGHLIGHT_FILL = '#FFE14D'
+/** A phrase's words are smaller than a lone word, to fit two lines. */
+const PHRASE_SIZE = 0.85
+const LINE_HEIGHT = 1.12
+
+/** Draws a phrase with word `active` lit, `since` seconds after that word
+ *  came in. Laid out once for the whole phrase - left to right, at most two
+ *  centred lines - so the words never move while it is up. */
+export function drawPhrase(
+  ctx: Ctx,
+  width: number,
+  height: number,
+  phrase: CaptionWord[],
+  active: number,
+  since: number,
+  bare = false,
+  position: CaptionPosition = 'usual',
+  size: CaptionSize = 'normal',
+): void {
+  const texts = phrase.map((w) => (bare ? bareWord(w.text) : cleanWord(w.text)))
+  const shown = texts.map((t, i) => ({ t, i })).filter((w) => w.t !== '')
+  if (shown.length === 0) return
+  const base = Math.min(width, height * (9 / 16))
+  let fontPx = Math.round(base * CAPTION_SIZE * captionScale(size) * PHRASE_SIZE)
+  const maxWidth = width * 0.84
+  ctx.save()
+  const font = () => `${CAPTION_WEIGHT} ${fontPx}px ${HEADLINE_FAMILY}`
+  ctx.font = font()
+  // A word too long for a line on its own shrinks everything to fit it.
+  const widest = Math.max(...shown.map((w) => ctx.measureText(w.t).width))
+  if (widest > maxWidth) {
+    fontPx = Math.floor(fontPx * (maxWidth / widest))
+    ctx.font = font()
+  }
+  // A little more than a space between words, so the lit word's pop never
+  // touches its neighbours - used for wrapping and drawing alike.
+  const spacing = () => ctx.measureText(' ').width * 1.35
+  let space = spacing()
+  const widths = shown.map((w) => ctx.measureText(w.t).width)
+  // Into lines: as many words as fit, then the rest on a second line - and
+  // if they still do not fit, smaller rather than a third line.
+  const lay = (): number[][] => {
+    const lines: number[][] = [[]]
+    let used = 0
+    shown.forEach((_, k) => {
+      const line = lines[lines.length - 1]
+      const need = (line.length > 0 ? space : 0) + widths[k]
+      if (line.length > 0 && used + need > maxWidth) {
+        lines.push([k])
+        used = widths[k]
+      } else {
+        line.push(k)
+        used += need
+      }
+    })
+    return lines
+  }
+  let lines = lay()
+  if (lines.length > 2) {
+    const total = widths.reduce((a, b) => a + b, 0) + space * (shown.length - 1)
+    const factor = Math.max(0.5, (maxWidth * 2) / total) * 0.98
+    fontPx = Math.floor(fontPx * Math.min(1, factor))
+    ctx.font = font()
+    space = spacing()
+    widths.splice(0, widths.length, ...shown.map((w) => ctx.measureText(w.t).width))
+    lines = lay()
+  }
+  const gap = space
+  const lineGap = fontPx * LINE_HEIGHT
+  const centreY = height * captionY(position)
+  const firstY = centreY - ((lines.length - 1) * lineGap) / 2
+  ctx.textAlign = 'center'
+  ctx.textBaseline = 'middle'
+  ctx.lineJoin = 'round'
+  ctx.miterLimit = 2
+  ctx.globalAlpha = 1
+  lines.forEach((line, row) => {
+    const lineWidth = line.reduce((sum, k) => sum + widths[k], 0) + gap * (line.length - 1)
+    let x = width / 2 - lineWidth / 2
+    const y = firstY + row * lineGap
+    for (const k of line) {
+      const cx = x + widths[k] / 2
+      const lit = shown[k].i === active
+      ctx.save()
+      ctx.translate(cx, y)
+      // The lit word pops as it comes in, then sits at its own size: the
+      // colour carries it, and the layout never has to make room.
+      if (lit) {
+        const scale = Math.max(1, popScale(since))
+        ctx.scale(scale, scale)
+      }
+      ctx.shadowColor = 'rgb(0 0 0 / 0.35)'
+      ctx.shadowBlur = fontPx * 0.12
+      ctx.lineWidth = fontPx * EDGE
+      ctx.strokeStyle = '#000000'
+      ctx.strokeText(shown[k].t, 0, 0)
+      ctx.shadowColor = 'transparent'
+      ctx.fillStyle = lit ? HIGHLIGHT_FILL : '#ffffff'
+      ctx.fillText(shown[k].t, 0, 0)
+      ctx.restore()
+      x += widths[k] + gap
+    }
+  })
+  ctx.restore()
+}
+
+/** Word `index` of `words` as its caption, in `style`: on its own, or lit in
+ *  its phrase (`ranges` from phraseRanges(words), worked out once). */
+export function drawStyledCaption(
+  ctx: Ctx,
+  width: number,
+  height: number,
+  words: CaptionWord[],
+  ranges: readonly [number, number][],
+  index: number,
+  since: number,
+  bare: boolean,
+  position: CaptionPosition,
+  size: CaptionSize,
+  style: CaptionStyle,
+): void {
+  if (style === 'highlight') {
+    const range = phraseAt(ranges, index)
+    if (range) drawPhrase(ctx, width, height, words.slice(range[0], range[1]), index - range[0], since, bare, position, size)
+    return
+  }
+  drawCaption(ctx, width, height, words[index].text, since, bare, position, size)
+}
+

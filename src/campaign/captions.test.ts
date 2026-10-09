@@ -300,3 +300,38 @@ describe('caption size', () => {
     expect(captionScale('huge')).toBeGreaterThan(captionScale('large'))
   })
 })
+
+import { HIGHLIGHT_WORDS, phraseAt, phraseRanges, phrasesOf as phrasesFor } from './captions'
+
+describe('Highlight: the phrase each word is shown in', () => {
+  // "putting this on is gonna fix it, and honestly it took a week to see"
+  const said = ['putting', 'this', 'on', 'is', 'gonna', 'fix', 'it,', 'and', 'honestly', 'it', 'took', 'a', 'week', 'to', 'see.']
+  const words = said.map((text, i) => ({ text, start: i * 0.3, end: i * 0.3 + 0.25 }))
+
+  it('never puts more than four words in a phrase, nor leaves one on its own', () => {
+    const phrases = phrasesFor(words, HIGHLIGHT_WORDS)
+    expect(Math.max(...phrases.map((p) => p.length))).toBeLessThanOrEqual(4)
+    expect(Math.min(...phrases.map((p) => p.length))).toBeGreaterThan(1)
+    expect(phrases.flat()).toEqual(words)
+  })
+
+  it('leaves the review list as it was: up to five words a phrase', () => {
+    const long = Array.from({ length: 10 }, (_, i) => ({ text: `w${i}`, start: i * 0.3, end: i * 0.3 + 0.25 }))
+    expect(phrasesFor(long).map((p) => p.length)).toEqual([5, 5])
+    expect(phrasesFor(long, HIGHLIGHT_WORDS).map((p) => p.length)).toEqual([4, 4, 2])
+  })
+
+  it('finds each word in its phrase, across phrase edges', () => {
+    const ranges = phraseRanges(words)
+    // Every word belongs to exactly one phrase, in order.
+    words.forEach((_, i) => {
+      const range = phraseAt(ranges, i)
+      expect(range).not.toBeNull()
+      expect(i).toBeGreaterThanOrEqual(range![0])
+      expect(i).toBeLessThan(range![1])
+    })
+    expect(ranges[0][0]).toBe(0)
+    expect(ranges[ranges.length - 1][1]).toBe(words.length)
+    expect(phraseAt(ranges, -1)).toBeNull()
+  })
+})

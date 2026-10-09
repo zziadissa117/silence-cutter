@@ -51,7 +51,7 @@ import { RangeReader, inTimestampOrder } from '../media/rangeReader'
 import { isSilenceCutSupported } from '../media/silenceCut'
 import { totalDuration, type Range } from '../media/silenceMath'
 import type { VideoLook } from './look'
-import { CAPTION_LEAD, captionAt, drawCaption, type CaptionPosition, type CaptionSize, type CaptionWord } from './captions'
+import { CAPTION_LEAD, captionAt, drawStyledCaption, phraseRanges, type CaptionPosition, type CaptionSize, type CaptionStyle, type CaptionWord } from './captions'
 import { decoderGaveUp, eachSound, openClip, pause, visibleAgain, wholeOf, writeWhole, type Clip } from './clipParts'
 import type { ClipPlace } from './clips'
 import { framingAt, logoPop, placeFrame, planMotion } from './effects'
@@ -137,6 +137,8 @@ export interface CampaignRenderInput {
   captionPosition?: CaptionPosition
   /** How big the captions are. */
   captionSize?: CaptionSize
+  /** One word at a time, or the phrase with the spoken word lit. */
+  captionStyle?: CaptionStyle
   /** Make it 9:16 even when the Wide clips setting is Off. */
   forceVertical?: boolean
   /** Makes the voice louder and clearer; see voice.ts. */
@@ -180,6 +182,7 @@ export async function renderCampaignCut(
     captions = [],
     captionPosition = 'usual',
     captionSize = 'normal',
+    captionStyle = 'word',
     forceVertical = false,
     voice: boostVoice = false,
     music = null,
@@ -383,6 +386,8 @@ export async function renderCampaignCut(
     const logoPlacer = new MomentPlacer(logoMoments, keep)
     // Each word placed on the output's timeline with its range's real shift,
     // like the logo, so it pops on the frame the word is heard.
+    // Highlight shows each word in its phrase; worked out once for the video.
+    const captionPhrases = phraseRanges(captions)
     const captionPlacer = new MomentPlacer(
       captions.map((w) => w.start),
       keep,
@@ -571,7 +576,8 @@ export async function renderCampaignCut(
                 // The caption on top of everything: it is what is being said.
                 const word = captionAt(captionPlacer.times, captions, timestamp)
                 if (word >= 0) {
-                  drawCaption(ctx, width, height, captions[word].text, timestamp + CAPTION_LEAD - captionPlacer.times[word], false, captionPosition, captionSize)
+                  const since = timestamp + CAPTION_LEAD - captionPlacer.times[word]
+                  drawStyledCaption(ctx, width, height, captions, captionPhrases, word, since, false, captionPosition, captionSize, captionStyle)
                 }
                 // The new sample copies the canvas, so one canvas does every frame.
                 const frame = new VideoSample(canvas, { timestamp, duration })

@@ -29,7 +29,7 @@ import {
 import { manualCues, type ManualPicture } from './manualPictures'
 import { wordMoments } from './moments'
 import { cutNoiseOn } from './noiseSetting'
-import { captionWords, type CaptionPosition, type CaptionSize, type CaptionWord } from './captions'
+import { captionWords, type CaptionPosition, type CaptionSize, type CaptionStyle, type CaptionWord } from './captions'
 import type { ClipPlace, JoinedClips } from './clips'
 import { planCampaignCut, type CampaignPlan } from './plan'
 import { renderMontage } from './montageRender'
@@ -180,6 +180,8 @@ export async function make(
   manual: { picture: ManualPicture; image: Blob }[] = [],
   /** How big the captions are. */
   captionSize: CaptionSize = 'normal',
+  /** One word at a time, or the phrase with the spoken word lit. */
+  captionStyle: CaptionStyle = 'word',
 ): Promise<CampaignResult> {
   refuseBroken(campaign, angle)
   const base = videoLook(campaign, angle, bank, defaults, skipPictures)
@@ -209,6 +211,7 @@ export async function make(
       captions,
       captionPosition,
       captionSize,
+      captionStyle,
       forceVertical,
       voice,
       music: track ? { audio: track.audio, level: track.level } : null,
@@ -300,7 +303,7 @@ export async function makeReaction(
   music?: AngleMusic | null,
   /** What varies per video: its seed, the default effects for an angle with
    *  none (null for none), and where its captions sit. */
-  extra: { seed?: string; defaults?: AngleEffects | null; captionPosition?: CaptionPosition; captionSize?: CaptionSize } = {},
+  extra: { seed?: string; defaults?: AngleEffects | null; captionPosition?: CaptionPosition; captionSize?: CaptionSize; captionStyle?: CaptionStyle } = {},
 ): Promise<CampaignResult> {
   const talking = plan ? talksIn(plan.words, plan.keep) : false
   const track = music === undefined ? (angle.music ?? null) : music
@@ -314,6 +317,7 @@ export async function makeReaction(
       seed: extra.seed,
       captionPosition: extra.captionPosition,
       captionSize: extra.captionSize,
+      captionStyle: extra.captionStyle,
       switchSound: campaign.switchSound === 'none' ? null : (campaign.switchSound ?? 'whoosh'),
       captions: talking ? captions : [],
       voice,

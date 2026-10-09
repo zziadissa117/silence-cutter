@@ -33,7 +33,19 @@ import { JobRow } from './JobRow'
 import { CaptionReview } from './CaptionReview'
 import { CutsEditor } from './CutsEditor'
 import { HookQuestion } from './HookQuestion'
-import { captionWords, captionedIndices, defaultCaptionPosition, defaultCaptionSize, drawnWords, type CaptionPosition, type CaptionSize, type CaptionWord } from './captions'
+import {
+  captionWords,
+  captionedIndices,
+  defaultCaptionPosition,
+  defaultCaptionSize,
+  defaultCaptionStyle,
+  drawnWords,
+  setDefaultCaptionStyle,
+  type CaptionPosition,
+  type CaptionSize,
+  type CaptionStyle,
+  type CaptionWord,
+} from './captions'
 import {
   CLIP_PLACES,
   addClip,
@@ -1191,6 +1203,7 @@ export function CampaignApp() {
                 defaults: next.day?.noEffects ? null : defaultEffects(),
                 captionPosition: next.day?.captionPosition ?? defaultCaptionPosition(),
                 captionSize: next.day?.captionSize ?? defaultCaptionSize(),
+                captionStyle: next.day?.captionStyle ?? defaultCaptionStyle(),
               },
             ),
           )
@@ -1217,6 +1230,7 @@ export function CampaignApp() {
               next.noCut === true,
               await manualPicturesFor(next),
               next.day?.captionSize ?? defaultCaptionSize(),
+              next.day?.captionStyle ?? defaultCaptionStyle(),
             ),
           )
         } else {
@@ -2394,6 +2408,17 @@ export function CampaignApp() {
     void recordDay(id, day, { campaignId: job.campaignId, angleId: job.angleId, headlineText: job.headlineText })
   }
 
+  /** One word at a time or Highlight, for this video - and the next ones:
+   *  the style he picks last is where new videos start. */
+  const setCaptionStyle = (id: string, captionStyle: CaptionStyle) => {
+    setDefaultCaptionStyle(captionStyle)
+    const job = jobs.find((j) => j.id === id)
+    if (!job?.day) return
+    const day = { ...job.day, captionStyle }
+    setJobs((js) => js.map((j) => (j.id === id ? { ...j, day } : j)))
+    void recordDay(id, day, { campaignId: job.campaignId, angleId: job.angleId, headlineText: job.headlineText })
+  }
+
   /** Makes this video's captions bigger or smaller. */
   const setCaptionSize = (id: string, captionSize: CaptionSize) => {
     const job = jobs.find((j) => j.id === id)
@@ -2646,6 +2671,8 @@ export function CampaignApp() {
         onPosition={(position) => setCaptionPosition(reviewJob.id, position)}
         size={reviewJob.day?.captionSize ?? defaultCaptionSize()}
         onSize={(size) => setCaptionSize(reviewJob.id, size)}
+        captionStyle={reviewJob.day?.captionStyle ?? defaultCaptionStyle()}
+        onCaptionStyle={(style) => setCaptionStyle(reviewJob.id, style)}
       />
     ) : showPosts && posting ? (
       <PostsView

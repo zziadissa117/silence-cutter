@@ -3,6 +3,18 @@
 Newest first. Every change says what it does, how to use it, and how it works
 underneath. Kept up to date with each commit.
 
+## New: Highlight captions - the phrase at once, the word being said in yellow
+**What:** a second caption style. Instead of one word at a time, the phrase (up to 4 words, on one or two lines)
+is on screen together, white with the usual dark edge, and the word being said turns yellow with a small pop. It
+keeps every timing of the one-word captions: the same lead, hold, words taken out and no captions under the hook.
+**How to use it:** on a video's captions screen, under Top/Middle/Usual/Bottom: **One word / Highlight**. The
+preview changes at once. Whichever you pick last is where new videos start; size and position work the same for
+both. Edit again keeps the video's style.
+**How it works:** `drawPhrase` in `captions.ts` lays the phrase out once (so nothing moves while it's up) and lights
+the word `captionAt` picks; phrases are the review list's phrases, capped at 4 words to fit.
+Files: `captions.ts` (+ test), `render.ts`, `reactionRender.ts`, `pipeline.ts`, `jobs.ts`, `store.ts`,
+`CaptionReview.tsx`, `CampaignApp.tsx`. App only: `./deploy.sh`.
+
 ## New: stop all of one campaign's posts
 **What:** for a finished campaign, one button stops every post of it that hasn't gone out yet - waiting for approval,
 approved, or scheduled in Postiz. Scheduled ones are taken out of Postiz; all of them are marked rejected, the same
