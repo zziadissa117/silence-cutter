@@ -228,7 +228,7 @@ public/push-sw.js              service-worker push handler
 - Never auto-update the service worker (UpdateBanner owns reloads).
 - The campaign page scrolls as the document and `.tabbar` is `position: fixed` to its bottom. Never size a
   container to the screen (a fixed `inset: 0` frame, `100%`, `100svh`/`100dvh`): on iOS 26 the home-screen
-  app (viewport-fit=cover + black-translucent status bar, WebKit bug 301108) reports those a status bar's
+  app (viewport-fit=cover + black-translucent status bar, WebKit bug 301108 - the status bar is now plain black to avoid it) reports those a status bar's
   height short, which left the bar a block up with a dead black strip under it. Only `100lvh` is the full
   screen there; the installed app's html/body are at least that tall so short screens reach the bottom.
   Changing the status-bar meta would fix it at the root, but iOS reads it only when the app is added to the

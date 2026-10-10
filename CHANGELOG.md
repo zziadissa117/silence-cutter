@@ -3,6 +3,18 @@
 Newest first. Every change says what it does, how to use it, and how it works
 underneath. Kept up to date with each commit.
 
+## Fix: the tab bar drifting with the scroll (third try - the cause, not the symptom)
+**What:** the bar - Videos, Batch, Campaigns, Pictures, Settings - still followed the scroll instead of staying on
+the bottom of the phone. The earlier fixes worked around an iOS 26 bug (WebKit 301108) that only happens in a Home
+Screen app whose status bar is see-through; this one removes what sets it off: the status bar (time, battery) is
+now plain black instead of see-through. On this black app it looks the same. The page also no longer rubber-bands
+past its top and bottom, which made the bar look like it was moving.
+**If it still drifts after ./deploy.sh:** iOS can keep the old status bar setting from when the app was added to
+the Home Screen - delete the Cutter icon and add it again from Safari (Share, Add to Home Screen). Nothing on the
+phone is lost: videos and settings are kept by the site, not the icon.
+**Checked:** builds; not on an iPhone - only your phone can show it.
+Files: `campaign.html`, `index.html`, `campaign.css`.
+
 ## Fix: Stop N posts did nothing
 **What was wrong:** pressing the red Stop button spun for a moment and then nothing changed - the posts stayed
 scheduled. The posting function on the server is still the one from Oct 6 (./deploy-server.sh hasn't run since),

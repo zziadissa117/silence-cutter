@@ -164,7 +164,12 @@ main.tabbed { padding-bottom: calc(env(safe-area-inset-bottom) + 96px); }
   margin-left: -6px; padding: 0 6px; background: none; border: 0; color: var(--dim); font: inherit; font-size: 16px; cursor: pointer;
 }
 
-/* The bottom tab bar, fixed to the bottom of the page as it scrolls. Never
+/* The bottom tab bar, fixed to the bottom of the page as it scrolls.
+   The real cause of it drifting was WebKit bug 301108: an installed iOS 26
+   app with a see-through (black-translucent) status bar is told the screen
+   is a status bar's height shorter than it is. The status bar is now plain
+   black (campaign.html, index.html) - the same look on this black app - so
+   the bug is not set off at all. Never
    put it in a fixed frame the size of the screen: on iOS 26 the home-screen
    app sizes such a frame - and 100%, svh and dvh - a status bar's height
    short, which left the bar a block up with a dead black strip under it.
@@ -175,6 +180,9 @@ main.tabbed { padding-bottom: calc(env(safe-area-inset-bottom) + 96px); }
 @media (display-mode: standalone), (display-mode: fullscreen) {
   html, body { min-height: 100vh; min-height: 100lvh; }
 }
+/* No rubber-band past the top or bottom: the page bouncing under the bar
+   read as the bar moving. */
+html, body { overscroll-behavior-y: none; }
 .tabbar {
   position: fixed; left: 0; right: 0; bottom: 0; z-index: 10;
   display: flex; justify-content: center;
