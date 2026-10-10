@@ -10,11 +10,32 @@ vi.mock('./store', async (original) => {
   return Object.fromEntries(Object.keys(real).map((key) => [key, typeof real[key] === 'function' ? vi.fn() : real[key]]))
 })
 
+// The real stopPostsNow, over a mocked server: `call` is reached through
+// fetch, so the server's answers are faked there.
 const stopPosts = vi.fn(async (ids: string[]) => ({ stopped: ids.length, unposting: 1 }))
-vi.mock('./posting', async (original) => ({
-  ...(await original<typeof import('./posting')>()),
-  stopPosts: (ids: string[]) => stopPosts(ids),
-}))
+const rejected: string[] = []
+let oldServer = false
+vi.mock('./posting', async (original) => {
+  const real = await original<typeof import('./posting')>()
+  return {
+    ...real,
+    stopPostsNow: async (posts: import('./posting').ServerPost[], onProgress?: (d: number, t: number) => void) => {
+      if (!oldServer) {
+        const out = await stopPosts(posts.map((p) => p.id))
+        return { ...out, failed: [] }
+      }
+      // The old server's path: one reject each, the way stopPostsNow falls back.
+      const failed: { post: import('./posting').ServerPost; reason: string }[] = []
+      let done = 0
+      for (const p of posts) {
+        if (p.id === 'c') failed.push({ post: p, reason: 'Postiz had a problem (502).' })
+        else rejected.push(p.id)
+        onProgress?.(++done, posts.length)
+      }
+      return { stopped: posts.length - failed.length, unposting: 0, failed }
+    },
+  }
+})
 
 import { stoppable, type ServerPost } from './posting'
 import { StopPicker } from './StopPicker'
@@ -29,6 +50,8 @@ beforeEach(() => {
   document.body.appendChild(host)
   root = createRoot(host)
   stopPosts.mockClear()
+  rejected.length = 0
+  oldServer = false
   vi.spyOn(window, 'confirm').mockReturnValue(true)
 })
 
@@ -78,3 +101,22 @@ describe('the stop picker', () => {
     expect(button(/Tick posts to stop/).disabled).toBe(true)
   })
 })
+
+describe('when some posts will not stop', () => {
+  it('says so at the top, keeps only those ticked, and stops the rest', async () => {
+    oldServer = true
+    const onDone = vi.fn()
+    act(() => root.render(<StopPicker posts={stoppable(posts)} onDone={onDone} onCancel={() => {}} />))
+    act(() => button(/^All 3$/).click())
+    await act(async () => button(/^Stop 3 posts$/).click())
+    expect(rejected).toEqual(['a', 'b'])
+    expect(onDone).not.toHaveBeenCalled()
+    const alert = host.querySelector('[role="alert"]')
+    expect(alert?.textContent).toContain("1 didn't stop")
+    // The alert is the first thing in the picker, above the list.
+    expect(host.querySelector('.stop-picker')?.firstElementChild).toBe(alert)
+    expect(button(/^Stop 1 post$/)).toBeTruthy()
+    expect(host.textContent).toContain("Didn't stop: Postiz had a problem (502).")
+  })
+})
+

@@ -104,6 +104,8 @@ import {
   sendsFrom,
   setSendHere,
   stopCampaignPosts,
+  stopPostsNow,
+  stoppable,
   hasTimes,
   timeLabel,
   windowLabel,
@@ -1726,8 +1728,20 @@ export function CampaignApp() {
 
   /** Every post of one campaign not out yet, stopped - what it did, in words. */
   const stopPosts = async (owner: Campaign): Promise<string> => {
-    const { stopped, unposting } = await stopCampaignPosts(owner.id)
+    let stopped: number
+    let unposting = 0
+    let failed = 0
+    try {
+      ;({ stopped, unposting } = await stopCampaignPosts(owner.id))
+    } catch (error) {
+      // A server from before stop-campaign: stop its posts one by one instead.
+      if (!(error instanceof Error) || !/unknown action/i.test(error.message)) throw error
+      const outcome = await stopPostsNow(stoppable((await listPosts()).filter((p) => p.campaignId === owner.id)))
+      stopped = outcome.stopped
+      failed = outcome.failed.length
+    }
     countPosts()
+    if (failed > 0) return `Stopped ${stopped} ${owner.name} posts; ${failed} didn't stop - press again to retry them.`
     if (stopped === 0) return `No ${owner.name} posts were waiting or scheduled.`
     const done = `Stopped ${stopped} ${owner.name} post${stopped === 1 ? '' : 's'} - none of them will go out.`
     return unposting > 0

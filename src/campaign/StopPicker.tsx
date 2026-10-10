@@ -4,7 +4,7 @@
 
 import { useMemo, useState } from 'react'
 
-import { stopPosts, whenLabel, type ServerPost } from './posting'
+import { stopPostsNow, whenLabel, type ServerPost } from './posting'
 
 const STATUS_WORD: Record<string, string> = {
   uploading: 'Going up',
@@ -27,7 +27,10 @@ export function StopPicker({
 }) {
   const [picked, setPicked] = useState<Set<string>>(new Set())
   const [busy, setBusy] = useState(false)
+  const [progress, setProgress] = useState<{ done: number; total: number } | null>(null)
   const [problem, setProblem] = useState<string | null>(null)
+  // Ones that would not stop, with why - kept ticked so they can be tried again.
+  const [failed, setFailed] = useState<{ post: ServerPost; reason: string }[]>([])
 
   // Campaigns in the order their first post comes.
   const campaigns = useMemo(() => {
@@ -57,21 +60,33 @@ export function StopPicker({
     })
 
   const stop = async () => {
-    const ids = [...picked]
-    if (ids.length === 0) return
-    if (!window.confirm(`Stop ${ids.length} post${ids.length === 1 ? '' : 's'}? Ones scheduled in Postiz are taken out. They won't go out.`)) return
+    const chosen = posts.filter((p) => picked.has(p.id))
+    if (chosen.length === 0) return
+    if (!window.confirm(`Stop ${chosen.length} post${chosen.length === 1 ? '' : 's'}? Ones scheduled in Postiz are taken out. They won't go out.`)) return
     setBusy(true)
     setProblem(null)
+    setFailed([])
+    setProgress({ done: 0, total: chosen.length })
     try {
-      const { stopped, unposting } = await stopPosts(ids)
-      onDone(
-        `Stopped ${stopped} post${stopped === 1 ? '' : 's'}.` +
-          (unposting > 0 ? ` ${unposting} ${unposting === 1 ? 'is' : 'are'} being taken out of Postiz over the next few minutes.` : ''),
-      )
+      const outcome = await stopPostsNow(chosen, (done, total) => setProgress({ done, total }))
+      const done =
+        `Stopped ${outcome.stopped} post${outcome.stopped === 1 ? '' : 's'}.` +
+        (outcome.unposting > 0
+          ? ` ${outcome.unposting} ${outcome.unposting === 1 ? 'is' : 'are'} being taken out of Postiz over the next few minutes.`
+          : '')
+      if (outcome.failed.length === 0) {
+        onDone(done)
+        return
+      }
+      // Leave only the ones that failed ticked, and say why, at the top.
+      setFailed(outcome.failed)
+      setPicked(new Set(outcome.failed.map((f) => f.post.id)))
+      setProblem(`${done} ${outcome.failed.length} didn't stop - they're still ticked below. Press Stop to try them again.`)
     } catch (error) {
-      setProblem(error instanceof Error ? error.message : String(error))
+      setProblem(`Nothing was stopped: ${error instanceof Error ? error.message : String(error)}`)
     } finally {
       setBusy(false)
+      setProgress(null)
     }
   }
 
@@ -79,6 +94,12 @@ export function StopPicker({
 
   return (
     <div className="stop-picker">
+      {/* At the top, where he is looking - never under a list of seventy. */}
+      {problem ? (
+        <div className="error" role="alert">
+          {problem}
+        </div>
+      ) : null}
       <div className="hint">Tick what to stop - a whole campaign, or posts one by one.</div>
       <div className="seg chips" role="group" aria-label="Tick a whole campaign">
         <button type="button" className={allOf(everything) ? 'active' : ''} aria-pressed={allOf(everything)} onClick={() => toggleAll(everything)}>
@@ -103,17 +124,26 @@ export function StopPicker({
                   {p.status === 'scheduled' || p.postAt ? ` · ${whenLabel(p.postAt)}` : ''}
                   {p.fileName ? ` · ${p.fileName}` : ''}
                 </span>
+                {failed.find((f) => f.post.id === p.id) ? (
+                  <span className="hint warn-text" style={{ display: 'block' }}>
+                    Didn't stop: {failed.find((f) => f.post.id === p.id)!.reason}
+                  </span>
+                ) : null}
               </span>
             </label>
           </li>
         ))}
       </ul>
 
-      {problem ? <div className="error">{problem}</div> : null}
-
       <div className="editor-foot sticky">
         <button type="button" className="btn danger wide" disabled={busy || picked.size === 0} onClick={() => void stop()}>
-          {busy ? 'Stopping…' : picked.size === 0 ? 'Tick posts to stop' : `Stop ${picked.size} post${picked.size === 1 ? '' : 's'}`}
+          {busy
+            ? progress && progress.total > 1
+              ? `Stopping ${progress.done} of ${progress.total}…`
+              : 'Stopping…'
+            : picked.size === 0
+              ? 'Tick posts to stop'
+              : `Stop ${picked.size} post${picked.size === 1 ? '' : 's'}`}
         </button>
         <button type="button" className="linkbtn" disabled={busy} onClick={onCancel}>
           Cancel

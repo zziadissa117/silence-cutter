@@ -3,6 +3,20 @@
 Newest first. Every change says what it does, how to use it, and how it works
 underneath. Kept up to date with each commit.
 
+## Fix: Stop N posts did nothing
+**What was wrong:** pressing the red Stop button spun for a moment and then nothing changed - the posts stayed
+scheduled. The posting function on the server is still the one from Oct 6 (./deploy-server.sh hasn't run since),
+which doesn't know the new "stop these posts" request, so it refused it - and the picker showed that refusal under
+the long list of posts, out of sight.
+**Now:** with a server that hasn't been updated, the phone stops the posts itself, one by one, using the same Reject
+the button on each post has always used (it takes a scheduled post out of Postiz). Three at a time, soonest first, so
+the next one due is stopped first; the button counts "Stopping 23 of 73…". Any that won't stop stay ticked with the
+reason, and pressing Stop again retries just those. Problems now show at the top of the picker. Once
+./deploy-server.sh has run, the faster all-at-once stop is used instead, automatically. The campaign screen's "Stop
+all posts" button falls back the same way.
+Only ./deploy.sh is needed for this.
+Files: `posting.ts` (`stopPostsNow`, + test), `StopPicker.tsx` (+ test), `CampaignApp.tsx`.
+
 ## New: select posts on the Posts screen and stop them in one go
 **What:** the Posts screen has a **Select** button. It lists every post that can still be stopped (to approve, on
 the way, scheduled), with a chip per campaign - "Inflow 64", "Vertus 12" - that ticks all of that campaign's posts in

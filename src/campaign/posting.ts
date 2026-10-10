@@ -339,6 +339,51 @@ export async function stopPosts(ids: string[]): Promise<{ stopped: number; unpos
   return call<{ stopped: number; unposting: number }>('stop-posts', { profile: profileId(), ids })
 }
 
+export interface StopOutcome {
+  stopped: number
+  /** Still being taken out of Postiz in the background (fast path only). */
+  unposting: number
+  /** Posts that could not be stopped, with why. */
+  failed: { post: ServerPost; reason: string }[]
+}
+
+/** How many reject calls go at once on the slow path. */
+const STOP_AT_ONCE = 3
+
+/** Stops these posts. Asks the server to do them all at once; a server from
+ *  before that (it answers "Unknown action") is asked to reject them one by
+ *  one instead - the same Reject as the button on each post, which takes a
+ *  scheduled one out of Postiz - three at a time, soonest first, so the next
+ *  to go out is stopped first. One that fails does not stop the rest. */
+export async function stopPostsNow(posts: ServerPost[], onProgress?: (done: number, total: number) => void): Promise<StopOutcome> {
+  if (posts.length === 0) return { stopped: 0, unposting: 0, failed: [] }
+  try {
+    const { stopped, unposting } = await stopPosts(posts.map((p) => p.id))
+    onProgress?.(posts.length, posts.length)
+    return { stopped, unposting, failed: [] }
+  } catch (error) {
+    if (!(error instanceof PostingError) || !/unknown action/i.test(error.message)) throw error
+  }
+  const queue = [...posts].sort((a, b) => (a.postAt ?? '').localeCompare(b.postAt ?? ''))
+  const failed: StopOutcome['failed'] = []
+  let stopped = 0
+  let done = 0
+  onProgress?.(0, posts.length)
+  const worker = async () => {
+    for (let post = queue.shift(); post; post = queue.shift()) {
+      try {
+        await postAction('reject', post.id)
+        stopped++
+      } catch (error) {
+        failed.push({ post, reason: error instanceof Error ? error.message : String(error) })
+      }
+      onProgress?.(++done, posts.length)
+    }
+  }
+  await Promise.all(Array.from({ length: Math.min(STOP_AT_ONCE, posts.length) }, worker))
+  return { stopped, unposting: 0, failed }
+}
+
 export interface RecheckResult {
   phrases: string[]
   /** Indexes of the phrases Claude changed. */
