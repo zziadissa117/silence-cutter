@@ -234,7 +234,11 @@ function WaitingPost({
         {post.accounts.map((a) => (a.held ? `${accountLabel(a)} (${a.held === 'paused' ? 'paused - waiting' : "today's limit - waiting"})` : accountLabel(a))).join(', ')}
       </div>
       {post.error ? <div className="hint warn-text">{post.error}</div> : null}
-      {brand ? <div className="hint">Send it to the brand first - Save video - then Brand approved when they say yes.</div> : null}
+      {post.ready ? (
+        <div className="hint">Approved - it waits here until you tap Post. Save the video first if you want it.</div>
+      ) : brand ? (
+        <div className="hint">Send it to the brand first - Save video - then Brand approved when they say yes.</div>
+      ) : null}
       <textarea
         className="post-caption"
         rows={4}
@@ -280,8 +284,13 @@ function WaitingPost({
           disabled={busy || !caption.trim()}
           onClick={() => onAct('approve', fields())}
         >
-          {busy ? 'Sending…' : brand ? 'Brand approved' : 'Approve'}
+          {busy ? 'Sending…' : post.ready ? 'Post' : brand ? 'Brand approved' : 'Approve'}
         </button>
+        {post.ready ? null : (
+          <button type="button" className="btn small" disabled={busy || !caption.trim()} onClick={() => onAct('ready', fields())}>
+            Approve, post later
+          </button>
+        )}
         <SaveVideo post={post} primary={brand} />
         <EditAgain post={post} editable={editable} onEdit={onEdit} />
         {canAddMusic(post) ? (
@@ -530,7 +539,12 @@ export function PostsView({
       if (next.status === 'waiting' && next.error && action === 'approve') setProblem(next.error)
       else setProblem(null)
     } catch (error) {
-      setProblem(error instanceof Error ? error.message : String(error))
+      const message = error instanceof Error ? error.message : String(error)
+      setProblem(
+        action === 'ready' && /unknown action/i.test(message)
+          ? "Post later needs the server updated first - run ./deploy-server.sh in silence-cutter."
+          : message,
+      )
     } finally {
       setBusy((b) => {
         const rest = new Set(b)
@@ -558,7 +572,9 @@ export function PostsView({
       ),
     )
 
-  const waiting = view.filter((p) => p.status === 'waiting')
+  const waiting = view.filter((p) => p.status === 'waiting' && !p.ready)
+  // Approved with "post later": held until he taps Post.
+  const ready = view.filter((p) => p.status === 'waiting' && p.ready).sort((a, b) => (a.postAt ?? '').localeCompare(b.postAt ?? ''))
   const approvable = waiting.filter((p) => p.approval !== 'brand' && p.caption?.trim())
   const sendingNow = outgoing.filter((s) => s.entry.state === 'sending')
   const sendingKeys = new Set(sendingNow.map((s) => s.entry.key))
@@ -667,6 +683,17 @@ export function PostsView({
           <div className="list-title">To approve</div>
           <ul className="posts-list">
             {list(foldBatches(waiting), (post) => (
+              <WaitingPost key={post.id} editable={editable} onEdit={onEditAgain} campaigns={campaigns} onChanged={onMusicDone} post={post} busy={busy.has(post.id)} onAct={(action, fields) => void act(post, action, fields)} />
+            ))}
+          </ul>
+        </>
+      ) : null}
+
+      {ready.length > 0 ? (
+        <>
+          <div className="list-title">Ready to post · {ready.length}</div>
+          <ul className="posts-list">
+            {list(foldBatches(ready), (post) => (
               <WaitingPost key={post.id} editable={editable} onEdit={onEditAgain} campaigns={campaigns} onChanged={onMusicDone} post={post} busy={busy.has(post.id)} onAct={(action, fields) => void act(post, action, fields)} />
             ))}
           </ul>

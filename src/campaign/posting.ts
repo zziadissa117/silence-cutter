@@ -89,6 +89,8 @@ export interface ServerPost {
   createdAt: string
   /** Made by hand from New post. */
   byHand?: boolean
+  /** Approved with "post later": it waits until he taps Post. */
+  ready?: boolean
   /** Made from the Batch tab, for this day and time. */
   batch?: { id: string; date: string; time: string; size: number } | null
 }
@@ -355,7 +357,7 @@ export async function listPosts(): Promise<ServerPost[]> {
   return posts
 }
 
-export type PostAction = 'edit' | 'approve' | 'reject' | 'unschedule' | 'retry'
+export type PostAction = 'edit' | 'approve' | 'ready' | 'reject' | 'unschedule' | 'retry'
 
 export async function postAction(
   action: PostAction,

@@ -3,6 +3,17 @@
 Newest first. Every change says what it does, how to use it, and how it works
 underneath. Kept up to date with each commit.
 
+## Approve, post later
+**What:** next to Approve on each post waiting for you there is now **Approve, post later**. It approves the caption
+but sends nothing to Postiz: the post moves to a new **Ready to post** list, where Save video works as long as you
+like. Tap **Post** there when you want it to go - at its time if that is still ahead, otherwise at the next free time
+(or straight away). Ready posts don't count as "posts to approve" in notifications or in Approve all, and the caption
+can still be changed. Taking a scheduled post back puts it under To approve again, not Ready.
+**Needs:** a new column on the server (`ready_at`, migration `20261010120000_cutter_posts_ready.sql`) and both
+deploys - ./deploy.sh and ./deploy-server.sh. Until the server is updated the button says so instead of failing
+silently.
+Files: `postiz/index.ts` (`ready` action), `posting.ts`, `PostsView.tsx` (+ test), migration.
+
 ## Posts: filter by campaign, batches folded into one row
 **What:** the Posts screen got long - a batch of 25 a day for a week filled the whole page. Now:
 - **Filter:** chips at the top - "All 180", "Polsia 150", "Inflow 30" - show one campaign at a time. The phone

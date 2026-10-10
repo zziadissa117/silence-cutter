@@ -34,7 +34,7 @@
 //   start          { profile, key, campaign, meta, size } -> { id, partBytes, uploads }
 //   sent           { profile, key }             -> { id, status } or { missing }
 //   posts          { profile }                  -> { posts }
-//   edit / approve { profile, id, caption?, title?, at? } -> { post }
+//   edit / approve / ready { profile, id, caption?, title?, at? } -> { post }   ready: approved, held until he taps Post (approve)
 //   reject / unschedule / retry { profile, id } -> { post }
 //   stop-campaign  { profile, campaignId }   -> { stopped, unposting }  every post of one campaign not out yet, rejected at once;
 //                  the ones Postiz holds are taken out of it in the background (and on each tick)
@@ -329,6 +329,8 @@ interface Post {
    *  he picked or straight away, never approved again and never on one of
    *  the campaign's times. */
   by_hand: boolean
+  /** Approved with "post later": waits for him to tap Post. */
+  ready_at: string | null
   /** What he said it is about, for its caption. */
   about: string | null
   /** Made in a batch from the Batch tab, for a day and one of its times. */
@@ -416,6 +418,7 @@ function postView(post: Post) {
     retryAt: post.retry_at,
     createdAt: post.created_at,
     byHand: post.by_hand,
+    ready: Boolean(post.ready_at),
     batch: post.batch ? { id: post.batch.id, date: post.batch.date, time: post.batch.time, size: post.batch.size } : null,
   }
 }
@@ -804,7 +807,7 @@ async function sendWaiting(profileId: string): Promise<void> {
     .select('id')
     .maybeSingle()
   if (!claimed) return
-  const { data } = await db.from('cutter_posts').select('campaign_name').eq('profile_id', profileId).eq('status', 'waiting')
+  const { data } = await db.from('cutter_posts').select('campaign_name').eq('profile_id', profileId).eq('status', 'waiting').is('ready_at', null)
   const waiting = data ?? []
   if (waiting.length === 0) return
   const names = [...new Set(waiting.map((w) => w.campaign_name))]
@@ -1626,10 +1629,19 @@ async function act(profile: Profile, action: string, body: Record<string, unknow
       const fields = edits(post, body)
       const caption = fields.caption ?? post.caption
       if (!caption?.trim()) throw new Problem(post.rules.caption === 'paste' ? 'Paste the caption first.' : 'Write the caption first.')
-      const approved = await update(post.id, { ...fields, status: 'approved', error: null, attempts: 0, retry_at: null })
+      const approved = await update(post.id, { ...fields, status: 'approved', ready_at: null, error: null, attempts: 0, retry_at: null })
       // Straight away when it can; if not, the scheduler keeps at it.
       await advance(approved.id)
       return reply({ post: postView(await ownPost(profile, post.id)) })
+    }
+    case 'ready': {
+      // Approved, but held here until he taps Post (approve) - so he can save
+      // the video first. Nothing sends a waiting post.
+      if (post.status !== 'waiting') return reply({ post: postView(post) })
+      const fields = edits(post, body)
+      const caption = fields.caption ?? post.caption
+      if (!caption?.trim()) throw new Problem(post.rules.caption === 'paste' ? 'Paste the caption first.' : 'Write the caption first.')
+      return reply({ post: postView(await update(post.id, { ...fields, ready_at: new Date().toISOString(), error: null })) })
     }
     case 'reject': {
       if (post.status === 'scheduled' && post.postiz_ids?.[0]) {
@@ -1644,7 +1656,7 @@ async function act(profile: Profile, action: string, body: Record<string, unknow
       if (post.post_at && new Date(post.post_at).getTime() < Date.now()) throw new Problem('It has already gone out.')
       const { postiz: key } = await keysFor(profile.id)
       if (post.postiz_ids?.[0]) await deleteScheduled(key, post)
-      return reply({ post: postView(await update(post.id, { status: 'waiting', postiz_ids: null, error: null })) })
+      return reply({ post: postView(await update(post.id, { status: 'waiting', ready_at: null, postiz_ids: null, error: null })) })
     }
     case 'retry': {
       if (post.status !== 'failed' && !(post.status === 'writing' || post.status === 'approved')) return reply({ post: postView(post) })
@@ -2045,6 +2057,7 @@ Deno.serve(async (req) => {
         return await listPosts(profile)
       case 'edit':
       case 'approve':
+      case 'ready':
       case 'reject':
       case 'unschedule':
       case 'retry':

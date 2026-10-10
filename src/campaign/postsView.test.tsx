@@ -22,7 +22,14 @@ const scheduled = (id: string, campaignId: string, name: string, batch?: string,
     batch: batch ? { id: batch, date: '2099-01-01', time: '10:00', size: 25 } : null,
   }) as unknown as ServerPost
 
+const waitingPost = (id: string, ready = false) =>
+  ({ ...scheduled(id, 'vertus', 'Vertus', undefined, 3), status: 'waiting', caption: 'A caption', approval: 'you', ready }) as unknown as ServerPost
+
+const postAction = vi.fn(async (action: string, id: string) => ({ ...waitingPost(id), ready: action === 'ready' }))
+
 const posts = [
+  waitingPost('w1'),
+  waitingPost('r1', true),
   ...Array.from({ length: 25 }, (_, i) => scheduled(`b${i}`, 'polsia', 'Polsia', 'big', i + 1)),
   scheduled('one', 'inflow', 'Inflow', undefined, 2),
 ]
@@ -45,6 +52,7 @@ vi.mock('./posting', async (original) => ({
   lastPosts: () => posts,
   listPosts: vi.fn(async () => posts),
   postingHere: () => null,
+  postAction: (action: string, id: string) => postAction(action, id),
 }))
 
 import { PostsView } from './PostsView'
@@ -67,7 +75,8 @@ afterEach(() => {
   host.remove()
 })
 
-const rows = () => host.querySelectorAll('.posts-list > li')
+const scheduledRows = () => [...host.querySelectorAll('.list-title')].find((t) => t.textContent?.startsWith('Scheduled'))!.nextElementSibling!.children
+const rows = scheduledRows
 const chip = (name: string) => [...host.querySelectorAll('.posts-filter button')].find((b) => b.textContent === name) as HTMLButtonElement
 
 describe('scheduled posts', () => {
@@ -83,7 +92,24 @@ describe('scheduled posts', () => {
     expect(rows()).toHaveLength(1)
     expect(host.textContent).not.toContain('Polsia · 25 videos')
     expect(localStorage.getItem('cutter.posts.show')).toBe('inflow')
-    await act(async () => chip('All 26').click())
+    await act(async () => chip('All 28').click())
     expect(rows()).toHaveLength(2)
+  })
+})
+
+describe('approve, post later', () => {
+  const button = (name: string) => [...host.querySelectorAll('button')].filter((b) => b.textContent === name)
+
+  it('sits next to Approve and holds the post instead of sending it', async () => {
+    expect(button('Approve')).toHaveLength(1)
+    await act(async () => button('Approve, post later')[0].click())
+    expect(postAction).toHaveBeenCalledWith('ready', 'w1')
+    expect(host.textContent).toContain('Ready to post · 2')
+  })
+
+  it('keeps a held post under Ready to post, with Post instead of Approve', () => {
+    expect(host.textContent).toContain('Ready to post · 1')
+    expect(button('Post')).toHaveLength(1)
+    expect(host.textContent).toContain('it waits here until you tap Post')
   })
 })
