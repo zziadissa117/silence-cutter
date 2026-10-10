@@ -25,6 +25,7 @@ const scheduled = (id: string, campaignId: string, name: string, batch?: string,
 const waitingPost = (id: string, ready = false) =>
   ({ ...scheduled(id, 'vertus', 'Vertus', undefined, 3), status: 'waiting', caption: 'A caption', approval: 'you', ready }) as unknown as ServerPost
 
+const redoCaptions = vi.fn(async (_campaignId: string, _posting: unknown, ids?: string[]) => ({ rewriting: ids?.length ?? 0, tooSoon: 0 }))
 const postAction = vi.fn(async (action: string, id: string) => ({ ...waitingPost(id), ready: action === 'ready' }))
 
 const posts = [
@@ -53,6 +54,7 @@ vi.mock('./posting', async (original) => ({
   listPosts: vi.fn(async () => posts),
   postingHere: () => null,
   postAction: (action: string, id: string) => postAction(action, id),
+  redoCaptions: (campaignId: string, posting: unknown, ids?: string[]) => redoCaptions(campaignId, posting, ids),
 }))
 
 import { PostsView } from './PostsView'
@@ -67,7 +69,7 @@ beforeEach(async () => {
   host = document.createElement('div')
   document.body.appendChild(host)
   root = createRoot(host)
-  await act(async () => root.render(<PostsView campaigns={[]} onBack={() => {}} editable={{}} onEditAgain={() => {}} />))
+  await act(async () => root.render(<PostsView campaigns={[{ id: 'polsia', name: 'Polsia', posting: { caption: 'claude', rules: '', hashtags: ['#polsia'], approval: 'me', remind: false } } as never]} onBack={() => {}} editable={{}} onEditAgain={() => {}} />))
 })
 
 afterEach(() => {
@@ -111,5 +113,15 @@ describe('approve, post later', () => {
     expect(host.textContent).toContain('Ready to post · 1')
     expect(button('Post')).toHaveLength(1)
     expect(host.textContent).toContain('it waits here until you tap Post')
+  })
+})
+
+describe('redo captions', () => {
+  it("writes a batch's captions again with the campaign's rules, after he says yes", async () => {
+    vi.spyOn(window, 'confirm').mockReturnValue(true)
+    const redo = [...host.querySelectorAll('.batch-row button')].find((b) => b.textContent === 'Redo captions') as HTMLButtonElement
+    await act(async () => redo.click())
+    expect(redoCaptions).toHaveBeenCalledWith('polsia', expect.objectContaining({ hashtags: ['#polsia'] }), Array.from({ length: 25 }, (_, i) => `b${i}`))
+    expect(host.textContent).toContain('Rewriting 25 Polsia captions with the new rules')
   })
 })

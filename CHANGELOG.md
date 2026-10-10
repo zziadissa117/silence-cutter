@@ -3,6 +3,22 @@
 Newest first. Every change says what it does, how to use it, and how it works
 underneath. Kept up to date with each commit.
 
+## Redo captions after changing a campaign's caption rules
+**What:** captions already written - waiting, held for later, or scheduled in Postiz - can be written again with the
+campaign's rules and hashtags as they are now. Two ways:
+- **A whole campaign:** Campaigns, the campaign, Posting. Under the caption rules there is now "Redo the captions
+  already made" with how many posts it reaches. It ticks itself when you change the rules or hashtags; tick it
+  yourself if you changed them earlier (like the hashtag you just added), then Save posting.
+- **One batch:** on the Posts screen each batch row has **Redo captions**.
+Scheduled posts stay at their times: each is taken out of Postiz only after its new caption is written, then goes
+back at the same time. Ones going out in the next 15 minutes keep their old caption. Pasted (tracking) captions and
+captions you wrote for a New post are kept word for word - only the hashtags are added. Posts show "Rewriting the
+caption…" while it happens; 100 posts take several minutes. If a caption can't be written (no Anthropic key, Claude
+down) the post keeps its old one and says so.
+**Needs:** ./deploy.sh and ./deploy-server.sh. No database change.
+Files: `postiz/recaption.ts` (+ test), `postiz/index.ts` (`recaption`, `rewriteMarked`), `posting.ts`,
+`PostingEditor.tsx` (+ test), `PostsView.tsx` (+ test), `CampaignApp.tsx`.
+
 ## Approve, post later
 **What:** next to Approve on each post waiting for you there is now **Approve, post later**. It approves the caption
 but sends nothing to Postiz: the post moves to a new **Ready to post** list, where Save video works as long as you

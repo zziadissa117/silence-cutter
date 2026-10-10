@@ -375,6 +375,32 @@ export async function stopCampaignPosts(campaignId: string): Promise<{ stopped: 
   return call<{ stopped: number; unposting: number }>('stop-campaign', { profile: profileId(), campaignId })
 }
 
+/** Writes the captions of a campaign's posts not out yet again with its
+ *  current rules and hashtags - all of them, or just `ids` (a batch).
+ *  Scheduled ones go back to Postiz at their own time with the new caption;
+ *  ones within 15 minutes of going out keep theirs (`tooSoon`). The writing
+ *  happens on the server over the next few minutes. */
+export async function redoCaptions(campaignId: string, posting: CampaignPosting, ids?: string[]): Promise<{ rewriting: number; tooSoon: number }> {
+  return call<{ rewriting: number; tooSoon: number }>('recaption', { profile: profileId(), campaignId, posting, ...(ids ? { ids } : {}) })
+}
+
+/** "Rewriting 40 captions…" - what a redo did, in words. */
+export function redoSaid(name: string, result: { rewriting: number; tooSoon: number }): string {
+  const soon = result.tooSoon > 0 ? ` ${result.tooSoon} going out in the next 15 minutes keep${result.tooSoon === 1 ? 's' : ''} the old one.` : ''
+  if (result.rewriting === 0) return `No ${name} captions to redo.${soon}`
+  return `Rewriting ${result.rewriting} ${name} caption${result.rewriting === 1 ? '' : 's'} with the new rules - a few minutes. Scheduled ones stay at their times.${soon}`
+}
+
+/** How many of a campaign's posts a caption redo would reach, from the last
+ *  list of posts the phone saw. */
+export function notOutYet(campaignId: string, posts: readonly ServerPost[] = lastPosts(), now = Date.now()): number {
+  return posts.filter(
+    (p) =>
+      p.campaignId === campaignId &&
+      (p.status === 'waiting' || p.status === 'approved' || (p.status === 'scheduled' && p.postAt !== null && Date.parse(p.postAt) - now >= 15 * 60_000)),
+  ).length
+}
+
 /** Posts that can still be stopped: not gone out, not failed or posted. A
  *  scheduled one only while its time is ahead (the server's rule too). */
 export function stoppable(posts: readonly ServerPost[], now = Date.now()): ServerPost[] {

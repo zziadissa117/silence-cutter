@@ -14,6 +14,7 @@ import {
   accountsBehind,
   placeFor,
   refreshAccounts,
+  notOutYet,
   timeLabel,
   windowLabel,
   type CampaignPlace,
@@ -48,7 +49,7 @@ export function PostingEditor({
    *  and times with their profile. `catchUp` names newly picked accounts the
    *  videos already made should also go to - empty when he declined, or
    *  there is none. */
-  onSave: (posting: CampaignPosting, place: CampaignPlace | null, catchUp: string[]) => Promise<void>
+  onSave: (posting: CampaignPosting, place: CampaignPlace | null, catchUp: string[], redo: boolean) => Promise<void>
   onCancel: () => void
   onSetUp: () => void
 }) {
@@ -63,6 +64,16 @@ export function PostingEditor({
   // answers, and it can be unticked. Worked out from the last posts the phone
   // saw, so it also offers again after a save that could not reach the server.
   const [catchUpOn, setCatchUpOn] = useState(true)
+  // Posts already made can have their captions written again with these
+  // rules. Ticked by itself when he changes the rules or hashtags (a missing
+  // hashtag is why he would), and his to tick when he changed them earlier.
+  const [redoChoice, setRedoChoice] = useState<boolean | null>(null)
+  const tags = parseTags(hashtagText)
+  const before = { ...NO_POSTING, ...campaign.posting }
+  const captionChanged =
+    posting.caption !== before.caption || posting.rules.trim() !== before.rules.trim() || tags.join(' ') !== before.hashtags.join(' ')
+  const made = notOutYet(campaign.id)
+  const redoOn = redoChoice ?? captionChanged
   const behind = accountsBehind(campaign.id, place.accounts)
   const [newTime, setNewTime] = useState('')
   // His own times, or random ones inside a window. A campaign that has a
@@ -95,17 +106,13 @@ export function PostingEditor({
       saveLabel="Save posting"
       onSave={() =>
         void run(timing === 'random' && !cleanWindow(windowDraft) ? ['Random times need a window that ends at least 10 minutes after it starts.'] : [], async () => {
-          const hashtags = hashtagText
-            .split(/[\s,]+/)
-            .map((t) => t.replace(/^#+/, ''))
-            .filter(Boolean)
-            .map((t) => `#${t}`)
+          const hashtags = tags
           // Own times and a window never both: whichever he picked is saved.
           let saved: CampaignPlace = { accounts: place.accounts, times: place.times }
           const window = timing === 'random' ? cleanWindow(windowDraft) : null
           if (window) saved = { accounts: place.accounts, times: [], window }
           try {
-            await onSave({ ...posting, rules: posting.rules.trim(), hashtags }, local ? saved : null, catchUpOn ? behind.accounts : [])
+            await onSave({ ...posting, rules: posting.rules.trim(), hashtags }, local ? saved : null, catchUpOn ? behind.accounts : [], made > 0 && redoOn)
           } catch (error) {
             throw new Error(error instanceof PostingError ? error.message : String(error))
           }
@@ -369,10 +376,33 @@ export function PostingEditor({
               />
             </label>
           </>
-        ) : (
+        ) : null}
+        {made > 0 && local ? (
+          <label className="toggle">
+            <input type="checkbox" checked={redoOn} onChange={() => setRedoChoice(!redoOn)} />
+            <span>
+              <span className="label">Redo the captions already made</span>
+              <span className="hint" style={{ display: 'block' }}>
+                {made} {campaign.name} post{made === 1 ? '' : 's'} waiting or scheduled get{made === 1 ? 's' : ''} a new caption with these rules.
+                Scheduled ones stay at their times; ones going out in the next 15 minutes keep theirs.
+                {posting.caption === 'paste' ? ' Pasted captions are kept as they are.' : ''}
+              </span>
+            </span>
+          </label>
+        ) : null}
+        {posting.caption === 'claude' ? null : (
           <div className="hint">The Posts screen asks you to paste it - a brand's tracking caption - before the post can go.</div>
         )}
       </div>
     </EditorFrame>
   )
+}
+
+/** "#a b, #c" -> ["#a", "#b", "#c"]. */
+function parseTags(text: string): string[] {
+  return text
+    .split(/[\s,]+/)
+    .map((t) => t.replace(/^#+/, ''))
+    .filter(Boolean)
+    .map((t) => `#${t}`)
 }

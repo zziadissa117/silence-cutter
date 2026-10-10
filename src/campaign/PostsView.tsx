@@ -32,6 +32,8 @@ import {
   localInput,
   postAction,
   postingHere,
+  redoCaptions,
+  redoSaid,
   stoppable,
   whenLabel,
   type PostAction,
@@ -365,6 +367,9 @@ function OtherPost({
           <Watch post={post} />
         </>
       ) : null}
+      {post.status === 'scheduled' && post.error ? (
+        <div className={`hint${post.error.startsWith("The caption couldn't") ? ' warn-text' : ''}`}>{post.error}</div>
+      ) : null}
       {post.repostDue ? (
         <div className="hint warn-text">Time to repost - open the post and tap Repost.</div>
       ) : null}
@@ -408,7 +413,17 @@ function OtherPost({
 
 /** A batch folded into one row: the campaign, how many, which days and
  *  when the next one goes. Tap to open it and see each post. */
-function BatchRow({ posts, children }: { posts: ServerPost[]; children: (post: ServerPost) => ReactNode }) {
+function BatchRow({
+  posts,
+  children,
+  onRedo,
+}: {
+  posts: ServerPost[]
+  children: (post: ServerPost) => ReactNode
+  /** Writes this batch's captions again with the campaign's current rules. */
+  onRedo?: () => Promise<void>
+}) {
+  const [redoing, setRedoing] = useState(false)
   const [open, setOpen] = useState(false)
   const dates = posts.map((p) => p.batch?.date ?? '').filter(Boolean).sort()
   const days = dates.length === 0 ? '' : dates[0] === dates[dates.length - 1] ? dayLabel(dates[0]) : `${dayLabel(dates[0])} to ${dayLabel(dates[dates.length - 1])}`
@@ -427,6 +442,21 @@ function BatchRow({ posts, children }: { posts: ServerPost[]; children: (post: S
         {days}
         {next ? ` · next ${whenLabel(next.postAt)}` : ''}
       </div>
+      {onRedo ? (
+        <div className="post-actions">
+          <button
+            type="button"
+            className="linkbtn"
+            disabled={redoing}
+            onClick={() => {
+              setRedoing(true)
+              void onRedo().finally(() => setRedoing(false))
+            }}
+          >
+            {redoing ? 'Redoing…' : 'Redo captions'}
+          </button>
+        </div>
+      ) : null}
       {open ? <ul className="posts-list batch-inside">{posts.map((post) => children(post))}</ul> : null}
     </li>
   )
@@ -561,12 +591,30 @@ export function PostsView({
     setShown(id)
     rememberShown(id)
   }
+  /** One batch's captions written again with its campaign's rules as they
+   *  are now - after he added a hashtag, say. */
+  const redoBatch = async (batch: ServerPost[]) => {
+    const owner = campaigns.find((c) => c.id === batch[0].campaignId)
+    if (!owner?.posting) {
+      setProblem(`${batch[0].campaignName} has no caption rules on this phone - set them in its Posting first.`)
+      return
+    }
+    const tags = owner.posting.hashtags.length > 0 ? ` and ${owner.posting.hashtags.join(' ')}` : ''
+    if (!window.confirm(`Write the captions of this ${batch[0].campaignName} batch again with its caption rules${tags}? Scheduled ones stay at their times.`)) return
+    try {
+      setSaid(redoSaid(owner.name, await redoCaptions(owner.id, owner.posting, batch.map((p) => p.id))))
+      void load()
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error)
+      setProblem(/unknown action/i.test(message) ? 'Redoing captions needs the server updated first - run ./deploy-server.sh in silence-cutter.' : message)
+    }
+  }
   const list = (items: ListItem[], row: (post: ServerPost) => ReactNode) =>
     items.map((item) =>
       item.kind === 'post' ? (
         row(item.post)
       ) : (
-        <BatchRow key={item.id} posts={item.posts}>
+        <BatchRow key={item.id} posts={item.posts} onRedo={item.posts.some((p) => p.status !== 'posted') ? () => redoBatch(item.posts) : undefined}>
           {row}
         </BatchRow>
       ),

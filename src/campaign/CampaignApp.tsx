@@ -109,6 +109,8 @@ import {
   timeLabel,
   windowLabel,
   windowOf,
+  redoCaptions,
+  redoSaid,
   type CampaignPlace,
   type LocalPosting,
 } from './posting'
@@ -1691,7 +1693,7 @@ export function CampaignApp() {
 
   /** The brand's rules go with the campaign, to both phones; his own
    *  accounts and times go to his profile. */
-  const savePosting = async (owner: Campaign, rules: CampaignPosting, place: CampaignPlace | null, catchUp: string[] = []) => {
+  const savePosting = async (owner: Campaign, rules: CampaignPosting, place: CampaignPlace | null, catchUp: string[] = [], redo = false) => {
     if (place) {
       await saveCampaignPlace(owner.id, place)
       setPosting(postingHere())
@@ -1710,6 +1712,19 @@ export function CampaignApp() {
     const saved = await store({ ...owner, posting: rules })
     select(saved, saved.angles.find((a) => a.id === angleId))
     setEditing(null)
+    // Captions already made, written again with the rules just saved.
+    if (redo) {
+      await redoCaptions(owner.id, rules)
+        .then((result) => setNotice(redoSaid(owner.name, result)))
+        .catch((error: unknown) => {
+          const message = error instanceof Error ? error.message : String(error)
+          setNotice(
+            /unknown action/i.test(message)
+              ? 'The rules are saved, but redoing captions needs the server updated first - run ./deploy-server.sh, then Save posting again with Redo ticked.'
+              : `The rules are saved, but the captions could not be redone: ${message} Save posting again to retry.`,
+          )
+        })
+    }
   }
 
   /** "2 accounts · 6 PM, 8 PM · you approve" - how a campaign posts, from
@@ -2574,7 +2589,7 @@ export function CampaignApp() {
         key={editing.campaign.id}
         campaign={editing.campaign}
         local={posting}
-        onSave={(rules, place, catchUp) => savePosting(editing.campaign, rules, place, catchUp)}
+        onSave={(rules, place, catchUp, redo) => savePosting(editing.campaign, rules, place, catchUp, redo)}
         onCancel={() => setEditing(null)}
         onSetUp={() => {
           setEditing(null)

@@ -88,3 +88,29 @@ describe('when a campaign posts', () => {
     expect(place).toEqual({ accounts: ['tt'], times: ['18:00'] })
   })
 })
+
+describe('redoing captions already made', () => {
+  const later = new Date(Date.now() + 24 * 3_600_000).toISOString()
+  const seen = (posts: object[]) => localStorage.setItem('cutter.posts', JSON.stringify(posts))
+  const redoBox = () => [...host.querySelectorAll('label.toggle')].find((l) => l.textContent?.includes('Redo the captions already made'))?.querySelector('input') as HTMLInputElement | undefined
+
+  it('offers it unticked when there are posts not out yet, and ticks itself when the hashtags change', async () => {
+    seen([{ id: '1', campaignId: 'inflow', status: 'scheduled', postAt: later, accounts: [{ id: 'tt', name: 'Inflow', platform: 'tiktok', profile: 'inflow' }] }])
+    const onSave = show(local({ accounts: ['tt'] }))
+    expect(redoBox()?.checked).toBe(false)
+    const tags = host.querySelector('input[placeholder="e.g. #pumpfunpartner"]') as HTMLInputElement
+    act(() => {
+      Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!.call(tags, '#newtag')
+      tags.dispatchEvent(new Event('input', { bubbles: true }))
+    })
+    expect(redoBox()?.checked).toBe(true)
+    await act(async () => button('Save posting').click())
+    expect((onSave.mock.calls[0] as unknown[])[3]).toBe(true)
+  })
+
+  it("doesn't show with nothing made", () => {
+    seen([])
+    show(local({ accounts: ['tt'] }))
+    expect(redoBox()).toBeUndefined()
+  })
+})
