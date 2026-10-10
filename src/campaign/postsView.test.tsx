@@ -1,0 +1,89 @@
+// The Posts screen with big batches: folded into one row each, and a filter
+// by campaign so one campaign's posts don't fill the page.
+
+import { act } from 'react'
+import { createRoot, type Root } from 'react-dom/client'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+
+import type { ServerPost } from './posting'
+
+const future = (h: number) => new Date(Date.now() + h * 3_600_000).toISOString()
+const scheduled = (id: string, campaignId: string, name: string, batch?: string, h = 1) =>
+  ({
+    id,
+    key: id,
+    campaignId,
+    campaignName: name,
+    status: 'scheduled',
+    postAt: future(h),
+    accounts: [],
+    links: {},
+    caption: '',
+    batch: batch ? { id: batch, date: '2099-01-01', time: '10:00', size: 25 } : null,
+  }) as unknown as ServerPost
+
+const posts = [
+  ...Array.from({ length: 25 }, (_, i) => scheduled(`b${i}`, 'polsia', 'Polsia', 'big', i + 1)),
+  scheduled('one', 'inflow', 'Inflow', undefined, 2),
+]
+
+vi.mock('./store', async (original) => {
+  const real = await original<Record<string, unknown>>()
+  return Object.fromEntries(Object.keys(real).map((key) => [key, typeof real[key] === 'function' ? vi.fn() : real[key]]))
+})
+vi.mock('./outbox', () => ({
+  copyKind: vi.fn(async () => null),
+  forgetSend: vi.fn(),
+  kick: vi.fn(),
+  localVideo: vi.fn(async () => null),
+  sending: () => [],
+  tidySends: vi.fn(),
+  watchSending: () => () => {},
+}))
+vi.mock('./posting', async (original) => ({
+  ...(await original<typeof import('./posting')>()),
+  lastPosts: () => posts,
+  listPosts: vi.fn(async () => posts),
+  postingHere: () => null,
+}))
+
+import { PostsView } from './PostsView'
+
+;(globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true
+
+let host: HTMLElement
+let root: Root
+
+beforeEach(async () => {
+  localStorage.clear()
+  host = document.createElement('div')
+  document.body.appendChild(host)
+  root = createRoot(host)
+  await act(async () => root.render(<PostsView campaigns={[]} onBack={() => {}} editable={{}} onEditAgain={() => {}} />))
+})
+
+afterEach(() => {
+  act(() => root.unmount())
+  host.remove()
+})
+
+const rows = () => host.querySelectorAll('.posts-list > li')
+const chip = (name: string) => [...host.querySelectorAll('.posts-filter button')].find((b) => b.textContent === name) as HTMLButtonElement
+
+describe('scheduled posts', () => {
+  it('folds a batch of 25 into one row he can open', async () => {
+    expect(rows()).toHaveLength(2)
+    expect(host.textContent).toContain('Polsia · 25 videos')
+    await act(async () => (host.querySelector('.batch-row .post-head') as HTMLButtonElement).click())
+    expect(host.querySelectorAll('.batch-inside > li')).toHaveLength(25)
+  })
+
+  it('shows one campaign at a time, and remembers it', async () => {
+    await act(async () => chip('Inflow 1').click())
+    expect(rows()).toHaveLength(1)
+    expect(host.textContent).not.toContain('Polsia · 25 videos')
+    expect(localStorage.getItem('cutter.posts.show')).toBe('inflow')
+    await act(async () => chip('All 26').click())
+    expect(rows()).toHaveLength(2)
+  })
+})

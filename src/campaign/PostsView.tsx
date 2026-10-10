@@ -10,8 +10,9 @@
 // Rows never move under his thumb: each list keeps its order while he is on
 // the screen, and a post only changes list when he acts on it.
 
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react'
 
+import { dayLabel } from './batch'
 import { canShareFiles, share } from './jobs'
 import { ChevronLeft } from './icons'
 import type { Campaign } from './look'
@@ -19,6 +20,7 @@ import { NewPost } from './NewPost'
 import { StopPicker } from './StopPicker'
 import { jobOfPostKey, EDIT_WINDOW_MS } from './store'
 import { MusicAfter } from './MusicAfter'
+import { campaignsIn, foldBatches, rememberShown, shownCampaign, type ListItem } from './postsList'
 import { canAddMusic } from './musicAfterSend'
 import { copyKind, forgetSend, kick, localVideo, sending, tidySends, watchSending, type Sending } from './outbox'
 import {
@@ -37,6 +39,8 @@ import {
 } from './posting'
 
 const POLL_MS = 15_000
+/** Posted shows this many until he asks for the rest. */
+const POSTED_SHOWN = 10
 
 function useSending(): Sending[] {
   const [now, setNow] = useState(sending)
@@ -393,6 +397,32 @@ function OtherPost({
   )
 }
 
+/** A batch folded into one row: the campaign, how many, which days and
+ *  when the next one goes. Tap to open it and see each post. */
+function BatchRow({ posts, children }: { posts: ServerPost[]; children: (post: ServerPost) => ReactNode }) {
+  const [open, setOpen] = useState(false)
+  const dates = posts.map((p) => p.batch?.date ?? '').filter(Boolean).sort()
+  const days = dates.length === 0 ? '' : dates[0] === dates[dates.length - 1] ? dayLabel(dates[0]) : `${dayLabel(dates[0])} to ${dayLabel(dates[dates.length - 1])}`
+  const next = posts.find((p) => p.postAt && Date.parse(p.postAt) > Date.now())
+  const tone = posts.every((p) => p.status === 'posted') ? 'ok' : posts[0].status === 'waiting' ? 'now' : 'later'
+  return (
+    <li className="post batch-row">
+      <button type="button" className="post-head as-button" onClick={() => setOpen((o) => !o)} aria-expanded={open}>
+        <span className={`dot ${tone}`} aria-hidden />
+        <span className="post-title">
+          {posts[0].campaignName} · {posts.length} videos
+        </span>
+        <span className="post-when">{open ? 'Hide' : 'Show'}</span>
+      </button>
+      <div className="post-line">
+        {days}
+        {next ? ` · next ${whenLabel(next.postAt)}` : ''}
+      </div>
+      {open ? <ul className="posts-list batch-inside">{posts.map((post) => children(post))}</ul> : null}
+    </li>
+  )
+}
+
 function SendingRow({ item, onRemove }: { item: Sending; onRemove: () => void }) {
   const { entry } = item
   return (
@@ -446,6 +476,9 @@ export function PostsView({
   const [approvingAll, setApprovingAll] = useState(false)
   // Ticking posts to stop - a whole campaign, or one by one.
   const [stopping, setStopping] = useState(false)
+  // One campaign at a time, or all of them - remembered on this phone.
+  const [shown, setShown] = useState<string | null>(shownCampaign)
+  const [allPosted, setAllPosted] = useState(false)
   const outgoing = useSending()
 
   const load = useCallback(async () => {
@@ -507,15 +540,33 @@ export function PostsView({
     }
   }
 
-  const waiting = posts.filter((p) => p.status === 'waiting')
+  const inPosts = campaignsIn(posts)
+  const showing = shown && inPosts.some((c) => c.id === shown) ? shown : null
+  const view = showing ? posts.filter((p) => p.campaignId === showing) : posts
+  const show = (id: string | null) => {
+    setShown(id)
+    rememberShown(id)
+  }
+  const list = (items: ListItem[], row: (post: ServerPost) => ReactNode) =>
+    items.map((item) =>
+      item.kind === 'post' ? (
+        row(item.post)
+      ) : (
+        <BatchRow key={item.id} posts={item.posts}>
+          {row}
+        </BatchRow>
+      ),
+    )
+
+  const waiting = view.filter((p) => p.status === 'waiting')
   const approvable = waiting.filter((p) => p.approval !== 'brand' && p.caption?.trim())
   const sendingNow = outgoing.filter((s) => s.entry.state === 'sending')
   const sendingKeys = new Set(sendingNow.map((s) => s.entry.key))
-  const working = posts.filter((p) => ['uploading', 'writing', 'approved'].includes(p.status) && !sendingKeys.has(p.key))
+  const working = view.filter((p) => ['uploading', 'writing', 'approved'].includes(p.status) && !sendingKeys.has(p.key))
   const byTime = (a: ServerPost, b: ServerPost) => (a.postAt ?? '').localeCompare(b.postAt ?? '')
-  const scheduled = posts.filter((p) => p.status === 'scheduled').sort(byTime)
-  const failed = posts.filter((p) => p.status === 'failed')
-  const done = posts
+  const scheduled = view.filter((p) => p.status === 'scheduled').sort(byTime)
+  const failed = view.filter((p) => p.status === 'failed')
+  const done = view
     .filter((p) => p.status === 'posted' || p.status === 'error')
     .sort((a, b) => byTime(b, a))
 
@@ -590,6 +641,19 @@ export function PostsView({
         </div>
       ) : null}
 
+      {inPosts.length > 1 ? (
+        <div className="seg chips posts-filter" role="radiogroup" aria-label="Show campaign">
+          <button type="button" role="radio" aria-checked={showing === null} className={showing === null ? 'active' : ''} onClick={() => show(null)}>
+            All {posts.length}
+          </button>
+          {inPosts.map((c) => (
+            <button key={c.id} type="button" role="radio" aria-checked={showing === c.id} className={showing === c.id ? 'active' : ''} onClick={() => show(c.id)}>
+              {c.name} {c.count}
+            </button>
+          ))}
+        </div>
+      ) : null}
+
       {nothing ? (
         <p className="empty">
           {Object.keys(postingHere()?.profile.settings.campaigns ?? {}).length === 0
@@ -602,7 +666,7 @@ export function PostsView({
         <>
           <div className="list-title">To approve</div>
           <ul className="posts-list">
-            {waiting.map((post) => (
+            {list(foldBatches(waiting), (post) => (
               <WaitingPost key={post.id} editable={editable} onEdit={onEditAgain} campaigns={campaigns} onChanged={onMusicDone} post={post} busy={busy.has(post.id)} onAct={(action, fields) => void act(post, action, fields)} />
             ))}
           </ul>
@@ -636,9 +700,9 @@ export function PostsView({
 
       {scheduled.length > 0 ? (
         <>
-          <div className="list-title">Scheduled</div>
+          <div className="list-title">Scheduled · {scheduled.length}</div>
           <ul className="posts-list">
-            {scheduled.map((post) => (
+            {list(foldBatches(scheduled), (post) => (
               <OtherPost key={post.id} editable={editable} onEdit={onEditAgain} campaigns={campaigns} onChanged={onMusicDone} post={post} busy={busy.has(post.id)} onAct={(action) => void act(post, action)} />
             ))}
           </ul>
@@ -647,12 +711,17 @@ export function PostsView({
 
       {done.length > 0 ? (
         <>
-          <div className="list-title">Posted</div>
+          <div className="list-title">Posted · {done.length}</div>
           <ul className="posts-list">
-            {done.map((post) => (
+            {(allPosted ? done : done.slice(0, POSTED_SHOWN)).map((post) => (
               <OtherPost key={post.id} editable={editable} onEdit={onEditAgain} campaigns={campaigns} onChanged={onMusicDone} post={post} busy={busy.has(post.id)} onAct={(action) => void act(post, action)} />
             ))}
           </ul>
+          {done.length > POSTED_SHOWN ? (
+            <button type="button" className="linkbtn" onClick={() => setAllPosted((a) => !a)}>
+              {allPosted ? 'Show fewer' : `Show all ${done.length}`}
+            </button>
+          ) : null}
         </>
       ) : null}
       </>

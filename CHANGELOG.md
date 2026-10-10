@@ -3,6 +3,17 @@
 Newest first. Every change says what it does, how to use it, and how it works
 underneath. Kept up to date with each commit.
 
+## Posts: filter by campaign, batches folded into one row
+**What:** the Posts screen got long - a batch of 25 a day for a week filled the whole page. Now:
+- **Filter:** chips at the top - "All 180", "Polsia 150", "Inflow 30" - show one campaign at a time. The phone
+  remembers the last one picked. It applies to every list on the screen (To approve, On the way, Failed, Scheduled,
+  Posted), and "Approve all" then approves that campaign's only.
+- **Batches folded:** each batch is one row - "Polsia · 25 videos", its days and when the next one goes. Tap it to
+  open the posts inside, tap again to fold it. Single videos still show one by one.
+- **Posted** shows the latest 10, with "Show all" for the rest. Scheduled and Posted show their count in the title.
+Only ./deploy.sh is needed.
+Files: `PostsView.tsx` (+ `postsView.test.tsx`), `postsList.ts` (+ test), `campaign.css`.
+
 ## Fix: Batch made twice on a double tap, and only 1 or 3 videos a day (now up to 25)
 **What was wrong:** tapping "Make 6 videos" twice quickly could make the whole batch twice - the button stayed live,
 and a second tap before the screen caught up planned the same days again. And "Videos a day" only offered as many as
