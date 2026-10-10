@@ -8,7 +8,7 @@
 // it posts at are each person's own, kept in their profile on the server.
 // The phone keeps only which profile is its own, and whether it sends.
 
-import { DEFAULT_WINDOW, MAX_PER_DAY, WINDOW_GAP_MINUTES, cleanWindow, windowTimes, type PostingWindow } from '../../supabase/functions/postiz/window.ts'
+import { DEFAULT_WINDOW, cleanWindow, gapFor, windowTimes, type PostingWindow } from '../../supabase/functions/postiz/window.ts'
 import { PUBLISHABLE_KEY, currentSession } from './cloud'
 import type { Campaign, CampaignPosting } from './look'
 import { dayTimes } from './batch'
@@ -267,21 +267,33 @@ export function placeTimesOn(place: CampaignPlace, campaignId: string, date: str
   return windowTimes(windowOf(place), campaignId, date)
 }
 
+/** The most videos a day a batch can be. */
+export const BATCH_MAX_PER_DAY = 25
+
 /** A batch's times on one date: `perDay` of them, whatever the campaign's
  *  own count. A random campaign draws that many from its window; one on his
  *  own times keeps them (an even pick when he wants fewer) and, when he
- *  wants more, adds random ones from the window at least half an hour from
- *  his. The server takes a batch video's own time as given. */
+ *  wants more, adds random ones from the window, clear of his. Half an hour
+ *  apart when the window has room, closer (never under 10 minutes) when he
+ *  wants more than that fits. The server takes a batch video's own time as
+ *  given. */
 export function batchTimesOn(place: CampaignPlace, campaignId: string, date: string, perDay: number): string[] {
   const window = windowOf(place)
-  if (place.times.length === 0) return windowTimes({ ...window, perDay: Math.min(perDay, MAX_PER_DAY) }, campaignId, date)
+  const count = Math.min(perDay, BATCH_MAX_PER_DAY)
+  const gap = gapFor(window, count)
+  if (place.times.length === 0) return windowTimes({ ...window, perDay: count }, campaignId, date, gap)
   const own = [...new Set(place.times)].sort()
-  if (perDay <= own.length) return dayTimes(own, perDay)
+  if (count <= own.length) return dayTimes(own, count)
   const minutes = (t: string) => Number(t.slice(0, 2)) * 60 + Number(t.slice(3, 5))
-  const clear = (t: string) => own.every((o) => Math.abs(minutes(o) - minutes(t)) >= WINDOW_GAP_MINUTES)
-  const extras = windowTimes({ ...window, perDay: MAX_PER_DAY }, `${campaignId}|batch`, date).filter(clear)
+  // His times take room from the window, so the extras close up a little
+  // more until enough of them keep clear of his (never under 10 minutes).
+  let extras: string[] = []
+  for (let g = gap; g >= 10 && extras.length < count - own.length; g--) {
+    const clear = (t: string) => own.every((o) => Math.abs(minutes(o) - minutes(t)) >= g)
+    extras = windowTimes({ ...window, perDay: BATCH_MAX_PER_DAY * 2 }, `${campaignId}|batch`, date, g).filter(clear)
+  }
   // An even pick of the candidates, so the extras spread over the window.
-  return [...own, ...dayTimes(extras, perDay - own.length)].sort()
+  return [...own, ...dayTimes(extras, count - own.length)].sort()
 }
 
 /** The window its random times come from: its own, or the default every

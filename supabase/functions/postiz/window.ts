@@ -57,9 +57,19 @@ export function cleanWindow(value: unknown): PostingWindow | null {
 
 /** How many times the window really fits: fewer than asked when it is too
  *  short to keep them half an hour apart. */
-export function fits(window: PostingWindow): number {
+export function fits(window: PostingWindow, gap = WINDOW_GAP_MINUTES): number {
   const span = minutesOf(window.to) - JITTER_ROOM - minutesOf(window.from)
-  return Math.max(1, Math.min(window.perDay, Math.floor(span / WINDOW_GAP_MINUTES) + 1))
+  return Math.max(1, Math.min(window.perDay, Math.floor(span / gap) + 1))
+}
+
+/** The gap that fits `count` times in the window: half an hour when there
+ *  is room, closer when he wants more than that allows (25 a day in 10 AM -
+ *  10 PM is 29 minutes), never under `least` - past that the window simply
+ *  holds fewer. */
+export function gapFor(window: PostingWindow, count: number, least = 10): number {
+  if (count <= 1) return WINDOW_GAP_MINUTES
+  const span = minutesOf(window.to) - JITTER_ROOM - minutesOf(window.from)
+  return Math.max(least, Math.min(WINDOW_GAP_MINUTES, Math.floor(span / (count - 1))))
 }
 
 /** A small seeded generator: the same seed, the same numbers. */
@@ -82,14 +92,14 @@ function seeded(seed: string): () => number {
 
 /** The day's times, in order. `key` is the campaign's id, so two campaigns
  *  with the same window still post at different times. */
-export function windowTimes(window: PostingWindow, key: string, date: string): string[] {
-  const n = fits(window)
+export function windowTimes(window: PostingWindow, key: string, date: string, gap = WINDOW_GAP_MINUTES): string[] {
+  const n = fits(window, gap)
   const start = minutesOf(window.from)
   const span = minutesOf(window.to) - JITTER_ROOM - start
   // n points in the slack left after the gaps, then each pushed along by
   // the gaps before it: random, and never closer than the gap.
-  const slack = span - (n - 1) * WINDOW_GAP_MINUTES
+  const slack = span - (n - 1) * gap
   const random = seeded(`${key}|${date}`)
   const offsets = Array.from({ length: n }, () => Math.floor(random() * (slack + 1))).sort((a, b) => a - b)
-  return offsets.map((offset, i) => hhmm(start + offset + i * WINDOW_GAP_MINUTES))
+  return offsets.map((offset, i) => hhmm(start + offset + i * gap))
 }

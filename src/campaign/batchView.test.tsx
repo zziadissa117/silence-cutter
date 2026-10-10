@@ -71,7 +71,6 @@ async function show(place: Partial<CampaignPlace>, jobs: Job[] = [], onMake = vi
 }
 
 const makeButton = () => host.querySelector('.batch-make') as HTMLButtonElement
-const perDayRadios = () => [...host.querySelectorAll('[aria-label="Videos a day"] [role="radio"]')].map((b) => b.textContent)
 
 describe('the Make button', () => {
   it('makes one batch however fast it is tapped twice', async () => {
@@ -100,14 +99,30 @@ describe('the Make button', () => {
 })
 
 describe('videos a day', () => {
-  it('offers 1 to 6 for a campaign with a single time of its own', async () => {
+  const more = () => host.querySelector('[aria-label="More a day"]') as HTMLButtonElement
+  const value = () => host.querySelector('[aria-label="Videos a day"]')?.textContent
+  const upTo = async (n: number) => {
+    while (Number(value()) < n) await act(async () => more().click())
+  }
+
+  it('goes up to 25 for a campaign with a single time of its own, keeping his time', async () => {
     await show({ times: ['18:00'] })
-    expect(perDayRadios()).toEqual(['1', '2', '3', '4', '5', '6'])
+    await upTo(25)
+    expect(value()).toBe('25')
+    expect(more().disabled).toBe(true)
     expect(host.textContent).toContain('At your times and random ones in between')
+    expect(host.querySelector('.stepper + .hint')?.textContent).toMatch(/6(:00)? PM/)
   })
 
-  it('offers 1 to 6 for a random campaign, beyond its window\'s 3 a day', async () => {
+  it("goes past a random campaign's 3 a day, all 25 inside the window", async () => {
     await show({ window: { from: '10:00', to: '22:00', perDay: 3 } })
-    expect(perDayRadios()).toEqual(['1', '2', '3', '4', '5', '6'])
+    await upTo(25)
+    expect(host.textContent).not.toContain('only fits')
+  })
+
+  it('says when the window is too short for that many', async () => {
+    await show({ window: { from: '10:00', to: '11:00', perDay: 2 } })
+    await upTo(10)
+    expect(host.textContent).toContain('The window only fits 6 a day')
   })
 })

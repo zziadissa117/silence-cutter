@@ -3,16 +3,19 @@
 Newest first. Every change says what it does, how to use it, and how it works
 underneath. Kept up to date with each commit.
 
-## Fix: Batch made twice on a double tap, and only 1 or 3 videos a day
+## Fix: Batch made twice on a double tap, and only 1 or 3 videos a day (now up to 25)
 **What was wrong:** tapping "Make 6 videos" twice quickly could make the whole batch twice - the button stayed live,
 and a second tap before the screen caught up planned the same days again. And "Videos a day" only offered as many as
 the campaign had times: 1 for a campaign with one time of its own, 1-3 for a random one.
 **Now:** the first tap locks the button at once; it reads "Making…", then "Making 3 of 6…" while that campaign's
 batch is made, and can't be tapped again until it's done. Afterwards it names the days the next batch would cover
 ("Make 6 more videos - Wed Oct 14 to Fri Oct 16"), so a second batch is clearly a different one.
-"Videos a day" always offers 1 to 6. A random campaign draws that many random times from its window, different each
-day. A campaign on its own times keeps them and, when you want more videos than it has times, adds random ones from
-the window, at least half an hour from yours. The hint under it lists today's times.
+"Videos a day" is now a − / + counter from 1 to 25. A random campaign draws that many random times from its window,
+different each day. A campaign on its own times keeps them and, when you want more videos than it has times, adds
+random ones from the window, clear of yours. Times are half an hour apart when the window has room and closer when
+you want more (25 in 10 AM - 10 PM is about 29 minutes apart), never under 10 minutes; a window too short for the
+count says how many it fits, in amber. The hint under it lists today's times. Posts-a-day limits you set in Settings
+still apply on top: posts over a limit are held for the next day with room.
 Only ./deploy.sh is needed - the server already posts a batch video at the time it was made for.
 Files: `BatchView.tsx` (+ `batchView.test.tsx`), `posting.ts` (`batchTimesOn`, + test).
 

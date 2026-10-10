@@ -26,7 +26,7 @@ import { filmingOf } from './filming'
 import { fingerprint, skippedNotice } from './fingerprint'
 import { formatTime, labelOf, type Job } from './jobs'
 import type { Angle, Campaign } from './look'
-import { accountLabel, batchTimesOn, placeFor, timeLabel, windowLabel, windowOf, type LocalPosting } from './posting'
+import { BATCH_MAX_PER_DAY, accountLabel, batchTimesOn, placeFor, timeLabel, windowLabel, windowOf, type LocalPosting } from './posting'
 import { deleteBankFile, loadBatchBank, saveBankFile, saveBatchBank, type JobBatch } from './store'
 
 const LAST_KEY = 'batch.campaign'
@@ -328,7 +328,6 @@ export function BatchView({
     </div>
   )
 
-  const perDayChoices = Array.from({ length: 6 }, (_, i) => i + 1)
   const nextDays = slots.length > 0 ? dayRange(slots[0].date, slots[slots.length - 1].date) : ''
   const makeLabel = busyMaking
     ? makingHere.length > 0
@@ -433,21 +432,33 @@ export function BatchView({
             <>
                 <div className="field">
                   <span className="label">Videos a day</span>
-                  <div className="seg full" role="radiogroup" aria-label="Videos a day">
-                    {perDayChoices.map((n) => (
-                      <button
-                        key={n}
-                        type="button"
-                        role="radio"
-                        aria-checked={bank.perDay === n}
-                        className={bank.perDay === n ? 'active' : ''}
-                        onClick={() => keep({ ...bank, perDay: n })}
-                      >
-                        {n}
-                      </button>
-                    ))}
+                  <div className="stepper">
+                    <button
+                      type="button"
+                      className="btn small icon-btn"
+                      aria-label="Fewer a day"
+                      disabled={bank.perDay <= 1}
+                      onClick={() => keep({ ...bank, perDay: bank.perDay - 1 })}
+                    >
+                      −
+                    </button>
+                    <span className="stepper-value" aria-label="Videos a day">
+                      {bank.perDay}
+                    </span>
+                    <button
+                      type="button"
+                      className="btn small icon-btn"
+                      aria-label="More a day"
+                      disabled={bank.perDay >= BATCH_MAX_PER_DAY}
+                      onClick={() => keep({ ...bank, perDay: bank.perDay + 1 })}
+                    >
+                      +
+                    </button>
                   </div>
-                  <span className="hint">
+                  <span className={`hint${times.length < bank.perDay ? ' warn-text' : ''}`}>
+                    {times.length < bank.perDay
+                      ? `The window only fits ${times.length} a day, 10 minutes apart - widen it in the campaign's Posting. `
+                      : ''}
                     {random
                       ? `At random times inside the window, different each day - today ${times.map(timeLabel).join(', ')}.`
                       : times.length > place.times.length

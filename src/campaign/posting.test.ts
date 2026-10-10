@@ -129,6 +129,10 @@ describe('batchTimesOn', () => {
       for (const t of times) expect(t >= '10:00' && t <= '22:00').toBe(true)
       for (let i = 1; i < times.length; i++) expect(minutes(times[i]) - minutes(times[i - 1])).toBeGreaterThanOrEqual(30)
     }
+    const many = batchTimesOn(place, 'inflow', '2026-10-12', 25)
+    expect(many).toHaveLength(25)
+    for (const t of many) expect(t >= '10:00' && t <= '22:00').toBe(true)
+    for (let i = 1; i < many.length; i++) expect(minutes(many[i]) - minutes(many[i - 1])).toBeGreaterThanOrEqual(10)
     expect(batchTimesOn(place, 'inflow', '2026-10-12', 5)).not.toEqual(batchTimesOn(place, 'inflow', '2026-10-13', 5))
   })
 
@@ -138,6 +142,9 @@ describe('batchTimesOn', () => {
     expect(times).toHaveLength(4)
     expect(times).toContain('18:00')
     for (const t of times.filter((t) => t !== '18:00')) expect(Math.abs(minutes(t) - minutes('18:00'))).toBeGreaterThanOrEqual(30)
+    const lots = batchTimesOn(place, 'inflow', '2026-10-12', 25)
+    expect(lots).toHaveLength(25)
+    expect(lots).toContain('18:00')
     expect(batchTimesOn({ accounts: [], times: ['09:00', '12:00', '18:00'] }, 'inflow', '2026-10-12', 3)).toEqual(['09:00', '12:00', '18:00'])
   })
 })
