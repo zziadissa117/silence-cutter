@@ -27,6 +27,10 @@ export const WINDOW_GAP_MINUTES = 30
 const JITTER_ROOM = 10
 export const MAX_PER_DAY = 12
 
+/** What a campaign with neither its own times nor a window of its own posts
+ *  by: every campaign posts at random unless he gave it fixed times. */
+export const DEFAULT_WINDOW: PostingWindow = { from: '10:00', to: '22:00', perDay: 3 }
+
 const HHMM = /^([01]\d|2[0-3]):[0-5]\d$/
 
 function minutesOf(time: string): number {

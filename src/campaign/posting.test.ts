@@ -14,13 +14,13 @@ vi.mock('./cloud', async (original) => ({
   currentSession: () => ({ token: 't' }),
 }))
 
-import { stopPostsNow, type ServerPost } from './posting'
+import { onFixedTimes, placeTimesOn, stopPostsNow, switchToRandom, type Profile, type ServerPost } from './posting'
 
 const post = (id: string, postAt: string) => ({ id, campaignId: 'c', campaignName: 'Polsia', status: 'scheduled', postAt }) as unknown as ServerPost
 
-let calls: { action: string; id?: string; ids?: string[] }[] = []
+let calls: { action: string; id?: string; ids?: string[]; campaignId?: string }[] = []
 
-function server(answer: (body: { action: string; id?: string; ids?: string[] }) => { status: number; json: unknown }) {
+function server(answer: (body: { action: string; id?: string; ids?: string[]; campaignId?: string }) => { status: number; json: unknown }) {
   vi.stubGlobal(
     'fetch',
     vi.fn(async (_url: string, init: RequestInit) => {
@@ -71,5 +71,49 @@ describe('stopPostsNow', () => {
     server(() => ({ status: 401, json: { error: 'signed-out' } }))
     await expect(stopPostsNow(posts)).rejects.toThrow(/Signed out/)
     expect(calls).toHaveLength(1)
+  })
+})
+
+describe('random times for every campaign', () => {
+  const profile = {
+    id: 'p1',
+    accounts: [],
+    timezone: 'UTC',
+    hasAnthropic: false,
+    vapidPublic: null,
+    settings: {
+      campaigns: {
+        own: { accounts: ['tt'], times: ['18:00'] },
+        hadWindow: { accounts: ['ig'], times: ['09:00'], window: { from: '12:00', to: '20:00', perDay: 2 } },
+        random: { accounts: ['yt'], times: [] },
+      },
+    },
+  } as Profile
+  const campaigns = [
+    { id: 'own', name: 'Inflow' },
+    { id: 'hadWindow', name: 'Vertus' },
+    { id: 'random', name: 'Polsia' },
+    { id: 'unset', name: 'New' },
+  ]
+
+  it('a campaign with no times of its own gets three random ones a day, between 10 AM and 10 PM', () => {
+    const times = placeTimesOn({ accounts: [], times: [] }, 'unset', '2026-10-10')
+    expect(times).toHaveLength(3)
+    for (const time of times) expect(time >= '10:00' && time <= '22:00').toBe(true)
+  })
+
+  it('switches only the ones on his own times, keeping a window one already had', async () => {
+    expect(onFixedTimes(profile, campaigns).map((c) => c.name)).toEqual(['Inflow', 'Vertus'])
+    server(() => ({ status: 200, json: profile }))
+    await switchToRandom(profile, campaigns)
+    expect(calls).toEqual([
+      expect.objectContaining({ action: 'save-campaign', campaignId: 'own', accounts: ['tt'], times: [], window: { from: '10:00', to: '22:00', perDay: 3 } }),
+      expect.objectContaining({ action: 'save-campaign', campaignId: 'hadWindow', accounts: ['ig'], times: [], window: { from: '12:00', to: '20:00', perDay: 2 } }),
+    ])
+  })
+
+  it('names the campaign that could not be switched', async () => {
+    server((body) => (body.campaignId === 'hadWindow' ? { status: 502, json: { error: 'Postiz had a problem (502).' } } : { status: 200, json: profile }))
+    await expect(switchToRandom(profile, campaigns)).rejects.toThrow(/^Vertus kept its own times/)
   })
 })

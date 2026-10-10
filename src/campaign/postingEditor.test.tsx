@@ -58,10 +58,11 @@ const button = (name: string) =>
   [...host.querySelectorAll('button')].find((b) => b.textContent?.trim() === name) as HTMLButtonElement
 
 describe('when a campaign posts', () => {
-  it('says in red that a campaign with no times posts the moment it is ready', () => {
+  it('opens on Random times, with the default window, for a campaign with neither', () => {
     show(local({ accounts: ['tt'] }))
-    const warning = host.querySelector('.warn-text')
-    expect(warning?.textContent).toContain("every video posts the moment it's ready")
+    expect(button('Random times').getAttribute('aria-checked')).toBe('true')
+    expect((host.querySelector('[aria-label="Earliest random time"]') as HTMLInputElement).value).toBe('10:00')
+    expect(host.textContent).not.toContain("posts the moment it's ready")
   })
 
   it('saves random times inside a window, and no times of his own', async () => {
@@ -71,7 +72,7 @@ describe('when a campaign posts', () => {
     await act(async () => button('Save posting').click())
     expect(onSave).toHaveBeenCalledTimes(1)
     const place = (onSave.mock.calls[0] as unknown[])[1] as CampaignPlace
-    expect(place).toEqual({ accounts: ['tt'], times: [], window: { from: '10:00', to: '22:00', perDay: 2 } })
+    expect(place).toEqual({ accounts: ['tt'], times: [], window: { from: '10:00', to: '22:00', perDay: 3 } })
   })
 
   it('opens on Random for a campaign that already has a window', () => {

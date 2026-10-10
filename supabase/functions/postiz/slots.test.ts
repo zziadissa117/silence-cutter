@@ -150,78 +150,66 @@ describe('spreadDay', () => {
   const DATE = '2026-09-28'
   const at = (time: string) => zoned(DATE, time, TZ).getTime()
   const end = endOfDay(DATE, TZ)
-  const clock = (ms: number) => localTime(new Date(ms), TZ)
-  const late = (count: number, arrived: string, now = arrived) =>
-    [
-      ...spreadDay(
-        Array.from({ length: count }, (_, i) => ({ id: String(i), at: null, locked: false })),
-        { start: at(arrived) + 30 * 60_000, end, firstAtStart: true, now: at(now), leadMs: 5 * 60_000, minGapMs: 10 * 60_000 },
-      ).values(),
-    ].map(clock)
+  const GAP = 15 * 60_000
+  const members = (count: number, prefix = 'p') => Array.from({ length: count }, (_, i) => ({ id: `${prefix}${i}`, at: null, locked: false }))
+  const late = (list: { id: string; at: number | null; locked: boolean }[], arrived: string, now = arrived) =>
+    spreadDay(list, { start: at(arrived) + 20 * 60_000, end, now: at(now), leadMs: 5 * 60_000, minGapMs: GAP })
+  const sorted = (placed: Map<string, number>) => [...placed.values()].sort((a, b) => a - b)
 
-  it('one late video goes half an hour after it came in', () => {
-    expect(late(1, '17:00')).toEqual(['17:30'])
+  it('puts a video in at 10 PM at a random time before midnight', () => {
+    const [only] = sorted(late(members(1), '22:00'))
+    expect(only).toBeGreaterThanOrEqual(at('22:20'))
+    expect(only).toBeLessThanOrEqual(end)
   })
 
-  it('several are evenly divided until midnight', () => {
-    expect(late(2, '18:00')).toEqual(['18:30', '21:15'])
-    expect(late(3, '18:00')).toEqual(['18:30', '20:20', '22:10'])
-    expect(late(6, '17:00')).toEqual(['17:30', '18:35', '19:40', '20:45', '21:50', '22:55'])
+  it('spreads several at random until midnight, at least 15 minutes apart, not evenly', () => {
+    const times = sorted(late(members(5), '18:00'))
+    expect(times[0]).toBeGreaterThanOrEqual(at('18:20'))
+    for (let i = 1; i < times.length; i++) expect(times[i] - times[i - 1]).toBeGreaterThanOrEqual(GAP)
+    const gaps = times.slice(1).map((t, i) => t - times[i])
+    expect(new Set(gaps).size).toBeGreaterThan(1)
   })
 
-  it('past 11:30 PM, half an hour after, ten minutes apart', () => {
-    expect(late(2, '23:45')).toEqual(['00:15', '00:25'])
+  it('gives different nights different times', () => {
+    const one = sorted(late(members(3, 'mon'), '18:00')).map((ms) => localTime(new Date(ms), TZ))
+    const two = sorted(late(members(3, 'tue'), '18:00')).map((ms) => localTime(new Date(ms), TZ))
+    expect(one).not.toEqual(two)
   })
 
-  it('extras go evenly between the last time and midnight', () => {
-    const last = lastTimeToday(['18:00', '20:00'], DATE, TZ)!
-    const extra = (count: number) =>
-      [
-        ...spreadDay(
-          Array.from({ length: count }, (_, i) => ({ id: String(i), at: null, locked: false })),
-          { start: last, end, firstAtStart: false, now: at('09:00'), leadMs: 5 * 60_000, minGapMs: 10 * 60_000 },
-        ).values(),
-      ].map((ms) => clock(ms - (last - at('20:00'))))
-    expect(extra(1)).toEqual(['22:00'])
-    expect(extra(2)).toEqual(['21:20', '22:40'])
+  it('keeps a video at its time when another late one arrives, unless they would collide', () => {
+    const first = late(members(2), '18:00')
+    const again = late(members(3), '18:00')
+    for (const [id, ms] of first) {
+      if ([...again.values()].every((other) => other === again.get(id) || Math.abs(other - ms) >= GAP)) {
+        expect(again.get(id)).toBe(ms)
+      }
+    }
   })
 
-  it('ones already in Postiz keep their time; the rest spread after them', () => {
-    const placed = spreadDay(
-      [
-        { id: 'a', at: at('18:30'), locked: true },
-        { id: 'b', at: at('21:15'), locked: false },
-        { id: 'c', at: null, locked: false },
-      ],
-      { start: at('18:30'), end, firstAtStart: true, now: at('18:40'), leadMs: 5 * 60_000, minGapMs: 10 * 60_000 },
-    )
+  it('past 11:30 PM, still after it came in, 15 minutes apart past midnight', () => {
+    const times = sorted(late(members(2), '23:45'))
+    expect(times[0]).toBeGreaterThanOrEqual(at('23:45') + 20 * 60_000)
+    expect(times[1] - times[0]).toBeGreaterThanOrEqual(GAP)
+  })
+
+  it('ones already in Postiz keep their time; the rest keep clear of them', () => {
+    const locked = { id: 'a', at: at('20:00'), locked: true }
+    const placed = late([locked, ...members(4)], '18:00', '18:40')
     expect(placed.has('a')).toBe(false)
-    expect([...placed.values()].map(clock)).toEqual(['20:20', '22:10'])
+    for (const ms of placed.values()) expect(Math.abs(ms - at('20:00'))).toBeGreaterThanOrEqual(GAP)
   })
 
   it('never sooner than a few minutes from now', () => {
-    // Approved long after their spread time: from now on, evenly.
-    const placed = spreadDay(
-      [
-        { id: 'a', at: at('18:30'), locked: false },
-        { id: 'b', at: at('21:15'), locked: false },
-      ],
-      { start: at('18:30'), end, firstAtStart: true, now: at('22:00'), leadMs: 5 * 60_000, minGapMs: 10 * 60_000 },
-    )
-    expect([...placed.values()].map(clock)).toEqual(['22:05', '23:02'])
+    const placed = late(members(3), '18:00', '22:30')
+    for (const ms of placed.values()) expect(ms).toBeGreaterThanOrEqual(at('22:35'))
   })
 
-  it('holds on the night the clocks go back', () => {
-    const NIGHT = '2026-10-31'
-    const start = zoned(NIGHT, '22:00', TZ).getTime()
-    const placed = spreadDay([{ id: 'a', at: null, locked: false }, { id: 'b', at: null, locked: false }], {
-      start,
-      end: endOfDay(NIGHT, TZ),
-      firstAtStart: true,
-      now: start - 30 * 60_000,
-      leadMs: 5 * 60_000,
-      minGapMs: 10 * 60_000,
-    })
-    expect([...placed.values()].map((ms) => localTime(new Date(ms), TZ))).toEqual(['22:00', '23:00'])
+  it('extras go at random between the last time and midnight', () => {
+    const last = lastTimeToday(['18:00', '20:00'], DATE, TZ)!
+    const placed = spreadDay(members(3), { start: last, end, now: at('09:00'), leadMs: 5 * 60_000, minGapMs: GAP })
+    for (const ms of placed.values()) {
+      expect(ms).toBeGreaterThanOrEqual(last)
+      expect(ms).toBeLessThanOrEqual(end + 2 * GAP)
+    }
   })
 })

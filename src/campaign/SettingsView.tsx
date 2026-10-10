@@ -5,7 +5,8 @@ import { useEffect, useState } from 'react'
 
 import type { PresetName } from '../media/silenceMath'
 import type { Session, SyncState } from './cloud'
-import type { LocalPosting, Profile } from './posting'
+import { DEFAULT_WINDOW } from '../../supabase/functions/postiz/window.ts'
+import { onFixedTimes, switchToRandom, windowLabel, type LocalPosting, type Profile } from './posting'
 import {
   CAPTION_POSITIONS,
   CAPTION_SIZES,
@@ -225,6 +226,8 @@ export function SettingsView({
   onPush,
   onDisconnectPosting,
   onLimitsChanged,
+  campaigns,
+  onPlacesChanged,
 }: {
   session: Session | null
   syncState: SyncState
@@ -248,6 +251,9 @@ export function SettingsView({
   onDisconnectPosting: () => void
   /** The profile came back from saving pause / daily limits. */
   onLimitsChanged: (profile: Profile) => void
+  campaigns: readonly { id: string; name: string }[]
+  /** Campaigns were switched to random times; the saved profile changed. */
+  onPlacesChanged: () => void
 }) {
   const used = useSpaceUsed()
   return (
@@ -302,6 +308,7 @@ export function SettingsView({
               </span>
             </span>
           </label>
+          <RandomForAll profile={posting.profile} campaigns={campaigns} onChanged={onPlacesChanged} />
           <PostingLimits profile={posting.profile} onChanged={onLimitsChanged} />
           <div className="setting">
             <div className="setting-text">
@@ -420,3 +427,52 @@ export function SettingsView({
   )
 }
 
+
+/** Every campaign posts at random unless he gave it fixed times; this
+ *  switches the ones he did, in one tap. */
+function RandomForAll({
+  profile,
+  campaigns,
+  onChanged,
+}: {
+  profile: Profile
+  campaigns: readonly { id: string; name: string }[]
+  onChanged: () => void
+}) {
+  const fixed = onFixedTimes(profile, campaigns)
+  const [busy, setBusy] = useState(false)
+  const [problem, setProblem] = useState<string | null>(null)
+  return (
+    <div className="setting">
+      <div className="setting-text">
+        <span className="row-name">Random times for every campaign</span>
+        <span className={`row-line wrap${problem ? ' error' : ''}`}>
+          {problem ??
+            (fixed.length === 0
+              ? 'Every campaign posts at a different random time each day, inside its own window.'
+              : `${fixed.map((c) => c.name).join(', ')} still ${fixed.length === 1 ? 'uses' : 'use'} your own times. Others post at random (${windowLabel(DEFAULT_WINDOW)} unless you change it in their Posting).`)}
+        </span>
+      </div>
+      {fixed.length > 0 ? (
+        <button
+          type="button"
+          className="btn small"
+          disabled={busy}
+          onClick={() => {
+            if (!window.confirm(`Switch ${fixed.map((c) => c.name).join(', ')} to random times? Each gets ${windowLabel(DEFAULT_WINDOW)} unless it already had a window. Change any of them in its Posting.`)) return
+            setBusy(true)
+            setProblem(null)
+            switchToRandom(profile, campaigns)
+              .catch((error: unknown) => setProblem(error instanceof Error ? error.message : String(error)))
+              .finally(() => {
+                setBusy(false)
+                onChanged()
+              })
+          }}
+        >
+          {busy ? 'Switching...' : 'Switch all'}
+        </button>
+      ) : null}
+    </div>
+  )
+}

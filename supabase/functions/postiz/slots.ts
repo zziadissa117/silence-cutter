@@ -12,7 +12,7 @@
 // none of his own and a window set - each day's own random times inside it
 // (window.ts). `Times` carries either; `timesOn` reads one day of it.
 
-import { cleanWindow, windowTimes } from './window.ts'
+import { DEFAULT_WINDOW, cleanWindow, windowTimes } from './window.ts'
 
 const MINUTE = 60_000
 
@@ -25,12 +25,13 @@ export function timesOn(times: Times, date: string): string[] {
 }
 
 /** What a campaign's posting place says its times are: his own when he has
- *  any, else the window's random ones, else none ("as soon as ready"). */
+ *  any, else random ones from its window - or from the default window, so no
+ *  campaign posts a video the moment it is ready. */
 export function timesFor(place: { times?: string[]; window?: unknown } | undefined, campaignId: string): Times {
   const own = normalTimes(place?.times ?? [])
   if (own.length > 0) return own
-  const window = cleanWindow(place?.window)
-  return window ? (date: string) => windowTimes(window, campaignId, date) : []
+  const window = cleanWindow(place?.window) ?? DEFAULT_WINDOW
+  return (date: string) => windowTimes(window, campaignId, date)
 }
 
 /** "HH:MM" times, valid and in order, each once. */
@@ -234,38 +235,59 @@ export interface SpreadMember {
   locked: boolean
 }
 
-/** Times for one kind of a day's spread videos, in the order they came in.
- *  Late ones start at `start` (half an hour after the first came in); extra
- *  ones start one step after it (the campaign's last time). Ones already in
- *  Postiz keep their time and the rest spread out after them. Never sooner
- *  than `lead` from now, and at least `minGap` apart - past midnight if a
- *  very late day needs it. Only the videos whose time is not locked are in
- *  the answer. */
+/** 0 to 1, the same for the same id: where in the day's spread a video lands. */
+function shareOf(id: string): number {
+  let hash = 2166136261
+  for (let i = 0; i < id.length; i++) {
+    hash ^= id.charCodeAt(i)
+    hash = Math.imul(hash, 16777619)
+  }
+  hash ^= hash >>> 15
+  hash = Math.imul(hash, 2246822507)
+  hash ^= hash >>> 13
+  return (hash >>> 0) / 4294967296
+}
+
+/** Times for one kind of a day's spread videos: each at a random moment
+ *  between `start` and `end` (midnight), drawn from its own id - so a video
+ *  keeps its time when another late one arrives, and a week of late nights
+ *  never lands on the same minutes. Late ones start at `start` (a little after
+ *  the first came in); extra ones start at the campaign's last time. Never
+ *  sooner than `lead` from now and at least `minGap` from any other - ones
+ *  already in Postiz keep their time and the rest keep clear of them, past
+ *  midnight only if a very late day needs it. Only the videos whose time is
+ *  not locked are in the answer. */
 export function spreadDay(
   members: SpreadMember[],
-  { start, end, firstAtStart, now, leadMs, minGapMs }: { start: number; end: number; firstAtStart: boolean; now: number; leadMs: number; minGapMs: number },
+  { start, end, now, leadMs, minGapMs }: { start: number; end: number; firstAtStart?: boolean; now: number; leadMs: number; minGapMs: number },
 ): Map<string, number> {
   const unlocked = members.filter((m) => !m.locked)
   const out = new Map<string, number>()
   if (unlocked.length === 0) return out
-  const lockedTimes = members.filter((m) => m.locked && m.at !== null).map((m) => m.at!)
-  let from = start
-  let atStart = firstAtStart
-  const lastLocked = lockedTimes.length > 0 ? Math.max(...lockedTimes) : -Infinity
-  if (lastLocked >= from) {
-    from = lastLocked
-    atStart = false
-  }
-  const k = unlocked.length
   const floor = now + leadMs
-  let step = Math.max(minGapMs, (end - from) / (atStart ? k : k + 1))
-  let first = atStart ? from : from + step
-  if (first < floor) {
-    from = floor
-    atStart = true
-    step = Math.max(minGapMs, (end - from) / k)
-    first = from
+  // The span is fixed by the day, not by the clock, so the draws stay put
+  // as the evening goes on.
+  const span = Math.max(0, end - start)
+  const wanted = unlocked
+    .map((m) => ({ id: m.id, at: Math.max(floor, Math.round(start + shareOf(m.id) * span)) }))
+    .sort((a, b) => a.at - b.at || a.id.localeCompare(b.id))
+  const fixed = members.filter((m) => m.locked && m.at !== null).map((m) => m.at!).sort((a, b) => a - b)
+  const placed: number[] = []
+  for (const w of wanted) {
+    let at = w.at
+    // Clear of everything already placed and every locked time - moving on
+    // until it is.
+    for (let moved = true; moved; ) {
+      moved = false
+      for (const other of [...fixed, ...placed]) {
+        if (Math.abs(at - other) < minGapMs) {
+          at = other + minGapMs
+          moved = true
+        }
+      }
+    }
+    placed.push(at)
+    out.set(w.id, at)
   }
-  unlocked.forEach((m, i) => out.set(m.id, Math.round(first + i * step)))
   return out
 }

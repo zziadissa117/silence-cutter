@@ -7,7 +7,7 @@ import { useState } from 'react'
 
 import { EditorFrame, useSaver } from './Editors'
 import { NO_POSTING, type Campaign, type CampaignPosting } from './look'
-import { MAX_PER_DAY, cleanWindow, type PostingWindow } from '../../supabase/functions/postiz/window.ts'
+import { DEFAULT_WINDOW, MAX_PER_DAY, cleanWindow, type PostingWindow } from '../../supabase/functions/postiz/window.ts'
 import {
   PostingError,
   accountLabel,
@@ -15,6 +15,7 @@ import {
   placeFor,
   refreshAccounts,
   timeLabel,
+  windowLabel,
   type CampaignPlace,
   type LocalPosting,
 } from './posting'
@@ -66,10 +67,10 @@ export function PostingEditor({
   const [newTime, setNewTime] = useState('')
   // His own times, or random ones inside a window. A campaign that has a
   // window and none of its own times opens on Random.
-  const [timing, setTiming] = useState<'own' | 'random'>(place.times.length === 0 && place.window ? 'random' : 'own')
+  const [timing, setTiming] = useState<'own' | 'random'>(place.times.length === 0 ? 'random' : 'own')
   // What the window boxes show until he changes them - only a starting
   // point, nothing is saved unless he picks Random times and saves.
-  const [windowDraft, setWindowDraft] = useState<PostingWindow>(place.window ?? { from: '10:00', to: '22:00', perDay: 2 })
+  const [windowDraft, setWindowDraft] = useState<PostingWindow>(cleanWindow(place.window) ?? DEFAULT_WINDOW)
   const [refreshing, setRefreshing] = useState(false)
   const [refreshProblem, setRefreshProblem] = useState<string | null>(null)
   const [saving, problems, run] = useSaver()
@@ -218,7 +219,7 @@ export function PostingEditor({
                 </button>
               </div>
               {place.times.length === 0 ? (
-                <div className="hint warn-text">No times - every video posts the moment it's ready.</div>
+                <div className="hint">No times of its own yet - until you add one, it posts at random ({windowLabel(DEFAULT_WINDOW)}).</div>
               ) : (
                 <div className="hint">Each video takes the next free time, a few minutes after it.</div>
               )}

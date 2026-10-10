@@ -3,6 +3,25 @@
 Newest first. Every change says what it does, how to use it, and how it works
 underneath. Kept up to date with each commit.
 
+## Random posting times in every campaign, and late videos at random until midnight
+**What:** every campaign now posts at a different random time each day. A campaign with no times of its own used to
+post each video the moment it was ready; now it posts 3 a day at random between 10 AM and 10 PM. Each campaign keeps
+its own window: change it in Campaigns, the campaign, Posting (it opens on Random times). Campaigns where you set your
+own times keep them until you switch them: Settings, Posting, "Random times for every campaign", Switch all. That
+gives each of them random times, keeping any window it already had, and leaves its accounts alone.
+A video that comes in late - say 10 PM, after the day's times have gone - now gets a random time between 20 minutes
+after it arrived and midnight, at least 15 minutes from any other, instead of the evenly spaced spread. The same goes
+for extra videos beyond the day's times. Batch videos are made ahead and keep taking each day's random times from
+the window, as before.
+**How:** `window.ts` has `DEFAULT_WINDOW` (10:00-22:00, 3 a day); the server's `timesFor` and the phone's
+`placeTimesOn` fall back to it, so the phone shows the same times the server will use. `spreadDay` (`slots.ts`) now
+draws each late video's time from its post id, so a video keeps its time when another late one arrives, and videos
+already in Postiz never move.
+**Needs deploying:** both - `./deploy.sh` for the phone and `./deploy-server.sh` for the late-video times and the
+default window on the server.
+Files: `window.ts`, `slots.ts` (+ tests), `index.ts`, `posting.ts` (+ test), `PostingEditor.tsx` (+ test),
+`SettingsView.tsx`, `CampaignApp.tsx`, `NewPost.tsx`, `BatchView.tsx`.
+
 ## Fix: the tab bar drifting with the scroll (third try - the cause, not the symptom)
 **What:** the bar - Videos, Batch, Campaigns, Pictures, Settings - still followed the scroll instead of staying on
 the bottom of the phone. The earlier fixes worked around an iOS 26 bug (WebKit 301108) that only happens in a Home

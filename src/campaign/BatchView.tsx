@@ -27,7 +27,7 @@ import { filmingOf } from './filming'
 import { fingerprint, skippedNotice } from './fingerprint'
 import { formatTime, labelOf, type Job } from './jobs'
 import type { Angle, Campaign } from './look'
-import { accountLabel, hasTimes, placeFor, placeTimesOn, timeLabel, windowLabel, type LocalPosting } from './posting'
+import { accountLabel, placeFor, placeTimesOn, timeLabel, windowLabel, windowOf, type LocalPosting } from './posting'
 import { deleteBankFile, loadBatchBank, saveBankFile, saveBatchBank, type JobBatch } from './store'
 
 const LAST_KEY = 'batch.campaign'
@@ -142,7 +142,7 @@ export function BatchView({
   // His own times, or each day's random ones from the campaign's window.
   const timesOnDate = (date: string) => placeTimesOn(place, campaign.id, date)
   const times = timesOnDate(todayHere())
-  const random = place.times.length === 0 && Boolean(place.window)
+  const random = place.times.length === 0
   const angle = campaign.angles.find((a) => a.id === bank?.angleId) ?? campaign.angles[0]
 
   const add = async (kind: Kind, files: File[]) => {
@@ -215,7 +215,7 @@ export function BatchView({
   const failed = jobs.filter((j) => j.status === 'failed' || j.status === 'held')
   const total = [...new Map(jobs.map((j) => [j.batch!.id, j.batch!.size])).values()].reduce((a, b) => a + b, 0)
   const working = jobs.find((j) => j.status === 'working')
-  const canMake = Boolean(bank) && missing.length === 0 && slots.length > 0 && hasTimes(place) && saving === null
+  const canMake = Boolean(bank) && missing.length === 0 && slots.length > 0 && saving === null
 
   const make = () => {
     if (!bank || !canMake) return
@@ -341,8 +341,8 @@ export function BatchView({
         ) : null}
         <p className="hint new-post-to">
           To {accounts.map(accountLabel).join(', ')}
-          {random && place.window
-            ? ` · ${windowLabel(place.window)}`
+          {random
+            ? ` · ${windowLabel(windowOf(place))}`
             : times.length > 0
               ? ` · at ${times.map(timeLabel).join(', ')}`
               : ''}
@@ -393,12 +393,7 @@ export function BatchView({
 
           <div className="group">
             <div className="group-title">Posting</div>
-            {!hasTimes(place) ? (
-              <p className="hint warn-text">
-                {campaign.name} has no posting times. Add your own or random ones first: Campaigns, {campaign.name}, Posting.
-              </p>
-            ) : (
-              <>
+            <>
                 <div className="field">
                   <span className="label">Videos a day</span>
                   <div className="seg full" role="radiogroup" aria-label="Videos a day">
@@ -440,7 +435,6 @@ export function BatchView({
                   </div>
                 </div>
               </>
-            )}
           </div>
 
           {problem ? <p className="error">{problem}</p> : null}

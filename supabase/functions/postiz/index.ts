@@ -1283,7 +1283,7 @@ async function respread(profile: Profile, campaignId: string, date: string): Pro
     if (members.length === 0) continue
     const start =
       kind === 'late'
-        ? Math.min(...members.map((m) => Date.parse(m.created_at))) + 30 * MINUTE
+        ? Math.min(...members.map((m) => Date.parse(m.created_at))) + 20 * MINUTE
         : (lastTimeToday(times, date, profile.timezone) ?? now)
     const placed = spreadDay(
       members.map((m) => ({
@@ -1291,7 +1291,8 @@ async function respread(profile: Profile, campaignId: string, date: string): Pro
         at: m.post_at ? Date.parse(m.post_at) : null,
         locked: ['scheduled', 'posted', 'error'].includes(m.status) || Boolean(m.creating_at),
       })),
-      { start, end, firstAtStart: kind === 'late', now, leadMs: 5 * MINUTE, minGapMs: 10 * MINUTE },
+      // Random until midnight, at least 15 minutes apart (slots.ts spreadDay).
+      { start, end, now, leadMs: 5 * MINUTE, minGapMs: 15 * MINUTE },
     )
     for (const m of members) {
       const at = placed.get(m.id)

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { cleanWindow, fits, windowTimes } from './window'
+import { DEFAULT_WINDOW, cleanWindow, fits, windowTimes } from './window'
 import { nextSlot, pickTime, timesFor, timesOn, zoned } from './slots'
 
 const WINDOW = { from: '10:00', to: '22:00', perDay: 3 }
@@ -57,9 +57,14 @@ describe('which times a campaign posts at', () => {
     expect(timesOn(times, '2026-10-09')).toEqual(windowTimes(WINDOW, 'inflow', '2026-10-09'))
   })
 
-  it('has none at all - posts as soon as ready - with neither', () => {
-    expect(timesFor({ times: [] }, 'inflow')).toEqual([])
-    expect(timesFor(undefined, 'inflow')).toEqual([])
+  it('posts at random inside the default window with neither - never as soon as ready', () => {
+    for (const place of [{ times: [] }, undefined]) {
+      const times = timesFor(place, 'inflow')
+      expect(typeof times).toBe('function')
+      expect(timesOn(times, '2026-10-09')).toEqual(windowTimes(DEFAULT_WINDOW, 'inflow', '2026-10-09'))
+    }
+    expect(windowTimes(DEFAULT_WINDOW, 'inflow', '2026-10-09')).toHaveLength(DEFAULT_WINDOW.perDay)
+    expect(windowTimes(DEFAULT_WINDOW, 'inflow', '2026-10-09')).not.toEqual(windowTimes(DEFAULT_WINDOW, 'inflow', '2026-10-10'))
   })
 
   it('gives a video coming in a random time today, not now', () => {

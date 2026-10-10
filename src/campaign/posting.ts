@@ -8,7 +8,7 @@
 // it posts at are each person's own, kept in their profile on the server.
 // The phone keeps only which profile is its own, and whether it sends.
 
-import { cleanWindow, windowTimes, type PostingWindow } from '../../supabase/functions/postiz/window.ts'
+import { DEFAULT_WINDOW, cleanWindow, windowTimes, type PostingWindow } from '../../supabase/functions/postiz/window.ts'
 import { PUBLISHABLE_KEY, currentSession } from './cloud'
 import type { Campaign, CampaignPosting } from './look'
 
@@ -260,17 +260,36 @@ export function placeFor(profile: Profile | undefined, campaignId: string): Camp
 }
 
 /** A campaign's times on one date, as the server will use them: its own,
- *  else the window's random ones for that day, else none. */
+ *  else that day's random ones from its window (or the default window). */
 export function placeTimesOn(place: CampaignPlace, campaignId: string, date: string): string[] {
   if (place.times.length > 0) return place.times
-  const window = cleanWindow(place.window)
-  return window ? windowTimes(window, campaignId, date) : []
+  return windowTimes(windowOf(place), campaignId, date)
 }
 
-/** Whether its videos wait for a time at all - false means each one posts
- *  the moment it is ready. */
-export function hasTimes(place: CampaignPlace): boolean {
-  return place.times.length > 0 || cleanWindow(place.window) !== null
+/** The window its random times come from: its own, or the default every
+ *  campaign without fixed times posts by. */
+export function windowOf(place: Pick<CampaignPlace, 'window'>): PostingWindow {
+  return cleanWindow(place.window) ?? DEFAULT_WINDOW
+}
+
+/** The campaigns still on fixed times of his own - the ones "Random times
+ *  for every campaign" switches. */
+export function onFixedTimes<C extends { id: string }>(profile: Profile, campaigns: readonly C[]): C[] {
+  return campaigns.filter((c) => placeFor(profile, c.id).times.length > 0)
+}
+
+/** Switches each of them to random times: its own window if it ever had one,
+ *  else the default. Accounts stay as they are. One at a time, so a failure
+ *  names the campaign and the ones before it stay switched. */
+export async function switchToRandom(profile: Profile, campaigns: readonly { id: string; name: string }[]): Promise<void> {
+  for (const campaign of onFixedTimes(profile, campaigns)) {
+    const place = placeFor(profile, campaign.id)
+    try {
+      await saveCampaignPlace(campaign.id, { accounts: place.accounts, times: [], window: windowOf(place) })
+    } catch (error) {
+      throw new PostingError(`${campaign.name} kept its own times: ${error instanceof Error ? error.message : String(error)}`)
+    }
+  }
 }
 
 /** "2 a day at random, 10 AM - 10 PM". */

@@ -106,9 +106,9 @@ import {
   stopCampaignPosts,
   stopPostsNow,
   stoppable,
-  hasTimes,
   timeLabel,
   windowLabel,
+  windowOf,
   type CampaignPlace,
   type LocalPosting,
 } from './posting'
@@ -1720,9 +1720,8 @@ export function CampaignApp() {
     if (!posting) return owner.posting ? `Not set up on this phone · ${approval}` : 'Not set up - finished videos stay on the phone'
     const place = placeFor(posting.profile, owner.id)
     if (place.accounts.length === 0) return 'No accounts picked - its videos are not sent'
-    // No times of his own and no window: say plainly that it goes at once.
-    if (!hasTimes(place)) return `No times - each video posts the moment it's ready · ${approval}`
-    const times = place.times.length > 0 ? place.times.map(timeLabel).join(', ') : windowLabel(place.window!)
+    // His own times, else random ones from its window or the default one.
+    const times = place.times.length > 0 ? place.times.map(timeLabel).join(', ') : windowLabel(windowOf(place))
     return `${place.accounts.length} account${place.accounts.length === 1 ? '' : 's'} · ${times} · ${approval}`
   }
 
@@ -2781,6 +2780,8 @@ export function CampaignApp() {
           setPosting(null)
         }}
         onLimitsChanged={() => setPosting(postingHere())}
+        campaigns={campaigns ?? []}
+        onPlacesChanged={() => setPosting(postingHere())}
       />
     ) : (
       videos

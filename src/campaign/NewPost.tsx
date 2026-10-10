@@ -19,7 +19,7 @@ import { formatTime } from './jobs'
 import { NO_POSTING, type Campaign } from './look'
 import { fingerprint, handPostKey, newOnes, skippedNotice } from './fingerprint'
 import { fingerprintsFor, isQueued, queueSend } from './outbox'
-import { PostingError, accountLabel, localInput, hasTimes, placeFor, timeLabel, whenLabel, windowLabel, writeCaptionFor, type Profile } from './posting'
+import { PostingError, accountLabel, localInput, placeFor, windowOf, timeLabel, whenLabel, windowLabel, writeCaptionFor, type Profile } from './posting'
 import { stillsOf } from './stills'
 import { asMp4 } from './toMp4'
 
@@ -179,9 +179,9 @@ export function NewPost({
   const paste = posting.caption === 'paste'
   const place = campaign ? placeFor(profile, campaign.id) : null
   const times = place?.times ?? []
-  // His own times, or random ones from the campaign's window: either way
-  // several videos can be spread instead of all going at once.
-  const timed = place ? hasTimes(place) : false
+  // His own times, or random ones from the campaign's window (the default
+  // one when it has none): several videos can always be spread.
+  const timed = place !== null
   const many = items.length > 1
 
   // Several at once spread over the campaign's times unless he says otherwise.
@@ -459,7 +459,7 @@ export function NewPost({
           {many ? (
             <p className="hint new-post-to">
               {chosen === 'spread'
-                ? `On ${campaign.name}'s ${times.length > 0 ? `times (${times.map(timeLabel).join(', ')})` : place?.window ? `random times (${windowLabel(place.window)})` : 'times'}, and once those have gone, spread evenly to midnight - like videos made late.`
+                ? `On ${campaign.name}'s ${times.length > 0 ? `times (${times.map(timeLabel).join(', ')})` : place ? `random times (${windowLabel(windowOf(place))})` : 'times'}, and once those have gone, at random until midnight - like videos made late.`
                 : timed
                   ? 'All of them go out at once.'
                   : `${campaign.name} has no posting times, so they all go at once. Add your own or random times in its Posting to spread them.`}
