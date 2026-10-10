@@ -13,7 +13,6 @@ import { pickArrived, pickSaved } from '../pickWatch'
 import {
   combos,
   dayLabel,
-  dayTimes,
   emptyBank,
   headlinesFrom,
   pickBatch,
@@ -27,7 +26,7 @@ import { filmingOf } from './filming'
 import { fingerprint, skippedNotice } from './fingerprint'
 import { formatTime, labelOf, type Job } from './jobs'
 import type { Angle, Campaign } from './look'
-import { accountLabel, placeFor, placeTimesOn, timeLabel, windowLabel, windowOf, type LocalPosting } from './posting'
+import { accountLabel, batchTimesOn, placeFor, timeLabel, windowLabel, windowOf, type LocalPosting } from './posting'
 import { deleteBankFile, loadBatchBank, saveBankFile, saveBatchBank, type JobBatch } from './store'
 
 const LAST_KEY = 'batch.campaign'
@@ -94,6 +93,11 @@ export function BatchView({
   const adding = useRef(new Set<string>())
   const bankRef = useRef(bank)
   bankRef.current = bank
+  /** Set the moment "Make" is tapped, before React has re-rendered: a second
+   *  tap in between would plan the same days again and make every video
+   *  twice. Cleared once the batch's videos show up on this phone. */
+  const making = useRef(false)
+  const [tapped, setTapped] = useState(false)
 
   useEffect(() => {
     if (!campaign) return
@@ -109,6 +113,20 @@ export function BatchView({
       cancelled = true
     }
   }, [campaign?.id]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // The tap's videos have reached the job list (or nothing came of it): from
+  // here the running jobs keep the button busy until they are made.
+  const jobsAtTap = useRef(0)
+  useEffect(() => {
+    if (!tapped) return
+    const done = () => {
+      making.current = false
+      setTapped(false)
+    }
+    if (jobs.length !== jobsAtTap.current) return done()
+    const timer = setTimeout(done, 5000)
+    return () => clearTimeout(timer)
+  }, [tapped, jobs.length])
 
   const keep = (next: BatchBank) => {
     setBank(next)
@@ -139,8 +157,10 @@ export function BatchView({
 
   const place = placeFor(profile, campaign.id)
   const accounts = place.accounts.map((id) => profile.accounts.find((a) => a.id === id)).filter((a) => a !== undefined)
-  // His own times, or each day's random ones from the campaign's window.
-  const timesOnDate = (date: string) => placeTimesOn(place, campaign.id, date)
+  // As many times a day as he picked: random ones from the campaign's
+  // window, or his own (with random extras when he wants more than he has).
+  const perDay = bank?.perDay ?? 1
+  const timesOnDate = (date: string) => batchTimesOn(place, campaign.id, date, perDay)
   const times = timesOnDate(todayHere())
   const random = place.times.length === 0
   const angle = campaign.angles.find((a) => a.id === bank?.angleId) ?? campaign.angles[0]
@@ -212,13 +232,22 @@ export function BatchView({
         bank.headlines.length === 0 ? 'a headline' : '',
       ].filter(Boolean)
   const running = jobs.filter((j) => j.status !== 'failed' && j.status !== 'held')
+  const makingHere = running.filter((j) => j.campaignId === campaign.id)
+  const busyMaking = tapped || makingHere.length > 0
+  const madeHereTotal = [...new Map(jobs.filter((j) => j.campaignId === campaign.id).map((j) => [j.batch!.id, j.batch!.size])).values()].reduce(
+    (a, b) => a + b,
+    0,
+  )
   const failed = jobs.filter((j) => j.status === 'failed' || j.status === 'held')
   const total = [...new Map(jobs.map((j) => [j.batch!.id, j.batch!.size])).values()].reduce((a, b) => a + b, 0)
   const working = jobs.find((j) => j.status === 'working')
-  const canMake = Boolean(bank) && missing.length === 0 && slots.length > 0 && saving === null
+  const canMake = Boolean(bank) && missing.length === 0 && slots.length > 0 && saving === null && !busyMaking
 
   const make = () => {
-    if (!bank || !canMake) return
+    if (!bank || !canMake || making.current) return
+    making.current = true
+    jobsAtTap.current = jobs.length
+    setTapped(true)
     const { picks, used, lastPair, made } = pickBatch(bank, slots.length)
     const id = `b-${Date.now().toString(36)}`
     const byId = (list: BankFile[], fileId: string | null) => list.find((f) => f.id === fileId) ?? null
@@ -299,7 +328,15 @@ export function BatchView({
     </div>
   )
 
-  const perDayChoices = Array.from({ length: Math.min(6, times.length) }, (_, i) => i + 1)
+  const perDayChoices = Array.from({ length: 6 }, (_, i) => i + 1)
+  const nextDays = slots.length > 0 ? dayRange(slots[0].date, slots[slots.length - 1].date) : ''
+  const makeLabel = busyMaking
+    ? makingHere.length > 0
+      ? `Making ${Math.max(0, madeHereTotal - makingHere.length) + 1} of ${madeHereTotal}…`
+      : 'Making…'
+    : slots.length > 0
+      ? `Make ${slots.length}${bank?.madeThrough && bank.madeThrough >= todayHere() ? ' more' : ''} video${slots.length === 1 ? '' : 's'} - ${nextDays}`
+      : 'Make them'
 
   return (
     <section className="screen batch">
@@ -412,8 +449,10 @@ export function BatchView({
                   </div>
                   <span className="hint">
                     {random
-                      ? `At random times inside the window, different each day - today ${dayTimes(times, bank.perDay).map(timeLabel).join(', ')}.`
-                      : `At ${dayTimes(times, bank.perDay).map(timeLabel).join(', ')}.`}
+                      ? `At random times inside the window, different each day - today ${times.map(timeLabel).join(', ')}.`
+                      : times.length > place.times.length
+                        ? `At your times and random ones in between - today ${times.map(timeLabel).join(', ')}.`
+                        : `At ${times.map(timeLabel).join(', ')}.`}
                   </span>
                 </div>
                 <div className="field">
@@ -441,7 +480,7 @@ export function BatchView({
           {notice ? <p className="notice">{notice}</p> : null}
 
           <button type="button" className="btn primary batch-make" disabled={!canMake} onClick={make}>
-            {slots.length > 0 ? `Make ${slots.length} video${slots.length === 1 ? '' : 's'}` : 'Make them'}
+            {makeLabel}
           </button>
           {different > 0 && Number.isFinite(different) ? (
             <p className={`hint new-post-to batch-left${slots.length < wanted.length ? ' warn-text' : ''}`}>
@@ -507,4 +546,9 @@ export function BatchView({
       ) : null}
     </section>
   )
+}
+
+/** "Wed Oct 14" or "Wed Oct 14 to Fri Oct 16". */
+function dayRange(first: string, last: string): string {
+  return first === last ? dayLabel(first) : `${dayLabel(first)} to ${dayLabel(last)}`
 }

@@ -3,6 +3,19 @@
 Newest first. Every change says what it does, how to use it, and how it works
 underneath. Kept up to date with each commit.
 
+## Fix: Batch made twice on a double tap, and only 1 or 3 videos a day
+**What was wrong:** tapping "Make 6 videos" twice quickly could make the whole batch twice - the button stayed live,
+and a second tap before the screen caught up planned the same days again. And "Videos a day" only offered as many as
+the campaign had times: 1 for a campaign with one time of its own, 1-3 for a random one.
+**Now:** the first tap locks the button at once; it reads "Making…", then "Making 3 of 6…" while that campaign's
+batch is made, and can't be tapped again until it's done. Afterwards it names the days the next batch would cover
+("Make 6 more videos - Wed Oct 14 to Fri Oct 16"), so a second batch is clearly a different one.
+"Videos a day" always offers 1 to 6. A random campaign draws that many random times from its window, different each
+day. A campaign on its own times keeps them and, when you want more videos than it has times, adds random ones from
+the window, at least half an hour from yours. The hint under it lists today's times.
+Only ./deploy.sh is needed - the server already posts a batch video at the time it was made for.
+Files: `BatchView.tsx` (+ `batchView.test.tsx`), `posting.ts` (`batchTimesOn`, + test).
+
 ## Random posting times in every campaign, and late videos at random until midnight
 **What:** every campaign now posts at a different random time each day. A campaign with no times of its own used to
 post each video the moment it was ready; now it posts 3 a day at random between 10 AM and 10 PM. Each campaign keeps

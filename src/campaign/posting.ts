@@ -8,9 +8,10 @@
 // it posts at are each person's own, kept in their profile on the server.
 // The phone keeps only which profile is its own, and whether it sends.
 
-import { DEFAULT_WINDOW, cleanWindow, windowTimes, type PostingWindow } from '../../supabase/functions/postiz/window.ts'
+import { DEFAULT_WINDOW, MAX_PER_DAY, WINDOW_GAP_MINUTES, cleanWindow, windowTimes, type PostingWindow } from '../../supabase/functions/postiz/window.ts'
 import { PUBLISHABLE_KEY, currentSession } from './cloud'
 import type { Campaign, CampaignPosting } from './look'
+import { dayTimes } from './batch'
 
 const FUNCTION_URL = 'https://uykuoibqdxmpbbrsmyad.supabase.co/functions/v1/postiz'
 const LOCAL_KEY = 'cutter.posting'
@@ -264,6 +265,23 @@ export function placeFor(profile: Profile | undefined, campaignId: string): Camp
 export function placeTimesOn(place: CampaignPlace, campaignId: string, date: string): string[] {
   if (place.times.length > 0) return place.times
   return windowTimes(windowOf(place), campaignId, date)
+}
+
+/** A batch's times on one date: `perDay` of them, whatever the campaign's
+ *  own count. A random campaign draws that many from its window; one on his
+ *  own times keeps them (an even pick when he wants fewer) and, when he
+ *  wants more, adds random ones from the window at least half an hour from
+ *  his. The server takes a batch video's own time as given. */
+export function batchTimesOn(place: CampaignPlace, campaignId: string, date: string, perDay: number): string[] {
+  const window = windowOf(place)
+  if (place.times.length === 0) return windowTimes({ ...window, perDay: Math.min(perDay, MAX_PER_DAY) }, campaignId, date)
+  const own = [...new Set(place.times)].sort()
+  if (perDay <= own.length) return dayTimes(own, perDay)
+  const minutes = (t: string) => Number(t.slice(0, 2)) * 60 + Number(t.slice(3, 5))
+  const clear = (t: string) => own.every((o) => Math.abs(minutes(o) - minutes(t)) >= WINDOW_GAP_MINUTES)
+  const extras = windowTimes({ ...window, perDay: MAX_PER_DAY }, `${campaignId}|batch`, date).filter(clear)
+  // An even pick of the candidates, so the extras spread over the window.
+  return [...own, ...dayTimes(extras, perDay - own.length)].sort()
 }
 
 /** The window its random times come from: its own, or the default every

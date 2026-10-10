@@ -14,7 +14,7 @@ vi.mock('./cloud', async (original) => ({
   currentSession: () => ({ token: 't' }),
 }))
 
-import { onFixedTimes, placeTimesOn, stopPostsNow, switchToRandom, type Profile, type ServerPost } from './posting'
+import { batchTimesOn, onFixedTimes, placeTimesOn, stopPostsNow, switchToRandom, type Profile, type ServerPost } from './posting'
 
 const post = (id: string, postAt: string) => ({ id, campaignId: 'c', campaignName: 'Polsia', status: 'scheduled', postAt }) as unknown as ServerPost
 
@@ -115,5 +115,29 @@ describe('random times for every campaign', () => {
   it('names the campaign that could not be switched', async () => {
     server((body) => (body.campaignId === 'hadWindow' ? { status: 502, json: { error: 'Postiz had a problem (502).' } } : { status: 200, json: profile }))
     await expect(switchToRandom(profile, campaigns)).rejects.toThrow(/^Vertus kept its own times/)
+  })
+})
+
+describe('batchTimesOn', () => {
+  const minutes = (t: string) => Number(t.slice(0, 2)) * 60 + Number(t.slice(3, 5))
+
+  it('draws as many as he picks from a random campaign\'s window, a different set each day', () => {
+    const place = { accounts: [], times: [], window: { from: '10:00', to: '22:00', perDay: 3 } }
+    for (let n = 1; n <= 6; n++) {
+      const times = batchTimesOn(place, 'inflow', '2026-10-12', n)
+      expect(times).toHaveLength(n)
+      for (const t of times) expect(t >= '10:00' && t <= '22:00').toBe(true)
+      for (let i = 1; i < times.length; i++) expect(minutes(times[i]) - minutes(times[i - 1])).toBeGreaterThanOrEqual(30)
+    }
+    expect(batchTimesOn(place, 'inflow', '2026-10-12', 5)).not.toEqual(batchTimesOn(place, 'inflow', '2026-10-13', 5))
+  })
+
+  it('keeps his own times and adds random ones, half an hour clear of his, when he wants more', () => {
+    const place = { accounts: [], times: ['18:00'] }
+    const times = batchTimesOn(place, 'inflow', '2026-10-12', 4)
+    expect(times).toHaveLength(4)
+    expect(times).toContain('18:00')
+    for (const t of times.filter((t) => t !== '18:00')) expect(Math.abs(minutes(t) - minutes('18:00'))).toBeGreaterThanOrEqual(30)
+    expect(batchTimesOn({ accounts: [], times: ['09:00', '12:00', '18:00'] }, 'inflow', '2026-10-12', 3)).toEqual(['09:00', '12:00', '18:00'])
   })
 })
