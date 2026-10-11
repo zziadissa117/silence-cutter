@@ -3,6 +3,17 @@
 Newest first. Every change says what it does, how to use it, and how it works
 underneath. Kept up to date with each commit.
 
+## Fix: the server half of a deploy failing without anyone noticing
+**What was wrong:** every server change since Oct 6 - Stop, random times everywhere, Approve post later, Add missing
+hashtags - never reached the server. The posting function was still the Oct 6 version, because ./deploy-server.sh
+kept failing at the Supabase login after ./deploy.sh had already put the new app live. So the new buttons showed up
+and then said "run ./deploy-server.sh".
+**Now:** ./deploy.sh does both. When the server code changed it runs ./deploy-server.sh itself, which asks for a
+Supabase token (supabase.com/dashboard/account/tokens) instead of using the Mac's keychain, and offers to keep it in
+~/.supabase-token so it never asks again. If the server part fails, it ends in red with "THE SERVER WAS NOT UPDATED"
+instead of "Done". A bad or expired kept token says to delete ~/.supabase-token and try again.
+Files: `deploy.sh`, `deploy-server.sh`.
+
 ## Redo captions now adds the missing hashtags by default
 **What:** "Redo captions" rewrote every caption with Claude. Now the main choice keeps every caption word for word and
 only adds the campaign's hashtags it is missing - for a whole batch or campaign at once, never one post at a time.

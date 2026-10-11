@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # One command to ship the cutter app from your Mac:  ./deploy.sh
-# Needs only a Netlify login (it asks the first time, in the browser).
-# No Supabase login and no keychain: the server functions rarely change, and
-# when they do this says so at the end - then run ./deploy-server.sh too.
+# Needs a Netlify login (it asks the first time, in the browser). When the
+# server code changed too, it runs ./deploy-server.sh as well, which asks for
+# a Supabase token once (see that file) - and says in red if that fails.
 set -euo pipefail
 
 BRANCH=claude/cutter-lockdown-and-map
@@ -23,7 +23,13 @@ npx netlify deploy --prod
 since=$( [ -s "$SERVER_MARK" ] && cat "$SERVER_MARK" || echo "$before" )
 if git cat-file -e "$since^{commit}" 2>/dev/null && ! git diff --quiet "$since" HEAD -- supabase/functions; then
   echo
-  echo "Done - and the server code changed too. Run:  ./deploy-server.sh"
+  echo "3/3  The server code changed too - updating the server"
+  if ! ./deploy-server.sh; then
+    printf '\n\033[1;31m%s\033[0m\n' "The app is live, but THE SERVER WAS NOT UPDATED - its new features will keep saying to run ./deploy-server.sh."
+    echo "Fix what the error above says, then run:  ./deploy-server.sh"
+    exit 1
+  fi
+  echo "Done - app and server both updated. Close the cutter and open it again."
 else
   echo "Done. Open the cutter and reload it to get the new version."
 fi
