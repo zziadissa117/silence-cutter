@@ -112,6 +112,7 @@ import {
   redoCaptions,
   redoSaid,
   type CampaignPlace,
+  type RedoMode,
   type LocalPosting,
 } from './posting'
 import { PostsView } from './PostsView'
@@ -1693,7 +1694,7 @@ export function CampaignApp() {
 
   /** The brand's rules go with the campaign, to both phones; his own
    *  accounts and times go to his profile. */
-  const savePosting = async (owner: Campaign, rules: CampaignPosting, place: CampaignPlace | null, catchUp: string[] = [], redo = false) => {
+  const savePosting = async (owner: Campaign, rules: CampaignPosting, place: CampaignPlace | null, catchUp: string[] = [], redo: RedoMode | null = null) => {
     if (place) {
       await saveCampaignPlace(owner.id, place)
       setPosting(postingHere())
@@ -1714,13 +1715,13 @@ export function CampaignApp() {
     setEditing(null)
     // Captions already made, written again with the rules just saved.
     if (redo) {
-      await redoCaptions(owner.id, rules)
-        .then((result) => setNotice(redoSaid(owner.name, result)))
+      await redoCaptions(owner.id, rules, undefined, redo)
+        .then((result) => setNotice(redoSaid(owner.name, result, redo, rules.hashtags)))
         .catch((error: unknown) => {
           const message = error instanceof Error ? error.message : String(error)
           setNotice(
             /unknown action/i.test(message)
-              ? 'The rules are saved, but redoing captions needs the server updated first - run ./deploy-server.sh, then Save posting again with Redo ticked.'
+              ? 'The rules are saved, but redoing captions needs the server updated first - run ./deploy-server.sh, then Save posting again with it ticked.'
               : `The rules are saved, but the captions could not be redone: ${message} Save posting again to retry.`,
           )
         })

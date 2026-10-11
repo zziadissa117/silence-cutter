@@ -3,6 +3,21 @@
 Newest first. Every change says what it does, how to use it, and how it works
 underneath. Kept up to date with each commit.
 
+## Redo captions now adds the missing hashtags by default
+**What:** "Redo captions" rewrote every caption with Claude. Now the main choice keeps every caption word for word and
+only adds the campaign's hashtags it is missing - for a whole batch or campaign at once, never one post at a time.
+- **A batch:** on Posts, each batch row has **Add missing hashtags** (one confirm, every post in it). "Rewrite
+  captions" is still there as a small second link.
+- **A campaign:** in its Posting, "Add the hashtags to posts already made" (ticks itself when you change the
+  hashtags; tick it yourself if you changed them earlier), then Save posting. When the rules text changed too, a
+  second tick lets Claude rewrite them instead.
+Scheduled posts keep their times: a post whose caption changes is taken out of Postiz and put back at the same
+time; one that already has every hashtag isn't touched at all. Ones going out in the next 15 minutes are left as they
+are. Pasted tracking captions never get hashtags, as before.
+**Needs:** ./deploy.sh and ./deploy-server.sh.
+Files: `postiz/index.ts`, `postiz/recaption.ts` (+ test), `posting.ts`, `PostsView.tsx` (+ test),
+`PostingEditor.tsx` (+ test), `CampaignApp.tsx`.
+
 ## Redo captions after changing a campaign's caption rules
 **What:** captions already written - waiting, held for later, or scheduled in Postiz - can be written again with the
 campaign's rules and hashtags as they are now. Two ways:

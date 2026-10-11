@@ -92,7 +92,7 @@ describe('when a campaign posts', () => {
 describe('redoing captions already made', () => {
   const later = new Date(Date.now() + 24 * 3_600_000).toISOString()
   const seen = (posts: object[]) => localStorage.setItem('cutter.posts', JSON.stringify(posts))
-  const redoBox = () => [...host.querySelectorAll('label.toggle')].find((l) => l.textContent?.includes('Redo the captions already made'))?.querySelector('input') as HTMLInputElement | undefined
+  const redoBox = () => [...host.querySelectorAll('label.toggle')].find((l) => l.textContent?.includes('Add the hashtags to posts already made'))?.querySelector('input') as HTMLInputElement | undefined
 
   it('offers it unticked when there are posts not out yet, and ticks itself when the hashtags change', async () => {
     seen([{ id: '1', campaignId: 'inflow', status: 'scheduled', postAt: later, accounts: [{ id: 'tt', name: 'Inflow', platform: 'tiktok', profile: 'inflow' }] }])
@@ -105,7 +105,8 @@ describe('redoing captions already made', () => {
     })
     expect(redoBox()?.checked).toBe(true)
     await act(async () => button('Save posting').click())
-    expect((onSave.mock.calls[0] as unknown[])[3]).toBe(true)
+    expect((onSave.mock.calls[0] as unknown[])[3]).toBe('hashtags')
+    expect(host.textContent).not.toContain('Rewrite them with the new rules instead')
   })
 
   it("doesn't show with nothing made", () => {

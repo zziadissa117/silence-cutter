@@ -30,7 +30,16 @@ export function pickRecaption(posts: readonly RecaptionCandidate[], now: number)
   return { redo, tooSoon }
 }
 
-/** How a post's caption is redone: Claude writes it again from the video,
+/** What a redo does: add the campaign's hashtags that a caption is missing,
+ *  keeping every word (the default - a hundred scheduled posts, one new
+ *  hashtag), or have Claude write it again with the new rules. */
+export type RecaptionMode = 'hashtags' | 'rewrite'
+
+export function cleanMode(value: unknown): RecaptionMode {
+  return value === 'rewrite' ? 'rewrite' : 'hashtags'
+}
+
+/** How a post's caption is redone in rewrite mode: Claude writes it again from the video,
  *  unless the words are his own - a pasted (tracking) caption, or one he
  *  wrote for a post made by hand - which are kept, with the hashtags added. */
 export function recaptionMode(post: { by_hand: boolean; rules: { caption: string } }): 'rewrite' | 'hashtags' {

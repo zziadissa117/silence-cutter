@@ -19,6 +19,7 @@ import {
   windowLabel,
   type CampaignPlace,
   type LocalPosting,
+  type RedoMode,
 } from './posting'
 
 const APPROVALS: { value: CampaignPosting['approval']; label: string; hint: string }[] = [
@@ -49,7 +50,8 @@ export function PostingEditor({
    *  and times with their profile. `catchUp` names newly picked accounts the
    *  videos already made should also go to - empty when he declined, or
    *  there is none. */
-  onSave: (posting: CampaignPosting, place: CampaignPlace | null, catchUp: string[], redo: boolean) => Promise<void>
+  /** `redo`: what to do to the captions of posts already made, if anything. */
+  onSave: (posting: CampaignPosting, place: CampaignPlace | null, catchUp: string[], redo: RedoMode | null) => Promise<void>
   onCancel: () => void
   onSetUp: () => void
 }) {
@@ -64,14 +66,16 @@ export function PostingEditor({
   // answers, and it can be unticked. Worked out from the last posts the phone
   // saw, so it also offers again after a save that could not reach the server.
   const [catchUpOn, setCatchUpOn] = useState(true)
-  // Posts already made can have their captions written again with these
-  // rules. Ticked by itself when he changes the rules or hashtags (a missing
-  // hashtag is why he would), and his to tick when he changed them earlier.
+  // Posts already made can get the hashtags they are missing - captions kept
+  // word for word - or, when the rules text changed, be rewritten. Ticked by
+  // itself when he changes the hashtags (a missing hashtag is why he would),
+  // and his to tick when he changed them earlier.
   const [redoChoice, setRedoChoice] = useState<boolean | null>(null)
+  const [rewrite, setRewrite] = useState(false)
   const tags = parseTags(hashtagText)
   const before = { ...NO_POSTING, ...campaign.posting }
-  const captionChanged =
-    posting.caption !== before.caption || posting.rules.trim() !== before.rules.trim() || tags.join(' ') !== before.hashtags.join(' ')
+  const rulesChanged = posting.caption !== before.caption || posting.rules.trim() !== before.rules.trim()
+  const captionChanged = rulesChanged || tags.join(' ') !== before.hashtags.join(' ')
   const made = notOutYet(campaign.id)
   const redoOn = redoChoice ?? captionChanged
   const behind = accountsBehind(campaign.id, place.accounts)
@@ -112,7 +116,7 @@ export function PostingEditor({
           const window = timing === 'random' ? cleanWindow(windowDraft) : null
           if (window) saved = { accounts: place.accounts, times: [], window }
           try {
-            await onSave({ ...posting, rules: posting.rules.trim(), hashtags }, local ? saved : null, catchUpOn ? behind.accounts : [], made > 0 && redoOn)
+            await onSave({ ...posting, rules: posting.rules.trim(), hashtags }, local ? saved : null, catchUpOn ? behind.accounts : [], made > 0 && redoOn ? (rewrite && rulesChanged ? 'rewrite' : 'hashtags') : null)
           } catch (error) {
             throw new Error(error instanceof PostingError ? error.message : String(error))
           }
@@ -381,12 +385,22 @@ export function PostingEditor({
           <label className="toggle">
             <input type="checkbox" checked={redoOn} onChange={() => setRedoChoice(!redoOn)} />
             <span>
-              <span className="label">Redo the captions already made</span>
+              <span className="label">Add the hashtags to posts already made</span>
               <span className="hint" style={{ display: 'block' }}>
-                {made} {campaign.name} post{made === 1 ? '' : 's'} waiting or scheduled get{made === 1 ? 's' : ''} a new caption with these rules.
-                Scheduled ones stay at their times; ones going out in the next 15 minutes keep theirs.
-                {posting.caption === 'paste' ? ' Pasted captions are kept as they are.' : ''}
+                {made} {campaign.name} post{made === 1 ? '' : 's'} waiting or scheduled get{made === 1 ? 's' : ''}{' '}
+                {tags.length > 0 ? tags.join(' ') : 'the hashtags'} where missing. Captions stay word for word; scheduled ones keep their
+                times. Ones going out in the next 15 minutes are left as they are.
+                {posting.caption === 'paste' ? ' Pasted tracking captions never get hashtags.' : ''}
               </span>
+            </span>
+          </label>
+        ) : null}
+        {made > 0 && local && redoOn && rulesChanged && posting.caption === 'claude' ? (
+          <label className="toggle">
+            <input type="checkbox" checked={rewrite} onChange={() => setRewrite((on) => !on)} />
+            <span>
+              <span className="label">Rewrite them with the new rules instead</span>
+              <span className="hint" style={{ display: 'block' }}>Claude writes each caption again from the video, with these rules.</span>
             </span>
           </label>
         ) : null}

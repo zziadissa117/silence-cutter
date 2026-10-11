@@ -25,7 +25,7 @@ const scheduled = (id: string, campaignId: string, name: string, batch?: string,
 const waitingPost = (id: string, ready = false) =>
   ({ ...scheduled(id, 'vertus', 'Vertus', undefined, 3), status: 'waiting', caption: 'A caption', approval: 'you', ready }) as unknown as ServerPost
 
-const redoCaptions = vi.fn(async (_campaignId: string, _posting: unknown, ids?: string[]) => ({ rewriting: ids?.length ?? 0, tooSoon: 0 }))
+const redoCaptions = vi.fn(async (_campaignId: string, _posting: unknown, ids?: string[], _mode?: string) => ({ rewriting: ids?.length ?? 0, tooSoon: 0 }))
 const postAction = vi.fn(async (action: string, id: string) => ({ ...waitingPost(id), ready: action === 'ready' }))
 
 const posts = [
@@ -54,7 +54,7 @@ vi.mock('./posting', async (original) => ({
   listPosts: vi.fn(async () => posts),
   postingHere: () => null,
   postAction: (action: string, id: string) => postAction(action, id),
-  redoCaptions: (campaignId: string, posting: unknown, ids?: string[]) => redoCaptions(campaignId, posting, ids),
+  redoCaptions: (campaignId: string, posting: unknown, ids?: string[], mode?: string) => redoCaptions(campaignId, posting, ids, mode),
 }))
 
 import { PostsView } from './PostsView'
@@ -117,11 +117,19 @@ describe('approve, post later', () => {
 })
 
 describe('redo captions', () => {
-  it("writes a batch's captions again with the campaign's rules, after he says yes", async () => {
+  it('adds the missing hashtags to the whole batch in one tap, after he says yes', async () => {
+    const confirm = vi.spyOn(window, 'confirm').mockReturnValue(true)
+    const add = [...host.querySelectorAll('.batch-row button')].find((b) => b.textContent === 'Add missing hashtags') as HTMLButtonElement
+    await act(async () => add.click())
+    expect(confirm).toHaveBeenCalledWith(expect.stringContaining('Add #polsia to the 25 posts of this Polsia batch? Captions stay as they are'))
+    expect(redoCaptions).toHaveBeenCalledWith('polsia', expect.objectContaining({ hashtags: ['#polsia'] }), Array.from({ length: 25 }, (_, i) => `b${i}`), 'hashtags')
+    expect(host.textContent).toContain('Adding #polsia to 25 Polsia posts - captions stay as they are')
+  })
+
+  it('can still rewrite them, as a second choice', async () => {
     vi.spyOn(window, 'confirm').mockReturnValue(true)
-    const redo = [...host.querySelectorAll('.batch-row button')].find((b) => b.textContent === 'Redo captions') as HTMLButtonElement
-    await act(async () => redo.click())
-    expect(redoCaptions).toHaveBeenCalledWith('polsia', expect.objectContaining({ hashtags: ['#polsia'] }), Array.from({ length: 25 }, (_, i) => `b${i}`))
-    expect(host.textContent).toContain('Rewriting 25 Polsia captions with the new rules')
+    const rewrite = [...host.querySelectorAll('.batch-row button')].find((b) => b.textContent === 'Rewrite captions') as HTMLButtonElement
+    await act(async () => rewrite.click())
+    expect(redoCaptions).toHaveBeenLastCalledWith('polsia', expect.anything(), expect.any(Array), 'rewrite')
   })
 })

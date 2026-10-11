@@ -37,6 +37,7 @@ import {
   stoppable,
   whenLabel,
   type PostAction,
+  type RedoMode,
   type ServerPost,
 } from './posting'
 
@@ -420,10 +421,11 @@ function BatchRow({
 }: {
   posts: ServerPost[]
   children: (post: ServerPost) => ReactNode
-  /** Writes this batch's captions again with the campaign's current rules. */
-  onRedo?: () => Promise<void>
+  /** Adds the campaign's missing hashtags to this batch's captions, or
+   *  rewrites them with its current rules. */
+  onRedo?: (mode: RedoMode) => Promise<void>
 }) {
-  const [redoing, setRedoing] = useState(false)
+  const [redoing, setRedoing] = useState<RedoMode | null>(null)
   const [open, setOpen] = useState(false)
   const dates = posts.map((p) => p.batch?.date ?? '').filter(Boolean).sort()
   const days = dates.length === 0 ? '' : dates[0] === dates[dates.length - 1] ? dayLabel(dates[0]) : `${dayLabel(dates[0])} to ${dayLabel(dates[dates.length - 1])}`
@@ -444,17 +446,20 @@ function BatchRow({
       </div>
       {onRedo ? (
         <div className="post-actions">
-          <button
-            type="button"
-            className="linkbtn"
-            disabled={redoing}
-            onClick={() => {
-              setRedoing(true)
-              void onRedo().finally(() => setRedoing(false))
-            }}
-          >
-            {redoing ? 'Redoing…' : 'Redo captions'}
-          </button>
+          {(['hashtags', 'rewrite'] as const).map((mode) => (
+            <button
+              key={mode}
+              type="button"
+              className={mode === 'hashtags' ? 'btn small' : 'linkbtn'}
+              disabled={redoing !== null}
+              onClick={() => {
+                setRedoing(mode)
+                void onRedo(mode).finally(() => setRedoing(null))
+              }}
+            >
+              {redoing === mode ? 'Working…' : mode === 'hashtags' ? 'Add missing hashtags' : 'Rewrite captions'}
+            </button>
+          ))}
         </div>
       ) : null}
       {open ? <ul className="posts-list batch-inside">{posts.map((post) => children(post))}</ul> : null}
@@ -593,16 +598,24 @@ export function PostsView({
   }
   /** One batch's captions written again with its campaign's rules as they
    *  are now - after he added a hashtag, say. */
-  const redoBatch = async (batch: ServerPost[]) => {
+  const redoBatch = async (batch: ServerPost[], mode: RedoMode) => {
     const owner = campaigns.find((c) => c.id === batch[0].campaignId)
     if (!owner?.posting) {
       setProblem(`${batch[0].campaignName} has no caption rules on this phone - set them in its Posting first.`)
       return
     }
-    const tags = owner.posting.hashtags.length > 0 ? ` and ${owner.posting.hashtags.join(' ')}` : ''
-    if (!window.confirm(`Write the captions of this ${batch[0].campaignName} batch again with its caption rules${tags}? Scheduled ones stay at their times.`)) return
+    const tags = owner.posting.hashtags
+    if (mode === 'hashtags' && tags.length === 0) {
+      setProblem(`${owner.name} has no hashtags yet - add them in its Posting, then come back.`)
+      return
+    }
+    const ask =
+      mode === 'hashtags'
+        ? `Add ${tags.join(' ')} to the ${batch.length} posts of this ${owner.name} batch? Captions stay as they are; times stay the same.`
+        : `Have Claude write the ${batch.length} captions of this ${owner.name} batch again with its caption rules${tags.length > 0 ? ` and ${tags.join(' ')}` : ''}? Times stay the same.`
+    if (!window.confirm(ask)) return
     try {
-      setSaid(redoSaid(owner.name, await redoCaptions(owner.id, owner.posting, batch.map((p) => p.id))))
+      setSaid(redoSaid(owner.name, await redoCaptions(owner.id, owner.posting, batch.map((p) => p.id), mode), mode, tags))
       void load()
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error)
@@ -614,7 +627,7 @@ export function PostsView({
       item.kind === 'post' ? (
         row(item.post)
       ) : (
-        <BatchRow key={item.id} posts={item.posts} onRedo={item.posts.some((p) => p.status !== 'posted') ? () => redoBatch(item.posts) : undefined}>
+        <BatchRow key={item.id} posts={item.posts} onRedo={item.posts.some((p) => p.status !== 'posted') ? (mode) => redoBatch(item.posts, mode) : undefined}>
           {row}
         </BatchRow>
       ),

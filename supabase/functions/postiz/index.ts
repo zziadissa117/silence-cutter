@@ -36,7 +36,7 @@
 //   posts          { profile }                  -> { posts }
 //   edit / approve / ready { profile, id, caption?, title?, at? } -> { post }   ready: approved, held until he taps Post (approve)
 //   reject / unschedule / retry { profile, id } -> { post }
-//   recaption      { profile, campaignId, posting, ids? } -> { rewriting, tooSoon }  captions redone with the campaign's new rules, in the background;
+//   recaption      { profile, campaignId, posting, ids?, mode? } -> { rewriting, tooSoon }  missing hashtags added (mode 'hashtags', the default) or captions rewritten ('rewrite'), in the background;
 //   stop-campaign  { profile, campaignId }   -> { stopped, unposting }  every post of one campaign not out yet, rejected at once;
 //                  the ones Postiz holds are taken out of it in the background (and on each tick)
 //   stop-posts     { profile, ids }          -> { stopped, unposting }  the same, for the posts he ticked
@@ -66,7 +66,7 @@ import { handFields } from './hand.ts'
 import { endOfDay, lastTimeToday, nextSlot, normalTimes, pickTime, spreadDay, timesFor, type OtherPost, type Spread, addDays, localDate, localTime, zoned } from './slots.ts'
 import { cleanWindow, type PostingWindow } from './window.ts'
 import { attachMove, summarise, type AttachMove } from './attach.ts'
-import { pickRecaption, recaptionMode } from './recaption.ts'
+import { cleanMode, pickRecaption, recaptionMode } from './recaption.ts'
 import { cleanLimits, firstDayWithRoom, heldNote, releasable, split, usedOn, type Limits, type PostAccount } from './limits.ts'
 import { PENDING_STATUSES, channelReport, splitStop, type PendingPost } from './channels.ts'
 
@@ -1673,17 +1673,21 @@ async function act(profile: Profile, action: string, body: Record<string, unknow
 /** What a post says on the Posts screen while its caption is written again
  *  with the campaign's new rules - and how rewriteMarked finds them. */
 const REWRITING = 'Rewriting the caption…'
+/** The same for adding the campaign's missing hashtags, words kept. */
+const ADDING_TAGS = 'Adding the hashtags…'
 const REWRITE_BATCH = 12
 
 /** His campaign's caption rules or hashtags changed: every post not out yet
  *  (recaption.ts pickRecaption) - or just the ones he picked, a batch - takes
- *  the new rules and is marked to be written again. The writing, and taking
+ *  the new rules and is marked to get the missing hashtags (mode 'hashtags')
+ *  or be written again ('rewrite'). The writing, and taking
  *  scheduled ones out of Postiz and back in with the new caption at the same
  *  time, happen after the answer (rewriteMarked), a dozen at a time. */
 async function recaption(profile: Profile, body: Record<string, unknown>): Promise<Response> {
   const campaignId = typeof body.campaignId === 'string' ? body.campaignId : ''
   if (!campaignId || campaignId.length > 200) throw new Problem('Which campaign?')
   const rules = cleanRules(body.posting)
+  const mode = cleanMode(body.mode)
   const only = Array.isArray(body.ids) ? body.ids.filter((id): id is string => typeof id === 'string' && /^[0-9a-f-]{36}$/.test(id)) : null
   const { data, error } = await db
     .from('cutter_posts')
@@ -1699,7 +1703,12 @@ async function recaption(profile: Profile, body: Record<string, unknown>): Promi
     // Each keeps its own approval and reminders; only the caption rules change.
     const { error: failed } = await db
       .from('cutter_posts')
-      .update({ rules: { ...row.rules, caption: rules.caption, rules: rules.rules, hashtags: rules.hashtags }, error: REWRITING, attempts: 0, updated_at: at })
+      .update({
+        rules: { ...row.rules, caption: rules.caption, rules: rules.rules, hashtags: rules.hashtags },
+        error: mode === 'rewrite' ? REWRITING : ADDING_TAGS,
+        attempts: 0,
+        updated_at: at,
+      })
       .eq('id', row.id)
     if (failed) throw new Problem('Not all of them could be marked. Press Redo captions again to finish.', true, 500)
   }
@@ -1712,7 +1721,12 @@ async function recaption(profile: Profile, body: Record<string, unknown>): Promi
  *  time; one that has come within a quarter of an hour of it meanwhile keeps
  *  the old caption. Run after a recaption and on every tick. */
 async function rewriteMarked(profileId?: string): Promise<void> {
-  let query = db.from('cutter_posts').select('id').eq('error', REWRITING).in('status', ['waiting', 'approved', 'scheduled']).limit(REWRITE_BATCH)
+  let query = db
+    .from('cutter_posts')
+    .select('id')
+    .in('error', [REWRITING, ADDING_TAGS])
+    .in('status', ['waiting', 'approved', 'scheduled'])
+    .limit(REWRITE_BATCH)
   if (profileId) query = query.eq('profile_id', profileId)
   const { data } = await query
   const ids = ((data ?? []) as { id: string }[]).map((r) => r.id)
@@ -1726,12 +1740,24 @@ async function rewriteMarked(profileId?: string): Promise<void> {
         return
       }
       const keys = await keysFor(post.profile_id)
+      const marker = post.error
       const tags = post.rules.caption === 'paste' ? [] : post.rules.hashtags
-      const written: Partial<Post> =
-        recaptionMode(post) === 'rewrite' ? await writeCaption(keys.anthropic, post) : { caption: finishCaption(post.caption ?? '', tags) }
+      const rewrite = marker === REWRITING && recaptionMode(post) === 'rewrite'
+      // No caption yet (still to be written or pasted): nothing to add to -
+      // it gets the hashtags when its caption comes.
+      if (!rewrite && !post.caption?.trim()) {
+        await update(post.id, { error: null, attempts: 0 })
+        return
+      }
+      const written: Partial<Post> = rewrite ? await writeCaption(keys.anthropic, post) : { caption: finishCaption(post.caption ?? '', tags) }
       const captions = Object.fromEntries(
         Object.entries(post.captions ?? {}).map(([account, own]) => [account, { ...own, ...(own.caption ? { caption: finishCaption(own.caption, tags) } : {}) }]),
       )
+      // Every hashtag already there: nothing to change, nothing to resend.
+      if (!rewrite && written.caption === (post.caption ?? '') && JSON.stringify(captions) === JSON.stringify(post.captions ?? {})) {
+        await update(post.id, { error: null, attempts: 0 })
+        return
+      }
       if (post.status === 'scheduled') {
         if (post.postiz_ids?.[0]) await deleteScheduled(keys.postiz, post)
         await update(post.id, { ...written, captions, postiz_ids: null, status: 'approved', error: null, attempts: 0, retry_at: null })
@@ -1745,8 +1771,8 @@ async function rewriteMarked(profileId?: string): Promise<void> {
         attempts,
         error:
           attempts >= MAX_ATTEMPTS
-            ? `The caption couldn't be written again (${error instanceof Error ? error.message : String(error)}) - it keeps the old one.`
-            : REWRITING,
+            ? `The caption couldn't be ${post.error === REWRITING ? 'written again' : 'given the hashtags'} (${error instanceof Error ? error.message : String(error)}) - it keeps the old one.`
+            : post.error,
       })
     } finally {
       await release(id)
