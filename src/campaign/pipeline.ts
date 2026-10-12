@@ -355,10 +355,10 @@ export async function makeMontage(
   headlineText: string,
   music: { audio: Blob; name: string } | null,
   onRenderProgress?: (fraction: number) => void,
-  extra: { seed?: string; defaults?: AngleEffects | null } = {},
+  extra: { seed?: string; defaults?: AngleEffects | null; formula?: { left: Blob | null; right: Blob | null; line: string } | null } = {},
 ): Promise<CampaignResult> {
   const rendered = await renderMontage(
-    { clips, look: videoLook(campaign, angle, [], extra.defaults ?? null), headlineText, music, seed: extra.seed },
+    { clips, look: videoLook(campaign, angle, [], extra.defaults ?? null), headlineText, music, seed: extra.seed, formula: extra.formula ?? null },
     onRenderProgress,
   )
   return {

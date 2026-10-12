@@ -25,6 +25,7 @@ import { createOutputSink } from '../media/outputSink'
 import { isSilenceCutSupported } from '../media/silenceCut'
 import { openClip, writeWhole, type Clip } from './clipParts'
 import { framingAt, planMotion, zoomPlace } from './effects'
+import { drawFormula, formulaPush, layoutFormula } from './formulaOverlay'
 import { headlineFontReady } from './headlineFont'
 import type { VideoLook } from './look'
 import { MusicBed, trackLoudness } from './music'
@@ -48,6 +49,9 @@ export interface MontageRenderInput {
   music: { audio: Blob; name: string } | null
   /** Makes this video's effect variations its own (look.effects says which). */
   seed?: string
+  /** The "Claude + X = $ a day" hook instead of a headline: the two logos,
+   *  and this video's money line. The reaction pushes in slowly under it. */
+  formula?: { left: Blob | null; right: Blob | null; line: string } | null
 }
 
 export interface MontageRenderResult {
@@ -75,7 +79,7 @@ export function soloMusicGain(trackLufs: number): number {
 }
 
 export async function renderMontage(
-  { clips: files, look, headlineText, music, seed = '' }: MontageRenderInput,
+  { clips: files, look, headlineText, music, seed = '', formula = null }: MontageRenderInput,
   onProgress?: (fraction: number) => void,
 ): Promise<MontageRenderResult> {
   if (files.length === 0) throw new SilenceCutError('Add at least one clip.')
@@ -90,6 +94,7 @@ export async function renderMontage(
   const sink = await createOutputSink()
   const output = new Output({ format: new Mp4OutputFormat({ fastStart: false }), target: sink.target })
   let finished = false
+  let logos: { left: ImageBitmap | null; right: ImageBitmap | null } | null = null
   try {
     for (const [i, file] of files.entries()) clips.push(await openClip(file, `number ${i + 1}`))
     const total = clips.reduce((sum, c) => sum + (c.duration - c.first), 0)
@@ -115,7 +120,21 @@ export async function renderMontage(
     const ctx = canvas.getContext('2d')
     if (!ctx) throw new SilenceCutError("This browser couldn't prepare a canvas to draw the headline on.")
     await headlineFontReady()
-    const headline = headlineText.trim() ? layoutHeadline(ctx, width, height, { ...look.headline, text: headlineText }) : null
+    const headline = !formula && headlineText.trim() ? layoutHeadline(ctx, width, height, { ...look.headline, text: headlineText }) : null
+    // The formula's logos, decoded once for every frame.
+    const decode = async (blob: Blob | null) => {
+      if (!blob) return null
+      try {
+        return await createImageBitmap(blob)
+      } catch {
+        throw new SilenceCutError("One of the hook's logos couldn't be read. Pick it again as a PNG or JPG.")
+      }
+    }
+    logos = formula ? { left: await decode(formula.left), right: await decode(formula.right) } : null
+    const formulaLayout =
+      formula && logos
+        ? layoutFormula(ctx, width, height, { left: logos.left, right: logos.right }, formula.line, look.headline)
+        : null
 
     const videoSource = new VideoSampleSource({ codec: 'avc', quality: QUALITY_HIGH })
     const audioSource = new AudioSampleSource({ codec: 'aac', quality: QUALITY_MEDIUM })
@@ -142,9 +161,16 @@ export async function renderMontage(
           onProgress?.(Math.min(0.99, timestamp / total))
           ctx.fillStyle = '#000'
           ctx.fillRect(0, 0, width, height)
-          const spot = zoomPlace(place, framingAt(motion, i, timestamp - start, []), width, height)
+          // Under the formula, the reaction pushes in slowly for its whole
+          // length instead of the usual opening push.
+          const framing =
+            i === 0 && formulaLayout
+              ? formulaPush(timestamp - start, Math.max(0.1, clip.duration - clip.first))
+              : framingAt(motion, i, timestamp - start, [])
+          const spot = zoomPlace(place, framing, width, height)
           sample.draw(ctx, spot.x, spot.y, spot.width, spot.height)
           if (i === 0 && headline) drawHeadline(ctx, headline)
+          if (i === 0 && formulaLayout && logos) drawFormula(ctx, formulaLayout, logos)
           const frame = new VideoSample(canvas, { timestamp, duration: sample.duration })
           await videoSource.add(frame)
           frame.close()
@@ -171,6 +197,8 @@ export async function renderMontage(
     onProgress?.(1)
     return { blob, storedAs: sink.storedAs, seconds, totalSec: at, ...(musicFailed ? { musicFailed } : {}) }
   } finally {
+    logos?.left?.close()
+    logos?.right?.close()
     for (const clip of clips) clip.input.dispose()
     if (!finished) {
       await output.cancel().catch(() => {})

@@ -172,7 +172,14 @@ export interface JobBatch {
 export interface MontageParts {
   /** From a batch: the reaction, product and track are the bank's own,
    *  read from it when the video is made - nothing is kept twice. */
-  bank?: { reaction: BankFile; product: BankFile; music: BankFile | null }
+  bank?: {
+    reaction: BankFile
+    product: BankFile
+    music: BankFile | null
+    /** The "Claude + X" hook instead of a headline: the two logos from the
+     *  bank, and this video's own money line. */
+    formula?: { left: BankFile | null; right: BankFile | null; line: string }
+  }
   clips: { name: string; type: string }[]
   /** The track under it: "" for its angle's, "none", another angle's as
    *  "campaignId:angleId", or "song" for the song kept with it. */

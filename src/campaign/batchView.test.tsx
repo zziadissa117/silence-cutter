@@ -19,10 +19,12 @@ const bank: BatchBank = {
   used: {},
 }
 
+let storedBank: BatchBank = bank
+
 vi.mock('./store', async (original) => {
   const real = await original<Record<string, unknown>>()
   const stubs = Object.fromEntries(Object.keys(real).map((key) => [key, typeof real[key] === 'function' ? vi.fn(async () => undefined) : real[key]]))
-  return { ...stubs, loadBatchBank: vi.fn(async () => structuredClone(bank)), saveBatchBank: vi.fn(async () => undefined) }
+  return { ...stubs, loadBatchBank: vi.fn(async () => structuredClone(storedBank)), saveBatchBank: vi.fn(async () => undefined) }
 })
 
 import { BatchView } from './BatchView'
@@ -36,6 +38,7 @@ let host: HTMLElement
 let root: Root
 
 beforeEach(() => {
+  storedBank = bank
   localStorage.clear()
   host = document.createElement('div')
   document.body.appendChild(host)
@@ -124,5 +127,31 @@ describe('videos a day', () => {
     await show({ window: { from: '10:00', to: '11:00', perDay: 2 } })
     await upTo(10)
     expect(host.textContent).toContain('The window only fits 6 a day')
+  })
+})
+
+describe('the "Claude + X" hook', () => {
+  const logo = (id: string, name: string) => ({ id, name, type: 'image/png', size: 1000 })
+
+  it('needs both logos instead of headlines', async () => {
+    storedBank = { ...bank, headlines: [], hook: 'formula', formula: { left: logo('l', 'claude.png'), right: null, min: 500, max: 1000 } }
+    await show({})
+    expect(makeButton().disabled).toBe(true)
+    expect(host.textContent).toContain('Add both logos first.')
+  })
+
+  it('gives every video the same two logos and its own amount, with no headline needed', async () => {
+    storedBank = { ...bank, headlines: [], hook: 'formula', formula: { left: logo('l', 'claude.png'), right: logo('r', 'openart-logo.png'), min: 500, max: 1000 } }
+    const { onMake } = await show({})
+    await act(async () => makeButton().click())
+    expect(onMake).toHaveBeenCalledTimes(1)
+    const videos = onMake.mock.calls[0][2] as { headline: string; formula?: { left: { id: string }; right: { id: string }; line: string } }[]
+    expect(videos.length).toBeGreaterThan(1)
+    for (const v of videos) {
+      expect(v.formula?.left.id).toBe('l')
+      expect(v.formula?.right.id).toBe('r')
+      expect(v.formula?.line).toMatch(/^\$(\d{3}|1,000)( a day|\/day| per day| daily)$/)
+      expect(v.headline).toBe(`Claude + Openart = ${v.formula?.line}`)
+    }
   })
 })

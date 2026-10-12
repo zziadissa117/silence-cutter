@@ -14,20 +14,27 @@ import {
   combos,
   dayLabel,
   emptyBank,
+  DEFAULT_FORMULA,
+  formulaLine,
+  formulaText,
   headlinesFrom,
+  headlinesToMix,
+  hookOf,
   pickBatch,
   planSlots,
   todayHere,
   spend,
   type BankFile,
   type BatchBank,
+  type BatchFormula,
 } from './batch'
 import { filmingOf } from './filming'
 import { fingerprint, skippedNotice } from './fingerprint'
 import { formatTime, labelOf, type Job } from './jobs'
 import type { Angle, Campaign } from './look'
 import { BATCH_MAX_PER_DAY, accountLabel, batchTimesOn, placeFor, timeLabel, windowLabel, windowOf, type LocalPosting } from './posting'
-import { deleteBankFile, loadBatchBank, saveBankFile, saveBatchBank, type JobBatch } from './store'
+import { deleteBankFile, loadBankFile, loadBatchBank, saveBankFile, saveBatchBank, type JobBatch } from './store'
+import { FormulaPreview } from './FormulaPreview'
 
 const LAST_KEY = 'batch.campaign'
 const MAX_DAYS = 14
@@ -39,10 +46,33 @@ export interface BatchVideo {
   product: BankFile
   music: BankFile | null
   headline: string
+  /** The "Claude + X" hook, when the bank uses it: the headline above is then
+   *  what it says in words, for the caption. */
+  formula?: { left: BankFile | null; right: BankFile | null; line: string }
   batch: JobBatch
 }
 
 type Kind = 'reactions' | 'products' | 'music'
+
+const LEFT_KEY = 'batch.formulaLeft'
+
+/** The left logo he last picked, for a campaign whose batch has none yet. */
+function rememberedLeft(): BankFile | null {
+  try {
+    const raw = localStorage.getItem(LEFT_KEY)
+    return raw ? (JSON.parse(raw) as BankFile) : null
+  } catch {
+    return null
+  }
+}
+
+function rememberLeft(file: BankFile): void {
+  try {
+    localStorage.setItem(LEFT_KEY, JSON.stringify(file))
+  } catch {
+    /* only a convenience */
+  }
+}
 
 function remembered(): string | null {
   try {
@@ -213,6 +243,33 @@ export function BatchView({
     }
   }
 
+  /** A logo for the formula hook, kept in the bank like the clips. The left
+   *  one is remembered for other campaigns' batches too - it is usually
+   *  Claude everywhere. */
+  const addLogo = async (side: 'left' | 'right', file: File) => {
+    const current = bankRef.current
+    if (!current) return
+    if (!file.type.startsWith('image/')) {
+      setProblem(`${file.name} isn't a picture. Pick a PNG or JPG.`)
+      return
+    }
+    setProblem(null)
+    setSaving(`Keeping ${file.name} on this phone…`)
+    try {
+      const id = crypto.randomUUID()
+      await saveBankFile(id, file)
+      const kept: BankFile = { id, name: file.name, type: file.type, size: file.size }
+      const latest = bankRef.current ?? current
+      const before = latest.formula ?? DEFAULT_FORMULA
+      keep({ ...latest, hook: 'formula', formula: { ...before, [side]: kept } })
+      if (side === 'left') rememberLeft(kept)
+    } catch (error) {
+      setProblem(`${file.name} couldn't be kept: ${error instanceof Error ? error.message : String(error)}`)
+    } finally {
+      setSaving(null)
+    }
+  }
+
   const takeOut = (kind: Kind, file: BankFile) => {
     if (!bank || !window.confirm(`Take ${file.name} out of the bank?`)) return
     void deleteBankFile(file.id).catch(() => {})
@@ -221,7 +278,10 @@ export function BatchView({
 
   const wanted = bank ? planSlots({ times: timesOnDate, perDay: bank.perDay, days: bank.days, madeThrough: bank.madeThrough }) : []
   // Never a video twice: a batch stops at the last different one left.
-  const { total: different, left } = bank ? combos(bank) : { total: 0, left: 0 }
+  const formulaHook = bank ? hookOf(bank) === 'formula' : false
+  const formula: BatchFormula = bank?.formula ?? DEFAULT_FORMULA
+  const mixable = bank ? { ...bank, headlines: headlinesToMix(bank) } : null
+  const { total: different, left } = mixable ? combos(mixable) : { total: 0, left: 0 }
   const slots = Number.isFinite(left) ? wanted.slice(0, left) : wanted
   const spentShown = Boolean(bank?.spent) && (bank!.reactions.length === 0 || bank!.products.length === 0)
   const missing = !bank
@@ -229,7 +289,7 @@ export function BatchView({
     : [
         bank.reactions.length === 0 ? 'a reaction' : '',
         bank.products.length === 0 ? 'a product showcase' : '',
-        bank.headlines.length === 0 ? 'a headline' : '',
+        formulaHook ? (!formula.left || !formula.right ? 'both logos' : '') : bank.headlines.length === 0 ? 'a headline' : '',
       ].filter(Boolean)
   const running = jobs.filter((j) => j.status !== 'failed' && j.status !== 'held')
   const makingHere = running.filter((j) => j.campaignId === campaign.id)
@@ -248,14 +308,19 @@ export function BatchView({
     making.current = true
     jobsAtTap.current = jobs.length
     setTapped(true)
-    const { picks, used, lastPair, made } = pickBatch(bank, slots.length)
+    const { picks, used, lastPair, made } = pickBatch(mixable!, slots.length)
     const id = `b-${Date.now().toString(36)}`
     const byId = (list: BankFile[], fileId: string | null) => list.find((f) => f.id === fileId) ?? null
     const videos: BatchVideo[] = picks.map((pick, i) => ({
       reaction: byId(bank.reactions, pick.reaction)!,
       product: byId(bank.products, pick.product)!,
       music: byId(bank.music, pick.music),
-      headline: pick.headline,
+      ...(formulaHook
+        ? (() => {
+            const line = formulaLine(formula, `${id}-${i}`)
+            return { headline: formulaText(formula, line), formula: { left: formula.left, right: formula.right, line } }
+          })()
+        : { headline: pick.headline }),
       batch: { id, date: slots[i].date, time: slots[i].time, size: slots.length },
     }))
     remember(campaign.id)
@@ -403,6 +468,73 @@ export function BatchView({
           {list('reactions', 'Reactions', 'They go first, with the headline over them.')}
           {list('products', 'Product showcases', 'Shown after the reaction.')}
           <div className="group">
+            <div className="group-title">Hook</div>
+            <div className="seg full" role="radiogroup" aria-label="Hook">
+              <button type="button" role="radio" aria-checked={!formulaHook} className={!formulaHook ? 'active' : ''} onClick={() => keep({ ...bank, hook: 'headline' })}>
+                Headlines
+              </button>
+              <button
+                type="button"
+                role="radio"
+                aria-checked={formulaHook}
+                className={formulaHook ? 'active' : ''}
+                onClick={() => keep({ ...bank, hook: 'formula', formula: bank.formula ?? { ...DEFAULT_FORMULA, left: rememberedLeft() } })}
+              >
+                Claude + X
+              </button>
+            </div>
+          </div>
+          {formulaHook ? (
+            <div className="group">
+              <p className="hint bank-hint">Two logos with a plus between them over every reaction, then a different amount a day on each video. No headline.</p>
+              <div className="formula-logos">
+                {(['left', 'right'] as const).map((side) => (
+                  <label key={side} className="btn small formula-pick">
+                    {formula[side] ? `${side === 'left' ? 'Left' : 'Right'}: ${formula[side]!.name}` : side === 'left' ? 'Left logo (e.g. Claude)' : 'Right logo (e.g. OpenArt)'}
+                    <input
+                      type="file"
+                      accept="image/png,image/jpeg,image/webp"
+                      aria-label={side === 'left' ? 'Left logo' : 'Right logo'}
+                      disabled={saving !== null}
+                      onChange={(e) => {
+                        const picked = e.target.files?.[0]
+                        e.target.value = ''
+                        if (picked) void addLogo(side, picked)
+                      }}
+                    />
+                  </label>
+                ))}
+              </div>
+              <div className="field">
+                <span className="label">Amount a day</span>
+                <div className="formula-range">
+                  ${' '}
+                  <input
+                    type="number"
+                    inputMode="numeric"
+                    min={0}
+                    step={50}
+                    aria-label="Lowest amount"
+                    value={formula.min}
+                    onChange={(e) => keep({ ...bank, formula: { ...formula, min: Math.max(0, Number(e.target.value) || 0) } })}
+                  />
+                  {' '}to ${' '}
+                  <input
+                    type="number"
+                    inputMode="numeric"
+                    min={0}
+                    step={50}
+                    aria-label="Highest amount"
+                    value={formula.max}
+                    onChange={(e) => keep({ ...bank, formula: { ...formula, max: Math.max(0, Number(e.target.value) || 0) } })}
+                  />
+                </div>
+                <span className="hint">Each video gets its own - like {formulaLine(formula, 'a')}, {formulaLine(formula, 'b')}, {formulaLine(formula, 'c')}.</span>
+              </div>
+              <FormulaPreview left={formula.left} right={formula.right} line={formulaLine(formula, 'preview')} look={angle.headline} load={loadBankFile} />
+            </div>
+          ) : (
+          <div className="group">
             <div className="bank-head">
               <span className="group-title">
                 Headlines <span className="bank-count">{bank.headlines.length}</span>
@@ -423,6 +555,7 @@ export function BatchView({
               }}
             />
           </div>
+          )}
           {list('music', 'Music', 'The only sound - the clips are muted. With one track every video uses it; with more, each gets one at random.')}
           {saving ? <p className="hint">{saving}</p> : null}
           {bankSize > 0 ? <p className="hint">The bank keeps {mb(bankSize)} on this phone.</p> : null}

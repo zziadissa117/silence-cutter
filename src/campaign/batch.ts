@@ -46,6 +46,90 @@ export interface BatchBank {
    *  made, so they were cleared out for new footage: how many videos that
    *  was, and the day the last of them posts. */
   spent?: { videos: number; through: string }
+  /** The hook over each reaction: one of the headlines (absent), or the
+   *  "Claude + X = $ a day" formula. */
+  hook?: BatchHook
+  formula?: BatchFormula
+}
+
+/** The "Claude + X = $ a day" hook: two logos with a plus between them over
+ *  the reaction, and a money line under them - one amount per video, from
+ *  the range he set. Drawn by formulaOverlay.ts. */
+export interface BatchFormula {
+  left: BankFile | null
+  right: BankFile | null
+  /** What the logos are, in words - for the caption and the notification
+   *  only. Default: the file names. */
+  leftName?: string
+  rightName?: string
+  /** Dollars a day, the range each video's amount is drawn from. */
+  min: number
+  max: number
+}
+
+export const DEFAULT_FORMULA: BatchFormula = { left: null, right: null, min: 500, max: 1000 }
+
+/** What each batch video's hook is: one of his headlines, or the formula. */
+export type BatchHook = 'headline' | 'formula'
+
+/** The hook the bank's videos take - headlines unless he switched. */
+export function hookOf(bank: Pick<BatchBank, 'hook'>): BatchHook {
+  return bank.hook === 'formula' ? 'formula' : 'headline'
+}
+
+/** The headlines the mixing goes through: his own, or - for the formula,
+ *  where the hook is drawn rather than written - one blank stand-in, so
+ *  reactions, products and tracks still go round evenly. */
+export function headlinesToMix(bank: Pick<BatchBank, 'hook' | 'headlines'>): string[] {
+  return hookOf(bank) === 'formula' ? [''] : bank.headlines
+}
+
+const ENDINGS = ['a day', '/day', 'per day', 'daily'] as const
+
+/** A small seeded generator: the same seed, the same numbers. */
+function seeded(seed: string): () => number {
+  let hash = 2166136261
+  for (let i = 0; i < seed.length; i++) {
+    hash ^= seed.charCodeAt(i)
+    hash = Math.imul(hash, 16777619)
+  }
+  let state = hash >>> 0
+  return () => {
+    state = (state + 0x6d2b79f5) >>> 0
+    let t = state
+    t = Math.imul(t ^ (t >>> 15), t | 1)
+    t ^= t + Math.imul(t ^ (t >>> 7), t | 61)
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296
+  }
+}
+
+/** "$650 a day", "$800/day", "$1,000 per day": a round amount in the range,
+ *  in steps of $50, with the ending varied. The same seed - a video's own
+ *  id - always gives the same line, so a remake says the same thing. */
+export function formulaLine(formula: Pick<BatchFormula, 'min' | 'max'>, seed: string): string {
+  const step = 50
+  const low = Math.ceil(Math.max(0, Math.min(formula.min, formula.max)) / step) * step
+  const high = Math.max(low, Math.floor(Math.max(formula.min, formula.max) / step) * step)
+  const random = seeded(seed)
+  const amount = low + Math.floor(random() * ((high - low) / step + 1)) * step
+  const ending = ENDINGS[Math.floor(random() * ENDINGS.length)]
+  return `$${amount.toLocaleString('en-US')}${ending.startsWith('/') ? '' : ' '}${ending}`
+}
+
+/** "Claude", from "claude-logo.png". */
+export function logoName(file: Pick<BankFile, 'name'> | null, given?: string): string {
+  if (given?.trim()) return given.trim()
+  if (!file) return ''
+  const base = file.name.replace(/\.[^./]+$/, '').replace(/[-_]+/g, ' ').replace(/\blogo\b/gi, '').trim()
+  return base ? base.charAt(0).toUpperCase() + base.slice(1) : ''
+}
+
+/** What the hook says in words, for the caption Claude writes and the
+ *  notification: "Claude + OpenArt = $650 a day". */
+export function formulaText(formula: BatchFormula, line: string): string {
+  const left = logoName(formula.left, formula.leftName) || 'Claude'
+  const right = logoName(formula.right, formula.rightName) || 'it'
+  return `${left} + ${right} = ${line}`
 }
 
 export interface BatchPick {

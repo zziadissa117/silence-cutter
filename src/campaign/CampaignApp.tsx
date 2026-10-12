@@ -1182,10 +1182,19 @@ export function CampaignApp() {
           const rest = await montageClips(next)
           const track = await montageMusic(next)
           setPhase('cutting', 0)
+          const hook = next.montage.bank?.formula
+          const formula = hook
+            ? {
+                left: hook.left ? await bankFileOf(hook.left) : null,
+                right: hook.right ? await bankFileOf(hook.right) : null,
+                line: hook.line,
+              }
+            : null
           result = await watched(
             makeMontage([file, ...rest], jobCampaign, jobAngle, next.headlineText, track, (p) => setPhase('cutting', p), {
               seed: next.id,
               defaults: next.day?.noEffects ? null : defaultEffects(),
+              formula,
             }),
           )
         } else if (next.reaction) {
@@ -1908,7 +1917,11 @@ export function CampaignApp() {
       status: 'queued',
       phase: 'cutting',
       progress: 0,
-      montage: { bank: { reaction: v.reaction, product: v.product, music: v.music }, clips: [], music: 'bank' },
+      montage: {
+        bank: { reaction: v.reaction, product: v.product, music: v.music, ...(v.formula ? { formula: v.formula } : {}) },
+        clips: [],
+        music: 'bank',
+      },
       batch: v.batch,
     }))
     setJobs((current) => [...current, ...added])

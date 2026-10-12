@@ -3,6 +3,31 @@
 Newest first. Every change says what it does, how to use it, and how it works
 underneath. Kept up to date with each commit.
 
+## Batch: the "Claude + X = $ a day" hook
+**What:** a second kind of hook for batch videos. On the Batch tab, under **Hook**, pick **Claude + X** instead of
+Headlines. Pick a **left logo** (e.g. Claude) and a **right logo** (e.g. OpenArt) once, and the range of the amount
+(default $500 to $1,000). Every video in the batch then shows, over the reaction:
+
+    [left logo]   +   [right logo]
+
+          $650 a day
+
+- the same two logos on every video, and its own amount, in steps of $50, with the ending varied ("a day", "/day",
+  "per day", "daily");
+- no other headline;
+- a slow, strong push into your face for the whole reaction - a fifth closer by the cut - then the product clip,
+  music and scheduling as before.
+A small preview under the settings shows exactly how it sits on the video. The left logo is remembered for other
+campaigns' batches, so you set Claude once. The caption Claude writes is told what the hook says ("Claude + OpenArt =
+$650 a day").
+**How:** `batch.ts` (`formulaLine`, `formulaText`, `hookOf`), `formulaOverlay.ts` (layout, drawing, the push),
+`montageRender.ts` draws it on the reaction; the logos are kept in the batch bank like the clips.
+**Checked:** unit tests for the amounts, layout and push; frames drawn in Chromium with the render's own functions.
+Not an encoded video - this test browser can't write H.264 - so check the first batch on the phone.
+Only ./deploy.sh is needed.
+Files: `batch.ts`, `formulaOverlay.ts` (+ test), `FormulaPreview.tsx`, `BatchView.tsx` (+ test), `montageRender.ts`,
+`pipeline.ts`, `store.ts`, `CampaignApp.tsx`, `campaign.css`.
+
 ## Fix: the server half of a deploy failing without anyone noticing
 **What was wrong:** every server change since Oct 6 - Stop, random times everywhere, Approve post later, Add missing
 hashtags - never reached the server. The posting function was still the Oct 6 version, because ./deploy-server.sh
