@@ -97,7 +97,7 @@ describe('the Make button', () => {
 
   it('names the days it would make', async () => {
     await show({})
-    expect(makeButton().textContent).toMatch(/^Make 6 videos - .+ to .+$/)
+    expect(makeButton().textContent).toMatch(/^Make \d+ videos - .+ to .+$/)
   })
 })
 

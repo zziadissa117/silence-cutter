@@ -29,7 +29,7 @@ import { createOutputSink } from '../media/outputSink'
 import { RangeReader, inTimestampOrder } from '../media/rangeReader'
 import { isSilenceCutSupported } from '../media/silenceCut'
 import type { Range } from '../media/silenceMath'
-import { CAPTION_LEAD, captionAt, drawStyledCaption, phraseRanges, type CaptionPosition, type CaptionSize, type CaptionStyle, type CaptionWord } from './captions'
+import { CAPTION_LEAD, captionAt, drawStyledCaption, captionRanges, type CaptionPosition, type CaptionSize, type CaptionStyle, type CaptionWord } from './captions'
 import { framingAt, planMotion, zoomPlace } from './effects'
 import { eachSound, openClip, type Clip } from './clipParts'
 import { headlineFontReady } from './headlineFont'
@@ -145,7 +145,7 @@ export async function renderReaction(
       .filter((c): c is { word: CaptionWord; at: number } => c.at !== null)
     const captionWords = shown.map((c) => c.word)
     const captionTimes = shown.map((c) => c.at)
-    const captionPhrases = phraseRanges(captionWords)
+    const captionPhrases = captionRanges(captionWords, captionStyle)
 
     const { width, height } = outputSize(reactionClip.width, reactionClip.height)
     const canvas = new OffscreenCanvas(width, height)

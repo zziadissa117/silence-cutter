@@ -3,6 +3,16 @@
 Newest first. Every change says what it does, how to use it, and how it works
 underneath. Kept up to date with each commit.
 
+## A third caption style: Phrase
+**What:** the plainest captions, for brands that want nothing busy. In the caption check before a video is made, the
+style choice now has **One word**, **Highlight** and **Phrase**. Phrase shows the whole phrase as you start saying it
+and swaps to the next when you move on - white with a black outline exactly like the TikTok headline, all
+lowercase, a little smaller than a headline, two lines at most. No lit word, no pop, no shadow. Phrases break where
+you stop or pause, up to seven words. Your pick is remembered for the next videos, as before; the caption position
+and size settings work the same.
+Only ./deploy.sh is needed.
+Files: `captions.ts` (+ test), `render.ts`, `reactionRender.ts`, `CaptionReview.tsx`.
+
 ## Batch: the "Claude + X = $ a day" hook
 **What:** a second kind of hook for batch videos. On the Batch tab, under **Hook**, pick **Claude + X** instead of
 Headlines. Pick a **left logo** (e.g. Claude) and a **right logo** (e.g. OpenArt) once, and the range of the amount

@@ -416,11 +416,12 @@ export function drawCaption(
 // word is up still comes from captionAt, so the lead, the hold, words taken
 // out and the hook all work exactly as for one word at a time.
 
-export type CaptionStyle = 'word' | 'highlight'
+export type CaptionStyle = 'word' | 'highlight' | 'phrase'
 
 export const CAPTION_STYLES: { id: CaptionStyle; label: string }[] = [
   { id: 'word', label: 'One word' },
   { id: 'highlight', label: 'Highlight' },
+  { id: 'phrase', label: 'Phrase' },
 ]
 
 const STYLE_KEY = 'cutter-caption-style'
@@ -457,6 +458,16 @@ export function phraseRanges(words: CaptionWord[], maxWords = HIGHLIGHT_WORDS): 
     at += phrase.length
   }
   return ranges
+}
+
+/** A plain phrase is smaller, so more of it fits two lines. */
+export const PLAIN_PHRASE_WORDS = 7
+
+/** The phrases a style shows, worked out once per video: the highlight's
+ *  short ones, the plain style's longer ones. One word at a time uses none,
+ *  but gets the highlight's so the review can switch styles freely. */
+export function captionRanges(words: CaptionWord[], style: CaptionStyle): [number, number][] {
+  return phraseRanges(words, style === 'phrase' ? PLAIN_PHRASE_WORDS : HIGHLIGHT_WORDS)
 }
 
 /** The phrase word `index` is in, or null. */
@@ -572,8 +583,105 @@ export function drawPhrase(
   ctx.restore()
 }
 
-/** Word `index` of `words` as its caption, in `style`: on its own, or lit in
- *  its phrase (`ranges` from phraseRanges(words), worked out once). */
+// --- Phrase ------------------------------------------------------------------
+//
+// The plainest style, for brands that want nothing busy: the whole phrase is
+// up from its first word until the next phrase, white with a black outline
+// exactly like TikTok's headline, all lowercase and a little smaller - no
+// lit word, no pop, no shadow. Two lines at most.
+
+/** The headline's own weight and outline (overlay.ts), so the two match. */
+const PLAIN_WEIGHT = 600
+const PLAIN_STROKE = 0.14
+/** A little smaller than a medium headline (0.066 of the width). */
+const PLAIN_SIZE = 0.058
+const PLAIN_LINE_HEIGHT = 1.18
+
+/** The words of a plain phrase, two lines at most: the layout, apart from
+ *  the drawing so it is tested on its own. */
+export function layoutPlainPhrase(
+  measure: (text: string, fontPx: number) => number,
+  width: number,
+  height: number,
+  phrase: CaptionWord[],
+  bare = false,
+  size: CaptionSize = 'normal',
+): { lines: string[]; fontPx: number } | null {
+  const words = phrase.map((w) => (bare ? bareWord(w.text) : cleanWord(w.text)).toLowerCase()).filter((t) => t !== '')
+  if (words.length === 0) return null
+  const base = Math.min(width, height * (9 / 16))
+  const maxWidth = width * 0.84
+  const lay = (fontPx: number): string[] => {
+    const lines: string[] = []
+    let line = ''
+    for (const word of words) {
+      const next = line ? `${line} ${word}` : word
+      if (line && measure(next, fontPx) > maxWidth) {
+        lines.push(line)
+        line = word
+      } else line = next
+    }
+    if (line) lines.push(line)
+    return lines
+  }
+  let fontPx = Math.round(base * PLAIN_SIZE * captionScale(size))
+  let lines = lay(fontPx)
+  // Smaller rather than a third line, or a word wider than the frame.
+  while ((lines.length > 2 || lines.some((l) => measure(l, fontPx) > maxWidth)) && fontPx > 12) {
+    fontPx = Math.floor(fontPx * 0.92)
+    lines = lay(fontPx)
+  }
+  return { lines, fontPx }
+}
+
+export function drawPlainPhrase(
+  ctx: Ctx,
+  width: number,
+  height: number,
+  phrase: CaptionWord[],
+  bare = false,
+  position: CaptionPosition = 'usual',
+  size: CaptionSize = 'normal',
+): void {
+  const font = (px: number) => `${PLAIN_WEIGHT} ${px}px ${HEADLINE_FAMILY}`
+  ctx.save()
+  const layout = layoutPlainPhrase(
+    (text, px) => {
+      ctx.font = font(px)
+      return ctx.measureText(text).width
+    },
+    width,
+    height,
+    phrase,
+    bare,
+    size,
+  )
+  if (!layout) {
+    ctx.restore()
+    return
+  }
+  const { lines, fontPx } = layout
+  const lineGap = fontPx * PLAIN_LINE_HEIGHT
+  const firstY = height * captionY(position) - ((lines.length - 1) * lineGap) / 2
+  ctx.font = font(fontPx)
+  ctx.textAlign = 'center'
+  ctx.textBaseline = 'middle'
+  ctx.lineJoin = 'round'
+  ctx.miterLimit = 2
+  ctx.lineWidth = fontPx * PLAIN_STROKE
+  ctx.strokeStyle = '#000000'
+  ctx.fillStyle = '#ffffff'
+  lines.forEach((line, row) => {
+    const y = firstY + row * lineGap
+    ctx.strokeText(line, width / 2, y)
+    ctx.fillText(line, width / 2, y)
+  })
+  ctx.restore()
+}
+
+/** Word `index` of `words` as its caption, in `style`: on its own, lit in
+ *  its phrase, or with its whole plain phrase (`ranges` from
+ *  captionRanges(words, style), worked out once). */
 export function drawStyledCaption(
   ctx: Ctx,
   width: number,
@@ -587,6 +695,11 @@ export function drawStyledCaption(
   size: CaptionSize,
   style: CaptionStyle,
 ): void {
+  if (style === 'phrase') {
+    const range = phraseAt(ranges, index)
+    if (range) drawPlainPhrase(ctx, width, height, words.slice(range[0], range[1]), bare, position, size)
+    return
+  }
   if (style === 'highlight') {
     const range = phraseAt(ranges, index)
     if (range) drawPhrase(ctx, width, height, words.slice(range[0], range[1]), index - range[0], since, bare, position, size)

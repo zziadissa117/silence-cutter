@@ -51,7 +51,7 @@ import { RangeReader, inTimestampOrder } from '../media/rangeReader'
 import { isSilenceCutSupported } from '../media/silenceCut'
 import { totalDuration, type Range } from '../media/silenceMath'
 import type { VideoLook } from './look'
-import { CAPTION_LEAD, captionAt, drawStyledCaption, phraseRanges, type CaptionPosition, type CaptionSize, type CaptionStyle, type CaptionWord } from './captions'
+import { CAPTION_LEAD, captionAt, drawStyledCaption, captionRanges, type CaptionPosition, type CaptionSize, type CaptionStyle, type CaptionWord } from './captions'
 import { decoderGaveUp, eachSound, openClip, pause, visibleAgain, wholeOf, writeWhole, type Clip } from './clipParts'
 import type { ClipPlace } from './clips'
 import { framingAt, logoPop, placeFrame, planMotion } from './effects'
@@ -387,7 +387,7 @@ export async function renderCampaignCut(
     // Each word placed on the output's timeline with its range's real shift,
     // like the logo, so it pops on the frame the word is heard.
     // Highlight shows each word in its phrase; worked out once for the video.
-    const captionPhrases = phraseRanges(captions)
+    const captionPhrases = captionRanges(captions, captionStyle)
     const captionPlacer = new MomentPlacer(
       captions.map((w) => w.start),
       keep,

@@ -24,7 +24,7 @@ import {
   CAPTION_STYLES,
   captionAt,
   drawStyledCaption,
-  phraseRanges,
+  captionRanges,
   phrasesOf,
   retimePhrase,
   type CaptionPosition,
@@ -174,7 +174,7 @@ export function CaptionReview({
     ctx.clearRect(0, 0, w, h)
     const all = wordsRef.current
     if (!all[shown]) return
-    drawStyledCaption(ctx, w, h, all, phraseRanges(all), shown, since, bare, positionRef.current, sizeRef.current, styleRef.current)
+    drawStyledCaption(ctx, w, h, all, captionRanges(all, styleRef.current), shown, since, bare, positionRef.current, sizeRef.current, styleRef.current)
   }, [bare])
 
   /** The first word of phrase `k` that has anything to show. */

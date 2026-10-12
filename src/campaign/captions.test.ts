@@ -17,6 +17,10 @@ import {
   retimePhrase,
   snapToOnsets,
   spokenWords,
+  CAPTION_STYLES,
+  captionRanges,
+  layoutPlainPhrase,
+  drawStyledCaption,
 } from './captions'
 
 describe('cleanWord', () => {
@@ -333,5 +337,52 @@ describe('Highlight: the phrase each word is shown in', () => {
     expect(ranges[0][0]).toBe(0)
     expect(ranges[ranges.length - 1][1]).toBe(words.length)
     expect(phraseAt(ranges, -1)).toBeNull()
+  })
+})
+
+describe('the Phrase style', () => {
+  const said = (text: string, start: number) => text.split(' ').map((t, i) => ({ text: t, start: start + i * 0.3, end: start + i * 0.3 + 0.25 }))
+  const measure = (text: string, px: number) => text.length * px * 0.55
+
+  it('is offered as the third style', () => {
+    expect(CAPTION_STYLES.map((s) => s.label)).toEqual(['One word', 'Highlight', 'Phrase'])
+  })
+
+  it('takes longer phrases than Highlight, breaking at a full stop or a pause, never past seven words', () => {
+    const words = [...said('so I tried this app.', 0), ...said('it made me four hundred dollars in a single day honestly', 2)]
+    const plain = captionRanges(words, 'phrase')
+    expect(plain[0]).toEqual([0, 5])
+    for (const [from, to] of plain) expect(to - from).toBeLessThanOrEqual(7)
+    expect(captionRanges(words, 'highlight').every(([f, t]) => t - f <= 4)).toBe(true)
+  })
+
+  it('is all lowercase, two lines at most, smaller than a headline', () => {
+    const layout = layoutPlainPhrase(measure, 1080, 1920, said('Claude Made Me FOUR Hundred Dollars In One Day', 0))!
+    expect(layout.lines.join(' ')).toBe('claude made me four hundred dollars in one day')
+    expect(layout.lines.length).toBeLessThanOrEqual(2)
+    expect(layout.fontPx).toBeLessThan(1080 * 0.066)
+  })
+
+  it('shrinks a long phrase rather than going to a third line', () => {
+    const layout = layoutPlainPhrase(measure, 1080, 1920, said('extraordinarily unbelievable incomprehensibly overwhelming phenomenal astonishing breathtaking', 0))!
+    expect(layout.lines.length).toBeLessThanOrEqual(2)
+    for (const line of layout.lines) expect(measure(line, layout.fontPx)).toBeLessThanOrEqual(1080 * 0.84)
+  })
+
+  it('shows the same whole phrase for every word in it', () => {
+    const words = said('this app changed everything', 0)
+    const ranges = captionRanges(words, 'phrase')
+    const drawn: string[] = []
+    const ctx = {
+      save() {},
+      restore() {},
+      set font(_: string) {},
+      measureText: (t: string) => ({ width: t.length * 30 }),
+      strokeText() {},
+      fillText: (t: string) => drawn.push(t),
+    } as unknown as CanvasRenderingContext2D
+    for (let i = 0; i < words.length; i++) drawStyledCaption(ctx, 1080, 1920, words, ranges, i, 0, false, 'usual', 'normal', 'phrase')
+    expect(new Set(drawn)).toEqual(new Set(['this app changed everything']))
+    expect(drawn).toHaveLength(4)
   })
 })
