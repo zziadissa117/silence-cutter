@@ -3,6 +3,15 @@
 Newest first. Every change says what it does, how to use it, and how it works
 underneath. Kept up to date with each commit.
 
+## Posts: a blue ticking clock on scheduled posts
+**What:** on the Posts screen, a post waiting in Postiz for its time now shows a blue clock whose hand ticks round,
+instead of the grey dot, and its time is blue too - so what's scheduled reads at a glance. A folded batch whose
+videos are all scheduled gets the clock as well. Posted, waiting-for-approval and failed posts keep their dots, and
+a post whose time has just come (going out now) loses the clock. The hand stays still if the phone is set to reduce
+motion.
+Only ./deploy.sh is needed.
+Files: `icons.tsx` (`ScheduledIcon`), `PostsView.tsx` (+ test), `campaign.css`, `index.css`.
+
 ## A third caption style: Phrase
 **What:** the plainest captions, for brands that want nothing busy. In the caption check before a video is made, the
 style choice now has **One word**, **Highlight** and **Phrase**. Phrase shows the whole phrase as you start saying it

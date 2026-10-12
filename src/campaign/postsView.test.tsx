@@ -133,3 +133,19 @@ describe('redo captions', () => {
     expect(redoCaptions).toHaveBeenLastCalledWith('polsia', expect.anything(), expect.any(Array), 'rewrite')
   })
 })
+
+describe('the scheduled clock', () => {
+  const scheduledList = () => [...host.querySelectorAll('.list-title')].find((t) => t.textContent?.startsWith('Scheduled'))!.nextElementSibling!
+
+  it('marks a scheduled batch and a scheduled post with the blue clock instead of a dot', () => {
+    const list = scheduledList()
+    expect(list.querySelectorAll('[aria-label="Scheduled"]')).toHaveLength(2)
+    expect(list.querySelectorAll(':scope > li > .post-head > .dot')).toHaveLength(0)
+    expect(list.querySelector('.post-when.scheduled')).not.toBeNull()
+  })
+
+  it('leaves posts that are not waiting for their time without it', () => {
+    const waiting = [...host.querySelectorAll('.list-title')].find((t) => t.textContent?.startsWith('To approve'))!.nextElementSibling!
+    expect(waiting.querySelectorAll('[aria-label="Scheduled"]')).toHaveLength(0)
+  })
+})

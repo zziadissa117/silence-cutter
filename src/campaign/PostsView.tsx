@@ -14,7 +14,7 @@ import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react
 
 import { dayLabel } from './batch'
 import { canShareFiles, share } from './jobs'
-import { ChevronLeft } from './icons'
+import { ChevronLeft, ScheduledIcon } from './icons'
 import type { Campaign } from './look'
 import { NewPost } from './NewPost'
 import { StopPicker } from './StopPicker'
@@ -320,6 +320,11 @@ function WaitingPost({
   )
 }
 
+/** Scheduled in Postiz with its time still ahead: what the blue clock means. */
+function waitingForTime(post: ServerPost, now = Date.now()): boolean {
+  return post.status === 'scheduled' && post.postAt !== null && Date.parse(post.postAt) > now
+}
+
 function OtherPost({
   post,
   busy,
@@ -357,9 +362,9 @@ function OtherPost({
   return (
     <li className="post">
       <button type="button" className="post-head as-button" onClick={() => setOpen((o) => !o)} aria-expanded={open}>
-        <span className={`dot ${tone}`} aria-hidden />
+        {waitingForTime(post) ? <ScheduledIcon /> : <span className={`dot ${tone}`} aria-hidden />}
         <span className="post-title">{post.campaignName}</span>
-        <span className="post-when">{whenLabel(post.postAt)}</span>
+        <span className={`post-when${waitingForTime(post) ? ' scheduled' : ''}`}>{whenLabel(post.postAt)}</span>
       </button>
       <div className={`post-line${tone === 'bad' ? ' bad' : tone === 'warn' ? ' warn' : ''}`}>{line}</div>
       {open ? (
@@ -434,7 +439,7 @@ function BatchRow({
   return (
     <li className="post batch-row">
       <button type="button" className="post-head as-button" onClick={() => setOpen((o) => !o)} aria-expanded={open}>
-        <span className={`dot ${tone}`} aria-hidden />
+        {posts.every((p) => waitingForTime(p)) ? <ScheduledIcon /> : <span className={`dot ${tone}`} aria-hidden />}
         <span className="post-title">
           {posts[0].campaignName} · {posts.length} videos
         </span>

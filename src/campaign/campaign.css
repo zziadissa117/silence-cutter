@@ -625,3 +625,10 @@ input.bank-name { background: transparent; border: 0; border-bottom: 1px solid c
 .formula-range { display: flex; align-items: center; gap: 6px; }
 .formula-range input { width: 6.5em; }
 .formula-preview { display: block; width: 180px; aspect-ratio: 9 / 16; border-radius: 12px; border: 1px solid var(--rule, #222); margin-top: 4px; }
+
+/* Scheduled: a blue clock whose minute hand ticks round, in twelve steps. */
+.sched-clock { flex: none; display: inline-flex; color: var(--scheduled); }
+.sched-clock .hand { transform-origin: 12px 12px; transform-box: view-box; animation: sched-tick 4s steps(12) infinite; }
+@keyframes sched-tick { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .sched-clock .hand { animation: none; } }
+.post-when.scheduled { color: var(--scheduled); }

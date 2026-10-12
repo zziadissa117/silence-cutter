@@ -28,6 +28,8 @@
   --ok: #2fd472;
   --warn: #f0a83c;
   --bad: #f2564c;
+  /* Only for a post waiting for its time in Postiz. */
+  --scheduled: #4da3ff;
 
   --mono: ui-monospace, "SF Mono", "JetBrains Mono", Menlo, Consolas, monospace;
   /* A spring's shape for a button let go of: back past its size, then home. */
