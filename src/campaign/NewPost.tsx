@@ -19,7 +19,7 @@ import { formatTime } from './jobs'
 import { NO_POSTING, type Campaign } from './look'
 import { fingerprint, handPostKey, newOnes, skippedNotice } from './fingerprint'
 import { fingerprintsFor, isQueued, queueSend } from './outbox'
-import { PostingError, accountLabel, localInput, placeFor, windowOf, timeLabel, whenLabel, windowLabel, writeCaptionFor, type Profile } from './posting'
+import { PostingError, accountLabel, localInput, ownDayTimes, placeFor, windowOf, timeLabel, whenLabel, windowLabel, writeCaptionFor, type Profile } from './posting'
 import { stillsOf } from './stills'
 import { asMp4 } from './toMp4'
 
@@ -178,7 +178,7 @@ export function NewPost({
   const posting = campaign?.posting ?? NO_POSTING
   const paste = posting.caption === 'paste'
   const place = campaign ? placeFor(profile, campaign.id) : null
-  const times = place?.times ?? []
+  const times = place ? ownDayTimes(place) : []
   // His own times, or random ones from the campaign's window (the default
   // one when it has none): several videos can always be spread.
   const timed = place !== null
@@ -459,7 +459,7 @@ export function NewPost({
           {many ? (
             <p className="hint new-post-to">
               {chosen === 'spread'
-                ? `On ${campaign.name}'s ${times.length > 0 ? `times (${times.map(timeLabel).join(', ')})` : place ? `random times (${windowLabel(windowOf(place))})` : 'times'}, and once those have gone, at random until midnight - like videos made late.`
+                ? `On ${campaign.name}'s ${times.length > 0 ? `times (${times.map(timeLabel).join(', ')})` : place ? `random times (${windowLabel(windowOf(place))})` : 'times'}, and once those have gone, at random over the next few hours, never past midnight - like videos made late.`
                 : timed
                   ? 'All of them go out at once.'
                   : `${campaign.name} has no posting times, so they all go at once. Add your own or random times in its Posting to spread them.`}

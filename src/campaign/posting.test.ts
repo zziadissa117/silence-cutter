@@ -96,10 +96,17 @@ describe('random times for every campaign', () => {
     { id: 'unset', name: 'New' },
   ]
 
-  it('a campaign with no times of its own gets three random ones a day, between 10 AM and 10 PM', () => {
+  it('a campaign with no times of its own gets three random ones a day, between 11 AM and 6 PM', () => {
     const times = placeTimesOn({ accounts: [], times: [] }, 'unset', '2026-10-10')
     expect(times).toHaveLength(3)
-    for (const time of times) expect(time >= '10:00' && time <= '22:00').toBe(true)
+    for (const time of times) expect(time >= '11:00' && time <= '18:00').toBe(true)
+  })
+
+  it('shows the times the server will use: his own in the day, night ones skipped', () => {
+    expect(placeTimesOn({ accounts: [], times: ['03:43', '13:42', '20:44'] }, 'lovable', '2026-10-10')).toEqual(['13:42'])
+    const night = placeTimesOn({ accounts: [], times: ['01:25', '02:25'] }, 'reaction', '2026-10-10')
+    expect(night).toHaveLength(2)
+    for (const time of night) expect(time >= '11:00' && time <= '18:00').toBe(true)
   })
 
   it('switches only the ones on his own times, keeping a window one already had', async () => {
@@ -107,7 +114,7 @@ describe('random times for every campaign', () => {
     server(() => ({ status: 200, json: profile }))
     await switchToRandom(profile, campaigns)
     expect(calls).toEqual([
-      expect.objectContaining({ action: 'save-campaign', campaignId: 'own', accounts: ['tt'], times: [], window: { from: '10:00', to: '22:00', perDay: 3 } }),
+      expect.objectContaining({ action: 'save-campaign', campaignId: 'own', accounts: ['tt'], times: [], window: { from: '11:00', to: '18:00', perDay: 3 } }),
       expect.objectContaining({ action: 'save-campaign', campaignId: 'hadWindow', accounts: ['ig'], times: [], window: { from: '12:00', to: '20:00', perDay: 2 } }),
     ])
   })
@@ -126,12 +133,12 @@ describe('batchTimesOn', () => {
     for (let n = 1; n <= 6; n++) {
       const times = batchTimesOn(place, 'inflow', '2026-10-12', n)
       expect(times).toHaveLength(n)
-      for (const t of times) expect(t >= '10:00' && t <= '22:00').toBe(true)
+      for (const t of times) expect(t >= '11:00' && t <= '18:00').toBe(true)
       for (let i = 1; i < times.length; i++) expect(minutes(times[i]) - minutes(times[i - 1])).toBeGreaterThanOrEqual(30)
     }
     const many = batchTimesOn(place, 'inflow', '2026-10-12', 25)
     expect(many).toHaveLength(25)
-    for (const t of many) expect(t >= '10:00' && t <= '22:00').toBe(true)
+    for (const t of many) expect(t >= '11:00' && t <= '18:00').toBe(true)
     for (let i = 1; i < many.length; i++) expect(minutes(many[i]) - minutes(many[i - 1])).toBeGreaterThanOrEqual(10)
     expect(batchTimesOn(place, 'inflow', '2026-10-12', 5)).not.toEqual(batchTimesOn(place, 'inflow', '2026-10-13', 5))
   })
@@ -145,6 +152,12 @@ describe('batchTimesOn', () => {
     const lots = batchTimesOn(place, 'inflow', '2026-10-12', 25)
     expect(lots).toHaveLength(25)
     expect(lots).toContain('18:00')
-    expect(batchTimesOn({ accounts: [], times: ['09:00', '12:00', '18:00'] }, 'inflow', '2026-10-12', 3)).toEqual(['09:00', '12:00', '18:00'])
+    expect(batchTimesOn({ accounts: [], times: ['12:00', '15:00', '18:00'] }, 'inflow', '2026-10-12', 3)).toEqual(['12:00', '15:00', '18:00'])
+    // 9 AM is outside the day: skipped, and a random daytime one takes its place.
+    const early = batchTimesOn({ accounts: [], times: ['09:00', '12:00', '18:00'] }, 'inflow', '2026-10-12', 3)
+    expect(early).toHaveLength(3)
+    expect(early).toEqual(expect.arrayContaining(['12:00', '18:00']))
+    expect(early).not.toContain('09:00')
+    for (const t of early) expect(t >= '11:00' && t <= '18:00').toBe(true)
   })
 })

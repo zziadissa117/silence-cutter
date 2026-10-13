@@ -124,7 +124,7 @@ describe('videos a day', () => {
   })
 
   it('says when the window is too short for that many', async () => {
-    await show({ window: { from: '10:00', to: '11:00', perDay: 2 } })
+    await show({ window: { from: '12:00', to: '13:00', perDay: 2 } })
     await upTo(10)
     expect(host.textContent).toContain('The window only fits 6 a day')
   })

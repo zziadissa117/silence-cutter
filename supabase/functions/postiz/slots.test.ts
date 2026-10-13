@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { addDays, endOfDay, jitterMinutes, lastTimeToday, localDate, localTime, nextSlot, normalTimes, pickTime, spreadDay, zoned } from './slots.ts'
+import { addDays, dayTimeFor, endOfDay, jitterMinutes, spreadEnd, lastTimeToday, localDate, localTime, nextSlot, normalTimes, pickTime, spreadDay, zoned } from './slots.ts'
 
 const TZ = 'America/Toronto'
 
@@ -210,6 +210,29 @@ describe('spreadDay', () => {
     for (const ms of placed.values()) {
       expect(ms).toBeGreaterThanOrEqual(last)
       expect(ms).toBeLessThanOrEqual(end + 2 * GAP)
+    }
+  })
+})
+
+describe('posting in the middle of the day', () => {
+  const at = (time: string) => zoned('2026-10-12', time, TZ).getTime()
+  const local = (ms: number) => localTime(new Date(ms), TZ)
+
+  it('ends a late spread at 6 PM, or three hours after it starts, never past midnight', () => {
+    // In at 1:37 PM: out by 6 PM.
+    expect(local(spreadEnd(at('14:07'), '2026-10-12', TZ))).toBe('18:00')
+    // In at 4:27 PM: three hours, not until midnight.
+    expect(local(spreadEnd(at('16:57'), '2026-10-12', TZ))).toBe('19:57')
+    // In at 9 PM: before midnight.
+    expect(spreadEnd(at('21:30'), '2026-10-12', TZ)).toBe(endOfDay('2026-10-12', TZ))
+  })
+
+  it('moves a post to the middle of the next day rather than the same time at night', () => {
+    expect(dayTimeFor('14:30', 'p1')).toBe('14:30')
+    for (const id of ['p1', 'p2', 'p3', 'abc', 'zzz']) {
+      const time = dayTimeFor('21:29', id)
+      expect(time >= '12:00' && time < '14:00').toBe(true)
+      expect(dayTimeFor('21:29', id)).toBe(time)
     }
   })
 })

@@ -7,7 +7,7 @@ import { useState } from 'react'
 
 import { EditorFrame, useSaver } from './Editors'
 import { NO_POSTING, type Campaign, type CampaignPosting } from './look'
-import { DEFAULT_WINDOW, MAX_PER_DAY, cleanWindow, type PostingWindow } from '../../supabase/functions/postiz/window.ts'
+import { DAY, DEFAULT_WINDOW, MAX_PER_DAY, cleanWindow, dayWindow, inDay, type PostingWindow } from '../../supabase/functions/postiz/window.ts'
 import {
   PostingError,
   accountLabel,
@@ -214,7 +214,7 @@ export function PostingEditor({
                     <button
                       key={time}
                       type="button"
-                      className="active"
+                      className={inDay(time) ? 'active' : ''}
                       aria-label={`Remove ${timeLabel(time)}`}
                       onClick={() => setPlace((p) => ({ ...p, times: p.times.filter((t) => t !== time) }))}
                     >
@@ -234,6 +234,13 @@ export function PostingEditor({
               ) : (
                 <div className="hint">Each video takes the next free time, a few minutes after it.</div>
               )}
+              {place.times.some((t) => !inDay(t)) ? (
+                <div className="hint">
+                  {place.times.filter((t) => !inDay(t)).map(timeLabel).join(', ')} {place.times.filter((t) => !inDay(t)).length === 1 ? 'is' : 'are'} outside{' '}
+                  {timeLabel(DAY.from)} - {timeLabel(DAY.to)}, so skipped
+                  {place.times.every((t) => !inDay(t)) ? ` - it posts ${place.times.length} a day at random inside it instead` : ''}.
+                </div>
+              ) : null}
             </>
           ) : (
             <>
@@ -268,7 +275,16 @@ export function PostingEditor({
                 <span className="label">a day</span>
               </label>
               {cleanWindow(windowDraft) ? (
-                <div className="hint">A different random time each day, at least 30 minutes apart. Videos beyond that spread out to midnight.</div>
+                <div className="hint">
+                  A different random time each day, at least 30 minutes apart.
+                  {(() => {
+                    const used = dayWindow(cleanWindow(windowDraft)!)
+                    return used.from !== windowDraft.from || used.to !== windowDraft.to
+                      ? ` Only ${timeLabel(used.from)} - ${timeLabel(used.to)} of it is used - posts stay in the middle of the day.`
+                      : ''
+                  })()}{' '}
+                  Videos that come in late go out over the next few hours, never past midnight.
+                </div>
               ) : (
                 <div className="hint warn-text">The window has to end at least 10 minutes after it starts.</div>
               )}

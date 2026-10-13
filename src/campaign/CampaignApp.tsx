@@ -109,6 +109,7 @@ import {
   timeLabel,
   windowLabel,
   windowOf,
+  ownDayTimes,
   redoCaptions,
   redoSaid,
   type CampaignPlace,
@@ -1746,7 +1747,8 @@ export function CampaignApp() {
     const place = placeFor(posting.profile, owner.id)
     if (place.accounts.length === 0) return 'No accounts picked - its videos are not sent'
     // His own times, else random ones from its window or the default one.
-    const times = place.times.length > 0 ? place.times.map(timeLabel).join(', ') : windowLabel(windowOf(place))
+    const own = ownDayTimes(place)
+    const times = own.length > 0 ? own.map(timeLabel).join(', ') : windowLabel(windowOf(place))
     return `${place.accounts.length} account${place.accounts.length === 1 ? '' : 's'} · ${times} · ${approval}`
   }
 

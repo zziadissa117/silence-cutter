@@ -61,7 +61,7 @@ describe('when a campaign posts', () => {
   it('opens on Random times, with the default window, for a campaign with neither', () => {
     show(local({ accounts: ['tt'] }))
     expect(button('Random times').getAttribute('aria-checked')).toBe('true')
-    expect((host.querySelector('[aria-label="Earliest random time"]') as HTMLInputElement).value).toBe('10:00')
+    expect((host.querySelector('[aria-label="Earliest random time"]') as HTMLInputElement).value).toBe('11:00')
     expect(host.textContent).not.toContain("posts the moment it's ready")
   })
 
@@ -72,7 +72,17 @@ describe('when a campaign posts', () => {
     await act(async () => button('Save posting').click())
     expect(onSave).toHaveBeenCalledTimes(1)
     const place = (onSave.mock.calls[0] as unknown[])[1] as CampaignPlace
-    expect(place).toEqual({ accounts: ['tt'], times: [], window: { from: '10:00', to: '22:00', perDay: 3 } })
+    expect(place).toEqual({ accounts: ['tt'], times: [], window: { from: '11:00', to: '18:00', perDay: 3 } })
+  })
+
+  it('greys out his times outside the day and says they are skipped', () => {
+    show(local({ accounts: ['tt'], times: ['03:43', '13:42'] }))
+    expect(host.textContent).toMatch(/3:43 AM is outside 11(:00)? AM - 6(:00)? PM, so skipped/)
+  })
+
+  it('says only the middle of the day is used of a window reaching past it', () => {
+    show(local({ accounts: ['tt'], window: { from: '10:00', to: '22:00', perDay: 3 } }))
+    expect(host.textContent).toMatch(/Only 11(:00)? AM - 6(:00)? PM of it is used/)
   })
 
   it('opens on Random for a campaign that already has a window', () => {

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { DEFAULT_WINDOW, cleanWindow, fits, windowTimes } from './window'
+import { DAY, DEFAULT_WINDOW, cleanWindow, dayWindow, fits, inDay, windowTimes } from './window'
 import { nextSlot, pickTime, timesFor, timesOn, zoned } from './slots'
 
 const WINDOW = { from: '10:00', to: '22:00', perDay: 3 }
@@ -52,9 +52,25 @@ describe('which times a campaign posts at', () => {
     expect(timesFor({ times: ['18:00'], window: WINDOW }, 'inflow')).toEqual(['18:00'])
   })
 
-  it('uses the window when he has none of his own', () => {
+  it('uses the window, cut to the day, when he has none of his own', () => {
     const times = timesFor({ times: [], window: WINDOW }, 'inflow')
-    expect(timesOn(times, '2026-10-09')).toEqual(windowTimes(WINDOW, 'inflow', '2026-10-09'))
+    expect(timesOn(times, '2026-10-09')).toEqual(windowTimes(dayWindow(WINDOW), 'inflow', '2026-10-09'))
+    for (const t of timesOn(times, '2026-10-09')) expect(inDay(t)).toBe(true)
+  })
+
+  it('skips his own times at night and keeps the ones in the day', () => {
+    const hourly = Array.from({ length: 24 }, (_, h) => `${String(h).padStart(2, '0')}:43`)
+    expect(timesFor({ times: hourly }, 'lovable')).toEqual(['11:43', '12:43', '13:43', '14:43', '15:43', '16:43', '17:43'])
+    expect(timesFor({ times: ['09:00', '18:00'] }, 'x')).toEqual(['18:00'])
+  })
+
+  it('posts as many a day at random inside the day when every one of his times is at night', () => {
+    const night = ['01:25', '02:25', '03:25', '04:25', '05:25', '06:25', '07:25', '08:25']
+    const times = timesFor({ times: night }, 'reaction')
+    expect(typeof times).toBe('function')
+    const today = timesOn(times, '2026-10-09')
+    expect(today).toHaveLength(8)
+    for (const t of today) expect(inDay(t)).toBe(true)
   })
 
   it('posts at random inside the default window with neither - never as soon as ready', () => {
@@ -73,7 +89,7 @@ describe('which times a campaign posts at', () => {
     const times = timesFor({ times: [], window: WINDOW }, 'inflow')
     const choice = pickTime({ times, others: [], now, tz })
     expect(choice?.kind).toBe('fixed')
-    const first = windowTimes(WINDOW, 'inflow', '2026-10-09')[0]
+    const first = windowTimes(dayWindow(WINDOW), 'inflow', '2026-10-09')[0]
     expect(choice && 'at' in choice ? choice.slot : null).toBe(`2026-10-09 ${first}`)
   })
 
@@ -84,5 +100,22 @@ describe('which times a campaign posts at', () => {
     const today = timesOn(times, '2026-10-09')[0]
     const next = nextSlot({ times, taken: new Set([`2026-10-09 ${today}`]), now, tz })
     expect(next?.slot).toBe(`2026-10-10 ${timesOn(times, '2026-10-10')[0]}`)
+  })
+})
+
+describe('the day', () => {
+  it('is 11 AM to 6 PM, and the default window is the day', () => {
+    expect(DAY).toEqual({ from: '11:00', to: '18:00' })
+    expect(DEFAULT_WINDOW).toEqual({ from: '11:00', to: '18:00', perDay: 3 })
+    expect(inDay('10:59')).toBe(false)
+    expect(inDay('11:00')).toBe(true)
+    expect(inDay('18:00')).toBe(true)
+    expect(inDay('18:01')).toBe(false)
+  })
+
+  it('cuts a window to the day, keeping how many a day', () => {
+    expect(dayWindow({ from: '10:00', to: '22:00', perDay: 3 })).toEqual({ from: '11:00', to: '18:00', perDay: 3 })
+    expect(dayWindow({ from: '12:00', to: '15:00', perDay: 2 })).toEqual({ from: '12:00', to: '15:00', perDay: 2 })
+    expect(dayWindow({ from: '20:00', to: '23:00', perDay: 4 })).toEqual({ ...DEFAULT_WINDOW, perDay: 4 })
   })
 })

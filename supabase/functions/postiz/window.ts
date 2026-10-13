@@ -27,9 +27,16 @@ export const WINDOW_GAP_MINUTES = 30
 const JITTER_ROOM = 10
 export const MAX_PER_DAY = 12
 
+/** The middle of the day, when posts do best: nothing he made in time is
+ *  posted outside it. Late at night engagement falls off, and he asked for
+ *  posts around noon - so his own times outside it are skipped and a window
+ *  reaching past it is cut to it. Only a video that comes in late for today
+ *  goes after it (slots.ts spreadEnd). */
+export const DAY = { from: '11:00', to: '18:00' } as const
+
 /** What a campaign with neither its own times nor a window of its own posts
  *  by: every campaign posts at random unless he gave it fixed times. */
-export const DEFAULT_WINDOW: PostingWindow = { from: '10:00', to: '22:00', perDay: 3 }
+export const DEFAULT_WINDOW: PostingWindow = { from: DAY.from, to: DAY.to, perDay: 3 }
 
 const HHMM = /^([01]\d|2[0-3]):[0-5]\d$/
 
@@ -40,6 +47,21 @@ function minutesOf(time: string): number {
 
 function hhmm(minutes: number): string {
   return `${String(Math.floor(minutes / 60)).padStart(2, '0')}:${String(minutes % 60).padStart(2, '0')}`
+}
+
+/** Whether "HH:MM" is inside the day, both ends counted: a 6 PM he typed
+ *  is a 6 PM post, not a night one. */
+export function inDay(time: string): boolean {
+  const m = minutesOf(time)
+  return m >= minutesOf(DAY.from) && m <= minutesOf(DAY.to)
+}
+
+/** A window cut to the day, keeping how many a day he wanted. One that
+ *  misses the day altogether is the whole day. */
+export function dayWindow(window: PostingWindow): PostingWindow {
+  const from = minutesOf(window.from) > minutesOf(DAY.from) ? window.from : DAY.from
+  const to = minutesOf(window.to) < minutesOf(DAY.to) ? window.to : DAY.to
+  return cleanWindow({ from, to, perDay: window.perDay }) ?? { ...DEFAULT_WINDOW, perDay: window.perDay }
 }
 
 /** A window that can be used, or null. */

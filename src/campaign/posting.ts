@@ -8,7 +8,8 @@
 // it posts at are each person's own, kept in their profile on the server.
 // The phone keeps only which profile is its own, and whether it sends.
 
-import { DEFAULT_WINDOW, cleanWindow, gapFor, windowTimes, type PostingWindow } from '../../supabase/functions/postiz/window.ts'
+import { DEFAULT_WINDOW, cleanWindow, dayWindow, gapFor, inDay, windowTimes, type PostingWindow } from '../../supabase/functions/postiz/window.ts'
+import { timesFor, timesOn } from '../../supabase/functions/postiz/slots.ts'
 import { PUBLISHABLE_KEY, currentSession } from './cloud'
 import type { Campaign, CampaignPosting } from './look'
 import { dayTimes } from './batch'
@@ -262,11 +263,16 @@ export function placeFor(profile: Profile | undefined, campaignId: string): Camp
   return { accounts: place?.accounts ?? [], times: place?.times ?? [], ...(window ? { window } : {}) }
 }
 
-/** A campaign's times on one date, as the server will use them: its own,
- *  else that day's random ones from its window (or the default window). */
+/** A campaign's times on one date, as the server will use them (slots.ts
+ *  timesFor): its own inside the day, else that day's random ones from its
+ *  window cut to the day (or the default window). */
 export function placeTimesOn(place: CampaignPlace, campaignId: string, date: string): string[] {
-  if (place.times.length > 0) return place.times
-  return windowTimes(windowOf(place), campaignId, date)
+  return timesOn(timesFor(place, campaignId), date)
+}
+
+/** His own times that are used: the ones inside the day (window.ts DAY). */
+export function ownDayTimes(place: Pick<CampaignPlace, 'times'>): string[] {
+  return [...new Set(place.times)].filter(inDay).sort()
 }
 
 /** The most videos a day a batch can be. */
@@ -283,8 +289,8 @@ export function batchTimesOn(place: CampaignPlace, campaignId: string, date: str
   const window = windowOf(place)
   const count = Math.min(perDay, BATCH_MAX_PER_DAY)
   const gap = gapFor(window, count)
-  if (place.times.length === 0) return windowTimes({ ...window, perDay: count }, campaignId, date, gap)
-  const own = [...new Set(place.times)].sort()
+  const own = ownDayTimes(place)
+  if (own.length === 0) return windowTimes({ ...window, perDay: count }, campaignId, date, gap)
   if (count <= own.length) return dayTimes(own, count)
   const minutes = (t: string) => Number(t.slice(0, 2)) * 60 + Number(t.slice(3, 5))
   // His times take room from the window, so the extras close up a little
@@ -298,10 +304,10 @@ export function batchTimesOn(place: CampaignPlace, campaignId: string, date: str
   return [...own, ...dayTimes(extras, count - own.length)].sort()
 }
 
-/** The window its random times come from: its own, or the default every
- *  campaign without fixed times posts by. */
+/** The window its random times come from: its own cut to the day, or the
+ *  default every campaign without fixed times posts by. */
 export function windowOf(place: Pick<CampaignPlace, 'window'>): PostingWindow {
-  return cleanWindow(place.window) ?? DEFAULT_WINDOW
+  return dayWindow(cleanWindow(place.window) ?? DEFAULT_WINDOW)
 }
 
 /** The campaigns still on fixed times of his own - the ones "Random times
@@ -317,14 +323,15 @@ export async function switchToRandom(profile: Profile, campaigns: readonly { id:
   for (const campaign of onFixedTimes(profile, campaigns)) {
     const place = placeFor(profile, campaign.id)
     try {
-      await saveCampaignPlace(campaign.id, { accounts: place.accounts, times: [], window: windowOf(place) })
+      // The window as he set it: it is cut to the day where times are drawn.
+      await saveCampaignPlace(campaign.id, { accounts: place.accounts, times: [], window: cleanWindow(place.window) ?? DEFAULT_WINDOW })
     } catch (error) {
       throw new PostingError(`${campaign.name} kept its own times: ${error instanceof Error ? error.message : String(error)}`)
     }
   }
 }
 
-/** "2 a day at random, 10 AM - 10 PM". */
+/** "2 a day at random, 11 AM - 6 PM". */
 export function windowLabel(window: PostingWindow): string {
   return `${window.perDay} a day at random, ${timeLabel(window.from)} - ${timeLabel(window.to)}`
 }

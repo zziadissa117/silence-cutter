@@ -63,8 +63,8 @@ import { carryOver, cleanCaptions, cleanRepost, repostDueAt, textFor, variationN
 import { FAKE_CLAUDE, FakeError, fakeCaption, fakePostiz, isFakePostiz } from './fake.ts'
 import { batchChoices, batchInfo, batchSpan, type BatchInfo } from './batch.ts'
 import { handFields } from './hand.ts'
-import { endOfDay, lastTimeToday, nextSlot, normalTimes, pickTime, spreadDay, timesFor, type OtherPost, type Spread, addDays, localDate, localTime, zoned } from './slots.ts'
-import { cleanWindow, type PostingWindow } from './window.ts'
+import { dayTimeFor, lastTimeToday, nextSlot, normalTimes, pickTime, spreadDay, spreadEnd, timesFor, type OtherPost, type Spread, addDays, localDate, localTime, zoned } from './slots.ts'
+import { cleanWindow, inDay, type PostingWindow } from './window.ts'
 import { attachMove, summarise, type AttachMove } from './attach.ts'
 import { cleanMode, pickRecaption, recaptionMode } from './recaption.ts'
 import { cleanLimits, firstDayWithRoom, heldNote, releasable, split, usedOn, type Limits, type PostAccount } from './limits.ts'
@@ -606,7 +606,9 @@ async function releaseHeld(now: number): Promise<void> {
         const gone = new Set<string>()
         let latest = owned.post_at ? new Date(owned.post_at).getTime() : 0
         for (const [day, accounts] of byDay) {
-          const at = day === baseDay ? new Date(soon) : zoned(day, timeOfDay, tz)
+          // Another day is not the same time tomorrow: 9 PM today waits for
+          // the middle of the next day (slots.ts dayTimeFor).
+          const at = day === baseDay ? new Date(soon) : zoned(day, dayTimeFor(timeOfDay, owned.id), tz)
           const date = at.toISOString()
           const found = await findCreated(keys.postiz, { ...owned, accounts }, date)
           const made =
@@ -1181,7 +1183,7 @@ async function takeBatchSlot(post: Post, profile: Profile): Promise<Post> {
     if (!error && data) return data as Post
     if (error?.code !== '23505') throw new Problem('A time could not be saved for the post.', true, 500)
   }
-  return update(post.id, { slot: null, post_at: choices[0].at.toISOString(), spread: null })
+  return update(post.id, { slot: null, post_at: choices[0]?.at.toISOString() ?? null, spread: null })
 }
 
 /** A batch's one notification: once every video of it is up and waiting -
@@ -1281,7 +1283,6 @@ async function respread(profile: Profile, campaignId: string, date: string): Pro
     .order('created_at', { ascending: true })
   const rows = (data ?? []) as Pick<Post, 'id' | 'spread' | 'post_at' | 'status' | 'creating_at' | 'created_at'>[]
   const times = timesFor(profile.settings.campaigns?.[campaignId], campaignId)
-  const end = endOfDay(date, profile.timezone)
   const now = Date.now()
   for (const kind of ['late', 'extra'] as const) {
     const members = rows.filter((r) => r.spread === kind)
@@ -1290,13 +1291,14 @@ async function respread(profile: Profile, campaignId: string, date: string): Pro
       kind === 'late'
         ? Math.min(...members.map((m) => Date.parse(m.created_at))) + 20 * MINUTE
         : (lastTimeToday(times, date, profile.timezone) ?? now)
+    const end = spreadEnd(start, date, profile.timezone)
     const placed = spreadDay(
       members.map((m) => ({
         id: m.id,
         at: m.post_at ? Date.parse(m.post_at) : null,
         locked: ['scheduled', 'posted', 'error'].includes(m.status) || Boolean(m.creating_at),
       })),
-      // Random until midnight, at least 15 minutes apart (slots.ts spreadDay).
+      // Random until the spread's end, at least 15 minutes apart (slots.ts spreadDay, spreadEnd).
       { start, end, now, leadMs: 5 * MINUTE, minGapMs: 15 * MINUTE },
     )
     for (const m of members) {
@@ -1447,12 +1449,23 @@ async function schedule(start: Post): Promise<Post> {
     }
     await respread(profile, post.campaign_id, post.slot!.slice(0, 10))
     post = await reload(post.id)
-  } else if (!post.post_at || new Date(post.post_at).getTime() < soon) {
-    if (post.slot) {
-      const brand = post.rules.approval === 'brand'
-      post = await takeSlot(post, profile, { leadMinutes: 3, todayOnly: brand })
-    } else {
-      post = await update(post.id, { post_at: null })
+  } else {
+    const clock = post.slot && !post.spread ? /^\d{4}-\d{2}-\d{2} (\d{2}:\d{2})$/.exec(post.slot)?.[1] : undefined
+    if (clock && post.post_at && !inDay(clock)) {
+      // Given a time at night before posting moved into the day (window.ts
+      // DAY): it takes one by the rules as they are now. His own picked
+      // times have no slot and are never moved.
+      post = post.batch
+        ? await takeBatchSlot(await update(post.id, { slot: null, post_at: null }), profile)
+        : await takeSlot(post, profile, { leadMinutes: 3 })
+    }
+    if (!post.post_at || new Date(post.post_at).getTime() < soon) {
+      if (post.slot) {
+        const brand = post.rules.approval === 'brand'
+        post = await takeSlot(post, profile, { leadMinutes: 3, todayOnly: brand })
+      } else {
+        post = await update(post.id, { post_at: null })
+      }
     }
   }
   const now = !post.post_at

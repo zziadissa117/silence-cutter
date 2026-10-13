@@ -32,7 +32,7 @@ import { filmingOf } from './filming'
 import { fingerprint, skippedNotice } from './fingerprint'
 import { formatTime, labelOf, type Job } from './jobs'
 import type { Angle, Campaign } from './look'
-import { BATCH_MAX_PER_DAY, accountLabel, batchTimesOn, placeFor, timeLabel, windowLabel, windowOf, type LocalPosting } from './posting'
+import { BATCH_MAX_PER_DAY, accountLabel, batchTimesOn, ownDayTimes, placeFor, timeLabel, windowLabel, windowOf, type LocalPosting } from './posting'
 import { deleteBankFile, loadBankFile, loadBatchBank, saveBankFile, saveBatchBank, type JobBatch } from './store'
 import { FormulaPreview } from './FormulaPreview'
 
@@ -192,7 +192,7 @@ export function BatchView({
   const perDay = bank?.perDay ?? 1
   const timesOnDate = (date: string) => batchTimesOn(place, campaign.id, date, perDay)
   const times = timesOnDate(todayHere())
-  const random = place.times.length === 0
+  const random = ownDayTimes(place).length === 0
   const angle = campaign.angles.find((a) => a.id === bank?.angleId) ?? campaign.angles[0]
 
   const add = async (kind: Kind, files: File[]) => {
