@@ -126,7 +126,7 @@ describe('where a headline line is actually drawn', () => {
     const height = 2
     const data = new Uint8ClampedArray(width * height * 4)
     data[(1 * width + 2) * 4 + 3] = 255
-    data[(0 * width + 4) * 4 + 3] = 255
+    data[4 * 4 + 3] = 255
     expect(inkColumns(data, width, height)).toEqual({ first: 2, last: 4 })
     expect(inkColumns(new Uint8ClampedArray(width * height * 4), width, height)).toBeNull()
   })
