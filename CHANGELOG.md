@@ -3,6 +3,15 @@
 Newest first. Every change says what it does, how to use it, and how it works
 underneath. Kept up to date with each commit.
 
+## Headlines: centred on what is drawn, not what is measured
+**What:** a headline is now centred - and its white box sized - on the letters as the phone actually draws them.
+It used to be centred on the width the phone measured, and nearly every headline ends in emoji, which an iPhone can
+draw at a different width than it measures; that left the words off to one side and the box longer on one side.
+Each line is drawn once off-screen before the video is made and its visible edges found, so whatever the emoji do,
+the words sit in the middle. Plain-text headlines move by a pixel or two at most. Batch hooks (Claude + X) too.
+Only ./deploy.sh is needed.
+Files: `overlay.ts` (`inkOf`, `inkColumns`, + test).
+
 ## Pop-up videos: a clip comes up when you say its words
 **What:** a new **Videos** section in the Bank tab, between Pictures and Music. Add a clip (screen recording, demo,
 anything), type the words that bring it up - "Claude Code" - and in every angle that uses the bank, saying those words

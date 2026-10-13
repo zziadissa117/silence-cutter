@@ -44,7 +44,9 @@ const SIZE_FACTOR: Record<HeadlineSize, number> = { small: 0.052, medium: 0.066,
 const HEADLINE_Y: Record<HeadlinePosition, number> = { top: 0.2, middle: 0.44, bottom: 0.68 }
 
 export interface HeadlineLayout {
-  lines: { text: string; width: number }[]
+  /** Each line's width as drawn, and how far to move it so what is drawn -
+   *  not what was measured - sits in the middle (see inkOf). */
+  lines: { text: string; width: number; shift?: number }[]
   font: string
   fontPx: number
   centerX: number
@@ -100,10 +102,15 @@ export function layoutHeadline(
   ctx.font = font
   const boxed = headline.style === 'box'
   const maxWidth = width * (1 - 2 * TIKTOK_ZONES.side) - (boxed ? fontPx * BOX.padX * 2 : 0)
-  const lines = wrapText(text, maxWidth, (s) => ctx.measureText(s).width).map((line) => ({
-    text: line,
-    width: ctx.measureText(line).width,
-  }))
+  const lines = wrapText(text, maxWidth, (s) => ctx.measureText(s).width).map((line) => {
+    const measured = ctx.measureText(line).width
+    const ink = inkOf(line, font, fontPx, measured)
+    if (!ink) return { text: line, width: measured }
+    // Normal letters sit a hair inside their measured width, and the box
+    // keeps that hair; a glyph drawn narrower than measured (an emoji, on
+    // some phones) does not widen the box on one side.
+    return { text: line, width: ink.width + Math.min(Math.max(0, measured - ink.width), fontPx * 0.12), shift: -ink.center }
+  })
   const lineHeight = fontPx * (boxed ? BOX.lineHeight : OUTLINE.lineHeight)
   const blockHeight = lineHeight * lines.length
   const top = Math.max(height * TIKTOK_ZONES.top, height * HEADLINE_Y[headline.position] - blockHeight / 2)
@@ -124,6 +131,50 @@ export function layoutHeadline(
     style: headline.style,
     outlineColor: outlineColorOf(headline.outlineColor),
     outlineWidth: headline.outlineWidth ?? 'normal',
+  }
+}
+
+/** Where the ink of a row of pixels starts and ends: the first and last
+ *  column with anything drawn in it, or null for none. `alpha` is RGBA. */
+export function inkColumns(data: Uint8ClampedArray, width: number, height: number): { first: number; last: number } | null {
+  let first = -1
+  let last = -1
+  for (let x = 0; x < width; x++) {
+    for (let y = 0; y < height; y++) {
+      if (data[(y * width + x) * 4 + 3] > 8) {
+        if (first < 0) first = x
+        last = x
+        break
+      }
+    }
+  }
+  return first < 0 ? null : { first, last }
+}
+
+/** The line as the phone actually draws it, centred where it is drawn:
+ *  how wide its ink is and how far the ink's middle sits from the point it
+ *  was centred on. A headline is centred on its measured width, and on an
+ *  iPhone an emoji - in nearly every one of his headlines - can be drawn at
+ *  a different width than it was measured at, which left the words off to
+ *  one side. Null where there is no canvas to draw on (tests). */
+function inkOf(line: string, font: string, fontPx: number, measured: number): { width: number; center: number } | null {
+  if (typeof OffscreenCanvas === 'undefined') return null
+  try {
+    const width = Math.ceil(measured + fontPx * 4)
+    const height = Math.ceil(fontPx * 2.2)
+    const scratch = new OffscreenCanvas(width, height)
+    const c = scratch.getContext('2d')
+    if (!c) return null
+    c.font = font
+    c.textAlign = 'center'
+    c.textBaseline = 'alphabetic'
+    c.fillStyle = '#000'
+    c.fillText(line, width / 2, fontPx * 1.5)
+    const ink = inkColumns(c.getImageData(0, 0, width, height).data, width, height)
+    if (!ink) return null
+    return { width: ink.last - ink.first + 1, center: (ink.first + ink.last + 1) / 2 - width / 2 }
+  } catch {
+    return null
   }
 }
 
@@ -244,17 +295,18 @@ export function drawHeadline(ctx: Ctx, layout: HeadlineLayout): void {
   if (layout.style === 'box') drawBoxes(ctx, layout)
   layout.lines.forEach((line, i) => {
     const baseline = layout.top + i * layout.lineHeight + layout.baselineOffset
+    const x = layout.centerX + (line.shift ?? 0)
     if (layout.style === 'box') {
       ctx.fillStyle = '#000000'
-      ctx.fillText(line.text, layout.centerX, baseline)
+      ctx.fillText(line.text, x, baseline)
     } else {
       ctx.lineJoin = 'round'
       ctx.miterLimit = 2
       ctx.lineWidth = layout.fontPx * OUTLINE.stroke * OUTLINE_WIDTH[layout.outlineWidth]
       ctx.strokeStyle = layout.outlineColor
-      ctx.strokeText(line.text, layout.centerX, baseline)
+      ctx.strokeText(line.text, x, baseline)
       ctx.fillStyle = '#ffffff'
-      ctx.fillText(line.text, layout.centerX, baseline)
+      ctx.fillText(line.text, x, baseline)
     }
   })
   ctx.restore()
