@@ -8,6 +8,7 @@ import { env, pipeline } from '@huggingface/transformers'
 
 import type { WordChunk } from '../media/fillerWords'
 import type { Range } from '../media/silenceMath'
+import { timedWords, type TimestampedChunk } from './timedWords'
 
 export interface TranscribeRequest {
   samples: Float32Array
@@ -39,10 +40,6 @@ if (ortVersion && env.backends.onnx.wasm) {
   }
 }
 
-interface TimestampedChunk {
-  text: string
-  timestamp: [number | null, number | null]
-}
 
 interface Tokens {
   encode(text: string, options: { add_special_tokens: boolean }): number[]
@@ -98,11 +95,7 @@ self.onmessage = async (event: MessageEvent<TranscribeRequest>) => {
         ...(primed ? { decoder_input_ids: primed } : {}),
       } as Parameters<typeof transcriber>[1])
       const output = Array.isArray(result) ? result[0] : result
-      for (const chunk of (output.chunks ?? []) as TimestampedChunk[]) {
-        const [from, to] = chunk.timestamp
-        if (from == null || to == null) continue
-        words.push({ text: chunk.text, start: start + from, end: start + to })
-      }
+      words.push(...timedWords((output.chunks ?? []) as TimestampedChunk[], start, slice.length / sampleRate))
       post({ type: 'progress', fraction: (i + 1) / windows.length })
       if (i < windows.length - 1) await new Promise((r) => setTimeout(r, PAUSE_BETWEEN_WINDOWS_MS))
     }

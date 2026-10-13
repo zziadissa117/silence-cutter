@@ -238,7 +238,7 @@ export async function make(
     headline: headlineText,
     notHeard: missed,
     recovered: rendered.recovered,
-    said: captionWords(plan.spoken ?? plan.words, plan.keep)
+    said: captionWords(plan.spoken ?? plan.words, plan.keep, { rough: !plan.aligned })
       .map((w) => w.text.trim())
       .filter(Boolean)
       .join(' '),
@@ -337,7 +337,7 @@ export async function makeReaction(
     notHeard: [],
     said:
       talking && plan
-        ? captionWords(plan.spoken ?? plan.words, plan.keep)
+        ? captionWords(plan.spoken ?? plan.words, plan.keep, { rough: !plan.aligned })
             .map((w) => w.text.trim())
             .filter(Boolean)
             .join(' ')

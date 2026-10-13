@@ -419,7 +419,7 @@ export function CampaignApp() {
    *  all heard - put through the cut again, so fixing the cuts after
    *  checking the captions takes out the words that went with them. */
   const captionWordsFor = (job: Job, plan: CampaignPlan): CaptionWord[] =>
-    captionWords(job.day?.captions ?? plan.spoken ?? plan.words, plan.keep)
+    captionWords(job.day?.captions ?? plan.spoken ?? plan.words, plan.keep, { rough: !plan.aligned })
 
   /** The captions burned into a video: every word he checked (or, if he
    *  never opened them, every word heard) said after the headline - or none,

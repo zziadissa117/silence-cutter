@@ -126,6 +126,15 @@ const EARLY_SEC = 0.1
  *  starting this soon after a kept stretch ends still belongs to it. Measured
  *  on his takes: 34 real words in 461 lost without this, 7 with it. */
 const LATE_SEC = 0.25
+/** The same when only the speech model timed the words - the letter model
+ *  could not run on the phone that day. Its words run on a median 0.22 s
+ *  late and scatter a further ±0.2 s, so 0.25 s lost the last word of a
+ *  phrase whenever it ran late; this is that scatter on top. */
+const ROUGH_LATE_SEC = 0.5
+/** The last words of the whole take, heard after the last kept stretch:
+ *  nothing was said after them, so there is nothing else they could belong
+ *  to. "...link in bio." was the word most often missing. */
+const LAST_WORDS_SEC = 1.0
 /** Never pulled back like that: an "um" or a stumble was cut on purpose. */
 const CUT_ON_PURPOSE = new Set(['um', 'uh', 'er', 'erm', 'ah', 'hmm', 'mm'])
 
@@ -133,9 +142,12 @@ const CUT_ON_PURPOSE = new Set(['um', 'uh', 'er', 'erm', 'ah', 'hmm', 'mm'])
  *  pauses (and any "um"s) are cut. Punctuation stays - it is what the
  *  phrases are split on when he checks them - and comes off only as a word
  *  is drawn. */
-export function captionWords(words: WordChunk[], keep: Range[]): CaptionWord[] {
+export function captionWords(words: WordChunk[], keep: Range[], { rough = false }: { rough?: boolean } = {}): CaptionWord[] {
   const bare = (w: WordChunk | undefined) => (w ? cleanWord(w.text).toLowerCase() : '')
   const captions: CaptionWord[] = []
+  const late = rough ? ROUGH_LATE_SEC : LATE_SEC
+  const last = keep.reduce<Range | undefined>((a, r) => (!a || r.end > a.end ? r : a), undefined)
+  const rescued = new Map<Range, number>()
   words.forEach((w, i) => {
     const text = w.text.trim()
     if (!cleanWord(text)) return
@@ -144,19 +156,43 @@ export function captionWords(words: WordChunk[], keep: Range[]): CaptionWord[] {
       return
     }
     const repeated = bare(w) === bare(words[i - 1]) || bare(w) === bare(words[i + 1])
-    const before = keep.find((r) => w.start >= r.end && w.start <= r.end + LATE_SEC)
+    const before =
+      keep.find((r) => w.start >= r.end && w.start <= r.end + late) ??
+      (last && w.start >= last.end && w.start <= last.end + LAST_WORDS_SEC ? last : undefined)
     if (before && !repeated && !CUT_ON_PURPOSE.has(bare(w))) {
-      // Back inside the stretch it was said in.
-      const start = Math.max(before.start, before.end - MIN_SHOW_SEC)
-      captions.push({ text, start, end: Math.max(start + MIN_SHOW_SEC, Math.min(w.end, before.end)) })
+      // Back inside the stretch it was said in - the ones before it pulled
+      // back too, so two or three heard late each still get their moment.
+      const pulled = (rescued.get(before) ?? 0) + 1
+      rescued.set(before, pulled)
+      captions.push({ text, start: before.end, end: before.end })
     }
   })
+  // Each stretch's pulled-back words, the last of them ending with it.
+  for (const [range, count] of rescued) {
+    const at = captions.filter((c) => c.start === range.end && c.end === range.end)
+    at.forEach((c, k) => {
+      const start = Math.max(range.start, range.end - (count - k) * MIN_SHOW_SEC)
+      c.start = start
+      c.end = Math.max(start + MIN_SHOW_SEC * 0.999, Math.min(range.end, start + MIN_SHOW_SEC))
+    })
+  }
   // In time order, always - each is placed on the cut video in turn - and
   // each up long enough to be seen.
   for (let i = 1; i < captions.length; i++) {
     const earliest = captions[i - 1].start + MIN_SHOW_SEC
     if (captions[i].start < earliest) {
       captions[i] = { ...captions[i], start: earliest, end: Math.max(captions[i].end, earliest + MIN_SHOW_SEC) }
+    }
+  }
+  // The video ends where the last kept stretch does: a word starting after
+  // that is placed after the end and never seen (timeline.ts MomentPlacer).
+  // So the last few are fitted in before it, each still up long enough -
+  // squeezed only as much as the stretch allows.
+  if (last) {
+    for (let i = captions.length - 1, room = 1; i >= 0 && captions[i].start > last.end - room * MIN_SHOW_SEC; i--, room++) {
+      const start = Math.max(last.start, last.end - room * MIN_SHOW_SEC)
+      if (start >= captions[i].start) break
+      captions[i] = { ...captions[i], start, end: Math.min(captions[i].end, start + MIN_SHOW_SEC) }
     }
   }
   return captions

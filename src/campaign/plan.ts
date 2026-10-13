@@ -127,11 +127,16 @@ async function transcribe(
 /** How long the letter model may go without a word before it is given up
  *  on, and the captions keep the speech model's own times. */
 const ALIGN_QUIET_MS = 60_000
+/** The same while it is still loading: read back from the phone's storage
+ *  it says nothing until it is ready, and on a phone that has just run the
+ *  speech model that took longer than a minute - "the letter model stopped
+ *  answering" on 10 videos in two weeks, each captioned with rough times. */
+const ALIGN_LOADING_MS = 150_000
 /** A breath between the speech model's worker ending and the letter model's
  *  starting, for the phone to take the first one's memory back - and a
  *  longer one before trying again when it still could not. */
 const ALIGN_AFTER_MS = 1_500
-const ALIGN_RETRY_MS = 4_000
+const ALIGN_RETRY_MS = 8_000
 
 /** Times every heard word exactly, in its own worker - see align.ts. The
  *  words go in as heard (pieces already joined), in order, and come back in
@@ -154,12 +159,14 @@ async function alignWords(
   try {
     return await new Promise<TimedWord[]>((resolve, reject) => {
       let quiet = 0
+      let loaded = false
       const stillThere = () => {
         window.clearTimeout(quiet)
-        quiet = window.setTimeout(() => reject(new Error('the letter model stopped answering')), ALIGN_QUIET_MS)
+        quiet = window.setTimeout(() => reject(new Error('the letter model stopped answering')), loaded ? ALIGN_QUIET_MS : ALIGN_LOADING_MS)
       }
       stillThere()
       worker.onmessage = (event: MessageEvent<AlignMessage>) => {
+        if (event.data.type === 'progress') loaded = true
         stillThere()
         const message = event.data
         if (message.type === 'download') onModelDownload?.(message.fraction)
@@ -306,7 +313,11 @@ export async function planCampaignCut(
         try {
           timed = await align(forAligning)
         } catch (error) {
-          if (!/out of memory/i.test(error instanceof Error ? error.message : String(error))) throw error
+          // Out of memory, or gone quiet - which on a phone is usually the
+          // same thing: the worker was ended for its memory without a word.
+          // One more go once the phone has had time to take memory back;
+          // a word it times is a caption that lands on the word.
+          report({ page: 'campaign', kind: 'retried', phase: 'aligning', message: error instanceof Error ? error.message : String(error) })
           await new Promise((resolve) => setTimeout(resolve, ALIGN_RETRY_MS))
           timed = await align(spare)
         }

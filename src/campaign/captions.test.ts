@@ -99,6 +99,52 @@ describe('captionWords', () => {
     expect(captions[1].start).toBeLessThan(4.7)
   })
 
+  it('keeps the last word of a phrase heard half a second late when the letter model could not time them', () => {
+    const words = [
+      { text: ' it', start: 3.9, end: 4.1 },
+      { text: ' works.', start: 4.95, end: 5.4 },
+      { text: ' And', start: 6.2, end: 6.4 },
+    ]
+    const keep = [
+      { start: 3, end: 4.5 },
+      { start: 6.1, end: 7 },
+    ]
+    expect(captionWords(words, keep).map((w) => w.text)).toEqual(['it', 'And'])
+    const rough = captionWords(words, keep, { rough: true })
+    expect(rough.map((w) => w.text)).toEqual(['it', 'works.', 'And'])
+    expect(rough[1].start).toBeLessThan(4.5)
+  })
+
+  it('always keeps the last words of the take, inside the video', () => {
+    const words = [
+      { text: ' link', start: 9.0, end: 9.2 },
+      { text: ' in', start: 9.25, end: 9.35 },
+      { text: ' bio.', start: 10.1, end: 10.5 },
+    ]
+    const keep = [{ start: 8, end: 9.4 }]
+    const captions = captionWords(words, keep)
+    expect(captions.map((w) => w.text)).toEqual(['link', 'in', 'bio.'])
+    for (const c of captions) expect(c.start).toBeLessThan(9.4)
+    captions.slice(1).forEach((c, i) => expect(c.start).toBeGreaterThan(captions[i].start))
+  })
+
+  it('pulls back several words heard late, in order, each with its moment', () => {
+    const words = [
+      { text: ' this', start: 1.0, end: 1.2 },
+      { text: ' is', start: 2.05, end: 2.15 },
+      { text: ' it.', start: 2.2, end: 2.4 },
+      { text: ' Next', start: 4, end: 4.3 },
+    ]
+    const keep = [
+      { start: 0.5, end: 2.0 },
+      { start: 3.9, end: 5 },
+    ]
+    const captions = captionWords(words, keep)
+    expect(captions.map((w) => w.text)).toEqual(['this', 'is', 'it.', 'Next'])
+    expect(captions[1].start).toBeLessThan(captions[2].start)
+    expect(captions[2].start).toBeLessThan(2.0)
+  })
+
   it('does not bring back a stumble or an "um" that was cut', () => {
     const words = [
       { text: ' I', start: 1, end: 1.1 },
