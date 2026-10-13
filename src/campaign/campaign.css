@@ -632,3 +632,8 @@ input.bank-name { background: transparent; border: 0; border-bottom: 1px solid c
 @keyframes sched-tick { to { transform: rotate(360deg); } }
 @media (prefers-reduced-motion: reduce) { .sched-clock .hand { animation: none; } }
 .post-when.scheduled { color: var(--scheduled); }
+
+/* A music picker with the play button beside it, to hear the track picked. */
+.music-pick { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.music-pick select { flex: 1 1 auto; min-width: 0; }
+.music-pick .hint { margin: 0; }

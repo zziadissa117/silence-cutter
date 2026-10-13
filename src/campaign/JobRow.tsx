@@ -15,6 +15,8 @@ import { anyEffect, defaultEffects } from './defaultEffects'
 import { NO_EFFECTS } from './effects'
 import { canShareFiles, formatTime, outputName, share, type Job } from './jobs'
 import { LIMITS, type Campaign } from './look'
+import { songFile, useMusicBank } from './musicBank'
+import { PlayButton } from './TrackPlayer'
 
 type Tone = 'now' | 'later' | 'ok' | 'warn' | 'bad'
 
@@ -377,6 +379,19 @@ function SortedDetails({
   onJoin?: (otherId: string) => void
   parts?: { names: string[]; onSplit: () => void }
 }) {
+  const songs = useMusicBank()
+  // The track picked, to hear before the video is made.
+  const choice = job.day?.music ?? ''
+  const picked = ((): { name: string; load: () => Promise<Blob | null> } | null => {
+    if (choice === 'none') return null
+    if (choice.startsWith('bank:')) {
+      const song = songs.find((x) => `bank:${x.id}` === choice)
+      return song ? { name: song.name, load: () => songFile(song) } : null
+    }
+    const [campaignId, angleId] = choice ? choice.split(':') : [job.campaignId, job.angleId]
+    const music = campaigns.find((c) => c.id === campaignId)?.angles.find((a) => a.id === angleId)?.music
+    return music ? { name: music.name, load: async () => music.audio } : null
+  })()
   const plan = job.day?.plan
   const kept = job.day?.keep ?? plan?.keep ?? []
   const heard = (job.day?.plan?.words ?? []).map((w) => w.text.trim()).join(' ')
@@ -420,17 +435,30 @@ function SortedDetails({
       </label>
       <label className="field">
         <span className="label">Music</span>
-        <select value={job.day?.music ?? ''} onChange={(e) => onMusic(e.target.value)}>
-          <option value="">{angle?.music ? `The angle's: ${angle.music.name}` : "The angle's: none"}</option>
-          {musicTracks(campaigns)
-            .filter((t) => t.value !== `${job.campaignId}:${job.angleId}`)
-            .map((t) => (
-              <option key={t.value} value={t.value}>
-                {t.name}
-              </option>
-            ))}
-          <option value="none">No music</option>
-        </select>
+        <div className="music-pick">
+          <select value={job.day?.music ?? ''} onChange={(e) => onMusic(e.target.value)}>
+            <option value="">{angle?.music ? `The angle's: ${angle.music.name}` : "The angle's: none"}</option>
+            {songs.length > 0 ? (
+              <optgroup label="Music bank">
+                {songs.map((song) => (
+                  <option key={song.id} value={`bank:${song.id}`}>
+                    {song.name}
+                  </option>
+                ))}
+              </optgroup>
+            ) : null}
+            {musicTracks(campaigns)
+              .filter((t) => t.value !== `${job.campaignId}:${job.angleId}`)
+              .map((t) => (
+                <option key={t.value} value={t.value}>
+                  {t.name}
+                </option>
+              ))}
+            <option value="none">No music</option>
+          </select>
+          {picked ? <PlayButton name={picked.name} load={picked.load} /> : null}
+        </div>
+        {songs.length === 0 ? <span className="hint">Keep songs with names in Bank → Music to pick them here.</span> : null}
       </label>
       {anyEffect(defaultEffects()) && !anyEffect(angle?.effects ?? NO_EFFECTS) ? (
         <label className="field">

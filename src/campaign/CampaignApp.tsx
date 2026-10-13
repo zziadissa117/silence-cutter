@@ -23,6 +23,8 @@ import { report } from '../report'
 import { UpdateBanner } from '../UpdateBanner'
 import { VideoPicker } from '../VideoPicker'
 import { BankView } from './BankView'
+import { MusicBankView } from './MusicBankView'
+import { loadMusicBank, songFile } from './musicBank'
 import { BatchView, type BatchVideo } from './BatchView'
 import type { BankFile } from './batch'
 import { CampaignsView } from './CampaignsView'
@@ -331,11 +333,19 @@ export function CampaignApp() {
     return angle && job.headlineText.trim() ? angle.headline.seconds : 0
   }
 
-  /** The track under a video: the one picked for it, or its angle's. */
-  const musicFor = (job: Job): AngleMusic | null | undefined => {
+  /** The track under a video: the one picked for it - a song from the
+   *  music bank or another angle's - or its angle's. */
+  const musicFor = async (job: Job): Promise<AngleMusic | null | undefined> => {
     const picked = job.day?.music
     if (picked === 'none') return null
     if (!picked) return undefined
+    if (picked.startsWith('bank:')) {
+      const song = (await loadMusicBank()).find((s) => `bank:${s.id}` === picked)
+      const audio = song ? await songFile(song) : null
+      if (!song || !audio) throw new SilenceCutError('The song picked for this video is no longer in the music bank. Pick another and make it again.')
+      const own = campaignsRef.current.find((c) => c.id === job.campaignId)?.angles.find((a) => a.id === job.angleId)?.music
+      return { name: song.name, audio, level: own?.level ?? 'normal' }
+    }
     const [campaignId, angleId] = picked.split(':')
     return campaignsRef.current.find((c) => c.id === campaignId)?.angles.find((a) => a.id === angleId)?.music ?? undefined
   }
@@ -1212,7 +1222,7 @@ export function CampaignApp() {
               (p) => setPhase('cutting', p),
               captionsRef.current && plan ? drawnWords(captionsFor(next, plan), bareRef.current) : [],
               voiceRef.current,
-              musicFor(next),
+              await musicFor(next),
               {
                 seed: next.id,
                 defaults: next.day?.noEffects ? null : defaultEffects(),
@@ -1237,7 +1247,7 @@ export function CampaignApp() {
             next.retried === true,
               captionsRef.current ? drawnWords(captionsFor(next, plan), bareRef.current) : [],
               voiceRef.current,
-              musicFor(next),
+              await musicFor(next),
               await clipsFor(next),
               next.day?.noEffects ? null : defaultEffects(),
               next.day?.skipPictures ?? [],
@@ -2761,7 +2771,10 @@ export function CampaignApp() {
         shared={session !== null}
       />
     ) : tab === 'pictures' ? (
-      <BankView bank={bank} onChange={setBank} />
+      <>
+        <BankView bank={bank} onChange={setBank} />
+        <MusicBankView />
+      </>
     ) : tab === 'batch' ? (
       <BatchView
         campaigns={campaigns}

@@ -8,6 +8,8 @@ import { useEffect, useRef, useState } from 'react'
 import { play, type Playing } from './listen'
 import type { AngleMusic } from './look'
 import type { MusicLevel } from './music'
+import { songFile, songName, useMusicBank } from './musicBank'
+import { TrackName } from './TrackPlayer'
 
 /** Big enough for any song; small enough to share with the other phone. */
 const MAX_MB = 30
@@ -22,6 +24,7 @@ export function MusicRow({ music, onChange }: { music: AngleMusic | null; onChan
   const playing = useRef<Playing | null>(null)
   const [isPlaying, setIsPlaying] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const songs = useMusicBank()
 
   useEffect(() => () => playing.current?.stop(), [])
 
@@ -66,7 +69,7 @@ export function MusicRow({ music, onChange }: { music: AngleMusic | null; onChan
           }
           stop()
           setError(null)
-          onChange({ name: file.name, audio: file, level: music?.level ?? 'normal' })
+          onChange({ name: songName(file.name), audio: file, level: music?.level ?? 'normal' })
         }}
       />
       {music ? (
@@ -75,7 +78,7 @@ export function MusicRow({ music, onChange }: { music: AngleMusic | null; onChan
             <button type="button" className="btn play" aria-label={isPlaying ? 'Stop' : 'Play the track'} onClick={() => void hear()}>
               {isPlaying ? '■' : '▶'}
             </button>
-            <span className="music-name">{music.name}</span>
+            <TrackName name={music.name} onRename={(name) => onChange({ ...music, name })} />
           </div>
           <div className="seg full" role="radiogroup" aria-label="Music level">
             {LEVELS.map((l) => (
@@ -118,6 +121,31 @@ export function MusicRow({ music, onChange }: { music: AngleMusic | null; onChan
           </div>
         </>
       )}
+      {songs.length > 0 ? (
+        <label className="field">
+          <span className="label">From the music bank</span>
+          <select
+            value=""
+            aria-label="Pick a song from the music bank"
+            onChange={(e) => {
+              const song = songs.find((x) => x.id === e.target.value)
+              if (!song) return
+              stop()
+              setError(null)
+              void songFile(song).then((audio) =>
+                audio ? onChange({ name: song.name, audio, level: music?.level ?? 'normal' }) : setError(`${song.name} is no longer on this phone.`),
+              )
+            }}
+          >
+            <option value="">Pick a song…</option>
+            {songs.map((song) => (
+              <option key={song.id} value={song.id}>
+                {song.name}
+              </option>
+            ))}
+          </select>
+        </label>
+      ) : null}
       {error ? <div className="error">{error}</div> : null}
     </div>
   )

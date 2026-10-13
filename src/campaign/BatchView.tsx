@@ -32,6 +32,7 @@ import { filmingOf } from './filming'
 import { fingerprint, skippedNotice } from './fingerprint'
 import { formatTime, labelOf, type Job } from './jobs'
 import type { Angle, Campaign } from './look'
+import { copySong, useMusicBank } from './musicBank'
 import { BATCH_MAX_PER_DAY, accountLabel, batchTimesOn, ownDayTimes, placeFor, timeLabel, windowLabel, windowOf, type LocalPosting } from './posting'
 import { deleteBankFile, loadBankFile, loadBatchBank, saveBankFile, saveBatchBank, type JobBatch } from './store'
 import { FormulaPreview } from './FormulaPreview'
@@ -118,6 +119,7 @@ export function BatchView({
   const [saving, setSaving] = useState<string | null>(null)
   const [problem, setProblem] = useState<string | null>(null)
   const [notice, setNotice] = useState<string | null>(null)
+  const songs = useMusicBank()
   /** Fingerprints being kept right now, so two picks that overlap cannot both
    *  keep the same recording. */
   const adding = useRef(new Set<string>())
@@ -270,6 +272,22 @@ export function BatchView({
     }
   }
 
+  /** A song from the music bank into this campaign's Batch music - a copy,
+   *  so taking it out here leaves the bank's own. */
+  const addFromBank = async (song: BankFile) => {
+    setProblem(null)
+    setSaving(`Adding ${song.name}…`)
+    try {
+      const copy = await copySong(song)
+      const current = bankRef.current
+      if (current) keep({ ...current, music: [...current.music, copy] })
+    } catch (error) {
+      setProblem(error instanceof Error ? error.message : String(error))
+    } finally {
+      setSaving(null)
+    }
+  }
+
   const takeOut = (kind: Kind, file: BankFile) => {
     if (!bank || !window.confirm(`Take ${file.name} out of the bank?`)) return
     void deleteBankFile(file.id).catch(() => {})
@@ -367,6 +385,27 @@ export function BatchView({
         )}
       </div>
       <p className="hint bank-hint">{hint}</p>
+      {kind === 'music' && bank && songs.length > 0 ? (
+        <label className="field">
+          <span className="label">From the music bank</span>
+          <select
+            value=""
+            disabled={saving !== null}
+            aria-label="Add a song from the music bank"
+            onChange={(e) => {
+              const song = songs.find((x) => x.id === e.target.value)
+              if (song) void addFromBank(song)
+            }}
+          >
+            <option value="">Pick a song…</option>
+            {songs.map((song) => (
+              <option key={song.id} value={song.id} disabled={bank.music.some((m) => m.fp && m.fp === song.fp)}>
+                {song.name}
+              </option>
+            ))}
+          </select>
+        </label>
+      ) : null}
       {bank && bank[kind].length > 0 ? (
         <ul className="bank-list">
           {bank[kind].map((file) => (

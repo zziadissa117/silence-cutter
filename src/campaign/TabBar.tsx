@@ -12,7 +12,7 @@ const TABS: { tab: Tab; label: string; icon: ReactNode }[] = [
   { tab: 'videos', label: 'Videos', icon: <VideosIcon /> },
   { tab: 'batch', label: 'Batch', icon: <BatchIcon /> },
   { tab: 'campaigns', label: 'Campaigns', icon: <CampaignsIcon /> },
-  { tab: 'pictures', label: 'Pictures', icon: <PicturesIcon /> },
+  { tab: 'pictures', label: 'Bank', icon: <PicturesIcon /> },
   { tab: 'settings', label: 'Settings', icon: <SettingsIcon /> },
 ]
 

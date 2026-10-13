@@ -7,6 +7,8 @@ import { useEffect, useState } from 'react'
 import type { Campaign } from './look'
 import type { MusicLevel } from './music'
 import { loadBankFile, loadBatchBank } from './store'
+import { loadMusicBank, songFile } from './musicBank'
+import { PlayButton } from './TrackPlayer'
 import { sendWithMusic } from './musicAfterSend'
 import type { ServerPost } from './posting'
 
@@ -45,6 +47,7 @@ export function MusicAfter({
         names.add(o.name)
         found.push(o)
       }
+      for (const song of await loadMusicBank()) add({ id: `bank:${song.id}`, name: song.name, load: () => songFile(song) })
       for (const c of campaigns) {
         for (const a of c.angles) {
           const track = a.music
@@ -64,6 +67,10 @@ export function MusicAfter({
   }, [campaigns, post.campaignId])
 
   const busy = progress !== null
+  // The track picked, to hear before it goes on the video.
+  const heard = phone
+    ? { name: phone.name, load: async () => phone }
+    : (options.find((o) => o.id === choice) ?? null)
   const ready = phone !== null || options.some((o) => o.id === choice)
 
   const run = async () => {
@@ -107,6 +114,12 @@ export function MusicAfter({
             ))}
           </select>
         </label>
+      ) : null}
+      {heard ? (
+        <div className="music-pick">
+          <PlayButton name={heard.name} load={heard.load} disabled={busy} />
+          <span className="hint">Hear {heard.name} before adding it.</span>
+        </div>
       ) : null}
       <label className="btn small picker">
         {phone ? `From my phone: ${phone.name}` : 'From my phone'}

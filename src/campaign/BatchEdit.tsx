@@ -8,6 +8,9 @@ import { useState } from 'react'
 import type { BankFile } from './batch'
 import { ChevronLeft } from './icons'
 import { LIMITS } from './look'
+import { useMusicBank } from './musicBank'
+import { loadBankFile } from './store'
+import { PlayButton } from './TrackPlayer'
 
 export function BatchEdit({
   name,
@@ -30,6 +33,9 @@ export function BatchEdit({
 }) {
   const [text, setText] = useState(headline)
   const [track, setTrack] = useState(music?.id ?? '')
+  const bank = useMusicBank()
+  const fromBank = bank.filter((song) => !options.some((o) => o.id === song.id))
+  const chosen = [...options, ...fromBank].find((o) => o.id === track)
   return (
     <section className="screen" aria-label={`Edit ${name}`}>
       <button type="button" className="back" onClick={onCancel}>
@@ -44,19 +50,35 @@ export function BatchEdit({
       </label>
       <label className="field">
         <span className="label">Music</span>
-        <select value={track} onChange={(e) => setTrack(e.target.value)}>
-          {options.map((o) => (
-            <option key={o.id} value={o.id}>
-              {o.name}
-            </option>
-          ))}
-          <option value="">No music</option>
-        </select>
+        <div className="music-pick">
+          <select value={track} onChange={(e) => setTrack(e.target.value)}>
+            {options.length > 0 ? (
+              <optgroup label="This campaign's Batch music">
+                {options.map((o) => (
+                  <option key={o.id} value={o.id}>
+                    {o.name}
+                  </option>
+                ))}
+              </optgroup>
+            ) : null}
+            {fromBank.length > 0 ? (
+              <optgroup label="Music bank">
+                {fromBank.map((o) => (
+                  <option key={o.id} value={o.id}>
+                    {o.name}
+                  </option>
+                ))}
+              </optgroup>
+            ) : null}
+            <option value="">No music</option>
+          </select>
+          {chosen ? <PlayButton name={chosen.name} load={() => loadBankFile(chosen)} /> : null}
+        </div>
       </label>
       <button
         type="button"
         className="btn primary wide"
-        onClick={() => onMake({ headline: text.trim(), music: options.find((o) => o.id === track) ?? null })}
+        onClick={() => onMake({ headline: text.trim(), music: chosen ?? null })}
       >
         Make it again
       </button>
