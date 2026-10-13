@@ -1,11 +1,16 @@
 // Background music under his voice: his own track, at a level that stays in
 // the background.
 //
-// The track's loudness is measured and it is set well under the voice - 14
-// LU for "normal", 20 for "low" - so a loud master and a quiet one sit the
-// same. Measured on a finished video: at 17 LU, dipping while he talked, it
-// averaged 21.5 LU under the voice, too faint on a phone speaker. While he talks it dips 5 dB more and comes back up in the pauses,
-// gently enough not to pump: the voice is always in front. It fades in and
+// The track's loudness is measured and it is set under the voice - 9 LU for
+// "normal", 14 for "low" - so a loud master and a quiet one sit the same.
+// While he talks it dips 3 dB more and comes back up in the pauses, gently
+// enough not to pump: the voice is always in front.
+//
+// It used to sit 14 LU under and dip 5 dB, and he couldn't hear it at all:
+// the pauses are cut out of his videos, so the dip was on nearly the whole
+// time - about 19 dB under a voice at -14 LUFS - and a phone speaker loses
+// most of a quiet track's bass. Now it is about 12 dB under while he talks:
+// heard clearly, still behind him. It fades in and
 // out, loops (with a short fade at the seam) if the track is shorter than
 // the video, and goes through the voice's limiter with everything else, so
 // nothing clips.
@@ -16,9 +21,9 @@ export type MusicLevel = 'low' | 'normal'
 
 export const MUSIC = {
   /** How far under the voice the music sits, in LU. */
-  underVoiceLu: { normal: 14, low: 20 } satisfies Record<MusicLevel, number>,
+  underVoiceLu: { normal: 9, low: 14 } satisfies Record<MusicLevel, number>,
   /** How much more it dips while he talks. */
-  duckDb: 5,
+  duckDb: 3,
   fadeInSec: 0.5,
   fadeOutSec: 1.5,
   /** The fade either side of the seam where a short track starts again. */

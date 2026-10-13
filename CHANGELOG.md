@@ -3,6 +3,15 @@
 Newest first. Every change says what it does, how to use it, and how it works
 underneath. Kept up to date with each commit.
 
+## Background music: heard, still under the voice
+**What:** background music is louder. **Background** now sits about 12 dB under your voice while you talk (it was
+about 19 - inaudible on a phone), **Quieter** about 17. Your voice is always in front. Applies to every talking video
+with music: an angle's music, a bank song picked for a video, reaction videos and Add music in Posts.
+**Why it was so quiet:** the music dipped 5 dB more "while you talk, back up in the pauses" - but the pauses are cut
+out, so it was dipped the whole video, on top of sitting 14 LU under you. Now 9 LU under, dipping 3 dB.
+Only ./deploy.sh is needed.
+Files: `music.ts` (+ test).
+
 ## Headlines: centred on what is drawn, not what is measured
 **What:** a headline is now centred - and its white box sized - on the letters as the phone actually draws them.
 It used to be centred on the width the phone measured, and nearly every headline ends in emoji, which an iPhone can

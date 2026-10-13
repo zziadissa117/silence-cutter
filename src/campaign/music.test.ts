@@ -79,3 +79,12 @@ describe('MusicBed', () => {
     expect(Math.sqrt(sum / (0.5 * RATE))).toBeGreaterThan(0.05)
   })
 })
+
+describe('how loud the music is', () => {
+  it('sits clearly under the voice while he talks, not buried: about 12 dB under, 17 when Quieter', () => {
+    expect(MUSIC.underVoiceLu.normal + MUSIC.duckDb).toBe(12)
+    expect(MUSIC.underVoiceLu.low + MUSIC.duckDb).toBe(17)
+    // Never louder than his voice, even in a pause.
+    expect(MUSIC.underVoiceLu.normal).toBeGreaterThanOrEqual(6)
+  })
+})
