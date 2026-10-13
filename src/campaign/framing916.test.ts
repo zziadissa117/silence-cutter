@@ -28,7 +28,10 @@ describe('isUpright (which clips are asked whether to cut)', () => {
 describe('framedSize', () => {
   it('leaves a 9:16 clip as outputSize would', () => {
     expect(framedSize(1080, 1920, 'fill')).toEqual({ width: 1080, height: 1920 })
-    expect(framedSize(2160, 3840, 'fit')).toEqual({ width: 1080, height: 1920 })
+    expect(framedSize(2160, 3840, 'fit')).toEqual({ width: 2160, height: 3840 })
+    expect(framedSize(2160, 3840, 'fit', 1080)).toEqual({ width: 1080, height: 1920 })
+    // A 4K landscape clip fitted upright makes a 4K upright frame.
+    expect(framedSize(3840, 2160, 'fit')).toEqual({ width: 2160, height: 3840 })
   })
   it('crops a landscape clip to the biggest 9:16 inside it', () => {
     expect(framedSize(1920, 1080, 'fill')).toEqual({ width: 608, height: 1080 })

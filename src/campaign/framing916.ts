@@ -62,13 +62,18 @@ export function isUpright(width: number, height: number): boolean {
 }
 
 /** The finished frame for a source of `width`×`height`. */
-export function framedSize(width: number, height: number, mode: LandscapeMode): { width: number; height: number } {
-  if (mode === 'off' || is916(width, height)) return outputSize(width, height)
-  if (mode === 'fit') return { width: 1080, height: 1920 }
+export function framedSize(width: number, height: number, mode: LandscapeMode, maxShort = 2160): { width: number; height: number } {
+  if (mode === 'off' || is916(width, height)) return outputSize(width, height, maxShort)
+  // Fit: the whole picture in a 9:16 frame as wide as the picture is short -
+  // a 4K landscape clip makes a 4K upright frame, a 1080p one a 1080p frame.
+  if (mode === 'fit') {
+    const short = Math.max(1080, Math.min(width, height))
+    return outputSize(short, (short * 16) / 9, maxShort)
+  }
   // Fill: the biggest 9:16 box inside the picture - nothing is made up.
   const cropW = width / height > 9 / 16 ? (height * 9) / 16 : width
   const cropH = width / height > 9 / 16 ? height : (width * 16) / 9
-  return outputSize(cropW, cropH)
+  return outputSize(cropW, cropH, maxShort)
 }
 
 export interface Plan {

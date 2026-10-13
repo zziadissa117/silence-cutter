@@ -22,6 +22,7 @@ describe('the frame of a video with no talking', () => {
   })
   it('keeps an upright first clip\'s own shape', () => {
     expect(verticalSize(1080, 1920)).toEqual({ width: 1080, height: 1920 })
-    expect(verticalSize(2160, 3840)).toEqual({ width: 1080, height: 1920 })
+    expect(verticalSize(2160, 3840)).toEqual({ width: 2160, height: 3840 })
+    expect(verticalSize(2160, 3840, 1080)).toEqual({ width: 1080, height: 1920 })
   })
 })

@@ -3,6 +3,17 @@
 Newest first. Every change says what it does, how to use it, and how it works
 underneath. Kept up to date with each commit.
 
+## Quality: a 4K 60 fps take comes out 4K 60 fps
+**What:** videos keep their own resolution up to 4K, their own frame rate, and a bitrate close to what the phone's
+camera records at - about 16 Mbps for 1080p60 and 45 Mbps for 4K60. Before, every video was brought down to 1080p
+and encoded at about 6 Mbps (the reports showed "avc1.640028 … 6111000 bps"), which is where the softness came from.
+Applies to talking videos, reactions, batch videos and joined recordings. 4K is four times the pixels, so making
+takes longer and files are bigger. If the phone's encoder can't do 4K, or a first go fails, that video is made in
+1080p - still at the higher bitrate - rather than not at all.
+Only ./deploy.sh is needed.
+Files: `quality.ts` (+ test), `overlay.ts` (`outputSize` cap), `framing916.ts`, `render.ts`, `reactionRender.ts`,
+`montageRender.ts`, `joinRender.ts`, `pipeline.ts`, `CampaignApp.tsx`.
+
 ## A video with no campaign: edit it again, or give it one, and send it
 **What:** a finished video that went nowhere - no campaign recognised in it (General), or its campaign posts nowhere
 yet - now says so on its row in Videos, with **Edit again and pick its campaign** (back in the list with its cuts,

@@ -339,11 +339,11 @@ export function drawPoppedLogo(
 }
 
 /** The size a video comes out at: its own size, brought down to fit
- *  1080×1920 (or 1920×1080) if it is bigger. TikTok plays nothing larger, a
- *  4K frame is four times the memory for no gain, and H.264 needs even
- *  sides. */
-export function outputSize(width: number, height: number): { width: number; height: number } {
-  const scale = Math.min(1, 1080 / Math.min(width, height), 1920 / Math.max(width, height))
+ *  `maxShort` on its shorter side - 2160 (4K) by default, 1080 when the
+ *  phone can't make 4K (quality.ts) - and even sides, which H.264 needs. A
+ *  4K take stays 4K. */
+export function outputSize(width: number, height: number, maxShort = 2160): { width: number; height: number } {
+  const scale = Math.min(1, maxShort / Math.min(width, height), (maxShort * 16) / 9 / Math.max(width, height))
   const even = (n: number) => Math.max(2, Math.round((n * scale) / 2) * 2)
   return { width: even(width), height: even(height) }
 }

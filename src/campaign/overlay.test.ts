@@ -19,10 +19,15 @@ describe('wrapText', () => {
 })
 
 describe('outputSize', () => {
-  it('brings 4K down to 1080×1920 and leaves 1080p alone', () => {
-    expect(outputSize(2160, 3840)).toEqual({ width: 1080, height: 1920 })
+  it('keeps 4K as 4K and 1080p as 1080p', () => {
+    expect(outputSize(2160, 3840)).toEqual({ width: 2160, height: 3840 })
     expect(outputSize(1080, 1920)).toEqual({ width: 1080, height: 1920 })
-    expect(outputSize(3840, 2160)).toEqual({ width: 1920, height: 1080 })
+    expect(outputSize(3840, 2160)).toEqual({ width: 3840, height: 2160 })
+  })
+
+  it('brings anything past 4K down to it, and 4K down to 1080p when asked', () => {
+    expect(outputSize(4320, 7680)).toEqual({ width: 2160, height: 3840 })
+    expect(outputSize(2160, 3840, 1080)).toEqual({ width: 1080, height: 1920 })
   })
 
   it('never makes a small video bigger, and keeps both sides even', () => {

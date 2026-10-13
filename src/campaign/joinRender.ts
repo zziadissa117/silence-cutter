@@ -27,6 +27,7 @@ import { createOutputSink } from '../media/outputSink'
 import { isSilenceCutSupported } from '../media/silenceCut'
 import { openClip, writeWhole, type Clip } from './clipParts'
 import { outputSize } from './overlay'
+import { frameRateOf, makeSize } from './quality'
 import { cover } from './reaction'
 
 const MAX_RECOVERIES = 4
@@ -63,7 +64,8 @@ export async function joinRecordings(files: Blob[], onProgress?: (fraction: numb
       throw new SilenceCutError("This browser can't write the video's sound. Try Safari or Chrome.")
     }
 
-    const { width, height } = outputSize(clips[0].width, clips[0].height)
+    const fps = await frameRateOf(clips[0].video)
+    const { width, height } = await makeSize((maxShort) => outputSize(clips[0].width, clips[0].height, maxShort), fps)
     const canvas = new OffscreenCanvas(width, height)
     const ctx = canvas.getContext('2d')
     if (!ctx) throw new SilenceCutError("This browser couldn't prepare a canvas to put the parts together.")

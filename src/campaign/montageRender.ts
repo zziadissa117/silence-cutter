@@ -13,7 +13,6 @@ import {
   canEncodeAudio,
   Mp4OutputFormat,
   Output,
-  QUALITY_HIGH,
   QUALITY_MEDIUM,
   VideoSample,
   VideoSampleSource,
@@ -30,6 +29,7 @@ import { headlineFontReady } from './headlineFont'
 import type { VideoLook } from './look'
 import { MusicBed, trackLoudness } from './music'
 import { drawHeadline, layoutHeadline, outputSize } from './overlay'
+import { frameRateOf, makeSize, videoQuality } from './quality'
 import { cover } from './reaction'
 import { prepareSound } from './sounds'
 
@@ -52,6 +52,8 @@ export interface MontageRenderInput {
   /** The "Claude + X = $ a day" hook instead of a headline: the two logos,
    *  and this video's money line. The reaction pushes in slowly under it. */
   formula?: { left: Blob | null; right: Blob | null; line: string } | null
+  /** Made in 1080p: a second go after the first failed (quality.ts). */
+  hd?: boolean
 }
 
 export interface MontageRenderResult {
@@ -68,8 +70,10 @@ export interface MontageRenderResult {
  *  a phone video, a screen recording - and a 1080x1920 one when it lies on
  *  its side, so a landscape reaction still makes a video for TikTok and
  *  Reels, filled edge to edge. */
-export function verticalSize(width: number, height: number): { width: number; height: number } {
-  return height > width ? outputSize(width, height) : { width: 1080, height: 1920 }
+export function verticalSize(width: number, height: number, maxShort = 2160): { width: number; height: number } {
+  if (height > width) return outputSize(width, height, maxShort)
+  const short = Math.max(1080, height)
+  return outputSize(short, (short * 16) / 9, maxShort)
 }
 
 /** The linear gain that puts a track at MUSIC_LUFS, never above 1. */
@@ -79,7 +83,7 @@ export function soloMusicGain(trackLufs: number): number {
 }
 
 export async function renderMontage(
-  { clips: files, look, headlineText, music, seed = '', formula = null }: MontageRenderInput,
+  { clips: files, look, headlineText, music, seed = '', formula = null, hd = false }: MontageRenderInput,
   onProgress?: (fraction: number) => void,
 ): Promise<MontageRenderResult> {
   if (files.length === 0) throw new SilenceCutError('Add at least one clip.')
@@ -115,7 +119,9 @@ export async function renderMontage(
       }
     }
 
-    const { width, height } = verticalSize(clips[0].width, clips[0].height)
+    // Its own size up to 4K and frame rate, at a bitrate to match (quality.ts).
+    const fps = await frameRateOf(clips[0].video)
+    const { width, height } = await makeSize((maxShort) => verticalSize(clips[0].width, clips[0].height, maxShort), fps, hd)
     const canvas = new OffscreenCanvas(width, height)
     const ctx = canvas.getContext('2d')
     if (!ctx) throw new SilenceCutError("This browser couldn't prepare a canvas to draw the headline on.")
@@ -136,7 +142,7 @@ export async function renderMontage(
         ? layoutFormula(ctx, width, height, { left: logos.left, right: logos.right }, formula.line, look.headline)
         : null
 
-    const videoSource = new VideoSampleSource({ codec: 'avc', quality: QUALITY_HIGH })
+    const videoSource = new VideoSampleSource({ codec: 'avc', quality: videoQuality(width, height, fps) })
     const audioSource = new AudioSampleSource({ codec: 'aac', quality: QUALITY_MEDIUM })
     output.addVideoTrack(videoSource)
     output.addAudioTrack(audioSource)

@@ -38,7 +38,6 @@ import {
   Input,
   Mp4OutputFormat,
   Output,
-  QUALITY_HIGH,
   QUALITY_MEDIUM,
   VideoSample,
   VideoSampleSink,
@@ -65,6 +64,7 @@ import { MomentPlacer, inWindow } from './timeline'
 import { MusicBed, musicGain, trackLoudness, type MusicLevel } from './music'
 import { cover } from './reaction'
 import { Voice, measureLoudness, type WalkAudio } from './voice'
+import { frameRateOf, makeSize, videoQuality } from './quality'
 import { PopFrames, drawPop, occurrencesOf, popAt, popLayout, type PopLayout, type PopPosition } from './popVideo'
 import { report as reportProblem } from '../report'
 
@@ -373,7 +373,11 @@ export async function renderCampaignCut(
 
     // A wide clip (Meta glasses) becomes 9:16; one already 9:16 is untouched.
     const mode = forceVertical && landscapeMode() === 'off' ? 'fill' : landscapeMode()
-    const { width, height } = framedSize(displayWidth, displayHeight, mode)
+    // Its own size up to 4K and its own frame rate, at a bitrate to match;
+    // 1080p when the phone can't encode 4K, or on the gentle second go after
+    // the first failed (quality.ts).
+    const fps = await frameRateOf(videoTrack)
+    const { width, height } = await makeSize((maxShort) => framedSize(displayWidth, displayHeight, mode, maxShort), fps, gentle === true)
     const framePlan = planFrame(displayWidth, displayHeight, width, height, mode)
     const backdrop = framePlan.blurred ? makeBlurBackdrop() : null
     const canvas = new OffscreenCanvas(width, height)
@@ -417,7 +421,7 @@ export async function renderCampaignCut(
     if (popClips.length > 0) popPlayer = new PopFrames((i) => popClips[i].open())
     let popsOn = popClips.length > 0
 
-    const videoSource = new VideoSampleSource({ codec: 'avc', quality: QUALITY_HIGH })
+    const videoSource = new VideoSampleSource({ codec: 'avc', quality: videoQuality(width, height, fps) })
     const audioSource = new AudioSampleSource({
       codec: 'aac',
       quality: QUALITY_MEDIUM,

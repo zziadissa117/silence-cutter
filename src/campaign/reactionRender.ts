@@ -16,7 +16,6 @@ import {
   EncodedPacketSink,
   Mp4OutputFormat,
   Output,
-  QUALITY_HIGH,
   QUALITY_MEDIUM,
   VideoSample,
   VideoSampleSink,
@@ -36,6 +35,7 @@ import { headlineFontReady } from './headlineFont'
 import type { BuiltInSound, VideoLook } from './look'
 import { MusicBed, musicGain, trackLoudness, type MusicLevel } from './music'
 import { drawHeadline, layoutHeadline, outputSize } from './overlay'
+import { frameRateOf, makeSize, videoQuality } from './quality'
 import { cover, layOut, productMoment, type Segment } from './reaction'
 import { dbToGain, mixInto, prepareSound, type PlacedSound } from './sounds'
 import { Voice, measureLoudness, type WalkAudio } from './voice'
@@ -70,6 +70,8 @@ export interface ReactionRenderInput {
   captionSize?: CaptionSize
   /** One word at a time, or the phrase with the spoken word lit. */
   captionStyle?: CaptionStyle
+  /** Made in 1080p: a second go after the first failed (quality.ts). */
+  hd?: boolean
 }
 
 export interface ReactionRenderResult {
@@ -81,7 +83,7 @@ export interface ReactionRenderResult {
 }
 
 export async function renderReaction(
-  { reaction, product, productKeep, look, headlineText, switchSound, captions = [], voice: boostVoice = false, music = null, seed = '', captionPosition = 'usual', captionSize = 'normal', captionStyle = 'word' }: ReactionRenderInput,
+  { reaction, product, productKeep, look, headlineText, switchSound, captions = [], voice: boostVoice = false, music = null, seed = '', captionPosition = 'usual', captionSize = 'normal', captionStyle = 'word', hd = false }: ReactionRenderInput,
   onProgress?: (fraction: number) => void,
 ): Promise<ReactionRenderResult> {
   if (!(await isSilenceCutSupported())) {
@@ -147,7 +149,9 @@ export async function renderReaction(
     const captionTimes = shown.map((c) => c.at)
     const captionPhrases = captionRanges(captionWords, captionStyle)
 
-    const { width, height } = outputSize(reactionClip.width, reactionClip.height)
+    // Its own size up to 4K and frame rate, at a bitrate to match (quality.ts).
+    const fps = await frameRateOf(reactionClip.video)
+    const { width, height } = await makeSize((maxShort) => outputSize(reactionClip.width, reactionClip.height, maxShort), fps, hd)
     const canvas = new OffscreenCanvas(width, height)
     const ctx = canvas.getContext('2d')
     if (!ctx) throw new SilenceCutError("This browser couldn't prepare a canvas to draw the headline on.")
@@ -159,7 +163,7 @@ export async function renderReaction(
     const motion = planMotion(look.effects, [switchAt, Math.max(0.1, total - switchAt)], seed || 'reaction')
     const reactionPlace = { x: 0, y: 0, width, height }
 
-    const videoSource = new VideoSampleSource({ codec: 'avc', quality: QUALITY_HIGH })
+    const videoSource = new VideoSampleSource({ codec: 'avc', quality: videoQuality(width, height, fps) })
     const audioSource = new AudioSampleSource({ codec: 'aac', quality: QUALITY_MEDIUM })
     output.addVideoTrack(videoSource)
     output.addAudioTrack(audioSource)
