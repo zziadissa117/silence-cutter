@@ -637,3 +637,13 @@ input.bank-name { background: transparent; border: 0; border-bottom: 1px solid c
 .music-pick { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 .music-pick select { flex: 1 1 auto; min-width: 0; }
 .music-pick .hint { margin: 0; }
+
+/* The video bank's rows: the still (or the clip playing), its name and
+   words, and Remove. */
+.video-row { align-items: flex-start; }
+.video-row .thumb { object-fit: cover; }
+.video-row-main { display: flex; flex-direction: column; gap: 6px; flex: 1 1 auto; min-width: 0; }
+/* The caption check's pop-up videos. */
+.pop-review { display: flex; flex-direction: column; gap: 8px; }
+.pop-row { display: flex; align-items: center; gap: 8px; }
+.pop-row .hint { margin: 0 0 0 auto; }

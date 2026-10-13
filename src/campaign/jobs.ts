@@ -1,6 +1,7 @@
 // A video in the campaign page's list, and the small helpers its rows and
 // the page share.
 
+import type { PopPosition } from './popVideo'
 import type { Range, SilenceSettings } from '../media/silenceMath'
 import type { Angle, Campaign } from './look'
 import type { CampaignResult } from './pipeline'
@@ -55,6 +56,12 @@ export type Job = {
     captionSize?: CaptionSize
     /** One word at a time or Highlight; absent = the last one he picked. */
     captionStyle?: CaptionStyle
+    /** How wide its pop-up videos are, % of the width; absent = 65. */
+    popSize?: number
+    /** Where its pop-up videos sit; absent = middle. */
+    popPosition?: PopPosition
+    /** Bank video ids left out of this video alone. */
+    skipPops?: string[]
     /** The videos joined on before and after it: a clip's id, or "none".
      *  Absent means the angle's own - see clips.ts. */
     clips?: JobClips

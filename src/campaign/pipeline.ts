@@ -10,6 +10,7 @@
 // whole day listens to every video, sorts them, waits for his approval, and
 // only then makes each - without listening again.
 
+import { DEFAULT_POP_POSITION, POP_SIZE, type PopPosition } from './popVideo'
 import type { AngleEffects } from './effects'
 import { SilenceCutError } from '../media/errors'
 import { isFillerWordDetectionSupported } from '../media/fillerWords'
@@ -24,6 +25,7 @@ import {
   type Angle,
   type AngleMusic,
   type BankPicture,
+  type PopCue,
   type Campaign,
 } from './look'
 import { manualCues, type ManualPicture } from './manualPictures'
@@ -85,7 +87,22 @@ export interface CampaignResult {
   montage?: { seconds: number[]; music: string | null; musicFailed?: string }
   /** A talking video: the name of the track under it, when there is one. */
   music?: string
+  /** When a bank video popped up in the finished video. */
+  popsAt?: number[]
+  /** Bank videos he said that couldn't be played and were left out. */
+  popsLeftOut?: number
 }
+
+/** The bank videos a talking video may pop up, and how they look on it. */
+export interface PopSettings {
+  videos: PopCue[]
+  sizePct: number
+  position: PopPosition
+  /** Reads a bank video off the phone, only once it is known to be said. */
+  load: (id: string) => Promise<Blob | null>
+}
+
+export const NO_POPS: PopSettings = { videos: [], sizePct: POP_SIZE.default, position: DEFAULT_POP_POSITION, load: async () => null }
 
 export interface CampaignCallbacks {
   onAnalyseProgress?: (fraction: number) => void
@@ -182,9 +199,11 @@ export async function make(
   captionSize: CaptionSize = 'normal',
   /** One word at a time, or the phrase with the spoken word lit. */
   captionStyle: CaptionStyle = 'word',
+  /** Bank videos that pop up when their words are said. */
+  pop: PopSettings = NO_POPS,
 ): Promise<CampaignResult> {
   refuseBroken(campaign, angle)
-  const base = videoLook(campaign, angle, bank, defaults, skipPictures)
+  const base = videoLook(campaign, angle, bank, defaults, skipPictures, pop.videos)
   // A picture put on by hand is just another picture cue, shown at the moment
   // he picked instead of when words are said.
   const hand = manualCues(manual.map((m) => m.picture), new Map(manual.map((m) => [m.picture.id, m.image])))
@@ -194,6 +213,14 @@ export async function make(
   // Timed from the captions' exact words, pictures a touch before - see moments.ts.
   const moments = wordMoments(plan, look, hand.at)
   const { notHeard } = moments
+  // Only the videos he said are read off the phone.
+  let popsMissing = 0
+  const popClips: { file: Blob; seconds: number; width: number; height: number; moments: number[] }[] = []
+  for (const video of moments.videos) {
+    const file = await pop.load(video.id).catch(() => null)
+    if (file) popClips.push({ ...video, file })
+    else popsMissing++
+  }
 
   const rendered = await renderCampaignCut(
     file,
@@ -216,9 +243,11 @@ export async function make(
       voice,
       music: track ? { audio: track.audio, level: track.level } : null,
       clips: { before: clips.before, after: clips.after },
+      pops: { clips: popClips, sizePct: pop.sizePct, position: pop.position },
     },
     onRenderProgress,
   )
+  const popsLeftOut = popsMissing + rendered.popsLeftOut
   const joined = { ...rendered.clips, leftOut: [...(clips.missing ?? []), ...rendered.clips.leftOut] }
 
   const missed = [...new Map(notHeard.map((w) => [w.toLowerCase(), w])).values()]
@@ -233,6 +262,8 @@ export async function make(
     ...(plan.cleanSpeech ? { fillerWords: plan.fillerWords, stutters: plan.stutters } : {}),
     ...(joined.beforeSec || joined.afterSec || joined.leftOut.length ? { clips: joined } : {}),
     ...(track ? { music: track.name } : {}),
+    ...(rendered.popsAt.length > 0 ? { popsAt: rendered.popsAt } : {}),
+    ...(popsLeftOut > 0 ? { popsLeftOut } : {}),
     logoAt: rendered.logoAt,
     picturesAt: [...rendered.picturesAt.flat(), ...rendered.bankAt].sort((a, b) => a - b),
     headline: headlineText,

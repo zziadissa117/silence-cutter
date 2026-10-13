@@ -7,6 +7,7 @@
 // turn comes, and every attempt is counted before it starts so a video heavy
 // enough to kill the tab cannot do it in a loop.
 
+import type { PopPosition } from './popVideo'
 import Dexie, { type EntityTable } from 'dexie'
 
 import type { Range, SilenceSettings } from '../media/silenceMath'
@@ -89,6 +90,12 @@ interface StoredJob {
     captionSize?: CaptionSize
     /** One word at a time or Highlight; absent = the last one he picked. */
     captionStyle?: CaptionStyle
+    /** How wide its pop-up videos are, % of the width; absent = 65. */
+    popSize?: number
+    /** Where its pop-up videos sit; absent = middle. */
+    popPosition?: PopPosition
+    /** Bank video ids left out of this video alone. */
+    skipPops?: string[]
     /** The videos joined on before and after this one: a clip's id, or
      *  "none". Absent means the angle's own - see clips.ts. */
     clips?: JobClips

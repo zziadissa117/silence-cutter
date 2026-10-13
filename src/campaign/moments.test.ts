@@ -71,3 +71,35 @@ describe('when pictures come up', () => {
     expect(notHeard).toEqual(['Kit Kat'])
   })
 })
+
+describe('when a bank video pops up', () => {
+  const clip = { id: 'v', words: ["Hershey's"], seconds: 4, width: 1080, height: 1920 }
+  const usesBank = { bank: { ...blankAngle('a', 'Angle').bank, use: true } }
+  const campaign = { ...blankCampaign('c'), name: 'Candy', logo: image, brandWords: [] }
+
+  it('comes up on the word, a touch early, with its length and shape', () => {
+    const look = videoLook(campaign, { ...blankAngle('a', 'Angle'), ...usesBank }, [], null, [], [clip])
+    const { videos } = wordMoments({ words: rough, spoken: exact }, look)
+    expect(videos).toHaveLength(1)
+    expect(videos[0]).toMatchObject({ id: 'v', seconds: 4, width: 1080, height: 1920 })
+    expect(videos[0].moments[0]).toBeCloseTo(2.1 - PICTURE_LEAD_SEC, 5)
+  })
+
+  it('stays away when its words are not said, or it has none yet', () => {
+    const unsaid = { ...clip, id: 'u', words: ['Snickers'] }
+    const wordless = { ...clip, id: 'w', words: [] }
+    const look = videoLook(campaign, { ...blankAngle('a', 'Angle'), ...usesBank }, [], null, [], [unsaid, wordless])
+    expect(wordMoments({ words: rough, spoken: exact }, look).videos).toEqual([])
+  })
+
+  it('only in an angle that uses the bank', () => {
+    const look = videoLook(campaign, { ...blankAngle('a', 'Angle'), bank: { ...blankAngle('a', 'Angle').bank, use: false } }, [], null, [], [clip])
+    expect(wordMoments({ words: rough, spoken: exact }, look).videos).toEqual([])
+  })
+
+  it('primes the speech model with its words', async () => {
+    const { wordsToHear } = await import('./look')
+    const look = videoLook(campaign, { ...blankAngle('a', 'Angle'), ...usesBank }, [], null, [], [{ ...clip, words: ['Claude Code'] }])
+    expect(wordsToHear(look)).toContain('Claude Code')
+  })
+})

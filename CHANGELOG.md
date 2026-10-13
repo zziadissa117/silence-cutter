@@ -3,6 +3,51 @@
 Newest first. Every change says what it does, how to use it, and how it works
 underneath. Kept up to date with each commit.
 
+## Pop-up videos: a clip comes up when you say its words
+**What:** a new **Videos** section in the Bank tab, between Pictures and Music. Add a clip (screen recording, demo,
+anything), type the words that bring it up - "Claude Code" - and in every angle that uses the bank, saying those words
+pops the clip up over you: muted, in a big box (65% of the width by default, at the clip's own shape, never more
+than three quarters of the height), with rounded corners and the same spring as the pictures, playing to its end. A
+new mention takes over from one still playing. On the caption check before a video is made, a **Pop-up videos**
+group lists the clips that take says and when, with a tick to leave one out, a **Size** slider (40-90%) and
+**Top / Middle / Bottom** - the frame above shows the clip's still in the box as it will sit. Each video keeps its
+own setting. A clip the phone can't play mid-make is left out and the video is still made.
+Only ./deploy.sh is needed.
+Files: `videoBank.ts` (+ test), `VideoBankView.tsx`, `popVideo.ts` (+ test), `look.ts`, `moments.ts` (+ test),
+`pipeline.ts`, `render.ts`, `CaptionReview.tsx` (+ `captionReviewPops.test.tsx`), `CampaignApp.tsx`, `jobs.ts`,
+`store.ts`, `sort.ts`, `campaign.css`.
+**Underneath:** each clip is read already shrunk to its box (mediabunny `CanvasSink`), one decoder at a time,
+opened when it comes up and closed when it ends, so a 4K clip costs no more than a small one.
+
+## Music bank: songs with names, heard before they are picked
+**What:** the Pictures tab is now **Bank**, with a **Music** section. Add MP3s, M4As or videos - from a video only
+its sound is kept. Tap a song's name to rename it ("random text" → "Sad piano") and ▶ to hear it. Every music picker
+lists the bank by name with a ▶ for the one picked: a video's Music before it is made, Edit on a batch video, Add
+music in Posts, an angle's Background music (whose name can now be changed too), and Batch → Music ("From the music
+bank", as a copy). One track plays at a time.
+Only ./deploy.sh is needed.
+Files: `musicBank.ts` (+ test), `MusicBankView.tsx` (+ test), `TrackPlayer.tsx` (`PlayButton`), `JobRow.tsx`,
+`BatchEdit.tsx`, `MusicAfter.tsx`, `MusicRow.tsx`, `BatchView.tsx`, `CampaignApp.tsx`, `TabBar.tsx`.
+
+## Captions: the last word no longer goes missing
+**What:** the letter model that times each word had failed on 13 videos in two weeks, and those fell back to rough
+times that lost the last word of a phrase. Now it gets 2.5 minutes to load and a second go after any failure; on
+rough times a word up to 0.5 s into a cut pause goes back into its phrase (the take's last words, up to 1 s); the
+last words always fit inside the video; and a word the speech model gives no time is kept.
+Only ./deploy.sh is needed.
+Files: `captions.ts` (+ test), `plan.ts`, `timedWords.ts` (+ test), `transcribe.worker.ts`, `pipeline.ts`,
+`CampaignApp.tsx`.
+
+## Posting: in the middle of the day, not at night
+**What:** posts go out between 11 AM and 6 PM. Your own times outside that are skipped (greyed in Posting); a
+campaign whose times were all at night posts as many a day at random inside it; a saved window is cut to it. A video
+for today that comes in late spreads to 6 PM, or three hours after it comes in when later, never past midnight. A
+post held to another day goes between noon and 2 PM. A post not yet in Postiz holding a night slot is re-timed when
+it is sent; Unschedule → Approve re-times one already there.
+./deploy.sh (it deploys the server too).
+Files: `window.ts`, `slots.ts`, `batch.ts`, `postiz/index.ts` (+ tests), `posting.ts`, `PostingEditor.tsx`,
+`NewPost.tsx`, `BatchView.tsx`, `CampaignApp.tsx`.
+
 ## Posts: a blue ticking clock on scheduled posts
 **What:** on the Posts screen, a post waiting in Postiz for its time now shows a blue clock whose hand ticks round,
 instead of the grey dot, and its time is blue too - so what's scheduled reads at a glance. A folded batch whose

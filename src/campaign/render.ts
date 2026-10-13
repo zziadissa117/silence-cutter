@@ -32,6 +32,7 @@ import {
   AudioSampleSink,
   AudioSampleSource,
   BlobSource,
+  CanvasSink,
   canEncodeAudio,
   EncodedPacketSink,
   Input,
@@ -42,6 +43,7 @@ import {
   VideoSample,
   VideoSampleSink,
   VideoSampleSource,
+  type WrappedCanvas,
 } from 'mediabunny'
 
 import { SilenceCutError } from '../media/errors'
@@ -63,6 +65,13 @@ import { MomentPlacer, inWindow } from './timeline'
 import { MusicBed, musicGain, trackLoudness, type MusicLevel } from './music'
 import { cover } from './reaction'
 import { Voice, measureLoudness, type WalkAudio } from './voice'
+import { PopFrames, drawPop, occurrencesOf, popAt, popLayout, type PopLayout, type PopPosition } from './popVideo'
+import { report as reportProblem } from '../report'
+
+/** A pop-up clip's frames from its own start, timed from 0. */
+async function* fromStart(sink: CanvasSink, first: number, seconds: number): AsyncGenerator<WrappedCanvas> {
+  for await (const frame of sink.canvases(first, first + seconds)) yield { ...frame, timestamp: frame.timestamp - first }
+}
 
 /** How many times one video may bring up a fresh decoder after the phone's
  *  gives up partway, before the failure is passed on. */
@@ -147,6 +156,13 @@ export interface CampaignRenderInput {
   music?: { audio: Blob; level: MusicLevel } | null
   /** Videos joined on whole, before him and after him. */
   clips?: Partial<Record<ClipPlace, Blob | null>>
+  /** Bank videos that pop up over him when their words are said, muted,
+   *  each playing to its end - see popVideo.ts. */
+  pops?: {
+    clips: { file: Blob; seconds: number; width: number; height: number; moments: number[] }[]
+    sizePct: number
+    position: PopPosition
+  }
 }
 
 export interface CampaignRenderResult {
@@ -164,6 +180,10 @@ export interface CampaignRenderResult {
   /** How long the clips joined on came out, and any that couldn't be read
    *  and were left out. */
   clips: { beforeSec: number; afterSec: number; leftOut: ClipPlace[] }
+  /** When a pop-up video came up, in seconds. */
+  popsAt: number[]
+  /** Pop-up videos that couldn't be played here and were left out. */
+  popsLeftOut: number
 }
 
 export async function renderCampaignCut(
@@ -187,6 +207,7 @@ export async function renderCampaignCut(
     voice: boostVoice = false,
     music = null,
     clips: joining = {},
+    pops,
   }: CampaignRenderInput,
   onProgress?: (fraction: number) => void,
 ): Promise<CampaignRenderResult> {
@@ -207,6 +228,8 @@ export async function renderCampaignCut(
   const pictureImages: ImageBitmap[] = []
   const bankImages: ImageBitmap[] = []
   const joined: Clip[] = []
+  const popInputs: Input[] = []
+  let popPlayer: PopFrames<WrappedCanvas> | null = null
 
   try {
     const [videoTrack, audioTrack] = await Promise.all([input.getPrimaryVideoTrack(), input.getPrimaryAudioTrack()])
@@ -371,6 +394,28 @@ export async function renderCampaignCut(
       layout: layoutLogo(width, height, bankImages[i], look.bankPlacement),
       placer: new MomentPlacer(cue.moments, keep),
     }))
+    // Pop-up videos: each read already shrunk to its box, so a 4K clip costs
+    // no more than a small one. One that can't be read here is left out,
+    // never the whole video.
+    let popsLeftOut = 0
+    const popClips: { seconds: number; layout: PopLayout; placer: MomentPlacer; open: () => AsyncIterator<WrappedCanvas> }[] = []
+    for (const clip of pops?.clips ?? []) {
+      try {
+        const popInput = new Input({ source: new BlobSource(clip.file), formats: ALL_FORMATS })
+        popInputs.push(popInput)
+        const track = await popInput.getPrimaryVideoTrack()
+        if (!track || !(await track.canDecode())) throw new Error("this phone can't play it here")
+        const first = await track.getFirstTimestamp()
+        const layout = popLayout(width, height, clip, pops!.sizePct, pops!.position)
+        const sink = new CanvasSink(track, { width: layout.width, height: layout.height, fit: 'cover', poolSize: 3 })
+        popClips.push({ seconds: clip.seconds, layout, placer: new MomentPlacer(clip.moments, keep), open: () => fromStart(sink, first, clip.seconds) })
+      } catch (error) {
+        popsLeftOut += clip.moments.length > 0 ? 1 : 0
+        reportProblem({ kind: 'fallback', phase: 'pop-up video', message: error instanceof Error ? error.message : String(error) })
+      }
+    }
+    if (popClips.length > 0) popPlayer = new PopFrames((i) => popClips[i].open())
+    let popsOn = popClips.length > 0
 
     const videoSource = new VideoSampleSource({ codec: 'avc', quality: QUALITY_HIGH })
     const audioSource = new AudioSampleSource({
@@ -514,6 +559,7 @@ export async function renderCampaignCut(
                   brandPlacer.enterRange(index, videoShift)
                   for (const p of pictures) p.placer.enterRange(index, videoShift)
                   for (const b of bank) b.placer.enterRange(index, videoShift)
+                  for (const p of popClips) p.placer.enterRange(index, videoShift)
                 }
                 const timestamp = videoClock(sample.timestamp + videoShift)
                 const duration = sample.duration
@@ -565,6 +611,24 @@ export async function renderCampaignCut(
                   if (look.effects.logoPop) {
                     drawPoppedLogo(ctx, latest.entry.image, latest.entry.layout, logoPop(since, look.bankPlacement.seconds - since))
                   } else drawLogo(ctx, latest.entry.image, latest.entry.layout)
+                }
+                // A pop-up video over him and the pictures, under the
+                // headline, logo and captions. Muted: its sound is never read.
+                if (popsOn && popPlayer) {
+                  const on = popAt(occurrencesOf(popClips.map((p) => ({ seconds: p.seconds, times: p.placer.times }))), timestamp)
+                  try {
+                    if (on) {
+                      const frame = await popPlayer.at(on, timestamp - on.at)
+                      if (frame) drawPop(ctx, frame.canvas, popClips[on.clip].layout, logoPop(timestamp - on.at, on.at + on.seconds - timestamp))
+                    } else await popPlayer.stop()
+                  } catch (error) {
+                    // The phone couldn't keep two videos going: the rest of
+                    // this one is made without pop-ups rather than not at all.
+                    popsOn = false
+                    popsLeftOut = Math.max(popsLeftOut, 1)
+                    await popPlayer.stop().catch(() => {})
+                    reportProblem({ kind: 'fallback', phase: 'pop-up video', message: error instanceof Error ? error.message : String(error) })
+                  }
                 }
                 if (headline && timestamp - talkStart < look.headline.seconds) drawHeadline(ctx, headline)
                 if (logo && logoImage && inWindow(timestamp, logoPlacer.times, look.logo.seconds)) {
@@ -665,12 +729,16 @@ export async function renderCampaignCut(
       bankAt: bank.flatMap((b) => [...b.placer.times]).sort((a, b) => a - b),
       recovered,
       clips: { beforeSec: talkStart, afterSec: afterClip ? cursor - afterStart : 0, leftOut },
+      popsAt: popClips.flatMap((p) => [...p.placer.times]).sort((a, b) => a - b),
+      popsLeftOut,
     }
   } finally {
     logoImage?.close()
     for (const image of [...pictureImages, ...bankImages]) image.close()
     await Promise.all([videoFrames?.dispose(), audioFrames?.dispose()]).catch(() => {})
     for (const clip of joined) clip.input.dispose()
+    await popPlayer?.stop().catch(() => {})
+    for (const popInput of popInputs) popInput.dispose()
     input.dispose()
     if (!finished) {
       await output.cancel().catch(() => {})

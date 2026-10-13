@@ -26,6 +26,8 @@ export interface WordMoments {
   /** Only the bank's pictures that were said - a big bank costs nothing for
    *  the pictures a video never uses. */
   bank: { image: Blob; moments: number[] }[]
+  /** The bank's videos that were said, and when - each pops up then. */
+  videos: { id: string; seconds: number; width: number; height: number; moments: number[] }[]
   /** One list per sound in `look.sounds`, in order. */
   sounds: number[][]
   /** Words the look listens for that were never heard. */
@@ -63,6 +65,9 @@ export function wordMoments(
   const bank = look.bankPictures
     .map((picture) => ({ image: picture.image, moments: early(said(picture.words)) }))
     .filter((cue) => cue.moments.length > 0)
+  const videos = look.bankVideos
+    .map((video) => ({ id: video.id, seconds: video.seconds, width: video.width, height: video.height, moments: early(said(video.words)) }))
+    .filter((cue) => cue.moments.length > 0)
   // A sound that goes with the pictures comes with them.
   const anyPicture = [...pictures.flat(), ...bank.flatMap((c) => c.moments)].sort((a, b) => a - b)
   const sounds = look.sounds.map((sound) => {
@@ -70,5 +75,5 @@ export function wordMoments(
     if (sound.trigger.kind !== 'words') return []
     return heard(sound.trigger.words)
   })
-  return { logo, brand, pictures, bank, sounds, notHeard }
+  return { logo, brand, pictures, bank, videos, sounds, notHeard }
 }

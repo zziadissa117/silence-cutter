@@ -7,7 +7,7 @@
 
 import type { WordChunk } from '../media/fillerWords'
 import { findMentions, squash } from './keywords'
-import { GENERAL_ID, type Angle, type BankPicture, type Campaign } from './look'
+import { GENERAL_ID, type Angle, type Campaign } from './look'
 
 export interface Guess {
   campaignId: string
@@ -131,7 +131,7 @@ const PROMPT_CHARS = 480
 /** Every name worth telling the model about for a day's videos: brands
  *  first, since they matter most, then angles' words and pictures', then the
  *  bank - cut off when there is no more room. */
-export function dayWords(campaigns: Campaign[], bank: BankPicture[]): string[] {
+export function dayWords(campaigns: Campaign[], bank: readonly { words: string[] }[]): string[] {
   const ordered = [
     ...campaigns.flatMap((c) => c.brandWords),
     ...campaigns.flatMap((c) => c.angles.flatMap((a) => recognizedBy(a))),

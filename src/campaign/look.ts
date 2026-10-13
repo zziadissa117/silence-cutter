@@ -63,6 +63,16 @@ export interface PictureCue {
   widthPct: number
 }
 
+/** A video from the bank as a look needs it: what brings it up, and its
+ *  length and shape (the file is read only when it is said). */
+export interface PopCue {
+  id: string
+  words: string[]
+  seconds: number
+  width: number
+  height: number
+}
+
 /** A picture kept in the cutter's bank - a Claude, ChatGPT or Google logo -
  *  shared by every campaign, that comes up in any angle using the bank when
  *  he says its words. */
@@ -198,6 +208,9 @@ export interface VideoLook {
    *  bank - and where they sit. */
   bankPictures: BankPicture[]
   bankPlacement: Omit<Angle['bank'], 'use'>
+  /** The bank's videos this angle may use, to pop up when their words are
+   *  said - none when it does not use the bank. */
+  bankVideos: PopCue[]
   mentions: 'first' | 'every'
   effects: AngleEffects
   /** The brand's name, for effects that fire on it even when the logo is
@@ -350,6 +363,8 @@ export function videoLook(
   defaults: AngleEffects | null = null,
   /** Picture ids left out of this one video. */
   skipPictures: readonly string[] = [],
+  /** The video bank, less any left out of this one video. */
+  videos: readonly PopCue[] = [],
 ): VideoLook {
   const logoOn = angle.logo.show && campaign.logo !== null
   return {
@@ -371,6 +386,7 @@ export function videoLook(
     pictures: without(angle.pictures, skipPictures),
     bankPictures: angle.bank.use ? without(bank, skipPictures) : [],
     bankPlacement: { position: angle.bank.position, widthPct: angle.bank.widthPct, seconds: angle.bank.seconds },
+    bankVideos: angle.bank.use ? videos.filter((v) => v.words.length > 0) : [],
     mentions: angle.mentions,
     effects: effectsFor(angle.effects, defaults),
     brandWords: campaign.brandWords,
@@ -470,6 +486,7 @@ export function wordsToHear(look: VideoLook): string[] {
   for (const sound of look.sounds) if (sound.trigger.kind === 'words') words.push(...sound.trigger.words)
   for (const picture of look.pictures) words.push(...picture.words)
   for (const picture of look.bankPictures) words.push(...picture.words)
+  for (const video of look.bankVideos) words.push(...video.words)
   return [...new Map(words.map((w) => [w.toLowerCase(), w])).values()]
 }
 

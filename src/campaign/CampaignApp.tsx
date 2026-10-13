@@ -24,6 +24,7 @@ import { UpdateBanner } from '../UpdateBanner'
 import { VideoPicker } from '../VideoPicker'
 import { BankView } from './BankView'
 import { MusicBankView } from './MusicBankView'
+import { VideoBankView } from './VideoBankView'
 import { loadMusicBank, songFile } from './musicBank'
 import { BatchView, type BatchVideo } from './BatchView'
 import type { BankFile } from './batch'
@@ -32,7 +33,7 @@ import { CloudError, currentSession, signOut, syncNow, type Session, type SyncSt
 import { AngleEditor, CampaignEditor } from './Editors'
 import { ChevronRight, UploadIcon } from './icons'
 import { JobRow } from './JobRow'
-import { CaptionReview } from './CaptionReview'
+import { CaptionReview, type PopReview } from './CaptionReview'
 import { CutsEditor } from './CutsEditor'
 import { HookQuestion } from './HookQuestion'
 import {
@@ -88,7 +89,10 @@ import {
   type CampaignPosting,
 } from './look'
 import { forgetSend, queueSend, sending, startSending, watchSending } from './outbox'
-import { headlineFor, listen, make, makeCampaignVideo, makeMontage, makeReaction, plainCut, type CampaignResult } from './pipeline'
+import { headlineFor, listen, make, makeCampaignVideo, makeMontage, makeReaction, plainCut, type CampaignResult, type PopSettings } from './pipeline'
+import { popCue, posterOf, useVideoBank, videoFile, type BankVideo } from './videoBank'
+import { wordMoments } from './moments'
+import { DEFAULT_POP_POSITION, POP_SIZE, type PopPosition } from './popVideo'
 import { PostingEditor } from './PostingEditor'
 import { PostingSetup } from './PostingSetup'
 import {
@@ -331,6 +335,20 @@ export function CampaignApp() {
     if (job.reaction) return 0
     const angle = campaignsRef.current.find((c) => c.id === job.campaignId)?.angles.find((a) => a.id === job.angleId)
     return angle && job.headlineText.trim() ? angle.headline.seconds : 0
+  }
+
+  /** The bank videos a video may pop up, as he set them for it. */
+  const popsFor = (job: Job): PopSettings => {
+    const skipped = new Set(job.day?.skipPops ?? [])
+    return {
+      videos: videoBankRef.current.filter((v) => !skipped.has(v.id)).map(popCue),
+      sizePct: job.day?.popSize ?? POP_SIZE.default,
+      position: job.day?.popPosition ?? DEFAULT_POP_POSITION,
+      load: async (id) => {
+        const video = videoBankRef.current.find((v) => v.id === id)
+        return video ? videoFile(video) : null
+      },
+    }
   }
 
   /** The track under a video: the one picked for it - a song from the
@@ -589,6 +607,9 @@ export function CampaignApp() {
   const campaignsRef = useRef<Campaign[]>([])
   campaignsRef.current = campaigns ?? []
   const bankRef = useRef<BankPicture[]>([])
+  const videoBank = useVideoBank()
+  const videoBankRef = useRef<BankVideo[]>(videoBank)
+  videoBankRef.current = videoBank
   bankRef.current = bank
 
   const campaign = useMemo(() => campaigns?.find((c) => c.id === campaignId) ?? null, [campaigns, campaignId])
@@ -1127,7 +1148,7 @@ export function CampaignApp() {
               hear: true,
               names: next.reaction
                 ? (campaigns.find((c) => c.id === next.campaignId)?.brandWords ?? [])
-                : dayWords(campaigns.filter((c) => !isReaction(c)), bankRef.current),
+                : dayWords(campaigns.filter((c) => !isReaction(c)), [...bankRef.current, ...videoBankRef.current]),
               align: captionsRef.current,
               quietIsFine: Boolean(next.reaction),
               keepWhole: next.noCut === true,
@@ -1256,6 +1277,7 @@ export function CampaignApp() {
               await manualPicturesFor(next),
               next.day?.captionSize ?? defaultCaptionSize(),
               next.day?.captionStyle ?? defaultCaptionStyle(),
+              popsFor(next),
             ),
           )
         } else {
@@ -2441,7 +2463,37 @@ export function CampaignApp() {
     const campaign = campaignsRef.current.find((c) => c.id === job.campaignId)
     const angle = campaign?.angles.find((a) => a.id === job.angleId)
     if (!campaign || !angle) return []
-    return [...new Set([...campaign.brandWords, ...wordsToHear(videoLook(campaign, angle, bankRef.current))])]
+    return [...new Set([...campaign.brandWords, ...wordsToHear(videoLook(campaign, angle, bankRef.current, null, [], videoBankRef.current.map(popCue)))])]
+  }
+
+  /** The bank videos this take says, for sizing and placing them on the
+   *  caption check - undefined when it says none (or its angle doesn't use
+   *  the bank). */
+  function popReviewFor(job: Job): PopReview | undefined {
+    const plan = job.day?.plan
+    const campaign = campaignsRef.current.find((c) => c.id === job.campaignId)
+    const angle = campaign?.angles.find((a) => a.id === job.angleId)
+    if (!plan || !campaign || !angle) return undefined
+    const bank = videoBankRef.current
+    const said = wordMoments(plan, videoLook(campaign, angle, [], null, [], bank.map(popCue))).videos
+    if (said.length === 0) return undefined
+    return {
+      items: said.map((v) => {
+        const video = bank.find((b) => b.id === v.id)!
+        return { ...v, name: video.name, at: v.moments, loadStill: () => posterOf(video) }
+      }),
+      size: job.day?.popSize ?? POP_SIZE.default,
+      position: job.day?.popPosition ?? DEFAULT_POP_POSITION,
+      skipped: job.day?.skipPops ?? [],
+      onSize: (popSize) => setPops(job.id, { popSize }),
+      onPosition: (popPosition) => setPops(job.id, { popPosition }),
+      onSkip: (id, skip) => {
+        const now = new Set(job.day?.skipPops ?? [])
+        if (skip) now.add(id)
+        else now.delete(id)
+        setPops(job.id, { skipPops: [...now] })
+      },
+    }
   }
 
   /** The pictures a sorted video will show, for leaving any of them out. */
@@ -2478,6 +2530,15 @@ export function CampaignApp() {
     const job = jobs.find((j) => j.id === id)
     if (!job?.day) return
     const day = { ...job.day, captionSize }
+    setJobs((js) => js.map((j) => (j.id === id ? { ...j, day } : j)))
+    void recordDay(id, day, { campaignId: job.campaignId, angleId: job.angleId, headlineText: job.headlineText })
+  }
+
+  /** This video's pop-up videos: how big, where, and which are left out. */
+  const setPops = (id: string, fields: { popSize?: number; popPosition?: PopPosition; skipPops?: string[] }) => {
+    const job = jobs.find((j) => j.id === id)
+    if (!job?.day) return
+    const day = { ...job.day, ...fields }
     setJobs((js) => js.map((j) => (j.id === id ? { ...j, day } : j)))
     void recordDay(id, day, { campaignId: job.campaignId, angleId: job.angleId, headlineText: job.headlineText })
   }
@@ -2727,6 +2788,7 @@ export function CampaignApp() {
         onSize={(size) => setCaptionSize(reviewJob.id, size)}
         captionStyle={reviewJob.day?.captionStyle ?? defaultCaptionStyle()}
         onCaptionStyle={(style) => setCaptionStyle(reviewJob.id, style)}
+        pops={popReviewFor(reviewJob)}
       />
     ) : showPosts && posting ? (
       <PostsView
@@ -2773,6 +2835,7 @@ export function CampaignApp() {
     ) : tab === 'pictures' ? (
       <>
         <BankView bank={bank} onChange={setBank} />
+        <VideoBankView />
         <MusicBankView />
       </>
     ) : tab === 'batch' ? (

@@ -37,6 +37,20 @@ import { headlineFontReady } from './headlineFont'
 import type { RecheckResult } from './posting'
 import { ChevronLeft, PauseIcon, PlayIcon } from './icons'
 import { LIMITS } from './look'
+import { formatTime } from './jobs'
+import { POP_POSITIONS, POP_SIZE, drawPop, popLayout, type PopPosition } from './popVideo'
+
+/** The bank videos said in a take, for the caption check: each with when
+ *  it comes up (on the raw take) and its still, and how they all look. */
+export interface PopReview {
+  items: { id: string; name: string; at: number[]; seconds: number; width: number; height: number; loadStill: () => Promise<Blob | null> }[]
+  size: number
+  position: PopPosition
+  skipped: string[]
+  onSize: (size: number) => void
+  onPosition: (position: PopPosition) => void
+  onSkip: (id: string, skip: boolean) => void
+}
 
 const textOf = (phrase: CaptionWord[]) =>
   phrase
@@ -76,6 +90,7 @@ export function CaptionReview({
   onRecheck,
   vocabulary = [],
   riskSpans = [],
+  pops,
 }: {
   name: string
   /** The video itself, or null while it is being fetched from storage. */
@@ -115,6 +130,9 @@ export function CaptionReview({
   vocabulary?: string[]
   /** Moments of sounds the cutter cut or was unsure about. */
   riskSpans?: Span[]
+  /** Bank videos said in this take, and how they pop up - absent when none
+   *  is said. */
+  pops?: PopReview
 }) {
   // The phrases as heard: each keeps its moment however it is retyped.
   const [heard] = useState(() => phrasesOf(initial))
@@ -148,6 +166,31 @@ export function CaptionReview({
   sizeRef.current = size
   const styleRef = useRef(captionStyle)
   styleRef.current = captionStyle
+  const popsRef = useRef(pops)
+  popsRef.current = pops
+  // Each pop-up's still, to show the box at its size on the frame.
+  const stills = useRef(new Map<string, ImageBitmap>())
+  const [stillsReady, setStillsReady] = useState(0)
+  /** Set while he is sizing or moving the box: shown whatever the moment. */
+  const showBox = useRef(false)
+  const popIds = pops?.items.map((i) => i.id).join(',') ?? ''
+  useEffect(() => {
+    let alive = true
+    void (async () => {
+      for (const item of popsRef.current?.items ?? []) {
+        if (stills.current.has(item.id)) continue
+        const blob = await item.loadStill().catch(() => null)
+        if (!alive || !blob || typeof createImageBitmap !== 'function') continue
+        const bitmap = await createImageBitmap(blob).catch(() => null)
+        if (bitmap) stills.current.set(item.id, bitmap)
+      }
+      if (alive) setStillsReady((n) => n + 1)
+    })()
+    return () => {
+      alive = false
+    }
+  }, [popIds])
+  useEffect(() => () => stills.current.forEach((b) => b.close()), [])
 
   useEffect(() => {
     if (!file) return
@@ -172,6 +215,24 @@ export function CaptionReview({
     const ctx = c.getContext('2d')
     if (!ctx) return
     ctx.clearRect(0, 0, w, h)
+    // The pop-up video on now (or, while he sizes it, the first one), as its
+    // still, in the box it will have.
+    const p = popsRef.current
+    if (p) {
+      const t = video.current?.currentTime ?? 0
+      const on = p.items.filter((i) => !p.skipped.includes(i.id))
+      const now =
+        on.find((i) => i.at.some((at) => at <= t && t < at + i.seconds)) ?? (showBox.current ? on[0] : undefined)
+      const still = now ? stills.current.get(now.id) : undefined
+      if (now) {
+        const box = popLayout(w, h, now, p.size, p.position)
+        if (still) drawPop(ctx, still, box, { scale: 1, alpha: 1 })
+        else {
+          ctx.fillStyle = 'rgba(0, 0, 0, 0.55)'
+          ctx.fillRect(box.x, box.y, box.width, box.height)
+        }
+      }
+    }
     const all = wordsRef.current
     if (!all[shown]) return
     drawStyledCaption(ctx, w, h, all, captionRanges(all, styleRef.current), shown, since, bare, positionRef.current, sizeRef.current, styleRef.current)
@@ -192,7 +253,7 @@ export function CaptionReview({
     const v = video.current
     if (first >= 0 && v && v.readyState >= 1) v.currentTime = words[first].start + 0.02
     paint(first, 1)
-  }, [current, playing, words, paint, position, size, captionStyle]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [current, playing, words, paint, position, size, captionStyle, pops?.size, pops?.position, pops?.skipped, stillsReady]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Painted again once TikTok Sans is here; later paints already have it.
   useEffect(() => {
@@ -212,6 +273,7 @@ export function CaptionReview({
   const playFrom = (k: number) => {
     const v = video.current
     if (!v) return
+    showBox.current = false
     if (playing) {
       stop()
       if (k === current) return
@@ -476,6 +538,56 @@ export function CaptionReview({
                 {c.label}
               </button>
             ))}
+          </div>
+        ) : null}
+        {pops && pops.items.length > 0 ? (
+          <div className="pop-review">
+            <div className="group-title">Pop-up videos</div>
+            {pops.items.map((item) => (
+              <label key={item.id} className="pop-row">
+                <input
+                  type="checkbox"
+                  checked={!pops.skipped.includes(item.id)}
+                  onChange={(e) => pops.onSkip(item.id, !e.target.checked)}
+                />
+                <span>{item.name}</span>
+                <span className="hint">at {item.at.map((at) => formatTime(at)).join(', ')}</span>
+              </label>
+            ))}
+            <label className="slider">
+              <span>Size</span>
+              <input
+                type="range"
+                min={POP_SIZE.min}
+                max={POP_SIZE.max}
+                step={1}
+                value={pops.size}
+                aria-label="How big the pop-up videos are"
+                onChange={(e) => {
+                  showBox.current = true
+                  pops.onSize(Number(e.target.value))
+                }}
+              />
+              <output>{pops.size}%</output>
+            </label>
+            <div className="seg full" role="radiogroup" aria-label="Where the pop-up videos sit">
+              {POP_POSITIONS.map((p) => (
+                <button
+                  key={p.id}
+                  type="button"
+                  role="radio"
+                  aria-checked={pops.position === p.id}
+                  className={pops.position === p.id ? 'active' : ''}
+                  onClick={() => {
+                    showBox.current = true
+                    pops.onPosition(p.id)
+                  }}
+                >
+                  {p.label}
+                </button>
+              ))}
+            </div>
+            <p className="hint">Muted. Each plays to its end over you when you say its words - shown on the frame above as it will sit.</p>
           </div>
         ) : null}
         {onSize ? (
