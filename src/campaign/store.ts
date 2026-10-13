@@ -137,10 +137,22 @@ interface StoredJob {
   version?: number
   /** The post key this go replaces, retired when the new one is sent. */
   replaces?: string
+  /** Made, but sent nowhere - no campaign in it (General), or its campaign
+   *  posts nowhere yet. Kept UNSENT_KEEP_MS so it can still be given a
+   *  campaign and sent. */
+  unsent?: boolean
 }
 
 /** How long a made video can still be edited and made again. */
 export const EDIT_WINDOW_MS = 2 * 60 * 60 * 1000
+/** The same for one that was sent nowhere, so it isn't lost before he gets
+ *  to give it a campaign. */
+export const UNSENT_KEEP_MS = 7 * 24 * 60 * 60 * 1000
+
+/** How long a made job stays editable. */
+export function keptFor(row: { unsent?: boolean }): number {
+  return row.unsent ? UNSENT_KEEP_MS : EDIT_WINDOW_MS
+}
 
 /** The key a job's post goes under: the job's id for the first go,
  *  `id~2`, `id~3` for each go after. */
@@ -1016,20 +1028,41 @@ export async function recordDay(id: string, day: NonNullable<StoredJob['day']>, 
   await db.jobs.update(id, { ...fields, day }).catch(() => {})
 }
 
-/** Marks a job as made, keeping its recording and edits for the edit window. */
-export async function markMade(id: string): Promise<void> {
-  await db.jobs.update(id, { madeAt: Date.now(), attempts: 0, failed: undefined }).catch(() => {})
+/** Marks a job as made, keeping its recording and edits for the edit window
+ *  - longer when it was sent nowhere. */
+export async function markMade(id: string, unsent = false): Promise<void> {
+  await db.jobs.update(id, { madeAt: Date.now(), attempts: 0, failed: undefined, unsent: unsent || undefined }).catch(() => {})
 }
 
-/** The made jobs still inside the edit window: id -> when made. */
+/** It has been sent after all: the usual edit window from when it was made. */
+export async function markJobSent(id: string): Promise<void> {
+  await db.jobs.update(id, { unsent: undefined }).catch(() => {})
+}
+
+/** The made jobs still inside their window: id -> when made. */
 export async function editableJobs(now = Date.now()): Promise<Record<string, number>> {
-  const rows = await db.jobs.filter((j) => j.madeAt !== undefined && now - j.madeAt < EDIT_WINDOW_MS).toArray()
+  const rows = await db.jobs.filter((j) => j.madeAt !== undefined && now - j.madeAt < keptFor(j)).toArray()
   return Object.fromEntries(rows.map((j) => [j.id, j.madeAt as number]))
 }
 
-/** Lets go of made jobs past the window, recording and all. */
+/** Made videos sent nowhere, still kept: what to show after a restart. */
+export async function madeNotSent(now = Date.now()): Promise<PendingJob[]> {
+  const rows = await db.jobs.filter((j) => j.unsent === true && j.madeAt !== undefined && now - j.madeAt < keptFor(j)).toArray()
+  return rows.sort((a, b) => (b.madeAt ?? 0) - (a.madeAt ?? 0)).map(({ addedAt: _added, ...meta }) => meta)
+}
+
+/** The most made-but-unsent recordings kept at once: each can be hundreds
+ *  of MB, and a phone's space is not endless. Older ones go as usual. */
+export const UNSENT_KEEP_MAX = 10
+
+/** Lets go of made jobs past their window, recording and all - and unsent
+ *  ones beyond the newest UNSENT_KEEP_MAX. */
 export async function expireMade(now = Date.now()): Promise<number> {
-  const old = await db.jobs.filter((j) => j.madeAt !== undefined && now - j.madeAt >= EDIT_WINDOW_MS).primaryKeys()
+  const unsent = (await db.jobs.filter((j) => j.unsent === true && j.madeAt !== undefined).toArray()).sort((a, b) => (b.madeAt ?? 0) - (a.madeAt ?? 0))
+  const tooMany = new Set(unsent.slice(UNSENT_KEEP_MAX).map((j) => j.id))
+  const old = await db.jobs
+    .filter((j) => j.madeAt !== undefined && (now - j.madeAt >= keptFor(j) || (tooMany.has(j.id) && now - j.madeAt >= EDIT_WINDOW_MS)))
+    .primaryKeys()
   for (const id of old) await forgetJob(id)
   return old.length
 }
@@ -1074,9 +1107,9 @@ export async function reopenJob(id: string, replaces: string): Promise<PendingJo
   const row = await db.jobs.get(id)
   const video = await db.videos.get(id)
   if (!row?.madeAt || !row.day?.plan || !video || video.blob.size === 0) return null
-  if (Date.now() - row.madeAt >= EDIT_WINDOW_MS) return null
+  if (Date.now() - row.madeAt >= keptFor(row)) return null
   const day = { ...row.day, approved: false, checked: false }
-  await db.jobs.update(id, { madeAt: undefined, day, version: (row.version ?? 1) + 1, replaces, attempts: 0 })
+  await db.jobs.update(id, { madeAt: undefined, day, version: (row.version ?? 1) + 1, replaces, attempts: 0, unsent: undefined })
   const { addedAt: _added, ...meta } = (await db.jobs.get(id))!
   return meta
 }

@@ -3,6 +3,17 @@
 Newest first. Every change says what it does, how to use it, and how it works
 underneath. Kept up to date with each commit.
 
+## A video with no campaign: edit it again, or give it one, and send it
+**What:** a finished video that went nowhere - no campaign recognised in it (General), or its campaign posts nowhere
+yet - now says so on its row in Videos, with **Edit again and pick its campaign** (back in the list with its cuts,
+captions and headline; pick the campaign, approve, and it's made again with that campaign's look and sent) and **Or
+send it as it is to [campaign]** (only campaigns that post somewhere; sent unchanged under that campaign's posting
+rules - approve it in Posts). Its recording is now kept for 7 days instead of 2 hours (the newest 10 such videos), and
+after the app restarts they're listed under **Made, not sent** with Edit again and Remove.
+Only ./deploy.sh is needed.
+Files: `store.ts` (`unsent`, `UNSENT_KEEP_MS`, `madeNotSent`, `markJobSent`), `CampaignApp.tsx`, `JobRow.tsx`
+(+ `jobRowNowhere.test.tsx`).
+
 ## Batch: a new batch on top of the running one, to post more a day
 **What:** while a campaign's batch is still running, a new batch for it no longer has to wait until the last one
 ends. Under **Posting** on the Batch tab, pick **On top - from today** (the default) or **After {the day after the last

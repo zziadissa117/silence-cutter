@@ -50,6 +50,8 @@ export function JobRow({
   onRetry,
   onRemove,
   onPost,
+  onEditAgain,
+  sendTo,
   postingNote,
   clips,
   joinWith,
@@ -79,6 +81,11 @@ export function JobRow({
   onRemove: () => void
   /** Sends a finished video to Postiz by hand, when it didn't go itself. */
   onPost?: () => void
+  /** A made video that went nowhere: back to be edited, given a campaign
+   *  and made again. */
+  onEditAgain?: () => void
+  /** The same, sent as it is under a campaign that posts somewhere. */
+  sendTo?: { campaigns: { id: string; name: string }[]; onSend: (campaignId: string) => void }
   /** Why a finished video was not sent to Postiz, when posting is set up. */
   postingNote?: string
   /** What is joined onto a sorted video - its Add list. */
@@ -297,6 +304,35 @@ export function JobRow({
                 <button type="button" className="linkbtn" onClick={onPost}>
                   Send to Postiz
                 </button>
+              ) : null}
+              {onEditAgain || sendTo ? (
+                <div className="went-nowhere">
+                  <div className="hint">Not sent anywhere - no campaign posts it.</div>
+                  {onEditAgain ? (
+                    <button type="button" className="btn small" onClick={onEditAgain}>
+                      Edit again and pick its campaign
+                    </button>
+                  ) : null}
+                  {sendTo && sendTo.campaigns.length > 0 ? (
+                    <label className="field">
+                      <span className="label">Or send it as it is to</span>
+                      <select
+                        value=""
+                        aria-label="Send it as it is to a campaign"
+                        onChange={(e) => {
+                          if (e.target.value) sendTo.onSend(e.target.value)
+                        }}
+                      >
+                        <option value="">Pick a campaign…</option>
+                        {sendTo.campaigns.map((c) => (
+                          <option key={c.id} value={c.id}>
+                            {c.name}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                  ) : null}
+                </div>
               ) : null}
             </>
           ) : null}

@@ -138,13 +138,17 @@ import {
   claimAttempt,
   deleteCampaign,
   EDIT_WINDOW_MS,
+  UNSENT_KEEP_MS,
   editableJobs,
   expireMade,
   forgetJob,
   jobOfPostKey,
   keepJobVideo,
+  madeNotSent,
+  markJobSent,
   markMade,
   peekMadeBatch,
+  type PendingJob,
   postKeyOf,
   reopenBatchJob,
   reopenJob,
@@ -484,9 +488,10 @@ export function CampaignApp() {
     }
   }
 
-  const sendToPostiz = (job: Job, campaign: Campaign, result: CampaignResult, byHand = false): void => {
+  /** Returns whether it went: false when nothing here sends it. */
+  const sendToPostiz = (job: Job, campaign: Campaign, result: CampaignResult, byHand = false): boolean => {
     const local = postingHere()
-    if (!local || (!byHand && (result.lookFailed || !sendsFrom(campaign, local)))) return
+    if (!local || (!byHand && (result.lookFailed || !sendsFrom(campaign, local)))) return false
     const plan = planFor(job)
     const transcript = plan
       ? captionWordsFor(job, plan)
@@ -515,6 +520,7 @@ export function CampaignApp() {
     })
     copying.current.set(job.id, queued)
     void queued.finally(() => copying.current.delete(job.id))
+    return true
   }
 
   // The videos whose captions are being checked, one after another; the
@@ -582,10 +588,14 @@ export function CampaignApp() {
   // Made videos whose recording is still on the phone, so they can be edited
   // and made again: job id -> when made. They go EDIT_WINDOW_MS after.
   const [editable, setEditable] = useState<Record<string, number>>({})
+  // Made videos sent nowhere, kept for days - shown after a restart so they
+  // can still be given a campaign.
+  const [notMadeSent, setNotMadeSent] = useState<PendingJob[]>([])
   const sweepBankRef = useRef<() => void>(() => {})
   const refreshEditable = useCallback(async () => {
     if ((await expireMade().catch(() => 0)) > 0) sweepBankRef.current()
     setEditable(await editableJobs().catch(() => ({})))
+    setNotMadeSent(await madeNotSent().catch(() => []))
   }, [])
   useEffect(() => {
     void refreshEditable()
@@ -1317,7 +1327,7 @@ export function CampaignApp() {
           })
         }
         patch({ status: 'done', result, url: next.batch ? undefined : URL.createObjectURL(result.blob) })
-        sendToPostiz(next, jobCampaign, result)
+        const sent = sendToPostiz(next, jobCampaign, result)
         // A talking video keeps its recording and edits for a couple of hours,
         // so a caption, a cut or the music can be fixed and it made again.
         const keepTalking = (plan ?? result.plan) && !next.reaction && !next.montage && !next.batch && !next.prejoin && !next.day?.parts
@@ -1330,7 +1340,9 @@ export function CampaignApp() {
             const day = { plan: result.plan, approved: true, chosen: true }
             await recordDay(next.id, day)
           }
-          await markMade(next.id)
+          // One sent nowhere (no campaign in it, or its campaign posts nowhere)
+          // is kept for days, to be given a campaign and sent.
+          await markMade(next.id, !sent && !next.batch)
           void refreshEditable()
         } else await forgetJob(next.id)
         if (next.batch) {
@@ -1475,24 +1487,8 @@ export function CampaignApp() {
 
   /** Opens a made video's cuts, captions and music again, from the post it
    *  went out as. Making it again replaces that post if it hasn't gone out. */
-  const editAgain = async (postKey: string) => {
-    const batchRow = await peekMadeBatch(jobOfPostKey(postKey))
-    if (batchRow?.montage?.bank) {
-      const bank = await loadBatchBank(batchRow.campaignId).catch(() => null)
-      const current = batchRow.montage.bank.music
-      const options = [...(bank?.music ?? [])]
-      if (current && !options.some((o) => o.id === current.id)) options.unshift(current)
-      const old = lastPosts().find((p) => p.key === postKey)
-      setShowPosts(false)
-      setBatchEditing({ id: batchRow.id, postKey, name: batchRow.fileName, headline: batchRow.headlineText, music: current, options, posted: old?.status === 'posted' })
-      return
-    }
-    const reopened = await reopenJob(jobOfPostKey(postKey), postKey)
-    if (!reopened) {
-      setNotice(`The original recording is only kept for ${EDIT_WINDOW_MS / 3_600_000} hours after a video is made, and this one's is gone.`)
-      void refreshEditable()
-      return
-    }
+  /** A made job taken back to be made again, as a row in the list. */
+  const restoredJob = (reopened: PendingJob): Job => {
     const restored: Job = {
       id: reopened.id,
       name: reopened.fileName,
@@ -1515,6 +1511,68 @@ export function CampaignApp() {
     const campaign = campaignsRef.current.find((c) => c.id === restored.campaignId)
     const angle = campaign?.angles.find((a) => a.id === restored.angleId)
     if (campaign && angle) restored.label = labelOf(campaign, angle)
+    return restored
+  }
+
+  /** "Edit again" on a made video that went nowhere: back in the list with
+   *  its cuts, captions and headline, to pick its campaign and approve - it
+   *  is made again with that campaign's look, and sent. */
+  const editMade = async (jobId: string) => {
+    const reopened = await reopenJob(jobId, '')
+    if (!reopened) {
+      setNotice('Its recording is no longer on this phone, so it can only be sent as it is.')
+      void refreshEditable()
+      return
+    }
+    const restored = restoredJob(reopened)
+    setJobs((js) => [restored, ...js.filter((j) => j.id !== restored.id)])
+    setNotMadeSent((list) => list.filter((j) => j.id !== jobId))
+    void refreshEditable()
+    setTab('videos')
+    setNotice(`${restored.name}: pick its campaign below and approve it - it's made again with that campaign's look and sent.`)
+  }
+
+  /** "Send as it is" to a campaign, for a made video that went nowhere. */
+  const sendAsIs = (job: Job, campaignId: string) => {
+    const chosen = campaignsRef.current.find((c) => c.id === campaignId)
+    if (!chosen || !job.result) return
+    const angle = chosen.angles[0]
+    const moved = { ...job, campaignId: chosen.id, angleId: angle.id, label: labelOf(chosen, angle) }
+    setJobs((js) => js.map((j) => (j.id === job.id ? moved : j)))
+    if (sendToPostiz(moved, chosen, job.result, true)) {
+      void markJobSent(job.id)
+      setNotice(`${job.name} is on its way to ${chosen.name} - approve it in Posts.`)
+    }
+  }
+
+  /** A made video that went nowhere this session: no campaign accounts, not
+   *  being sent, not a batch video. */
+  const wentNowhere = (job: Job): boolean => {
+    if (job.status !== 'done' || !job.result || job.batch || job.reaction || job.montage) return false
+    if (outgoing.some((o) => jobOfPostKey(o.entry.key) === job.id)) return false
+    const owner = campaigns?.find((c) => c.id === job.campaignId)
+    return !posting || !owner || placeFor(posting.profile, owner.id).accounts.length === 0
+  }
+
+  const editAgain = async (postKey: string) => {
+    const batchRow = await peekMadeBatch(jobOfPostKey(postKey))
+    if (batchRow?.montage?.bank) {
+      const bank = await loadBatchBank(batchRow.campaignId).catch(() => null)
+      const current = batchRow.montage.bank.music
+      const options = [...(bank?.music ?? [])]
+      if (current && !options.some((o) => o.id === current.id)) options.unshift(current)
+      const old = lastPosts().find((p) => p.key === postKey)
+      setShowPosts(false)
+      setBatchEditing({ id: batchRow.id, postKey, name: batchRow.fileName, headline: batchRow.headlineText, music: current, options, posted: old?.status === 'posted' })
+      return
+    }
+    const reopened = await reopenJob(jobOfPostKey(postKey), postKey)
+    if (!reopened) {
+      setNotice(`The original recording is only kept for ${EDIT_WINDOW_MS / 3_600_000} hours after a video is made, and this one's is gone.`)
+      void refreshEditable()
+      return
+    }
+    const restored = restoredJob(reopened)
     setJobs((js) => [restored, ...js.filter((j) => j.id !== restored.id)])
     void refreshEditable()
     setShowPosts(false)
@@ -2383,6 +2441,15 @@ export function CampaignApp() {
                     ? 'Not sent to Postiz: no accounts are picked for this campaign. Pick them in Campaigns, then Posting - then this video gets a Send to Postiz button.'
                     : undefined
                 }
+                onEditAgain={wentNowhere(job) && editable[job.id] ? () => void editMade(job.id) : undefined}
+                sendTo={
+                  wentNowhere(job) && posting
+                    ? {
+                        campaigns: (campaigns ?? []).filter((c) => placeFor(posting.profile, c.id).accounts.length > 0).map((c) => ({ id: c.id, name: c.name })),
+                        onSend: (campaignId) => sendAsIs(job, campaignId),
+                      }
+                    : undefined
+                }
               />
             ))}
           </ul>
@@ -2395,6 +2462,41 @@ export function CampaignApp() {
       ) : (
         <p className="empty">Nothing yet. The day's videos show up here.</p>
       )}
+      {notMadeSent.filter((m) => !jobs.some((j) => j.id === m.id)).length > 0 ? (
+        <div className="group made-not-sent">
+          <div className="group-title">Made, not sent</div>
+          <p className="hint">No campaign posts these. Edit again to pick one - it's made again with that campaign's look and sent.</p>
+          <ul className="bank-list">
+            {notMadeSent
+              .filter((m) => !jobs.some((j) => j.id === m.id))
+              .map((m) => {
+                const owner = campaigns?.find((c) => c.id === m.campaignId)
+                const until = new Date((m.madeAt ?? Date.now()) + UNSENT_KEEP_MS).toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' })
+                return (
+                  <li key={m.id} className="bank-item">
+                    <span className="bank-name">{m.fileName}</span>
+                    <span className="hint">
+                      {owner?.name ?? 'No campaign'} · kept until {until}
+                    </span>
+                    <button type="button" className="btn small" onClick={() => void editMade(m.id)}>
+                      Edit again
+                    </button>
+                    <button
+                      type="button"
+                      className="linkbtn"
+                      onClick={() => {
+                        if (!window.confirm(`Remove ${m.fileName}? Its recording goes from this phone.`)) return
+                        void forgetJob(m.id).then(() => setNotMadeSent((list) => list.filter((j) => j.id !== m.id)))
+                      }}
+                    >
+                      Remove
+                    </button>
+                  </li>
+                )
+              })}
+          </ul>
+        </div>
+      ) : null}
     </section>
   )
 
