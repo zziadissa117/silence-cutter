@@ -3,6 +3,18 @@
 Newest first. Every change says what it does, how to use it, and how it works
 underneath. Kept up to date with each commit.
 
+## Batch: a new batch on top of the running one, to post more a day
+**What:** while a campaign's batch is still running, a new batch for it no longer has to wait until the last one
+ends. Under **Posting** on the Batch tab, pick **On top - from today** (the default) or **After {the day after the last
+one}**. On top, "Videos a day" becomes **More a day**: running 3 a day and adding 2 makes 5 a day while both run,
+from today (or tomorrow if today's times have gone). The line under it says so - "3 already on Wed Oct 14 + 2 = 5
+that day". The new videos' times keep 20 minutes clear of the ones already scheduled (closer, never under 10, on a
+crowded day), all inside 11 AM - 6 PM. Every video is still a different one, approved in Posts as before. To scale
+up step by step, make another small batch on top when you're ready.
+Only ./deploy.sh is needed.
+Files: `batch.ts` (`stack`, `lastPerDay`), `posting.ts` (`stackTimesOn`, `takenTimes`, + test), `BatchView.tsx`
+(+ test).
+
 ## Background music: heard, still under the voice
 **What:** background music is louder. **Background** now sits about 12 dB under your voice while you talk (it was
 about 19 - inaudible on a phone), **Quieter** about 17. Your voice is always in front. Applies to every talking video

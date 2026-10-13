@@ -14,7 +14,7 @@ vi.mock('./cloud', async (original) => ({
   currentSession: () => ({ token: 't' }),
 }))
 
-import { batchTimesOn, onFixedTimes, placeTimesOn, stopPostsNow, switchToRandom, type Profile, type ServerPost } from './posting'
+import { batchTimesOn, onFixedTimes, placeTimesOn, stackTimesOn, takenTimes, stopPostsNow, switchToRandom, type Profile, type ServerPost } from './posting'
 
 const post = (id: string, postAt: string) => ({ id, campaignId: 'c', campaignName: 'Polsia', status: 'scheduled', postAt }) as unknown as ServerPost
 
@@ -159,5 +159,40 @@ describe('batchTimesOn', () => {
     expect(early).toEqual(expect.arrayContaining(['12:00', '18:00']))
     expect(early).not.toContain('09:00')
     for (const t of early) expect(t >= '11:00' && t <= '18:00').toBe(true)
+  })
+})
+
+describe('a batch stacked on one running', () => {
+  const minutes = (t: string) => Number(t.slice(0, 2)) * 60 + Number(t.slice(3, 5))
+  const place = { accounts: [], times: [] }
+
+  it('picks as many more as he asks, in the day, 20 minutes clear of the ones already there', () => {
+    const taken = ['12:00', '14:30', '17:00']
+    for (let n = 1; n <= 5; n++) {
+      const times = stackTimesOn(place, 'inflow', '2026-10-14', n, taken)
+      expect(times).toHaveLength(n)
+      for (const t of times) {
+        expect(t >= '11:00' && t <= '18:00').toBe(true)
+        for (const o of taken) expect(Math.abs(minutes(t) - minutes(o))).toBeGreaterThanOrEqual(20)
+      }
+    }
+  })
+
+  it('closes up, never under 10 minutes, on a crowded day', () => {
+    const taken = Array.from({ length: 14 }, (_, i) => `${String(11 + Math.floor((i * 30) / 60)).padStart(2, '0')}:${String((i * 30) % 60).padStart(2, '0')}`)
+    const times = stackTimesOn(place, 'inflow', '2026-10-14', 4, taken)
+    expect(times.length).toBeGreaterThan(0)
+    for (const t of times) for (const o of taken) expect(Math.abs(minutes(t) - minutes(o))).toBeGreaterThanOrEqual(10)
+  })
+
+  it('reads the times taken from the campaign\'s live posts, by day', () => {
+    const at = (h: number, m: number) => new Date(2026, 9, 14, h, m).toISOString()
+    const posts = [
+      { campaignId: 'inflow', status: 'scheduled', postAt: at(12, 0) },
+      { campaignId: 'inflow', status: 'rejected', postAt: at(13, 0) },
+      { campaignId: 'other', status: 'scheduled', postAt: at(15, 0) },
+      { campaignId: 'inflow', status: 'waiting', postAt: at(16, 45) },
+    ] as unknown as ServerPost[]
+    expect(takenTimes(posts, 'inflow').get('2026-10-14')).toEqual(['12:00', '16:45'])
   })
 })

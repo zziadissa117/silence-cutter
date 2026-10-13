@@ -42,6 +42,12 @@ export interface BatchBank {
   made?: string[]
   /** The last day a batch has been made for. */
   madeThrough?: string
+  /** The next batch goes on top of the ones running, on the same days from
+   *  today - to post more a day - rather than after the last one. Absent
+   *  means on top. */
+  stack?: boolean
+  /** How many a day the last batch made posts. */
+  lastPerDay?: number
   /** Every different video its reactions and products could make has been
    *  made, so they were cleared out for new footage: how many videos that
    *  was, and the day the last of them posts. */

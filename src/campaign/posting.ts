@@ -304,6 +304,41 @@ export function batchTimesOn(place: CampaignPlace, campaignId: string, date: str
   return [...own, ...dayTimes(extras, count - own.length)].sort()
 }
 
+/** How far a stacked batch's times keep from the ones already taken: half
+ *  as much as a window's own spacing, closing up to 10 minutes on a full
+ *  day. */
+const STACK_GAP = 20
+
+/** Times for a batch stacked on top of one already running: `perDay` of
+ *  them inside the campaign's window (cut to the middle of the day), each
+ *  clear of every time already `taken` that day - so 3 a day and 2 more
+ *  make 5, none on top of another. */
+export function stackTimesOn(place: CampaignPlace, campaignId: string, date: string, perDay: number, taken: readonly string[]): string[] {
+  const window = windowOf(place)
+  const count = Math.min(perDay, BATCH_MAX_PER_DAY)
+  const minutes = (t: string) => Number(t.slice(0, 2)) * 60 + Number(t.slice(3, 5))
+  let clear: string[] = []
+  for (let gap = STACK_GAP; gap >= 10 && clear.length < count; gap--) {
+    const far = (t: string) => taken.every((o) => Math.abs(minutes(o) - minutes(t)) >= gap)
+    clear = windowTimes({ ...window, perDay: BATCH_MAX_PER_DAY * 2 }, `${campaignId}|stack`, date, gap).filter(far)
+  }
+  return dayTimes(clear, count).sort()
+}
+
+/** The times a campaign's posts already hold, by day ("2026-10-14" →
+ *  ["13:42", …]), on this phone's clock: every post not rejected or failed. */
+export function takenTimes(posts: readonly ServerPost[], campaignId: string): Map<string, string[]> {
+  const out = new Map<string, string[]>()
+  for (const post of posts) {
+    if (post.campaignId !== campaignId || !post.postAt || post.status === 'rejected' || post.status === 'failed') continue
+    const at = new Date(post.postAt)
+    const date = at.toLocaleDateString('en-CA')
+    const time = `${String(at.getHours()).padStart(2, '0')}:${String(at.getMinutes()).padStart(2, '0')}`
+    out.set(date, [...(out.get(date) ?? []), time])
+  }
+  return out
+}
+
 /** The window its random times come from: its own cut to the day, or the
  *  default every campaign without fixed times posts by. */
 export function windowOf(place: Pick<CampaignPlace, 'window'>): PostingWindow {

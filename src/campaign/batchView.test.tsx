@@ -155,3 +155,65 @@ describe('the "Claude + X" hook', () => {
     }
   })
 })
+
+describe('a batch on top of one still running', () => {
+  const minutes = (t: string) => Number(t.slice(0, 2)) * 60 + Number(t.slice(3, 5))
+  const day = (offset: number) => {
+    const d = new Date()
+    d.setDate(d.getDate() + offset)
+    return d
+  }
+  const iso = (d: Date) => d.toLocaleDateString('en-CA')
+  const post = (offset: number, hhmm: string) => {
+    const d = day(offset)
+    d.setHours(Number(hhmm.slice(0, 2)), Number(hhmm.slice(3, 5)), 0, 0)
+    return { id: `${offset}-${hhmm}`, campaignId: 'inflow', status: 'scheduled', postAt: d.toISOString() }
+  }
+  const scheduled = [1, 2, 3].flatMap((o) => [post(o, '12:00'), post(o, '14:30'), post(o, '17:00')])
+
+  beforeEach(() => {
+    storedBank = { ...bank, perDay: 2, days: 3, madeThrough: '2099-12-31', lastPerDay: 3 }
+    localStorage.setItem('cutter.posts', JSON.stringify(scheduled))
+  })
+
+  it('goes on top, from today, on the days already scheduled - clear of their times', async () => {
+    const { onMake } = await show({})
+    const choice = host.querySelector('[aria-label="When this batch posts"] [aria-checked="true"]')
+    expect(choice?.textContent).toBe('On top - from today')
+    expect(host.textContent).toContain('More a day')
+    expect(makeButton().textContent).toMatch(/^Make \d+ more videos - /)
+    await act(async () => makeButton().click())
+    const videos = onMake.mock.calls[0][2] as { batch: { date: string; time: string } }[]
+    expect(videos[0].batch.date <= iso(day(1))).toBe(true)
+    for (const v of videos) {
+      expect(v.batch.time >= '11:00' && v.batch.time <= '18:00').toBe(true)
+      const taken = scheduled.filter((p) => new Date(p.postAt).toLocaleDateString('en-CA') === v.batch.date)
+      for (const p of taken) {
+        const t = new Date(p.postAt)
+        const at = t.getHours() * 60 + t.getMinutes()
+        expect(Math.abs(at - minutes(v.batch.time))).toBeGreaterThanOrEqual(20)
+      }
+    }
+  })
+
+  it('says how many a day that makes while both run', async () => {
+    await show({})
+    expect(host.querySelector('.batch-total')?.textContent).toMatch(/3 already on .+ \+ 2 = 5 that day/)
+  })
+
+  it('keeps where the next batch after them starts', async () => {
+    const { saveBatchBank } = await import('./store')
+    const { onMake } = await show({})
+    await act(async () => makeButton().click())
+    expect(onMake).toHaveBeenCalled()
+    const saved = (saveBatchBank as unknown as { mock: { calls: [BatchBank][] } }).mock.calls.at(-1)![0]
+    expect(saved.madeThrough).toBe('2099-12-31')
+  })
+
+  it('can still go after the last one instead', async () => {
+    await show({})
+    const after = [...host.querySelectorAll('[aria-label="When this batch posts"] button')].find((b) => b.textContent?.startsWith('After')) as HTMLButtonElement
+    await act(async () => after.click())
+    expect(makeButton().textContent).toMatch(/Jan 1/)
+  })
+})
