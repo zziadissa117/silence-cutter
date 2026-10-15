@@ -3,6 +3,14 @@
 Newest first. Every change says what it does, how to use it, and how it works
 underneath. Kept up to date with each commit.
 
+## Colour check: each made video reports what happened to its colour
+**What:** nothing he sees changes. Each talking video now sends one "check" report saying how the camera recorded
+it (HDR or not, and its colour tags), what the decoder handed over, and how the encoder wrote it. Asked for because
+posted videos looked like a harsh-contrast filter had gone over them; an iPhone films in HDR by default, and every
+campaign video is drawn onto a canvas, where Safari turns HDR into ordinary colour - the likely culprit. The report
+shows which step does it, so the fix goes in the right place. Never the video itself, only these tags.
+**How:** `colourCheck.ts`, hooked into `render.ts` through the encoder's `onEncodedPacket`; sent once per video.
+
 ## Quality: a 4K 60 fps take comes out 4K 60 fps
 **What:** videos keep their own resolution up to 4K, their own frame rate, and a bitrate close to what the phone's
 camera records at - about 16 Mbps for 1080p60 and 45 Mbps for 4K60. Before, every video was brought down to 1080p

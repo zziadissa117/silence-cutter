@@ -56,6 +56,7 @@ import { CAPTION_LEAD, captionAt, drawStyledCaption, captionRanges, type Caption
 import { decoderGaveUp, eachSound, openClip, pause, visibleAgain, wholeOf, writeWhole, type Clip } from './clipParts'
 import type { ClipPlace } from './clips'
 import { framingAt, logoPop, placeFrame, planMotion } from './effects'
+import { ColourCheck } from './colourCheck'
 import { headlineFontReady } from './headlineFont'
 import { framedSize, landscapeMode, makeBlurBackdrop, planFrame } from './framing916'
 import { drawHeadline, drawLogo, drawPoppedLogo, layoutHeadline, layoutLogo } from './overlay'
@@ -421,7 +422,14 @@ export async function renderCampaignCut(
     if (popClips.length > 0) popPlayer = new PopFrames((i) => popClips[i].open())
     let popsOn = popClips.length > 0
 
-    const videoSource = new VideoSampleSource({ codec: 'avc', quality: videoQuality(width, height, fps) })
+    // What the colour went through, sent once (colourCheck.ts).
+    const colour = new ColourCheck()
+    await colour.noteSource(videoTrack)
+    const videoSource = new VideoSampleSource({
+      codec: 'avc',
+      quality: videoQuality(width, height, fps),
+      onEncodedPacket: colour.onEncodedPacket,
+    })
     const audioSource = new AudioSampleSource({
       codec: 'aac',
       quality: QUALITY_MEDIUM,
@@ -574,6 +582,7 @@ export async function renderCampaignCut(
                   timestamp - talkStart,
                   talkStart === 0 ? brandPlacer.times : brandPlacer.times.map((at) => at - talkStart),
                 )
+                colour.noteFrame(sample)
                 if (backdrop) {
                   // Fit: the whole picture over a blurred copy; no zoom here.
                   backdrop.draw(ctx, sample, width, height, displayWidth, displayHeight)
