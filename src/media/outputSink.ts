@@ -17,6 +17,8 @@
 
 import { StreamTarget, type StreamTargetChunk } from 'mediabunny'
 
+import { moovToFront } from './fastStart'
+
 const DIR = 'cuts'
 /** How much is gathered before each write. Big enough that a long video is a
  *  few hundred writes rather than tens of thousands, small enough to be
@@ -105,7 +107,8 @@ export async function createOutputSink(): Promise<OutputSink> {
         const writable = await handle.createWritable()
         return {
           target: new StreamTarget(writable, { chunked: true, chunkSize: CHUNK_SIZE }),
-          finish: () => handle.getFile(),
+          // The index to the front, as Instagram asks (fastStart.ts).
+          finish: async () => moovToFront(await handle.getFile()),
           discard: async () => {
             await writable.abort().catch(() => {})
             await dir.removeEntry(name).catch(() => {})
@@ -160,7 +163,7 @@ function blobPieceSink(): OutputSink {
       for (const { position, data } of patches) {
         blob = new Blob([blob.slice(0, position), data as Uint8Array<ArrayBuffer>, blob.slice(position + data.byteLength)])
       }
-      return blob
+      return moovToFront(blob)
     },
     discard: async () => {
       pieces.length = 0

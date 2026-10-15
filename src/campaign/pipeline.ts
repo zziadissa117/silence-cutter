@@ -334,7 +334,7 @@ export async function makeReaction(
   music?: AngleMusic | null,
   /** What varies per video: its seed, the default effects for an angle with
    *  none (null for none), and where its captions sit. */
-  extra: { seed?: string; defaults?: AngleEffects | null; captionPosition?: CaptionPosition; captionSize?: CaptionSize; captionStyle?: CaptionStyle; hd?: boolean } = {},
+  extra: { seed?: string; defaults?: AngleEffects | null; captionPosition?: CaptionPosition; captionSize?: CaptionSize; captionStyle?: CaptionStyle } = {},
 ): Promise<CampaignResult> {
   const talking = plan ? talksIn(plan.words, plan.keep) : false
   const track = music === undefined ? (angle.music ?? null) : music
@@ -349,7 +349,6 @@ export async function makeReaction(
       captionPosition: extra.captionPosition,
       captionSize: extra.captionSize,
       captionStyle: extra.captionStyle,
-      hd: extra.hd,
       switchSound: campaign.switchSound === 'none' ? null : (campaign.switchSound ?? 'whoosh'),
       captions: talking ? captions : [],
       voice,
@@ -387,10 +386,10 @@ export async function makeMontage(
   headlineText: string,
   music: { audio: Blob; name: string } | null,
   onRenderProgress?: (fraction: number) => void,
-  extra: { seed?: string; defaults?: AngleEffects | null; formula?: { left: Blob | null; right: Blob | null; line: string } | null; hd?: boolean } = {},
+  extra: { seed?: string; defaults?: AngleEffects | null; formula?: { left: Blob | null; right: Blob | null; line: string } | null } = {},
 ): Promise<CampaignResult> {
   const rendered = await renderMontage(
-    { clips, look: videoLook(campaign, angle, [], extra.defaults ?? null), headlineText, music, seed: extra.seed, formula: extra.formula ?? null, hd: extra.hd },
+    { clips, look: videoLook(campaign, angle, [], extra.defaults ?? null), headlineText, music, seed: extra.seed, formula: extra.formula ?? null },
     onRenderProgress,
   )
   return {

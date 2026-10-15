@@ -1237,7 +1237,6 @@ export function CampaignApp() {
               seed: next.id,
               defaults: next.day?.noEffects ? null : defaultEffects(),
               formula,
-              hd: next.retried === true,
             }),
           )
         } else if (next.reaction) {
@@ -1261,7 +1260,6 @@ export function CampaignApp() {
                 captionPosition: next.day?.captionPosition ?? defaultCaptionPosition(),
                 captionSize: next.day?.captionSize ?? defaultCaptionSize(),
                 captionStyle: next.day?.captionStyle ?? defaultCaptionStyle(),
-                hd: next.retried === true,
               },
             ),
           )

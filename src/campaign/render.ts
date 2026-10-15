@@ -373,11 +373,9 @@ export async function renderCampaignCut(
 
     // A wide clip (Meta glasses) becomes 9:16; one already 9:16 is untouched.
     const mode = forceVertical && landscapeMode() === 'off' ? 'fill' : landscapeMode()
-    // Its own size up to 4K and its own frame rate, at a bitrate to match;
-    // 1080p when the phone can't encode 4K, or on the gentle second go after
-    // the first failed (quality.ts).
+    // 1080p at its own frame rate, at a bitrate to match (quality.ts).
     const fps = await frameRateOf(videoTrack)
-    const { width, height } = await makeSize((maxShort) => framedSize(displayWidth, displayHeight, mode, maxShort), fps, gentle === true)
+    const { width, height } = makeSize((maxShort) => framedSize(displayWidth, displayHeight, mode, maxShort))
     const framePlan = planFrame(displayWidth, displayHeight, width, height, mode)
     const backdrop = framePlan.blurred ? makeBlurBackdrop() : null
     const canvas = new OffscreenCanvas(width, height)

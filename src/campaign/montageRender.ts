@@ -28,6 +28,7 @@ import { drawFormula, formulaPush, layoutFormula } from './formulaOverlay'
 import { headlineFontReady } from './headlineFont'
 import type { VideoLook } from './look'
 import { MusicBed, trackLoudness } from './music'
+import { Limiter } from './voice'
 import { drawHeadline, layoutHeadline, outputSize } from './overlay'
 import { frameRateOf, makeSize, videoQuality } from './quality'
 import { cover } from './reaction'
@@ -38,10 +39,15 @@ import { onEncodedPacketMatchingColour } from './colourCheck'
 const RATE = 48000
 const CHANNELS = 2
 const MAX_RECOVERIES = 4
-/** With nothing else to hear, the music is the sound: a loud master is
- *  brought down to about where TikTok plays things, a quiet one left as it
- *  is - never turned up, so it can never clip. */
+/** With nothing else to hear, the music is the sound: every song is set to
+ *  about where TikTok plays things - a loud master brought down, a quiet one
+ *  brought up, its peaks held under a limiter so it never clips. A quiet
+ *  song used to be left as it was, and in a batch some came out barely
+ *  there: "just play the song no matter if it's quiet". */
 const MUSIC_LUFS = -14
+/** The most a quiet song is turned up - 24 dB - so a near-silent one stays
+ *  a quiet song, not a wall of hiss. */
+const MAX_LIFT = 10 ** (24 / 20)
 
 export interface MontageRenderInput {
   clips: Blob[]
@@ -54,8 +60,6 @@ export interface MontageRenderInput {
   /** The "Claude + X = $ a day" hook instead of a headline: the two logos,
    *  and this video's money line. The reaction pushes in slowly under it. */
   formula?: { left: Blob | null; right: Blob | null; line: string } | null
-  /** Made in 1080p: a second go after the first failed (quality.ts). */
-  hd?: boolean
 }
 
 export interface MontageRenderResult {
@@ -78,14 +82,21 @@ export function verticalSize(width: number, height: number, maxShort = 2160): { 
   return outputSize(short, (short * 16) / 9, maxShort)
 }
 
-/** The linear gain that puts a track at MUSIC_LUFS, never above 1. */
+/** The linear gain that puts a track at MUSIC_LUFS, up or down. */
 export function soloMusicGain(trackLufs: number): number {
   if (!Number.isFinite(trackLufs)) return 0
-  return Math.min(1, 10 ** ((MUSIC_LUFS - trackLufs) / 20))
+  return Math.min(MAX_LIFT, 10 ** ((MUSIC_LUFS - trackLufs) / 20))
+}
+
+/** `channels` at `gain`, in place, under the voice's limiter so a song
+ *  turned up keeps its peaks under full scale. */
+export function liftMusic(channels: Float32Array[], gain: number, sampleRate: number): void {
+  for (const c of channels) for (let i = 0; i < c.length; i++) c[i] *= gain
+  new Limiter(sampleRate, channels.length).process(channels)
 }
 
 export async function renderMontage(
-  { clips: files, look, headlineText, music, seed = '', formula = null, hd = false }: MontageRenderInput,
+  { clips: files, look, headlineText, music, seed = '', formula = null }: MontageRenderInput,
   onProgress?: (fraction: number) => void,
 ): Promise<MontageRenderResult> {
   if (files.length === 0) throw new SilenceCutError('Add at least one clip.')
@@ -112,8 +123,11 @@ export async function renderMontage(
         // Only as much of the song as the video uses is decoded (sounds.ts).
         const { channels } = await prepareMusic(music.audio, music.name, total, RATE)
         const gain = soloMusicGain(trackLoudness(channels, RATE))
-        // Nothing else is heard, so nothing ever dips it.
-        if (gain > 0) bed = new MusicBed(channels, RATE, Math.round(total * RATE), gain, Infinity)
+        if (gain > 0) {
+          liftMusic(channels, gain, RATE)
+          // Nothing else is heard, so nothing ever dips it.
+          bed = new MusicBed(channels, RATE, Math.round(total * RATE), 1, Infinity)
+        }
         else musicFailed = 'the track is silent'
       } catch (error) {
         musicFailed = error instanceof Error ? error.message : String(error)
@@ -121,9 +135,9 @@ export async function renderMontage(
       if (musicFailed) reportProblem({ kind: 'fallback', phase: 'music', message: musicProblem(new Error(musicFailed), music.audio) })
     }
 
-    // Its own size up to 4K and frame rate, at a bitrate to match (quality.ts).
+    // 1080p at its own frame rate, at a bitrate to match (quality.ts).
     const fps = await frameRateOf(clips[0].video)
-    const { width, height } = await makeSize((maxShort) => verticalSize(clips[0].width, clips[0].height, maxShort), fps, hd)
+    const { width, height } = makeSize((maxShort) => verticalSize(clips[0].width, clips[0].height, maxShort))
     const canvas = new OffscreenCanvas(width, height)
     const ctx = canvas.getContext('2d')
     if (!ctx) throw new SilenceCutError("This browser couldn't prepare a canvas to draw the headline on.")

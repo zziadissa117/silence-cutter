@@ -3,6 +3,23 @@
 Newest first. Every change says what it does, how to use it, and how it works
 underneath. Kept up to date with each commit.
 
+## Posting: made to Instagram's and TikTok's own spec, and quiet songs turned up
+**What:** posted videos looked soft on Instagram and TikTok while the preview looked fine - the file sent is the
+preview, unchanged, so the softening happened at the platforms. Instagram's API takes nothing wider than 1920 px or
+over 25 Mbps and wants the file's index ("moov") at the front; 4K files at up to 45 Mbps, with the index at the
+end, were outside all three, so they were shrunk and re-compressed hard on the way in. Now every video is made at
+1080x1920 at its own frame rate, at most 20 Mbps (about 16 for 60 fps), with its index at the front - what both
+platforms ask for, and they show 1080p anyway.
+Batch songs: a quiet song used to be left quiet ("never turned up"), so some batch videos had music you could
+barely hear and no error. Now every song is set to the same level - loud ones brought down, quiet ones up (24 dB at
+most), its peaks under the limiter so it never clips.
+**How:** `makeSize` (quality.ts) is 1080 on the shorter side and the bitrate capped at `MAX_BITRATE`; the 4K and
+"second go in 1080p" paths are gone. `moovToFront` (media/fastStart.ts) moves the index to the front of every
+finished file the way qt-faststart does - the media data is sliced, never copied into memory - and gives the file
+back unchanged if anything looks wrong; mediabunny's own `fastStart: 'reserve'` was tried and fails an assertion on
+B-frame video. Checked with ffmpeg on 1080p60 files with and without B-frames, sound and none, and one written by
+mediabunny: every frame and sample identical, index first. `liftMusic` (montageRender.ts) uses the voice's Limiter.
+
 ## Music: every song in a big batch gets heard
 **What:** in a long batch (90, then 120 videos) only a couple of songs were coming through. The batch picks songs
 evenly - checked with the real picker over 90 and a stacked 120 - so the songs were being lost when each video was

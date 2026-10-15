@@ -72,8 +72,6 @@ export interface ReactionRenderInput {
   captionSize?: CaptionSize
   /** One word at a time, or the phrase with the spoken word lit. */
   captionStyle?: CaptionStyle
-  /** Made in 1080p: a second go after the first failed (quality.ts). */
-  hd?: boolean
 }
 
 export interface ReactionRenderResult {
@@ -85,7 +83,7 @@ export interface ReactionRenderResult {
 }
 
 export async function renderReaction(
-  { reaction, product, productKeep, look, headlineText, switchSound, captions = [], voice: boostVoice = false, music = null, seed = '', captionPosition = 'usual', captionSize = 'normal', captionStyle = 'word', hd = false }: ReactionRenderInput,
+  { reaction, product, productKeep, look, headlineText, switchSound, captions = [], voice: boostVoice = false, music = null, seed = '', captionPosition = 'usual', captionSize = 'normal', captionStyle = 'word' }: ReactionRenderInput,
   onProgress?: (fraction: number) => void,
 ): Promise<ReactionRenderResult> {
   if (!(await isSilenceCutSupported())) {
@@ -150,9 +148,9 @@ export async function renderReaction(
     const captionTimes = shown.map((c) => c.at)
     const captionPhrases = captionRanges(captionWords, captionStyle)
 
-    // Its own size up to 4K and frame rate, at a bitrate to match (quality.ts).
+    // 1080p at its own frame rate, at a bitrate to match (quality.ts).
     const fps = await frameRateOf(reactionClip.video)
-    const { width, height } = await makeSize((maxShort) => outputSize(reactionClip.width, reactionClip.height, maxShort), fps, hd)
+    const { width, height } = makeSize((maxShort) => outputSize(reactionClip.width, reactionClip.height, maxShort))
     const canvas = new OffscreenCanvas(width, height)
     const ctx = canvas.getContext('2d')
     if (!ctx) throw new SilenceCutError("This browser couldn't prepare a canvas to draw the headline on.")

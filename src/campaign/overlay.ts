@@ -339,9 +339,8 @@ export function drawPoppedLogo(
 }
 
 /** The size a video comes out at: its own size, brought down to fit
- *  `maxShort` on its shorter side - 2160 (4K) by default, 1080 when the
- *  phone can't make 4K (quality.ts) - and even sides, which H.264 needs. A
- *  4K take stays 4K. */
+ *  `maxShort` on its shorter side - 2160 by default; posted videos are made
+ *  at 1080 (quality.ts) - and even sides, which H.264 needs. */
 export function outputSize(width: number, height: number, maxShort = 2160): { width: number; height: number } {
   const scale = Math.min(1, maxShort / Math.min(width, height), (maxShort * 16) / 9 / Math.max(width, height))
   const even = (n: number) => Math.max(2, Math.round((n * scale) / 2) * 2)
