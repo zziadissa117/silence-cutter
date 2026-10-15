@@ -56,6 +56,7 @@ import {
   type SilenceSettings,
 } from './silenceMath'
 import { transcribeOnDevice } from './transcribe'
+import { onEncodedPacketMatchingColour } from '../campaign/colourCheck'
 
 export { SilenceCutError }
 
@@ -440,7 +441,7 @@ async function renderCut(
             if (hdrCodec) config.codec = hdrCodec
           },
         })
-      : new VideoSampleSource({ codec: 'avc', quality: QUALITY_HIGH })
+      : new VideoSampleSource({ codec: 'avc', quality: QUALITY_HIGH, onEncodedPacket: onEncodedPacketMatchingColour })
     const audioSource = new AudioSampleSource({
       codec: 'aac',
       quality: QUALITY_MEDIUM,

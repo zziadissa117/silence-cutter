@@ -32,6 +32,7 @@ import { drawHeadline, layoutHeadline, outputSize } from './overlay'
 import { frameRateOf, makeSize, videoQuality } from './quality'
 import { cover } from './reaction'
 import { prepareSound } from './sounds'
+import { onEncodedPacketMatchingColour } from './colourCheck'
 
 const RATE = 48000
 const CHANNELS = 2
@@ -142,7 +143,7 @@ export async function renderMontage(
         ? layoutFormula(ctx, width, height, { left: logos.left, right: logos.right }, formula.line, look.headline)
         : null
 
-    const videoSource = new VideoSampleSource({ codec: 'avc', quality: videoQuality(width, height, fps) })
+    const videoSource = new VideoSampleSource({ codec: 'avc', quality: videoQuality(width, height, fps), onEncodedPacket: onEncodedPacketMatchingColour })
     const audioSource = new AudioSampleSource({ codec: 'aac', quality: QUALITY_MEDIUM })
     output.addVideoTrack(videoSource)
     output.addAudioTrack(audioSource)

@@ -39,6 +39,7 @@ import { frameRateOf, makeSize, videoQuality } from './quality'
 import { cover, layOut, productMoment, type Segment } from './reaction'
 import { dbToGain, mixInto, prepareSound, type PlacedSound } from './sounds'
 import { Voice, measureLoudness, type WalkAudio } from './voice'
+import { onEncodedPacketMatchingColour } from './colourCheck'
 
 /** Every reaction video is written at one rate, whatever its clips were
  *  filmed at: what every AAC encoder takes. */
@@ -163,7 +164,7 @@ export async function renderReaction(
     const motion = planMotion(look.effects, [switchAt, Math.max(0.1, total - switchAt)], seed || 'reaction')
     const reactionPlace = { x: 0, y: 0, width, height }
 
-    const videoSource = new VideoSampleSource({ codec: 'avc', quality: videoQuality(width, height, fps) })
+    const videoSource = new VideoSampleSource({ codec: 'avc', quality: videoQuality(width, height, fps), onEncodedPacket: onEncodedPacketMatchingColour })
     const audioSource = new AudioSampleSource({ codec: 'aac', quality: QUALITY_MEDIUM })
     output.addVideoTrack(videoSource)
     output.addAudioTrack(audioSource)

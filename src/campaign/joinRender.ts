@@ -29,6 +29,7 @@ import { openClip, writeWhole, type Clip } from './clipParts'
 import { outputSize } from './overlay'
 import { frameRateOf, makeSize } from './quality'
 import { cover } from './reaction'
+import { onEncodedPacketMatchingColour } from './colourCheck'
 
 const MAX_RECOVERIES = 4
 const SAFE_RATE = 48000
@@ -75,7 +76,7 @@ export async function joinRecordings(files: Blob[], onProgress?: (fraction: numb
     // configuration ... is not supported", and the join failed), and then the
     // quality every other video is made at does.
     const quality = (await canEncodeVideo('avc', { width, height, quality: QUALITY_VERY_HIGH })) ? QUALITY_VERY_HIGH : QUALITY_HIGH
-    const videoSource = new VideoSampleSource({ codec: 'avc', quality })
+    const videoSource = new VideoSampleSource({ codec: 'avc', quality, onEncodedPacket: onEncodedPacketMatchingColour })
     const audioSource = new AudioSampleSource({ codec: 'aac', quality: QUALITY_HIGH })
     output.addVideoTrack(videoSource)
     output.addAudioTrack(audioSource)

@@ -3,6 +3,19 @@
 Newest first. Every change says what it does, how to use it, and how it works
 underneath. Kept up to date with each commit.
 
+## Colour: the file says what the video really is, so no app adds contrast
+**What:** made videos should no longer look like a harsh-contrast filter went over them once posted. The first
+colour report showed why: his take was ordinary limited-range BT.709 (what every phone records), but Safari's
+encoder labels what it writes as sRGB, *full* range - and that label went into the MP4. Apps that trust the label
+and apps that trust the video stream then show different black and white levels. Now the label is set from what the
+H.264 stream itself says, so every player - TikTok, Instagram, Postiz, Photos - reads the same levels. Applies to
+talking, reaction, batch and joined videos and the plain cutter. The colour report now also says what the stream
+says and what was finally tagged.
+**How:** `avcColour.ts` reads the SPS's video signal type (range, primaries, curve, matrix) from the encoder's avcC,
+or from the first packet; `matchStreamColour` (colourCheck.ts) writes it onto the encoder metadata in
+`onEncodedPacket`, the same object mediabunny then muxes into the `colr` box. A stream that says nothing gets
+H.264's own default, limited BT.709. Checked against real x264 streams in both ranges.
+
 ## Colour check: each made video reports what happened to its colour
 **What:** nothing he sees changes. Each talking video now sends one "check" report saying how the camera recorded
 it (HDR or not, and its colour tags), what the decoder handed over, and how the encoder wrote it. Asked for because
