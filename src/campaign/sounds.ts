@@ -6,6 +6,8 @@
 // files are decoded by the browser at the video's own sample rate, so nothing
 // has to be resampled while the video is being written.
 
+import { ALL_FORMATS, AudioSampleSink, BlobSource, Input } from 'mediabunny'
+
 import type { BuiltInSound, SoundSource } from './look'
 
 /** A sound ready to mix: one array per channel, at the video's sample rate. */
@@ -134,4 +136,76 @@ export function mixInto(planes: Float32Array[], firstFrame: number, sounds: read
     }
   }
   return touched
+}
+
+/** The first `seconds` of a song, as decoded planes at its own rate, or
+ *  null when this phone can't read it this way. */
+async function decodeStart(audio: Blob, seconds: number): Promise<{ planes: Float32Array[]; rate: number } | null> {
+  const input = new Input({ source: new BlobSource(audio), formats: ALL_FORMATS })
+  try {
+    const track = await input.getPrimaryAudioTrack()
+    if (!track || !(await track.canDecode())) return null
+    const [rate, count] = await Promise.all([track.getSampleRate(), track.getNumberOfChannels()])
+    const wanted = Math.ceil(seconds * rate)
+    const planes = Array.from({ length: count }, () => new Float32Array(wanted))
+    let at = 0
+    for await (const sample of new AudioSampleSink(track).samples(0, seconds)) {
+      try {
+        const frames = Math.min(sample.numberOfFrames, wanted - at)
+        for (let c = 0; c < count && frames > 0; c++) {
+          sample.copyTo(planes[c].subarray(at, at + frames), { planeIndex: Math.min(c, sample.numberOfChannels - 1), format: 'f32-planar', frameCount: frames })
+        }
+        at += Math.max(0, frames)
+      } finally {
+        sample.close()
+      }
+      if (at >= wanted) break
+    }
+    if (at === 0) return null
+    return { planes: planes.map((p) => p.subarray(0, at)), rate }
+  } finally {
+    input.dispose()
+  }
+}
+
+/** Planes at `from` Hz brought to `to` Hz by the browser's own resampler. */
+async function resample(planes: Float32Array[], from: number, to: number): Promise<Float32Array[]> {
+  if (from === to) return planes
+  const length = Math.max(1, Math.round((planes[0].length * to) / from))
+  const context = new OfflineAudioContext(planes.length, length, to)
+  const buffer = context.createBuffer(planes.length, planes[0].length, from)
+  planes.forEach((plane, c) => buffer.copyToChannel(plane as Float32Array<ArrayBuffer>, c))
+  const source = context.createBufferSource()
+  source.buffer = buffer
+  source.connect(context.destination)
+  source.start()
+  const rendered = await context.startRendering()
+  return Array.from({ length: rendered.numberOfChannels }, (_, c) => rendered.getChannelData(c))
+}
+
+/** A song to go under a video `seconds` long: only as much of it as the
+ *  video uses (and a second more), at `sampleRate`.
+ *
+ *  Each video used to decode its whole song into memory - a three-minute
+ *  track is about 70 MB as samples, copied again on the way - and in a long
+ *  batch, with 4K frames in memory too, some songs then failed to decode and
+ *  their videos went out silent. Now only the part that is heard is decoded.
+ *  A song this phone can't read that way is decoded whole, as before. */
+export async function prepareMusic(audio: Blob, name: string, seconds: number, sampleRate: number): Promise<PreparedSound> {
+  const needed = Math.ceil(seconds * sampleRate) + sampleRate
+  try {
+    const start = await decodeStart(audio, seconds + 1)
+    if (start) return { channels: await resample(start.planes, start.rate, sampleRate) }
+  } catch {
+    // Decoded whole below.
+  }
+  const whole = await prepareSound({ kind: 'file', name, audio }, sampleRate)
+  return { channels: whole.channels.map((c) => (c.length > needed ? c.slice(0, needed) : c)) }
+}
+
+/** What went wrong with a song, for a report: the reason, and the file's
+ *  type and size - never the song. */
+export function musicProblem(error: unknown, audio: Blob): string {
+  const reason = error instanceof Error ? error.message : String(error)
+  return `${reason} (${audio.type || 'no type'}, ${(audio.size / 1e6).toFixed(1)} MB)`
 }

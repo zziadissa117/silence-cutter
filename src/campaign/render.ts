@@ -60,7 +60,7 @@ import { ColourCheck } from './colourCheck'
 import { headlineFontReady } from './headlineFont'
 import { framedSize, landscapeMode, makeBlurBackdrop, planFrame } from './framing916'
 import { drawHeadline, drawLogo, drawPoppedLogo, layoutHeadline, layoutLogo } from './overlay'
-import { dbToGain, mixInto, prepareSound, type PlacedSound, type PreparedSound } from './sounds'
+import { dbToGain, mixInto, musicProblem, prepareMusic, prepareSound, type PlacedSound, type PreparedSound } from './sounds'
 import { MomentPlacer, inWindow } from './timeline'
 import { MusicBed, musicGain, trackLoudness, type MusicLevel } from './music'
 import { cover } from './reaction'
@@ -339,15 +339,14 @@ export async function renderCampaignCut(
     let bed: MusicBed | null = null
     if (music) {
       try {
-        const track = await prepareSound({ kind: 'file', name: 'music', audio: music.audio }, sampleRate)
-        const needed = Math.ceil(allSec * sampleRate) + sampleRate
-        // Only as much of a long track as the video uses stays in memory.
-        const channelsNeeded = track.channels.map((c) => (c.length > needed ? c.slice(0, needed) : c))
+        // Only as much of the track as the video uses is decoded (sounds.ts).
+        const channelsNeeded = (await prepareMusic(music.audio, 'music', allSec, sampleRate)).channels
         const voiceLufs = voice?.lufs ?? (await measureLoudness(sampleRate, channels, walkKeptAudio))
         const gain = musicGain(trackLoudness(channelsNeeded, sampleRate), voiceLufs, music.level)
         if (gain > 0) bed = new MusicBed(channelsNeeded, sampleRate, Math.round(allSec * sampleRate), gain, voiceLufs)
       } catch (error) {
         console.warn('The music could not be added, so the video is made without it:', error)
+        reportProblem({ kind: 'fallback', phase: 'music', message: musicProblem(error, music.audio) })
         bed = null
       }
     }

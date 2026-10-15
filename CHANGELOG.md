@@ -3,6 +3,19 @@
 Newest first. Every change says what it does, how to use it, and how it works
 underneath. Kept up to date with each commit.
 
+## Music: every song in a big batch gets heard
+**What:** in a long batch (90, then 120 videos) only a couple of songs were coming through. The batch picks songs
+evenly - checked with the real picker over 90 and a stacked 120 - so the songs were being lost when each video was
+made: every video decoded its *whole* song into memory (a three-minute track is about 70 MB as samples, copied
+again on the way), and with 4K frames in memory too the phone could not always manage it. A song that failed went
+out silent ("Made without the music"); on a talking video, with no word at all. Now only the part of the song the
+video uses is decoded - about 20 seconds instead of three minutes - and any song that still fails is reported, with
+its type and size, so it can be seen and fixed.
+**How:** `prepareMusic` (sounds.ts) reads just the song's first seconds with mediabunny and has the browser
+resample them; a song the phone can't read that way is decoded whole, as before. Used by talking, reaction, batch
+and add-music videos. Checked in Chromium with a three-minute MP3 and WAV: 21 s decoded, 440 Hz kept through the
+44.1 to 48 kHz resample.
+
 ## Colour: the file says what the video really is, so no app adds contrast
 **What:** made videos should no longer look like a harsh-contrast filter went over them once posted. The first
 colour report showed why: his take was ordinary limited-range BT.709 (what every phone records), but Safari's

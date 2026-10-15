@@ -37,7 +37,8 @@ import { MusicBed, musicGain, trackLoudness, type MusicLevel } from './music'
 import { drawHeadline, layoutHeadline, outputSize } from './overlay'
 import { frameRateOf, makeSize, videoQuality } from './quality'
 import { cover, layOut, productMoment, type Segment } from './reaction'
-import { dbToGain, mixInto, prepareSound, type PlacedSound } from './sounds'
+import { dbToGain, mixInto, musicProblem, prepareMusic, prepareSound, type PlacedSound } from './sounds'
+import { report as reportProblem } from '../report'
 import { Voice, measureLoudness, type WalkAudio } from './voice'
 import { onEncodedPacketMatchingColour } from './colourCheck'
 
@@ -125,14 +126,13 @@ export async function renderReaction(
     let bed: MusicBed | null = null
     if (music) {
       try {
-        const track = await prepareSound({ kind: 'file', name: 'music', audio: music.audio }, RATE)
-        const needed = Math.ceil(total * RATE) + RATE
-        const channels = track.channels.map((c) => (c.length > needed ? c.slice(0, needed) : c))
+        const { channels } = await prepareMusic(music.audio, 'music', total, RATE)
         const voiceLufs = voice?.lufs ?? (await measureLoudness(RATE, CHANNELS, walk))
         const gain = musicGain(trackLoudness(channels, RATE), Number.isFinite(voiceLufs) ? voiceLufs : -20, music.level)
         if (gain > 0) bed = new MusicBed(channels, RATE, Math.round(total * RATE), gain, Number.isFinite(voiceLufs) ? voiceLufs : -20)
       } catch (error) {
         console.warn('The music could not be added, so the video is made without it:', error)
+        reportProblem({ kind: 'fallback', phase: 'music', message: musicProblem(error, music.audio) })
       }
     }
     const placed: PlacedSound[] = []

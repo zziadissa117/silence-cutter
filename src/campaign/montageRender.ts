@@ -31,7 +31,8 @@ import { MusicBed, trackLoudness } from './music'
 import { drawHeadline, layoutHeadline, outputSize } from './overlay'
 import { frameRateOf, makeSize, videoQuality } from './quality'
 import { cover } from './reaction'
-import { prepareSound } from './sounds'
+import { musicProblem, prepareMusic } from './sounds'
+import { report as reportProblem } from '../report'
 import { onEncodedPacketMatchingColour } from './colourCheck'
 
 const RATE = 48000
@@ -108,9 +109,8 @@ export async function renderMontage(
     let musicFailed: string | undefined
     if (music) {
       try {
-        const track = await prepareSound({ kind: 'file', name: music.name, audio: music.audio }, RATE)
-        const needed = Math.ceil(total * RATE) + RATE
-        const channels = track.channels.map((c) => (c.length > needed ? c.slice(0, needed) : c))
+        // Only as much of the song as the video uses is decoded (sounds.ts).
+        const { channels } = await prepareMusic(music.audio, music.name, total, RATE)
         const gain = soloMusicGain(trackLoudness(channels, RATE))
         // Nothing else is heard, so nothing ever dips it.
         if (gain > 0) bed = new MusicBed(channels, RATE, Math.round(total * RATE), gain, Infinity)
@@ -118,6 +118,7 @@ export async function renderMontage(
       } catch (error) {
         musicFailed = error instanceof Error ? error.message : String(error)
       }
+      if (musicFailed) reportProblem({ kind: 'fallback', phase: 'music', message: musicProblem(new Error(musicFailed), music.audio) })
     }
 
     // Its own size up to 4K and frame rate, at a bitrate to match (quality.ts).

@@ -27,7 +27,7 @@ import { SilenceCutError } from '../media/errors'
 import { createOutputSink } from '../media/outputSink'
 import { eachSound, openClip, wholeOf } from './clipParts'
 import { MusicBed, musicGain, trackLoudness, type MusicLevel } from './music'
-import { mixInto, prepareSound } from './sounds'
+import { mixInto, prepareMusic } from './sounds'
 import { Voice, measureLoudness, type WalkAudio } from './voice'
 
 const RATE = 48000
@@ -57,9 +57,7 @@ export async function addMusicTo(
     const total = clip.duration - clip.first
     const walk: WalkAudio = async (visit) => eachSound(clip, [range], RATE, CHANNELS, visit)
 
-    const track = await prepareSound({ kind: 'file', name: 'music', audio: music.audio }, RATE)
-    const needed = Math.ceil(total * RATE) + RATE
-    const channels = track.channels.map((c) => (c.length > needed ? c.slice(0, needed) : c))
+    const { channels } = await prepareMusic(music.audio, 'music', total, RATE)
     const measured = await measureLoudness(RATE, CHANNELS, walk)
     const voiceLufs = Number.isFinite(measured) ? measured : -20
     const gain = musicGain(trackLoudness(channels, RATE), voiceLufs, music.level)
