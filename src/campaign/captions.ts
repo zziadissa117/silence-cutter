@@ -356,8 +356,8 @@ export function popScale(since: number): number {
 }
 
 /** One word, big and centred below his face, clear of TikTok's buttons and
- *  caption. */
-const CAPTION_Y = 0.63
+ *  caption. Was 0.63; he found that a little high (2026-10-16). */
+const CAPTION_Y = 0.66
 
 /** Where the caption sits, so it can be moved off his face: up near the top,
  *  across the middle, where it has always been ("usual"), or low. The

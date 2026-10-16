@@ -3,6 +3,13 @@
 Newest first. Every change says what it does, how to use it, and how it works
 underneath. Kept up to date with each commit.
 
+## Captions: "Usual" sits a little lower
+**What:** the Usual caption place is a little lower - its middle is now 66% of the way down the video instead of 63%
+(about 58 pixels lower on a 1080x1920 video), still well above Bottom (80%) and TikTok's own caption. Every video
+made from now on, and the caption preview, use it; videos already made don't change. Top, Middle and Bottom are as
+they were. Only ./deploy.sh is needed.
+**How:** `captions.ts` `CAPTION_Y` 0.63 -> 0.66 (+ test).
+
 ## End a campaign: its accounts come out of Postiz
 **What:** a campaign's page (Campaigns, open it) has a new button under Stop all posts: **End campaign - free its
 Postiz accounts**. For when a campaign is over, so its accounts stop counting toward your 30 in Postiz.
