@@ -3,6 +3,28 @@
 Newest first. Every change says what it does, how to use it, and how it works
 underneath. Kept up to date with each commit.
 
+## Batch 3: phone storage freed, the picker waits longer, fewer false crash reports
+**What:**
+- **Storage:** every sent video used to keep a copy on the phone until its post went out - a 120-video batch posting
+  a few a day kept all 120 for weeks (one phone had 106 GB of Cutter storage the day a video stalled). Now the
+  phone's copy goes as soon as Postiz has the video (scheduled). Watch, Save video and Add music then play Postiz's
+  copy. Videos still waiting for you keep theirs, so they play at once with no signal. A full phone is what stops the
+  iPhone handing picked videos over and gets the page restarted mid-video, so this should help both. Copies already
+  there go the next time Posts is opened.
+- **The picker:** most "nothing arrived" picks were slow, not lost - the video was made a minute or a few later. At
+  15 s it now says "Your iPhone is still preparing the video" (and how to skip the wait: Format → Current) and only
+  says it didn't come after 2 minutes. A late video is reported with how late it was.
+- **Reports:** "EmptyRanges" and "Script error." (46 in three weeks) are Safari's own - in none of the app's code or
+  libraries - and are no longer reported as app crashes. Once a day the phone sends a storage report (what is kept,
+  counts and sizes only) so what is left can be found.
+- **Stalls:** most came from 4K videos on builds before 2026-10-15 18:58; videos are 1080p since, and the stall
+  watchdog already retries a stuck video. None since - watching the reports.
+Only ./deploy.sh is needed.
+**How:** `outbox.ts` (`copyDone`, used by `tidySends`; `sendsHeld`), `store.ts` (`storedCounts`),
+`storageReport.ts` (kind `check`, phase `storage`, once a day, a minute after opening), `pickWatch.ts`
+(`ARRIVE_MS` notice, `GIVE_UP_MS` 120 s, late pick reported as `check`/`pick`), `report.ts` (`safarisOwn`).
+Tests: `copyDone.test.ts`, `pickWatch.test.ts`, `report.test.ts`.
+
 ## Batch 2: captions keep their first word
 **What:** the first word of the captions (and sometimes the last) no longer goes missing, so it doesn't have to be
 typed back in. Three causes, all fixed:

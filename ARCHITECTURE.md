@@ -241,7 +241,10 @@ public/push-sw.js              service-worker push handler
   anything else there (the caption look, the headline, the picture picker) left no room on a phone.
 - A change to a render function must keep preview and real frames on the same code.
 - A finished video is copied to private storage the moment it is made; do not
-  rely on the list for it.
+  rely on the list for it. That copy is let go once Postiz has the video (`outbox.copyDone`: scheduled/error with
+  a media URL, posted, rejected); Watch/Save/Add music then use Postiz's copy (`post.videoUrl`).
+- Once a day the campaign page reports what it stores (`storageReport.ts`, `check`/`storage`). Safari's own
+  errors ("EmptyRanges", "Script error.") are not reported as crashes (`report.safarisOwn`).
 - `render.ts` is a *sibling* of `media/silenceCut.ts`; the plain cutter must
   keep working exactly as it did. Shared by both: `media/recovery.ts` (decoder
   gave up -> fresh decoder from the last frame written, up to 4 times; waits for

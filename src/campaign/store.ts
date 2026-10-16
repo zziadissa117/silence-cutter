@@ -715,6 +715,28 @@ async function freeSpace(): Promise<number | null> {
   }
 }
 
+/** What this app keeps on the phone, table by table - counted, and sized
+ *  where that costs nothing (no file is read). For the daily storage report. */
+export async function storedCounts(): Promise<Record<string, number>> {
+  const counts: Record<string, number> = {}
+  try {
+    let videosMb = 0
+    await db.videos.each((v) => {
+      videosMb += (v.blob?.size ?? 0) / 1e6
+    })
+    counts.recordings = await db.videos.count()
+    counts.recordingsMB = Math.round(videosMb)
+    counts.jobs = await db.jobs.count()
+    counts.bankFiles = await db.files.count()
+    counts.clips = await db.clips.count()
+    counts.clipsMB = Math.round((await db.clips.toArray()).reduce((sum, c) => sum + (c.size ?? 0), 0) / 1e6)
+    counts.sendCopiesInDb = await db.sendVideos.count()
+  } catch {
+    // Partly counted is still worth sending.
+  }
+  return counts
+}
+
 export async function spaceOnDevice(): Promise<{ free: number | null }> {
   return { free: await freeSpace() }
 }

@@ -21,6 +21,7 @@ import { ModeNav } from '../ModeNav'
 import { lostPick, pickArrived, pickSaved, whenPickGoesWrong } from '../pickWatch'
 import { report } from '../report'
 import { typedBack } from './captionFixes'
+import { reportStorage } from './storageReport'
 import { UpdateBanner } from '../UpdateBanner'
 import { VideoPicker } from '../VideoPicker'
 import { BankView } from './BankView'
@@ -600,8 +601,13 @@ export function CampaignApp() {
   }, [])
   useEffect(() => {
     void refreshEditable()
+    // A minute in, out of the way of whatever opening the page started.
+    const storage = window.setTimeout(() => void reportStorage().catch(() => {}), 60_000)
     const timer = window.setInterval(() => void refreshEditable(), 5 * 60 * 1000)
-    return () => window.clearInterval(timer)
+    return () => {
+      window.clearTimeout(storage)
+      window.clearInterval(timer)
+    }
   }, [refreshEditable])
   const [phoneProblem, setPhoneProblem] = useState<string | null>(null)
   const [dragging, setDragging] = useState(false)

@@ -243,8 +243,19 @@ async function sent(entry: SendEntry, postId: string): Promise<void> {
   emit()
 }
 
-/** Lets go of copies whose post has gone out or been rejected, and of any
- *  sent long ago with no post to show for it. */
+/** Whether the phone's copy of a sent video can go: its post went out or was
+ *  rejected - or Postiz has the video, so watching, saving and adding music
+ *  play Postiz's copy. Kept while he still decides (waiting, approved): it
+ *  plays at once, with no signal. Every copy used to stay until its post
+ *  went out, so a batch of 120 posting a few a day kept them all on the phone
+ *  for weeks - over 100 GB on one phone. */
+export function copyDone(post: Pick<ServerPost, 'status' | 'videoUrl'>): boolean {
+  if (post.status === 'posted' || post.status === 'rejected') return true
+  return (post.status === 'scheduled' || post.status === 'error') && Boolean(post.videoUrl)
+}
+
+/** Lets go of copies no longer needed (copyDone), and of any sent long ago
+ *  with no post to show for it. */
 export async function tidySends(posts: ServerPost[]): Promise<void> {
   await load()
   const byKey = new Map(posts.map((p) => [p.key, p]))
@@ -252,8 +263,18 @@ export async function tidySends(posts: ServerPost[]): Promise<void> {
   for (const entry of entries) {
     if (entry.state !== 'sent') continue
     const post = byKey.get(entry.key)
-    const over = post ? post.status === 'posted' || post.status === 'rejected' : entry.addedAt < old
+    const over = post ? copyDone(post) : entry.addedAt < old
     if (over) await forgetSend(entry.key)
+  }
+}
+
+/** What the send queue holds on the phone, for the storage report. */
+export async function sendsHeld(): Promise<{ sending: number; sent: number; mb: number }> {
+  await load()
+  return {
+    sending: entries.filter((e) => e.state === 'sending').length,
+    sent: entries.filter((e) => e.state === 'sent').length,
+    mb: Math.round(entries.reduce((sum, e) => sum + (e.size ?? 0), 0) / 1e6),
   }
 }
 

@@ -34,10 +34,17 @@ let busySince: number | null = null
 let stage: Stage | null = null
 const waiting = new Set<() => void>()
 
-/** How long after the picker closes a video has to arrive before the page
- *  says it did not. Generous: the iPhone can still be preparing it. */
+/** How long after the picker closes the page says the iPhone is still
+ *  preparing the video. */
 const ARRIVE_MS = 15_000
+/** How long before it says the video never came. The reports showed most
+ *  "nothing arrived" picks were slow, not lost - the video was made a minute
+ *  or a few later - so 15 s told him it failed while it was on its way. */
+const GIVE_UP_MS = 120_000
 let arriveTimer = 0
+let giveUpTimer = 0
+/** When the picker closed, for how late a video came. */
+let closedAt: number | null = null
 let onTrouble: (message: string | null) => void = () => {}
 
 /** Where the page shows what went wrong with a pick. */
@@ -48,6 +55,9 @@ export function whenPickGoesWrong(listener: (message: string | null) => void): v
 // The picker converts each video before handing it over unless it is set to
 // Current (see pickFormat.ts), and a conversion needs free space - so a pick
 // that comes to nothing is most often that.
+const STILL_PREPARING =
+  "Your iPhone is still preparing the video - it converts it first. It will show up here. To skip the wait next time: in the picker tap ⋯ → Options → Format → Current."
+
 const NOTHING_ARRIVED =
   "Your iPhone closed the picker but didn't hand the video over. It converts videos first, and that needs free space. In the picker tap ⋯ → Options → Format → Current to skip it, or free some space, then add it again."
 
@@ -67,7 +77,9 @@ function write(note: Note | null): void {
 function settle(): void {
   busySince = null
   stage = null
+  closedAt = null
   window.clearTimeout(arriveTimer)
+  window.clearTimeout(giveUpTimer)
   write(null)
   for (const done of waiting) done()
   waiting.clear()
@@ -81,12 +93,18 @@ function pickerClosed(): void {
   if (document.visibilityState !== 'visible' || stage !== 'choosing' || busySince === null) return
   if (Date.now() - busySince < 800) return
   const started = busySince
+  closedAt ??= Date.now()
   window.clearTimeout(arriveTimer)
+  window.clearTimeout(giveUpTimer)
   arriveTimer = window.setTimeout(() => {
     if (stage !== 'choosing' || busySince !== started) return
-    onTrouble(NOTHING_ARRIVED)
-    report({ page, kind: 'empty-pick', message: `The picker closed and no video arrived within ${ARRIVE_MS / 1000} s` })
+    onTrouble(STILL_PREPARING)
   }, ARRIVE_MS)
+  giveUpTimer = window.setTimeout(() => {
+    if (stage !== 'choosing' || busySince !== started) return
+    onTrouble(NOTHING_ARRIVED)
+    report({ page, kind: 'empty-pick', message: `The picker closed and no video arrived within ${GIVE_UP_MS / 1000} s` })
+  }, GIVE_UP_MS)
 }
 
 // "cancel" does not bubble, so React never sees it on an input; a capturing
@@ -126,7 +144,9 @@ export function lostPick(pageName: 'cut' | 'campaign'): string | null {
 export function pickStarted(): void {
   busySince = Date.now()
   stage = 'choosing'
+  closedAt = null
   window.clearTimeout(arriveTimer)
+  window.clearTimeout(giveUpTimer)
   write({ stage: 'choosing', at: busySince })
 }
 
@@ -134,9 +154,15 @@ export function pickStarted(): void {
  *  over nothing - otherwise the pick stays open until `pickSaved`. */
 export function pickArrived(files: File[]): string | null {
   if (files.length > 0) {
+    const late = closedAt !== null ? Date.now() - closedAt : 0
+    if (late > ARRIVE_MS) {
+      report({ page, kind: 'check', phase: 'pick', message: `${files.length} video(s) arrived ${Math.round(late / 1000)} s after the picker closed` })
+    }
     busySince = Date.now()
     stage = 'arrived'
+    closedAt = null
     window.clearTimeout(arriveTimer)
+    window.clearTimeout(giveUpTimer)
     // It came after all - late, but here.
     onTrouble(null)
     write({ stage: 'arrived', at: busySince })

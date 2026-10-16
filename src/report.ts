@@ -148,8 +148,17 @@ function reportUncaught(message: string): void {
   report({ kind: 'crash', phase: 'uncaught', message })
 }
 
+/** Errors that are Safari's own, not the app's: "EmptyRanges" is in none of
+ *  the app's code or its libraries and comes with no file at all, and
+ *  "Script error." is all a browser says about code from another site. 46
+ *  such "crashes" in three weeks, each looking like the app's. */
+export function safarisOwn(message: string, filename: string | undefined): boolean {
+  return !filename && (/Can't find variable: EmptyRanges/.test(message) || /^Script error\.?$/.test(message.trim()))
+}
+
 if (typeof window !== 'undefined') {
   window.addEventListener('error', (event) => {
+    if (safarisOwn(event.message ?? '', event.filename)) return
     reportUncaught(`${event.message} (${event.filename?.split('/').pop() ?? '?'}:${event.lineno ?? '?'})`)
   })
   window.addEventListener('unhandledrejection', (event) => {
