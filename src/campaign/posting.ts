@@ -51,7 +51,14 @@ export interface Limits {
 export interface Profile {
   id: string
   accounts: PostizAccount[]
-  settings: { campaigns?: Record<string, CampaignPlace>; limits?: Limits }
+  settings: {
+    campaigns?: Record<string, CampaignPlace>
+    limits?: Limits
+    /** Campaigns being ended: accounts still to come out of Postiz. */
+    ending?: Record<string, { accounts: string[]; at: string }>
+    /** What ending each campaign did. */
+    ended?: Record<string, EndedResult>
+  }
   timezone: string
   hasAnthropic: boolean
   vapidPublic: string | null
@@ -415,6 +422,41 @@ export async function postAction(
  *  few minutes (`unposting` of them). Other campaigns' posts are not touched. */
 export async function stopCampaignPosts(campaignId: string): Promise<{ stopped: number; unposting: number }> {
   return call<{ stopped: number; unposting: number }>('stop-campaign', { profile: profileId(), campaignId })
+}
+
+export interface EndedAccount {
+  name: string
+  platform: string
+  profile: string
+}
+
+export interface EndedResult {
+  at: string
+  removed: EndedAccount[]
+  kept: (EndedAccount & { why: string })[]
+  failed: (EndedAccount & { error: string })[]
+}
+
+/** What ending a campaign would do - nothing is changed by asking. */
+export interface EndPreview {
+  plan: { remove: (EndedAccount & { id: string })[]; keep: (EndedAccount & { id: string; why: string })[]; gone: number }
+  /** Its posts not out yet, all stopped. */
+  stopping: number
+  /** Accounts connected in Postiz now (what the plan's limit counts). */
+  connected: number
+}
+
+/** `names`: every campaign's name by id, for the reasons it gives. */
+export async function previewEndCampaign(campaignId: string, names: Record<string, string>): Promise<EndPreview> {
+  return call<EndPreview>('end-campaign', { profile: profileId(), campaignId, names })
+}
+
+/** Ends a campaign: its posts stopped, and the accounts he was shown
+ *  (`confirm`) unticked at once and deleted from Postiz over the next minutes. */
+export async function endCampaign(campaignId: string, names: Record<string, string>, confirm: string[]): Promise<{ stopped: number; removing: number }> {
+  const done = await call<{ stopped: number; removing: number; profile: Profile }>('end-campaign', { profile: profileId(), campaignId, names, confirm })
+  remember(done.profile)
+  return done
 }
 
 /** What a redo does: add the campaign's missing hashtags, every word kept

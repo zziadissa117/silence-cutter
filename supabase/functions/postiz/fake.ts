@@ -133,6 +133,18 @@ export async function fakePostiz(db: Db, key: string, method: string, path: stri
     return { id: removing[1] }
   }
 
+  // Deleting a channel: like Postiz, every post group on it goes. The pretend
+  // channels are a fixed list, so the channel itself stays listed.
+  const channel = path.match(/^\/integrations\/([\w-]+)$/)
+  if (method === 'DELETE' && channel) {
+    if (!ACCOUNTS.some((a) => a.id === channel[1])) throw new FakeError(404, 'Integration not found')
+    const { data: rows } = await db.from('cutter_fake_postiz').select('id, data').eq('owner', owner).eq('kind', 'post')
+    const groups = new Set((rows ?? []).filter((r: { data: { integration: string } }) => r.data.integration === channel[1]).map((r: { data: { group: string } }) => r.data.group))
+    const inGroups = (rows ?? []).filter((r: { data: { group: string } }) => groups.has(r.data.group)).map((r: { id: string }) => r.id)
+    if (inGroups.length > 0) await db.from('cutter_fake_postiz').delete().in('id', inGroups)
+    return { id: channel[1] }
+  }
+
   throw new FakeError(404, `The pretend Postiz has no ${method} ${path}`)
 }
 

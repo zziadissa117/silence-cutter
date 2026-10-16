@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { channelReport, isPending, splitStop, type Integration, type PendingPost } from './channels'
+import { channelReport, endPlan, isPending, splitStop, type EndPost, type Integration, type PendingPost } from './channels'
 
 const NOW = Date.parse('2026-10-08T12:00:00Z')
 const at = (minutes: number) => new Date(NOW + minutes * 60_000).toISOString()
@@ -120,3 +120,54 @@ describe('splitStop', () => {
   })
 })
 
+
+describe('ending a campaign', () => {
+  const end = (over: Partial<Parameters<typeof endPlan>[0]> = {}) =>
+    endPlan({
+      campaignId: 'inflow',
+      accountIds: ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'gone'],
+      campaigns: { inflow: { accounts: ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'gone'] }, vertus: { accounts: ['b'] } },
+      otherProfiles: [{ friend: { accounts: ['c'] } }],
+      integrations: ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h'].map((id) => integration(id, { disabled: id === 'h' })),
+      posts: [
+        { ...post({ campaign_id: 'vertus', accounts: [{ id: 'd' }] }), postiz_ids: [{ postId: 'pz-vertus' }] },
+        { ...post({ campaign_id: 'inflow', post_at: at(-30), accounts: [{ id: 'e' }] }), postiz_ids: [{ postId: 'pz-out' }] },
+        { ...post({ campaign_id: 'inflow', accounts: [{ id: 'a' }, { id: 'f' }] }), postiz_ids: [{ postId: 'pz-mine' }] },
+      ] satisfies EndPost[],
+      ownPostiz: new Set(['pz-mine', 'pz-out']),
+      upcoming: [
+        { id: 'pz-mine', integration: 'a', publishDate: at(60), state: 'QUEUE' },
+        { id: 'pz-hand', integration: 'g', publishDate: at(120), state: 'QUEUE' },
+        { id: 'pz-old', integration: 'f', publishDate: at(-120), state: 'PUBLISHED' },
+      ],
+      names: new Map([['vertus', 'Vertus']]),
+      now: NOW,
+      ...over,
+    })
+
+  it('takes out only what nothing else needs, and says why the rest stay', () => {
+    const plan = end()
+    expect(plan.remove.map((a) => a.id)).toEqual(['a', 'f'])
+    expect(plan.gone).toEqual(['gone'])
+    // Only what will pass stays on the campaign.
+    expect(plan.keep.filter((k) => k.later).map((k) => k.account.id)).toEqual(['d', 'e', 'g'])
+    expect(Object.fromEntries(plan.keep.map((k) => [k.account.id, k.why]))).toEqual({
+      b: 'Vertus posts to it too',
+      c: "the other login's posting uses it too",
+      d: '1 Vertus post still due on it',
+      e: 'a post just went out on it - end it again in a few hours',
+      g: "Postiz holds 1 post on it the Cutter didn't make - delete it in Postiz, then end it again",
+      h: "already switched off in Postiz - it doesn't count toward your limit",
+    })
+  })
+
+  it('lets an account go once its last post is long out', () => {
+    const plan = end({ now: NOW + 4 * 60 * 60 * 1000 })
+    expect(plan.remove.map((a) => a.id)).toContain('e')
+  })
+
+  it("doesn't let a deleted campaign's picks hold an account", () => {
+    const plan = end({ known: new Set(['inflow']) })
+    expect(plan.remove.map((a) => a.id)).toContain('b')
+  })
+})

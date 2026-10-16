@@ -1909,6 +1909,9 @@ export function CampaignApp() {
     return `${place.accounts.length} account${place.accounts.length === 1 ? '' : 's'} · ${times} · ${approval}`
   }
 
+  /** The posting profile on this phone changed (saved by posting.ts). */
+  const postingChanged = useCallback(() => setPosting(postingHere()), [])
+
   /** Every post of one campaign not out yet, stopped - what it did, in words. */
   const stopPosts = async (owner: Campaign): Promise<string> => {
     let stopped: number
@@ -3062,6 +3065,11 @@ export function CampaignApp() {
         onStopPosts={posting ? stopPosts : undefined}
         postingLine={postingLine}
         shared={session !== null}
+        ending={
+          posting
+            ? { profile: posting.profile, names: Object.fromEntries(campaigns.map((c) => [c.id, c.name])), onChanged: postingChanged }
+            : undefined
+        }
       />
     ) : tab === 'pictures' ? (
       <>

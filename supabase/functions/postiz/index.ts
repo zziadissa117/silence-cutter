@@ -40,6 +40,10 @@
 //   stop-campaign  { profile, campaignId }   -> { stopped, unposting }  every post of one campaign not out yet, rejected at once;
 //                  the ones Postiz holds are taken out of it in the background (and on each tick)
 //   stop-posts     { profile, ids }          -> { stopped, unposting }  the same, for the posts he ticked
+//   end-campaign   { profile, campaignId, names, confirm? }  without confirm -> { plan, stopping, connected }: what
+//                  would come out of Postiz; with confirm (the account ids he saw) -> { stopped, removing, profile }:
+//                  its posts stopped, those accounts unticked, then deleted from Postiz in the background (and on
+//                  each tick) once its posts are out of Postiz - the result lands in settings.ended
 //   tick           { secret }                   (the scheduler; no token)
 //   channels       { cutterCampaignId }         (the planner's server; no token - see bridgeAllowed)
 //                  -> { profiles: [{ id, inUse, accounts }] }  which Postiz channels a campaign holds
@@ -69,7 +73,7 @@ import { cleanWindow, inDay, type PostingWindow } from './window.ts'
 import { attachMove, summarise, type AttachMove } from './attach.ts'
 import { cleanMode, pickRecaption, recaptionMode } from './recaption.ts'
 import { cleanLimits, firstDayWithRoom, heldNote, releasable, split, usedOn, type Limits, type PostAccount } from './limits.ts'
-import { PENDING_STATUSES, channelReport, splitStop, type PendingPost } from './channels.ts'
+import { PENDING_STATUSES, channelReport, endPlan, isPending, splitStop, type EndPost, type Integration, type PendingPost } from './channels.ts'
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!
 const SERVICE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
@@ -302,8 +306,35 @@ interface Profile {
   space_id: string
   accounts: Account[]
   accounts_at: string | null
-  settings: { campaigns?: Record<string, { accounts?: string[]; times?: string[]; window?: PostingWindow }>; limits?: Limits }
+  settings: {
+    campaigns?: Record<string, { accounts?: string[]; times?: string[]; window?: PostingWindow }>
+    limits?: Limits
+    /** Campaigns being ended: the accounts still to delete from Postiz. */
+    ending?: Record<string, EndingJob>
+    /** What ending each campaign did, for its page. */
+    ended?: Record<string, EndedResult>
+  }
   timezone: string
+}
+
+interface EndingJob {
+  accounts: string[]
+  names: Record<string, string>
+  at: string
+  attempts?: number
+}
+
+interface EndedAccount {
+  name: string
+  platform: string
+  profile: string
+}
+
+interface EndedResult {
+  at: string
+  removed: EndedAccount[]
+  kept: (EndedAccount & { why: string })[]
+  failed: (EndedAccount & { error: string })[]
 }
 
 interface Post {
@@ -1895,6 +1926,12 @@ async function stopPicked(profile: Profile, body: Record<string, unknown>): Prom
 }
 
 async function stopRows(profile: Profile, rows: Post[]): Promise<Response> {
+  return reply(await stopAll(profile, rows, true))
+}
+
+/** Stops these posts; with `unpostNow`, starts taking the ones Postiz holds out
+ *  of it straight away (ending a campaign does that itself, before deleting). */
+async function stopAll(profile: Profile, rows: Post[], unpostNow: boolean): Promise<{ stopped: number; unposting: number }> {
   const { reject, unpost } = splitStop(rows, Date.now())
   const at = new Date().toISOString()
   // In chunks: the ids go in the request's address, which has a length limit.
@@ -1916,12 +1953,12 @@ async function stopRows(profile: Profile, rows: Post[]): Promise<Response> {
       for (const post of unfinished) await removeParts(post).catch(() => {})
       // A batch at a time until none is left. A batch that takes nothing
       // out (Postiz refusing) stops the loop; the tick tries those again.
-      while ((await unpostStopped(profile.id)) > 0) {
+      while (unpostNow && (await unpostStopped(profile.id)) > 0) {
         /* next batch */
       }
     })(),
   )
-  return reply({ stopped: reject.length + unpost.length, unposting: unpost.length })
+  return { stopped: reject.length + unpost.length, unposting: unpost.length }
 }
 
 /** Takes up to one batch of stopped posts out of Postiz; how many it took out.
@@ -1952,6 +1989,205 @@ async function unpostStopped(profileId?: string): Promise<number> {
     }
   }
   return done
+}
+
+// --- Ending a campaign ----------------------------------------------------------
+//
+// When a campaign ends its accounts come out of Postiz, so they stop counting
+// toward the plan's channel limit (channels.ts endPlan says which may). Its
+// posts are stopped first; the accounts are deleted once Postiz holds none of
+// its posts half-taken-out, in the background and again on each tick, so a
+// big campaign never waits on the phone and a cut-off run finishes by itself.
+
+/** Campaign names from the phone, for the reasons it shows. */
+function cleanNames(value: unknown): Record<string, string> {
+  if (!value || typeof value !== 'object') return {}
+  const out: Record<string, string> = {}
+  for (const [id, name] of Object.entries(value as Record<string, unknown>).slice(0, 300)) {
+    if (typeof name === 'string' && id.length <= 200) out[id] = name.slice(0, 120)
+  }
+  return out
+}
+
+async function endInputs(profile: Profile, campaignId: string, accountIds: string[], key: string, names: Record<string, string>) {
+  const now = Date.now()
+  const [integrations, { data: pending, error }, { data: own }, { data: others }, upcoming] = await Promise.all([
+    listAccounts(key),
+    db.from('cutter_posts').select('*').eq('profile_id', profile.id).in('status', [...PENDING_STATUSES]).limit(3000),
+    db.from('cutter_posts').select('postiz_ids').eq('profile_id', profile.id).eq('campaign_id', campaignId).not('postiz_ids', 'is', null).limit(3000),
+    db.from('cutter_profiles').select('settings').eq('space_id', profile.space_id).neq('id', profile.id),
+    postsAround(key, now - 60 * MINUTE, now + 120 * 24 * 60 * MINUTE),
+  ])
+  if (error) throw new Problem('Its posts could not be read. Try again.', true, 500)
+  const posts = (pending ?? []) as Post[]
+  const plan = endPlan({
+    campaignId,
+    accountIds,
+    campaigns: profile.settings.campaigns ?? {},
+    // The phone's list of campaigns (with this one, or it isn't trusted as whole).
+    known: names[campaignId] ? new Set(Object.keys(names)) : undefined,
+    otherProfiles: ((others ?? []) as Pick<Profile, 'settings'>[]).map((p) => p.settings?.campaigns ?? {}),
+    integrations: integrations as Integration[],
+    posts: posts as unknown as EndPost[],
+    ownPostiz: new Set(((own ?? []) as Pick<Post, 'postiz_ids'>[]).flatMap((p) => (p.postiz_ids ?? []).map((ref) => ref.postId))),
+    upcoming: upcoming.map((u) => ({ id: u.id, integration: u.integration?.id ?? '', publishDate: u.publishDate ?? null, state: u.state ?? null })),
+    names: new Map(Object.entries(names)),
+    now,
+  })
+  return { plan, integrations, posts }
+}
+
+const endedAccount = (a: Pick<Account, 'name' | 'platform' | 'profile'>): EndedAccount => ({ name: a.name, platform: a.platform, profile: a.profile })
+
+/** Changes only what `change` touches, on the settings as they are now. */
+async function patchSettings(profileId: string, change: (settings: Profile['settings']) => Profile['settings']): Promise<Profile> {
+  const { data: fresh } = await db.from('cutter_profiles').select('*').eq('id', profileId).single()
+  const current = (fresh as Profile).settings ?? {}
+  const { data, error } = await db
+    .from('cutter_profiles')
+    .update({ settings: change({ ...current }), updated_at: new Date().toISOString() })
+    .eq('id', profileId)
+    .select('*')
+    .single()
+  if (error || !data) throw new Problem('It could not be saved. Try again.', true, 500)
+  return data as Profile
+}
+
+async function endCampaign(profile: Profile, body: Record<string, unknown>): Promise<Response> {
+  const campaignId = typeof body.campaignId === 'string' ? body.campaignId : ''
+  if (!campaignId || campaignId.length > 200) throw new Problem('Which campaign?')
+  const names = cleanNames(body.names)
+  const accountIds = [...new Set(profile.settings.campaigns?.[campaignId]?.accounts ?? [])]
+  const { postiz: key } = await keysFor(profile.id)
+  const { plan, integrations, posts } = await endInputs(profile, campaignId, accountIds, key, names)
+  const now = Date.now()
+  const mine = posts.filter((p) => p.campaign_id === campaignId && isPending(p, now))
+
+  if (!Array.isArray(body.confirm)) {
+    return reply({
+      plan: {
+        remove: plan.remove.map((a) => ({ id: a.id, ...endedAccount(a) })),
+        keep: plan.keep.map((k) => ({ id: k.account.id, ...endedAccount(k.account), why: k.why })),
+        gone: plan.gone.length,
+      },
+      stopping: mine.length,
+      connected: integrations.filter((i) => !i.disabled).length,
+    })
+  }
+
+  // Only what he was shown, and only what may still come out.
+  const confirmed = new Set(body.confirm.filter((id): id is string => typeof id === 'string'))
+  const removing = plan.remove.filter((a) => confirmed.has(a.id)).map((a) => a.id)
+  // With accounts to delete, finishEnding takes its posts out of Postiz first.
+  const { stopped } = await stopAll(profile, mine, removing.length === 0)
+  const leaving = new Set([...removing, ...plan.gone])
+  const saved = await patchSettings(profile.id, (settings) => {
+    const campaigns = { ...settings.campaigns }
+    const place = campaigns[campaignId]
+    // Unticked at once: nothing new of it is sent to them while they go.
+    if (place) campaigns[campaignId] = { ...place, accounts: (place.accounts ?? []).filter((id) => !leaving.has(id)) }
+    const ended = { ...settings.ended }
+    delete ended[campaignId]
+    const ending = { ...settings.ending }
+    if (removing.length > 0) ending[campaignId] = { accounts: removing, names, at: new Date().toISOString() }
+    return { ...settings, campaigns, ending, ended }
+  })
+  if (removing.length > 0) later(finishEnding(profile.id))
+  return reply({ stopped, removing: removing.length, profile: await profileView(saved) })
+}
+
+/** Deletes the accounts of every campaign this login is ending, once Postiz
+ *  holds none of its stopped posts; records what it did. */
+async function finishEnding(profileId: string): Promise<void> {
+  const { data } = await db.from('cutter_profiles').select('*').eq('id', profileId).maybeSingle()
+  if (!data) return
+  const profile = data as Profile
+  const jobs = Object.entries(profile.settings.ending ?? {})
+  if (jobs.length === 0) return
+  // Its posts Postiz holds come out first, one by one, as a stop does.
+  while ((await unpostStopped(profileId)) > 0) {
+    /* next batch */
+  }
+  const { postiz: key } = await keysFor(profileId)
+  for (const [campaignId, job] of jobs) {
+    const { count } = await db
+      .from('cutter_posts')
+      .select('id', { count: 'exact', head: true })
+      .eq('profile_id', profileId)
+      .eq('campaign_id', campaignId)
+      .eq('status', 'rejected')
+      .eq('error', STOPPING)
+    const attempts = (job.attempts ?? 0) + 1
+    // Postiz refusing to let go of a post right now: the next tick tries again
+    // (deleting the account takes it with it in the end).
+    if ((count ?? 0) > 0 && attempts < MAX_ATTEMPTS) {
+      await patchSettings(profileId, (s) => ({ ...s, ending: { ...s.ending, [campaignId]: { ...job, attempts } } }))
+      continue
+    }
+    // Asked again now: something may have been scheduled on one since.
+    const { plan } = await endInputs(profile, campaignId, job.accounts, key, job.names)
+    const removed: Account[] = []
+    const failed: { account: Account; error: unknown }[] = []
+    for (const account of plan.remove) {
+      try {
+        await postiz(key, 'DELETE', `/integrations/${encodeURIComponent(account.id)}`)
+        removed.push(account as Account)
+      } catch (error) {
+        failed.push({ account: account as Account, error })
+      }
+    }
+    // Postiz busy or out of reach: those are tried again on the next ticks.
+    const retry = failed.filter((f) => f.error instanceof Problem && f.error.later && attempts < MAX_ATTEMPTS)
+    // Its stopped posts on those accounts went with them.
+    const gone = new Set(removed.map((a) => a.id))
+    const { data: left } = await db
+      .from('cutter_posts')
+      .select('id, accounts')
+      .eq('profile_id', profileId)
+      .eq('campaign_id', campaignId)
+      .eq('status', 'rejected')
+      .not('error', 'is', null)
+      .not('postiz_ids', 'is', null)
+      .limit(500)
+    for (const row of (left ?? []) as Pick<Post, 'id' | 'accounts'>[]) {
+      if (row.accounts.length > 0 && row.accounts.every((a) => gone.has(a.id))) await update(row.id, { error: null, postiz_ids: null })
+    }
+    // What stays in Postiz goes back on the campaign, so ending it again later can take it out.
+    const back = [...plan.keep.filter((k) => k.later).map((k) => k.account.id), ...failed.filter((f) => !retry.includes(f)).map((f) => f.account.id)]
+    await patchSettings(profileId, (s) => {
+      const campaigns = { ...s.campaigns }
+      const place = campaigns[campaignId]
+      if (back.length > 0) {
+        campaigns[campaignId] = { ...place, times: place?.times ?? [], accounts: [...new Set([...(place?.accounts ?? []), ...back])] }
+      }
+      const ending = { ...s.ending }
+      if (retry.length > 0) ending[campaignId] = { ...job, accounts: retry.map((f) => f.account.id), attempts }
+      else delete ending[campaignId]
+      // A retry adds to what this ending already took out.
+      const before = s.ended?.[campaignId]
+      const carried = before && before.at >= job.at ? before.removed : []
+      const result: EndedResult = {
+        at: new Date().toISOString(),
+        removed: [...carried, ...removed.map(endedAccount)],
+        kept: plan.keep.map((k) => ({ ...endedAccount(k.account), why: k.why })),
+        failed: failed
+          .filter((f) => !retry.includes(f))
+          .map((f) => ({ ...endedAccount(f.account), error: f.error instanceof Error ? f.error.message : String(f.error) })),
+      }
+      const limits = s.limits ? { ...s.limits, accounts: Object.fromEntries(Object.entries(s.limits.accounts ?? {}).filter(([id]) => !gone.has(id))) } : s.limits
+      const next: Profile['settings'] = { ...s, campaigns, limits, ended: { ...s.ended, [campaignId]: result } }
+      if (Object.keys(ending).length > 0) next.ending = ending
+      else delete next.ending
+      return next
+    })
+  }
+  await refreshAccounts(profile).catch(() => {})
+}
+
+/** The tick's share: every login still ending a campaign. */
+async function finishEndings(): Promise<void> {
+  const { data } = await db.from('cutter_profiles').select('id').not('settings->ending', 'is', null).limit(10)
+  for (const row of data ?? []) await finishEnding(row.id).catch((error) => console.error('ending a campaign failed', error))
 }
 
 // --- The scheduler ------------------------------------------------------------
@@ -1999,6 +2235,8 @@ async function tick(): Promise<void> {
   await releaseHeld(now)
   // Stopped posts Postiz still holds - a stop's own run may have been cut off.
   await unpostStopped()
+  // Ended campaigns whose accounts are still to come out of Postiz.
+  await finishEndings()
   // Captions marked to be written again with a campaign's new rules.
   await rewriteMarked()
   await checkPosted(now)
@@ -2256,6 +2494,8 @@ Deno.serve(async (req) => {
         return await recaption(profile, body)
       case 'stop-posts':
         return await stopPicked(profile, body)
+      case 'end-campaign':
+        return await endCampaign(profile, body)
       default:
         return reply({ error: 'Unknown action.' }, 400)
     }

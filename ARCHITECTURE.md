@@ -182,6 +182,11 @@ phone (outbox.ts, posting.ts)          Edge Function postiz            Postiz
                                       Postiz API (per-profile key)  ------> TikTok/IG/YT/FB
  push.ts + public/push-sw.js  <-----  web push notifications
 ```
+**Ending a campaign** (`EndCampaign.tsx` -> `end-campaign`): its posts are stopped, its accounts that nothing else
+needs (`channels.ts` `endPlan`) are unticked and then deleted from Postiz in the background and on each tick
+(`finishEnding`; the job in `cutter_profiles.settings.ending`, the result in `settings.ended`). Postiz's public API
+can only delete a channel, never switch it off; deleting also deletes every post Postiz holds on it, so an account
+with anything else on it is kept, with the reason shown.
 `fake.ts` is a pretend Postiz + Claude for end-to-end tests (profile key starting
 `test-fake-postiz:`). Each person has a **posting profile** (their own Postiz key,
 accounts, times) inside the shared login that holds campaigns.

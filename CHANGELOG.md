@@ -3,6 +3,31 @@
 Newest first. Every change says what it does, how to use it, and how it works
 underneath. Kept up to date with each commit.
 
+## End a campaign: its accounts come out of Postiz
+**What:** a campaign's page (Campaigns, open it) has a new button under Stop all posts: **End campaign - free its
+Postiz accounts**. For when a campaign is over, so its accounts stop counting toward your 30 in Postiz.
+- Tapping it changes nothing yet: it shows what would happen - how many of its posts not out yet get stopped, which
+  of its accounts come out of Postiz ("3 of your 28 connected accounts") and which stay, and why each one stays:
+  another campaign posts to it, your friend's login uses it, another campaign's post is still due on it, a post went
+  out on it in the last few hours, or Postiz holds posts on it that the Cutter didn't make. Then **End it and take
+  out 3**, or Cancel.
+- Ending stops all its posts at once and unticks those accounts from it; over the next few minutes the server takes
+  its scheduled posts out of Postiz, then removes the accounts from Postiz. The page says "Taking 3 accounts out of
+  Postiz..." and then what it did ("Taken out of Postiz: ...", anything kept and why, anything Postiz refused).
+- **Removing means deleting from Postiz**: Postiz gives apps no way to just switch an account off (checked in Postiz's
+  own code today). Videos already posted stay up on TikTok/Instagram/etc. To use an account again, add it in Postiz
+  again (you log in to it there) - Postiz brings it back as the same account - and tick it in a campaign's Posting.
+- An account kept for a reason that passes (a post still due, one just out, posts made in Postiz) stays ticked on the
+  campaign, so ending it again later takes it out. Accounts a deleted campaign had ticked no longer hold anything.
+- **Stop all posts** is unchanged (it only stops posts), so stopping a wrong batch never removes accounts.
+Needs deploying: run ./deploy-server.sh, then ./deploy.sh.
+**How:** `postiz/channels.ts` `endPlan` (pure, tested: which accounts may go and why the rest stay); `postiz/index.ts`
+action `end-campaign` (no `confirm`: the preview; with `confirm`, the ids he was shown: `stopAll`, untick, a job in
+the profile's `settings.ending`), `finishEnding` (after the request and on every tick: takes its stopped posts out of
+Postiz, asks again, `DELETE /public/v1/integrations/:id`, retries when Postiz is busy, writes `settings.ended`,
+re-ticks what stays for a reason that passes, refreshes the account list); `fake.ts` deletes a channel's posts.
+Phone: `EndCampaign.tsx`, `posting.ts` `previewEndCampaign`/`endCampaign`, `CampaignsView`, `CampaignApp`.
+
 ## Settings tidied, dark mode finished
 **What:**
 - **Pause and daily limits** has its own page: Settings shows one row - "Pause and daily limits", saying what is paused

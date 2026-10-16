@@ -5,6 +5,8 @@
 import { useEffect, useState } from 'react'
 
 import { ChevronLeft, ChevronRight } from './icons'
+import { EndCampaign } from './EndCampaign'
+import type { Profile } from './posting'
 import { describeAngle, type Angle, type Campaign } from './look'
 
 function useObjectUrl(blob: Blob | null): string | null {
@@ -45,6 +47,7 @@ export function CampaignsView({
   onStopPosts,
   postingLine,
   shared,
+  ending,
 }: {
   campaigns: Campaign[]
   /** The campaign whose angles are showing, or null for the list. */
@@ -64,6 +67,8 @@ export function CampaignsView({
   postingLine: (campaign: Campaign) => string
   /** Signed in to the shared login, so a deletion reaches the other phone. */
   shared: boolean
+  /** Ending a campaign (its accounts out of Postiz); absent without posting. */
+  ending?: { profile: Profile; names: Record<string, string>; onChanged: () => void }
 }) {
   const open = campaigns.find((c) => c.id === openId)
 
@@ -125,6 +130,9 @@ export function CampaignsView({
           </li>
         </ul>
         {onStopPosts ? <StopPosts campaign={open} onStop={onStopPosts} /> : null}
+        {ending && !open.general ? (
+          <EndCampaign campaign={open} profile={ending.profile} names={ending.names} onChanged={ending.onChanged} />
+        ) : null}
         {!open.general ? (
           // Down at the bottom, away from everything else, so it is never hit
           // by mistake.
