@@ -33,6 +33,7 @@ const posts = [
   waitingPost('r1', true),
   ...Array.from({ length: 25 }, (_, i) => scheduled(`b${i}`, 'polsia', 'Polsia', 'big', i + 1)),
   scheduled('one', 'inflow', 'Inflow', undefined, 2),
+  { ...scheduled('half', 'wron', 'Wron', undefined, -3), status: 'posted', error: 'Not posted to Jake (Instagram).' } as ServerPost,
 ]
 
 vi.mock('./store', async (original) => {
@@ -94,7 +95,7 @@ describe('scheduled posts', () => {
     expect(rows()).toHaveLength(1)
     expect(host.textContent).not.toContain('Polsia · 25 videos')
     expect(localStorage.getItem('cutter.posts.show')).toBe('inflow')
-    await act(async () => chip('All 28').click())
+    await act(async () => chip('All 29').click())
     expect(rows()).toHaveLength(2)
   })
 })
@@ -147,5 +148,15 @@ describe('the scheduled clock', () => {
   it('leaves posts that are not waiting for their time without it', () => {
     const waiting = [...host.querySelectorAll('.list-title')].find((t) => t.textContent?.startsWith('To approve'))!.nextElementSibling!
     expect(waiting.querySelectorAll('[aria-label="Scheduled"]')).toHaveLength(0)
+  })
+})
+
+describe('a video that missed one of its accounts', () => {
+  it('says which one, and posts again to only the missing ones in one tap', async () => {
+    const button = [...host.querySelectorAll('button')].find((b) => b.textContent === 'Post again to the missing ones')
+    expect(host.textContent).toContain('Not posted to Jake (Instagram).')
+    expect(button).toBeTruthy()
+    await act(async () => button!.click())
+    expect(postAction).toHaveBeenCalledWith('retry-accounts', 'half')
   })
 })

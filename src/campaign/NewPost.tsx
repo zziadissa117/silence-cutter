@@ -55,9 +55,12 @@ interface Picked {
   by: 'claude' | 'him' | null
   writing: boolean
   note: string | null
+  /** With "One by one": when this one goes, and the time picked for it. */
+  when: 'now' | 'at'
+  at: string
 }
 
-type When = 'now' | 'at' | 'spread'
+type When = 'now' | 'at' | 'spread' | 'each'
 
 let nextKey = 0
 
@@ -214,8 +217,12 @@ export function NewPost({
       ? [
           { value: 'spread', label: 'Spread them' },
           { value: 'now', label: 'All now' },
+          { value: 'each', label: 'One by one' },
         ]
-      : [{ value: 'now', label: 'All now' }]
+      : [
+          { value: 'now', label: 'All now' },
+          { value: 'each', label: 'One by one' },
+        ]
     : [
         { value: 'now', label: 'Post now' },
         { value: 'at', label: 'Pick a time' },
@@ -223,6 +230,15 @@ export function NewPost({
   const chosen: When = whenChoices.some((c) => c.value === when) ? when : whenChoices[0].value
   const atIso = chosen === 'at' && at ? new Date(at).toISOString() : null
   const gone = atIso !== null && Date.parse(atIso) <= Date.now() + 2 * 60_000
+  /** When one video goes: its own choice with "One by one", else everyone's. */
+  const timeOf = (item: Picked): string | null => {
+    if (chosen === 'each') {
+      if (item.when !== 'at' || !item.at) return null
+      const iso = new Date(item.at).toISOString()
+      return Date.parse(iso) > Date.now() + 2 * 60_000 ? iso : null
+    }
+    return chosen === 'at' && !gone ? atIso : null
+  }
   const writingCount = items.filter((i) => i.writing).length
   const missingPaste = paste && items.some((i) => !i.caption.trim())
   const ready = items.length > 0 && writingCount === 0 && !missingPaste && sending === null
@@ -244,7 +260,17 @@ export function NewPost({
       pickSaved()
       return
     }
-    const added: Picked[] = fresh.map(({ file, fp }) => ({ key: `np-${nextKey++}`, file, fp, caption: '', by: null, writing: false, note: null }))
+    const added: Picked[] = fresh.map(({ file, fp }) => ({
+      key: `np-${nextKey++}`,
+      file,
+      fp,
+      caption: '',
+      by: null,
+      writing: false,
+      note: null,
+      when: 'now' as const,
+      at: localInput(null),
+    }))
     for (const item of added) files.current.set(item.key, item.file)
     setItems((current) => [...current, ...added])
     setProblem(null)
@@ -299,7 +325,7 @@ export function NewPost({
               duration: item.seconds ?? 0,
               fileName: mp4.file.name,
               byHand: {
-                at: chosen === 'at' && !gone ? atIso : null,
+                at: timeOf(item),
                 caption: item.caption.trim(),
                 about: about.trim(),
                 ...(chosen === 'spread' ? { spread: true } : {}),
@@ -339,7 +365,9 @@ export function NewPost({
       : many
         ? chosen === 'spread'
           ? `Post ${items.length} - spread out`
-          : `Post all ${items.length} now`
+          : chosen === 'each'
+            ? `Post ${items.length}`
+            : `Post all ${items.length} now`
         : chosen === 'at' && atIso && !gone
           ? `Post ${whenLabel(atIso)}`
           : 'Post now')
@@ -407,6 +435,37 @@ export function NewPost({
                 onChange={(e) => change(item.key, { caption: e.target.value, by: e.target.value.trim() ? 'him' : null })}
               />
               {item.note ? <span className="hint warn-text">{item.note}</span> : null}
+              {chosen === 'each' ? (
+                <div className="np-when">
+                  <div className="seg" role="radiogroup" aria-label={`When ${item.file.name} posts`}>
+                    {(['now', 'at'] as const).map((w) => (
+                      <button
+                        key={w}
+                        type="button"
+                        role="radio"
+                        aria-checked={item.when === w}
+                        className={item.when === w ? 'active' : ''}
+                        disabled={sending !== null}
+                        onClick={() => change(item.key, { when: w })}
+                      >
+                        {w === 'now' ? 'Now' : 'At a time'}
+                      </button>
+                    ))}
+                  </div>
+                  {item.when === 'at' ? (
+                    <input
+                      type="datetime-local"
+                      aria-label={`${item.file.name} posts at`}
+                      value={item.at}
+                      disabled={sending !== null}
+                      onChange={(e) => change(item.key, { at: e.target.value })}
+                    />
+                  ) : null}
+                  {item.when === 'at' && item.at && timeOf(item) === null ? (
+                    <span className="hint warn-text">That time has gone - it would go straight away.</span>
+                  ) : null}
+                </div>
+              ) : null}
               {!paste && !item.writing && sending === null ? (
                 <button
                   type="button"
@@ -458,7 +517,9 @@ export function NewPost({
           ) : null}
           {many ? (
             <p className="hint new-post-to">
-              {chosen === 'spread'
+              {chosen === 'each'
+                ? 'Each one goes now or at its own time - set it on the video.'
+                : chosen === 'spread'
                 ? `On ${campaign.name}'s ${times.length > 0 ? `times (${times.map(timeLabel).join(', ')})` : place ? `random times (${windowLabel(windowOf(place))})` : 'times'}, and once those have gone, at random over the next few hours, never past midnight - like videos made late.`
                 : timed
                   ? 'All of them go out at once.'

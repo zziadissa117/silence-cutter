@@ -279,7 +279,7 @@ function WaitingPost({
         </label>
       ) : null}
       {watching ? <Watch post={post} /> : null}
-      {addingMusic ? <MusicAfter post={post} campaigns={campaigns} onDone={onChanged} onClose={() => setAddingMusic(false)} /> : null}
+      {addingMusic ? <MusicAfter post={post} campaigns={campaigns} caption={caption} onDone={onChanged} onClose={() => setAddingMusic(false)} /> : null}
       <div className="post-actions">
         <button
           type="button"
@@ -373,6 +373,7 @@ function OtherPost({
           <Watch post={post} />
         </>
       ) : null}
+      {post.status === 'posted' && post.error ? <div className="hint warn-text">{post.error}</div> : null}
       {post.status === 'scheduled' && post.error ? (
         <div className={`hint${post.error.startsWith("The caption couldn't") ? ' warn-text' : ''}`}>{post.error}</div>
       ) : null}
@@ -400,6 +401,11 @@ function OtherPost({
         {post.status === 'failed' ? (
           <button type="button" className="btn small" disabled={busy} onClick={() => onAct('retry')}>
             {busy ? 'Trying…' : 'Try again'}
+          </button>
+        ) : null}
+        {post.status === 'error' || (post.status === 'posted' && post.error?.startsWith('Not posted to')) ? (
+          <button type="button" className="btn small primary" disabled={busy} onClick={() => onAct('retry-accounts')}>
+            {busy ? 'Trying…' : post.status === 'error' ? 'Post again' : 'Post again to the missing ones'}
           </button>
         ) : null}
         {post.status === 'scheduled' && post.postAt && new Date(post.postAt).getTime() > Date.now() ? (

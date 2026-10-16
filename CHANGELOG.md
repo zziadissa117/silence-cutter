@@ -3,6 +3,29 @@
 Newest first. Every change says what it does, how to use it, and how it works
 underneath. Kept up to date with each commit.
 
+## Batch 1: post one now and one later, one-tap music, Reaction video, and a retry for missed accounts
+**What:**
+- **New post, One by one:** with two or more videos there is now **One by one** next to Spread them / All now.
+  Each video then gets its own **Now** or **At a time** - one can go now and the other at 6 PM.
+- **Add music** in Posts is just the song (with a play button) and one button: **Add music & approve** on a post
+  waiting for you, **Add music** on one already approved or scheduled - it stays approved, no second approval. A
+  post on "Approve, post later" or waiting for a brand still waits for you or the brand. The level is always
+  Normal; songs come from the Bank (the "from my phone" picker is gone).
+- **"Choose the campaign myself" is gone.** Videos are always sorted into their campaign. Reaction videos have
+  their own **Reaction video** button under the drop zone (only when a campaign makes reaction videos).
+- **A video that missed an account** (Posted, but "Not posted to Jake") now says so in orange on its row, with
+  **Post again to the missing ones**: only the accounts that failed get it, a few minutes later, with the same
+  video and caption. A video that failed everywhere gets **Post again**.
+- Two accounts with the same name ("Ilyan Hamdane" on YouTube and on Instagram) now keep a link each, and a
+  failure names the platform: "Not posted to Ilyan Hamdane (Instagram)."
+**Needs deploying: run ./deploy-server.sh** (the retry, the music approval and the account names are on the
+server), then ./deploy.sh.
+**How:** `NewPost.tsx` (`each`, per-video `when`/`at`, `timeOf`); `MusicAfter.tsx`, `musicAfterSend.ts`
+(`carry.approve`) and `postiz/index.ts start` (a carried post with `approve` gets `approval: 'direct'`, never past
+a brand); `CampaignApp.tsx` (mode `one` lists reaction campaigns only); `postiz/failed.ts` (+ test) and the new
+`retry-accounts` action (`retryAccounts`: asks Postiz which of the post's Postiz posts are in error, posts again
+to those accounts only, drops the failed ids so they don't count again); `PostsView.tsx` (+ test).
+
 ## Posting: made to Instagram's and TikTok's own spec, and quiet songs turned up
 **What:** posted videos looked soft on Instagram and TikTok while the preview looked fine - the file sent is the
 preview, unchanged, so the softening happened at the platforms. Instagram's API takes nothing wider than 1920 px or

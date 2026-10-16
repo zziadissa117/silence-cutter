@@ -59,6 +59,7 @@ import {
   type PostingRules,
 } from './caption.ts'
 import { RECHECK_SCHEMA, RECHECK_SYSTEM, acceptFix, costCents } from './recheck.ts'
+import { accountName, failedRefs, notPostedNote } from './failed.ts'
 import { carryOver, cleanCaptions, cleanRepost, repostDueAt, textFor, variationNote, type AccountText } from './repost.ts'
 import { FAKE_CLAUDE, FakeError, fakeCaption, fakePostiz, isFakePostiz } from './fake.ts'
 import { batchChoices, batchInfo, batchSpan, type BatchInfo } from './batch.ts'
@@ -922,6 +923,9 @@ async function start(profile: Profile, body: Record<string, unknown>): Promise<R
   const hand = handFields(meta.byHand, rules, text(campaign.name, 200) ?? 'Campaign')
   const batch = hand ? null : batchInfo(meta.batch)
   const carry = carryOver(meta.carry, (c) => finishCaption(c, rules.caption === 'paste' ? [] : rules.hashtags))
+  // Music added with "Add music & approve": the new version goes out without
+  // asking again - never past a brand's own say.
+  const approveNow = carry !== null && (meta.carry as Record<string, unknown>).approve === true && rules.approval !== 'brand'
 
   let { data: post } = await db.from('cutter_posts').select('*').eq('profile_id', profile.id).eq('client_key', key).maybeSingle()
   if (!post) {
@@ -933,7 +937,7 @@ async function start(profile: Profile, body: Record<string, unknown>): Promise<R
         campaign_id: campaign.id,
         campaign_name: text(campaign.name, 200) ?? 'Campaign',
         // By hand: nothing to approve. A batch: always his approval.
-        rules: hand ? { ...rules, approval: 'direct' } : batch ? { ...rules, approval: 'me' } : rules,
+        rules: hand || approveNow ? { ...rules, approval: 'direct' } : batch ? { ...rules, approval: 'me' } : rules,
         status: 'uploading',
         parts,
         size,
@@ -1673,6 +1677,8 @@ async function act(profile: Profile, action: string, body: Record<string, unknow
       if (post.postiz_ids?.[0]) await deleteScheduled(key, post)
       return reply({ post: postView(await update(post.id, { status: 'waiting', ready_at: null, postiz_ids: null, error: null })) })
     }
+    case 'retry-accounts':
+      return reply({ post: postView(await retryAccounts(profile, post)) })
     case 'retry': {
       if (post.status !== 'failed' && !(post.status === 'writing' || post.status === 'approved')) return reply({ post: postView(post) })
       const moved = await update(post.id, { status: post.status === 'approved' ? 'approved' : 'writing', error: null, attempts: 0, retry_at: null })
@@ -1681,6 +1687,52 @@ async function act(profile: Profile, action: string, body: Record<string, unknow
     }
   }
   throw new Problem('Unknown action.')
+}
+
+/** Posts again, in a few minutes, to the accounts Postiz failed to post a
+ *  video to - only those; the ones it reached are left alone. */
+async function retryAccounts(profile: Profile, post: Post): Promise<Post> {
+  const partly = post.status === 'posted' && Boolean(post.error)
+  if (!partly && post.status !== 'error') return post
+  if (!post.media || !post.caption?.trim() || !post.post_at) throw new Problem('This video is no longer in Postiz - post it again from New post.')
+  const owned = await claim(post.id)
+  if (!owned) throw new Problem('It is busy - try again in a minute.', true)
+  try {
+    const { postiz: key } = await keysFor(profile.id)
+    const due = new Date(owned.post_at!).getTime()
+    const found = await postsAround(key, due - 60 * MINUTE, due + 60 * MINUTE)
+    const ids = owned.postiz_ids ?? []
+    const failed = failedRefs(ids, found)
+    const accounts = owned.accounts.filter((a) => !a.held && failed.some((ref) => ref.integration === a.id))
+    if (accounts.length === 0) throw new Problem("Postiz no longer says which account it failed on - post it there by hand.")
+    const date = new Date(Date.now() + 3 * MINUTE).toISOString()
+    const made = await postiz<{ postId: string; integration: string }[]>(key, 'POST', '/posts', {
+      type: 'schedule',
+      date,
+      shortLink: false,
+      tags: [],
+      posts: accounts.map((account) => {
+        const text = textFor(owned, account.id)
+        return {
+          integration: { id: account.id },
+          value: [{ content: text.caption, image: [{ id: owned.media!.id, path: owned.media!.path }] }],
+          settings: settingsFor(account.platform, finishTitle(text.title ?? '', [owned.headline ?? '', owned.campaign_name])),
+        }
+      }),
+    })
+    // The failed ones are dropped, or they would count as failed again.
+    const gone = new Set(failed.map((ref) => ref.postId))
+    return await update(owned.id, {
+      postiz_ids: [...ids.filter((ref) => !gone.has(ref.postId)), ...(Array.isArray(made) ? made : [])],
+      status: 'scheduled',
+      post_at: date,
+      error: null,
+      checks: 0,
+      checked_at: null,
+    })
+  } finally {
+    await release(post.id)
+  }
 }
 
 /** What a post says on the Posts screen while its caption is written again
@@ -1980,20 +2032,25 @@ async function checkPosted(now: number): Promise<void> {
       for (const post of posts) {
         const mine = (post.postiz_ids ?? []).map((ref) => byId.get(ref.postId)).filter((p): p is PostizPost => Boolean(p))
         const links: Record<string, string> = { ...(post.release_urls ?? {}) }
-        for (const p of mine) if (p.releaseURL && p.integration?.name) links[p.integration.name] = p.releaseURL
+        for (const p of mine) {
+          if (!p.releaseURL || !p.integration?.name) continue
+          // Two accounts can share a name: each keeps its own link.
+          const account = post.accounts.find((a) => a.id === p.integration?.id)
+          links[accountName(account?.name ?? p.integration.name, account?.platform ?? p.integration.providerIdentifier, post.accounts)] = p.releaseURL
+        }
         const errored = mine.filter((p) => p.state === 'ERROR')
         const published = mine.length > 0 && mine.every((p) => p.state === 'PUBLISHED' || p.state === 'ERROR') && errored.length < mine.length
         const fields: Partial<Post> = { checked_at: new Date().toISOString(), checks: post.checks + 1, release_urls: links }
         if (errored.length > 0 && !published) {
           fields.status = 'error'
-          fields.error = `Postiz couldn't publish it to ${errored.map((p) => p.integration?.name ?? 'an account').join(', ')}. Open Postiz to see why.`
+          fields.error = `Postiz couldn't publish it to ${notPostedNote(errored, post.accounts).replace(/^Not posted to |\.$/g, '')}. Open Postiz to see why.`
         } else if (published) {
           fields.status = 'posted'
           if (!post.repost_of) {
             const due = repostDueAt(Date.now(), post.rules.repost)
             if (due !== null && !post.reposted_at) fields.repost_at = new Date(due).toISOString()
           }
-          if (errored.length > 0) fields.error = `Not posted to ${errored.map((p) => p.integration?.name ?? 'an account').join(', ')}.`
+          if (errored.length > 0) fields.error = notPostedNote(errored, post.accounts)
         }
         const saved = await update(post.id, fields)
         if (saved.status === 'error') {
@@ -2191,6 +2248,7 @@ Deno.serve(async (req) => {
       case 'reject':
       case 'unschedule':
       case 'retry':
+      case 'retry-accounts':
         return await act(profile, action, body)
       case 'stop-campaign':
         return await stopCampaign(profile, body)

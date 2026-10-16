@@ -536,6 +536,8 @@ html, body { overscroll-behavior-y: none; }
 .np-list { list-style: none; margin: 0; padding: 0; border-top: 1px solid var(--rule); }
 .np-item { display: flex; flex-direction: column; gap: 6px; padding: 10px 0; border-bottom: 1px solid var(--rule); }
 .np-head { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.np-when { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.np-when input { flex: 1 1 12rem; min-width: 0; }
 .np-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; }
 .np-again { align-self: flex-start; }
 .new-post .btn.primary:not(.add-more) { min-height: 52px; }

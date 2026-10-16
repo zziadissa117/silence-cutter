@@ -56,7 +56,7 @@ only, no Supabase); `./deploy-server.sh` ships the `postiz` and `cutter` functio
 - Edit again: `store.ts` (markMade/reopenJob/expireMade, 2 h window), `PostsView.EditAgain`, `CampaignApp.editAgain/retireOld` (see ARCHITECTURE.md)
 - Queue/storage: `store.ts`, `outbox.ts`; sync + login: `cloud.ts`, `SignIn.tsx`, `LoginGate.tsx`
 - Posting (phone): `posting.ts`, `PostsView.tsx`, `NewPost.tsx`, `BatchView.tsx`
-- Posting (server): `supabase/functions/postiz/*` (`slots.ts` times, `caption.ts`, `batch.ts`, `hand.ts`, `attach.ts`)
+- Posting (server): `supabase/functions/postiz/*` (`slots.ts` times, `caption.ts`, `batch.ts`, `hand.ts`, `attach.ts`, `failed.ts` missed accounts)
 - Duplicate protection: `campaign/fingerprint.ts` (never key a send or a bank file on a random id alone)
 - Login (server): `supabase/functions/cutter/index.ts`
 

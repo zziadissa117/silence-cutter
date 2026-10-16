@@ -399,7 +399,7 @@ export async function listPosts(): Promise<ServerPost[]> {
   return posts
 }
 
-export type PostAction = 'edit' | 'approve' | 'ready' | 'reject' | 'unschedule' | 'retry'
+export type PostAction = 'edit' | 'approve' | 'ready' | 'reject' | 'unschedule' | 'retry' | 'retry-accounts'
 
 export async function postAction(
   action: PostAction,

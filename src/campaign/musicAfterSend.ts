@@ -39,11 +39,17 @@ export async function sendWithMusic({
   post,
   campaign,
   music,
+  caption,
+  approve = false,
   onProgress,
 }: {
   post: ServerPost
   campaign: Campaign | undefined
   music: { audio: Blob; level: MusicLevel }
+  /** His caption as it is in the box now, when it differs from the post's. */
+  caption?: string
+  /** The new version goes out without asking again. */
+  approve?: boolean
   onProgress?: (fraction: number) => void
 }): Promise<string> {
   const local = postingHere()
@@ -64,7 +70,12 @@ export async function sendWithMusic({
         duration: 0,
         fileName: post.fileName ?? 'video.mp4',
         ...(post.batch ? { batch: post.batch } : {}),
-        carry: { caption: post.caption, title: post.title, ...(post.captions ? { captions: post.captions } : {}) },
+        carry: {
+          caption: caption?.trim() ? caption : post.caption,
+          title: post.title,
+          ...(post.captions ? { captions: post.captions } : {}),
+          ...(approve ? { approve: true } : {}),
+        },
       },
     },
     made.blob,
@@ -77,5 +88,7 @@ export async function sendWithMusic({
   } catch (error) {
     return `The version with music is on its way, but the old post could not be removed - reject it in Posts. (${error instanceof Error ? error.message : String(error)})`
   }
-  return 'Music added. The new version is on its way and the old one was removed.'
+  return approve
+    ? 'Music added and approved. The new version is on its way and the old one was removed.'
+    : 'Music added. The new version is on its way and the old one was removed.'
 }

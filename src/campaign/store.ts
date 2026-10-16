@@ -286,7 +286,13 @@ export interface SendEntry {
     byHand?: { at: string | null; caption: string; about: string; spread?: boolean }
     /** A video made again from an earlier post (music added): what he had
      *  already written for it, so it is not written again. */
-    carry?: { caption: string | null; title: string | null; captions?: Record<string, { caption?: string; title?: string }> }
+    carry?: {
+      caption: string | null
+      title: string | null
+      captions?: Record<string, { caption?: string; title?: string }>
+      /** Approved with the music: it goes out without asking again. */
+      approve?: boolean
+    }
     /** Made from the Batch tab: waits for his approval, for this day and time. */
     batch?: JobBatch
   }

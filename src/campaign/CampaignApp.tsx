@@ -1586,7 +1586,8 @@ export function CampaignApp() {
   const commitAdd = (order: { file: File; filming: Filming }[], cutWide: boolean) => {
         const files = order.map((o) => o.file)
         const settings = { ...PRESETS[preset] }
-        const day = mode === 'day'
+        // Picking the campaign by hand is only for reaction videos now.
+        const day = mode === 'day' || (mode === 'one' && !(campaign && isReaction(campaign)))
         // With captions on, a video for a campaign he picked is listened to
         // first too, so he can check its captions before it is made.
         const check = !day && captionsOn
@@ -1889,6 +1890,7 @@ export function CampaignApp() {
   // "Approve all" never covers a video marked Needs you - those wait for him
   // to look.
   const sorted = jobs.filter((j) => j.status === 'sorted' && j.day?.guess?.sure !== false)
+  const reactionCampaigns = (campaigns ?? []).filter(isReaction)
   // Batch videos are followed on the Batch tab.
   const listed = useMemo(() => jobs.filter((j) => j.status !== 'joined' && !j.batch), [jobs])
   const batchJobs = useMemo(() => jobs.filter((j) => j.batch), [jobs])
@@ -2287,14 +2289,23 @@ export function CampaignApp() {
           onBack={() => setMode('day')}
           onNotice={setNotice}
         />
-      ) : mode === 'day' || !campaign || !angle ? (
+      ) : mode === 'day' || !campaign || !angle || (mode === 'one' && !isReaction(campaign)) ? (
         <>
           {dropZone("Add today's videos", "Each is sorted into its campaign - you approve before anything's made")}
           {campaign && angle ? (
             <div className="under-drop-links">
-              <button type="button" className="linkbtn" onClick={() => setMode('one')}>
-                {(campaigns ?? []).some(isReaction) ? 'Choose the campaign myself - for reaction videos too' : 'Choose the campaign myself'}
-              </button>
+              {reactionCampaigns.length > 0 ? (
+                <button
+                  type="button"
+                  className="linkbtn"
+                  onClick={() => {
+                    if (!isReaction(campaign)) select(reactionCampaigns[0])
+                    setMode('one')
+                  }}
+                >
+                  Reaction video
+                </button>
+              ) : null}
               <button type="button" className="linkbtn" onClick={() => setMode('clips')}>
                 No talking? Clips + music
               </button>
@@ -2307,13 +2318,13 @@ export function CampaignApp() {
       ) : (
         <div className="chooser">
           <div className="chooser-head">
-            <span className="label">Videos for</span>
+            <span className="label">Reaction video for</span>
             <button type="button" className="linkbtn" onClick={() => setMode('day')}>
-              Sort them for me
+              Back
             </button>
           </div>
           <select aria-label="Campaign" value={campaign.id} onChange={(e) => select(campaigns?.find((c) => c.id === e.target.value) ?? null)}>
-            {(campaigns ?? []).map((c) => (
+            {reactionCampaigns.map((c) => (
               <option key={c.id} value={c.id}>
                 {c.name}
               </option>

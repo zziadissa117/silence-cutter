@@ -217,7 +217,8 @@ src/{report,leaving,opening,CrashGuard,UpdateBanner,VideoPicker,pick*}.ts(x)  sh
 supabase/functions/cutter      login + shared-setup sync (Edge Function)
 supabase/functions/postiz      posting, captions, scheduler, push (Edge Function);
                                slots.ts times, window.ts random times (also imported by the phone's
-                               posting.ts/batch views), attach.ts late-account rules, batch.ts, hand.ts, caption.ts
+                               posting.ts/batch views), attach.ts late-account rules, batch.ts, hand.ts, caption.ts,
+                               failed.ts (accounts a post missed: names, retry-accounts)
 supabase/migrations            SQL
 public/push-sw.js              service-worker push handler
 ```

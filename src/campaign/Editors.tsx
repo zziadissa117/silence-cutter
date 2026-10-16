@@ -215,7 +215,7 @@ export function CampaignEditor({
         </div>
         <div className="hint">
           {isReaction(campaign)
-            ? 'A clip of you reacting with the headline over it, then a clip of the product. Add them with "Choose the campaign myself" on Videos.'
+            ? 'A clip of you reacting with the headline over it, then a clip of the product. Add them with "Reaction video" on Videos.'
             : 'You talking to camera: the pauses are cut, and each video is sorted by what you say.'}
         </div>
         {isReaction(campaign) ? (
