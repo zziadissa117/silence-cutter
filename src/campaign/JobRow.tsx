@@ -32,6 +32,7 @@ const WORKING: Record<Job['phase'], string> = {
   listening: 'Listening',
   cutting: 'Making it',
   joining: 'Putting the parts together',
+  cutout: 'Cutting you out - once per reaction',
 }
 
 export function JobRow({

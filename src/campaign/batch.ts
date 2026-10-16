@@ -56,6 +56,20 @@ export interface BatchBank {
    *  "Claude + X = $ a day" formula. */
   hook?: BatchHook
   formula?: BatchFormula
+  /** How each video is put together: the reaction then the product (absent),
+   *  or green screen - the product playing behind him, cut out in a corner. */
+  layout?: BatchLayout
+  /** Green screen: which corner he is in, and how big. */
+  corner?: { side: 'left' | 'right'; sizePct: number }
+}
+
+export type BatchLayout = 'after' | 'greenscreen'
+
+/** What a bank mixes from: in green screen, no music (the background's sound
+ *  is the sound), and headlines are optional - none is the default. */
+export function mixFrom<T extends Pick<BatchBank, 'layout' | 'headlines' | 'music' | 'hook'>>(bank: T, headlines: string[]): T {
+  if (bank.layout !== 'greenscreen') return { ...bank, headlines }
+  return { ...bank, music: [], headlines: bank.headlines.length > 0 ? bank.headlines : [''] }
 }
 
 /** The "Claude + X = $ a day" hook: two logos with a plus between them over

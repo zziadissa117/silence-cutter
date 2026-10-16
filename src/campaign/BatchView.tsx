@@ -21,6 +21,7 @@ import {
   headlinesFrom,
   headlinesToMix,
   hookOf,
+  mixFrom,
   pickBatch,
   planSlots,
   todayHere,
@@ -52,6 +53,7 @@ import {
 } from './posting'
 import { deleteBankFile, loadBankFile, loadBatchBank, saveBankFile, saveBatchBank, type JobBatch } from './store'
 import { FormulaPreview } from './FormulaPreview'
+import { CORNER_SIZES, DEFAULT_CORNER } from './greenScreenRender'
 
 const LAST_KEY = 'batch.campaign'
 const MAX_DAYS = 14
@@ -66,6 +68,8 @@ export interface BatchVideo {
   /** The "Claude + X" hook, when the bank uses it: the headline above is then
    *  what it says in words, for the caption. */
   formula?: { left: BankFile | null; right: BankFile | null; line: string }
+  /** Green screen: the product behind him, him cut out in this corner. */
+  greenScreen?: { side: 'left' | 'right'; sizePct: number }
   batch: JobBatch
 }
 
@@ -343,9 +347,11 @@ export function BatchView({
   // On top: planned as if nothing were running, so it starts today.
   const wanted = bank ? planSlots({ times: timesOnDate, perDay: bank.perDay, days: bank.days, madeThrough: stacking ? undefined : bank.madeThrough }) : []
   // Never a video twice: a batch stops at the last different one left.
-  const formulaHook = bank ? hookOf(bank) === 'formula' : false
+  const green = bank?.layout === 'greenscreen'
+  const corner = bank?.corner ?? DEFAULT_CORNER
+  const formulaHook = bank && !green ? hookOf(bank) === 'formula' : false
   const formula: BatchFormula = bank?.formula ?? DEFAULT_FORMULA
-  const mixable = bank ? { ...bank, headlines: headlinesToMix(bank) } : null
+  const mixable = bank ? mixFrom(bank, green ? bank.headlines : headlinesToMix(bank)) : null
   const { total: different, left } = mixable ? combos(mixable) : { total: 0, left: 0 }
   const slots = Number.isFinite(left) ? wanted.slice(0, left) : wanted
   const spentShown = Boolean(bank?.spent) && (bank!.reactions.length === 0 || bank!.products.length === 0)
@@ -353,8 +359,8 @@ export function BatchView({
     ? []
     : [
         bank.reactions.length === 0 ? 'a reaction' : '',
-        bank.products.length === 0 ? 'a product showcase' : '',
-        formulaHook ? (!formula.left || !formula.right ? 'both logos' : '') : bank.headlines.length === 0 ? 'a headline' : '',
+        bank.products.length === 0 ? (green ? 'a background video' : 'a product showcase') : '',
+        green ? '' : formulaHook ? (!formula.left || !formula.right ? 'both logos' : '') : bank.headlines.length === 0 ? 'a headline' : '',
       ].filter(Boolean)
   const inProgress = jobs.filter((j) => j.status !== 'failed' && j.status !== 'held')
   const makingHere = inProgress.filter((j) => j.campaignId === campaign.id)
@@ -379,7 +385,8 @@ export function BatchView({
     const videos: BatchVideo[] = picks.map((pick, i) => ({
       reaction: byId(bank.reactions, pick.reaction)!,
       product: byId(bank.products, pick.product)!,
-      music: byId(bank.music, pick.music),
+      music: green ? null : byId(bank.music, pick.music),
+      ...(green ? { greenScreen: corner } : {}),
       ...(formulaHook
         ? (() => {
             const line = formulaLine(formula, `${id}-${i}`)
@@ -554,8 +561,59 @@ export function BatchView({
 
       {bank ? (
         <>
-          {list('reactions', 'Reactions', 'They go first, with the headline over them.')}
-          {list('products', 'Product showcases', 'Shown after the reaction.')}
+          <div className="group">
+            <div className="group-title">Layout</div>
+            <div className="seg full" role="radiogroup" aria-label="Layout">
+              <button type="button" role="radio" aria-checked={!green} className={!green ? 'active' : ''} onClick={() => keep({ ...bank, layout: 'after' })}>
+                Reaction, then video
+              </button>
+              <button type="button" role="radio" aria-checked={green} className={green ? 'active' : ''} onClick={() => keep({ ...bank, layout: 'greenscreen' })}>
+                Green screen
+              </button>
+            </div>
+          </div>
+          {green ? (
+            <>
+              {list('reactions', 'Reactions', 'You, cut out of your background and put in the corner. Film them as long as the background videos.')}
+              {list('products', 'Background videos', "The brief's videos. Each plays full screen with its own sound, and the video lasts as long as it does.")}
+              <div className="group">
+                <div className="group-title">Your corner</div>
+                <div className="seg full" role="radiogroup" aria-label="Corner">
+                  {(['left', 'right'] as const).map((side) => (
+                    <button
+                      key={side}
+                      type="button"
+                      role="radio"
+                      aria-checked={corner.side === side}
+                      className={corner.side === side ? 'active' : ''}
+                      onClick={() => keep({ ...bank, corner: { ...corner, side } })}
+                    >
+                      Bottom {side}
+                    </button>
+                  ))}
+                </div>
+                <label className="slider">
+                  <span>Size</span>
+                  <input
+                    type="range"
+                    min={CORNER_SIZES.min}
+                    max={CORNER_SIZES.max}
+                    step={1}
+                    value={corner.sizePct}
+                    aria-label="How big you are in the corner"
+                    onChange={(e) => keep({ ...bank, corner: { ...corner, sizePct: Number(e.target.value) } })}
+                  />
+                  <output>{corner.sizePct}%</output>
+                </label>
+              </div>
+            </>
+          ) : (
+            <>
+              {list('reactions', 'Reactions', 'They go first, with the headline over them.')}
+              {list('products', 'Product showcases', 'Shown after the reaction.')}
+            </>
+          )}
+          {green ? null : (
           <div className="group">
             <div className="group-title">Hook</div>
             <div className="seg full" role="radiogroup" aria-label="Hook">
@@ -573,6 +631,7 @@ export function BatchView({
               </button>
             </div>
           </div>
+          )}
           {formulaHook ? (
             <div className="group">
               <p className="hint bank-hint">Two logos with a plus between them over every reaction, then a different amount a day on each video. No headline.</p>
@@ -629,7 +688,7 @@ export function BatchView({
                 Headlines <span className="bank-count">{bank.headlines.length}</span>
               </span>
             </div>
-            <p className="hint bank-hint">One a line - paste them all in.</p>
+            <p className="hint bank-hint">{green ? 'Optional - none and the videos have no headline. One a line.' : 'One a line - paste them all in.'}</p>
             <textarea
               className="post-caption bank-headlines"
               rows={Math.min(8, Math.max(3, bank.headlines.length + 1))}
@@ -645,7 +704,7 @@ export function BatchView({
             />
           </div>
           )}
-          {list('music', 'Music', 'The only sound - the clips are muted. With one track every video uses it; with more, each gets one at random.')}
+          {green ? null : list('music', 'Music', 'The only sound - the clips are muted. With one track every video uses it; with more, each gets one at random.')}
           {saving ? <p className="hint">{saving}</p> : null}
           {bankSize > 0 ? <p className="hint">The bank keeps {mb(bankSize)} on this phone.</p> : null}
 
@@ -753,7 +812,7 @@ export function BatchView({
           <p className="hint new-post-to">
             {missing.length > 0
               ? `Add ${missing.join(', ')} first.`
-              : bank.music.length === 0
+              : !green && bank.music.length === 0
                 ? 'No music yet, so the videos will be silent.'
                 : `Keep the app open with the screen on while they're made - about half a minute each. Each waits for your approval in Posts, and you get one notification when they're all ready.`}
           </p>

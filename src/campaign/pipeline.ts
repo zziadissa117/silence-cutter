@@ -33,6 +33,7 @@ import { wordMoments } from './moments'
 import { cutNoiseOn } from './noiseSetting'
 import { captionWords, type CaptionPosition, type CaptionSize, type CaptionStyle, type CaptionWord } from './captions'
 import { placeCues } from './cueClips'
+import { renderGreenScreen, type Corner } from './greenScreenRender'
 import type { ClipPlace, JoinedClips } from './clips'
 import { planCampaignCut, type CampaignPlan } from './plan'
 import { renderMontage } from './montageRender'
@@ -437,6 +438,36 @@ export async function makeMontage(
       music: music && !rendered.musicFailed ? music.name : null,
       ...(rendered.musicFailed ? { musicFailed: rendered.musicFailed } : {}),
     },
+  }
+}
+
+/** A green screen video: the campaign's video behind, him cut out in a
+ *  corner over it, the background's sound only (greenScreenRender.ts). */
+export async function makeGreenScreen(
+  background: Blob,
+  cutout: Blob,
+  campaign: Campaign,
+  angle: Angle,
+  headlineText: string,
+  corner: Corner,
+  onRenderProgress?: (fraction: number) => void,
+): Promise<CampaignResult> {
+  const rendered = await renderGreenScreen(
+    { background, cutout, look: videoLook(campaign, angle, [], null), headlineText, corner },
+    onRenderProgress,
+  )
+  return {
+    blob: rendered.blob,
+    storedAs: rendered.storedAs,
+    originalDurationSec: rendered.totalSec,
+    newDurationSec: rendered.totalSec,
+    cuts: 0,
+    logoAt: [],
+    picturesAt: [],
+    headline: headlineText.trim(),
+    notHeard: [],
+    said: '',
+    montage: { seconds: [rendered.totalSec], music: null },
   }
 }
 

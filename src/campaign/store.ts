@@ -32,7 +32,7 @@ import type { CaptionPosition, CaptionSize, CaptionStyle, CaptionWord } from './
 import type { CampaignPlan } from './plan'
 import type { Guess } from './sort'
 
-export type JobPhase = 'reading' | 'model' | 'listening' | 'cutting' | 'joining'
+export type JobPhase = 'reading' | 'model' | 'listening' | 'cutting' | 'joining' | 'cutout'
 
 interface StoredJob {
   id: string
@@ -200,6 +200,9 @@ export interface MontageParts {
     /** The "Claude + X" hook instead of a headline: the two logos from the
      *  bank, and this video's own money line. */
     formula?: { left: BankFile | null; right: BankFile | null; line: string }
+    /** Green screen: the product is the background video, and he is cut out
+     *  in this corner over it (greenScreenRender.ts). */
+    greenScreen?: { side: 'left' | 'right'; sizePct: number }
   }
   clips: { name: string; type: string }[]
   /** The track under it: "" for its angle's, "none", another angle's as
@@ -929,6 +932,50 @@ export async function loadBankFile(file: BankFile): Promise<File | null> {
 
 export async function deleteBankFile(id: string): Promise<void> {
   await db.clipParts.where('key').startsWith(bankPrefix(id)).delete()
+  // A reaction's cut-out goes with it.
+  await deleteCutout(id).catch(() => {})
+}
+
+// --- A reaction cut out of its background (green screen) ---------------------
+//
+// Made once per reaction (cutout.ts) and kept like the bank's files, a piece at
+// a time, under the reaction's own bank id: cutting a person out of every
+// frame takes minutes, so every green screen video after the first reuses it.
+
+const cutoutPrefix = (reactionId: string) => `cutout-${reactionId}#`
+const cutoutMeta = (reactionId: string) => `cutout:${reactionId}`
+
+/** Which way of cutting out made it: a cut-out from an older way is made again. */
+export const CUTOUT_VERSION = 1
+
+export async function saveCutout(reactionId: string, file: Blob): Promise<void> {
+  try {
+    await deleteCutout(reactionId)
+    for (let at = 0, i = 0; at < file.size; at += PIECE_BYTES, i++) {
+      const bytes = await file.slice(at, at + PIECE_BYTES).arrayBuffer()
+      await db.clipParts.put({ key: `${cutoutPrefix(reactionId)}${String(i).padStart(5, '0')}`, bytes })
+    }
+    await setMeta(cutoutMeta(reactionId), JSON.stringify({ size: file.size, version: CUTOUT_VERSION }))
+  } catch (error) {
+    await deleteCutout(reactionId).catch(() => {})
+    throw error
+  }
+}
+
+/** A reaction's cut-out, or null when there is none yet (or it is not all there). */
+export async function loadCutout(reactionId: string): Promise<Blob | null> {
+  const raw = await getMeta(cutoutMeta(reactionId)).catch(() => null)
+  if (!raw) return null
+  const meta = JSON.parse(raw) as { size: number; version: number }
+  if (meta.version !== CUTOUT_VERSION) return null
+  const pieces = await orTimeout(db.clipParts.where('key').startsWith(cutoutPrefix(reactionId)).sortBy('key'), 20_000, 'Reading a cut-out')
+  const blob = new Blob(pieces.map((p) => p.bytes), { type: 'video/mp4' })
+  return blob.size === meta.size && blob.size > 0 ? blob : null
+}
+
+export async function deleteCutout(reactionId: string): Promise<void> {
+  await db.clipParts.where('key').startsWith(cutoutPrefix(reactionId)).delete()
+  await setMeta(cutoutMeta(reactionId), null)
 }
 
 // --- Pictures put on a video by hand ----------------------------------------

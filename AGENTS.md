@@ -53,6 +53,7 @@ only, no Supabase); `./deploy-server.sh` ships the `postiz` and `cutter` functio
 - Render: `src/campaign/{pipeline,plan,render,reactionRender,montageRender,joinRender}.ts`
 - Audio: `voice.ts`, `music.ts`, `sounds.ts`; captions `captions.ts`; headline `overlay.ts`, `look.ts`; effects `effects.ts`
 - Videos before/after/in the middle (at a phrase): `clips.ts`, `cueClips.ts`, `ClipRow.tsx`, `ClipsField.tsx`
+- Green screen (Batch layout): `cutout.ts` (once per reaction), `greenScreenRender.ts`
 - Wide clips -> 9:16: `framing916.ts` (Settings: Fill/Fit/Off)
 - Edit again: `store.ts` (markMade/reopenJob/expireMade, 2 h window), `PostsView.EditAgain`, `CampaignApp.editAgain/retireOld` (see ARCHITECTURE.md)
 - Queue/storage: `store.ts`, `outbox.ts`; sync + login: `cloud.ts`, `SignIn.tsx`, `LoginGate.tsx`

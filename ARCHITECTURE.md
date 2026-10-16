@@ -18,7 +18,8 @@ no ffmpeg and no ffprobe anywhere in this stack.
 Vite 8 + React 19 + TypeScript 6, `vite-plugin-pwa` (prompt-to-update, not
 auto-update: a reload mid-render loses video), Dexie 4 (IndexedDB), `mediabunny`
 (demux/decode/encode/mux), `@huggingface/transformers` (whisper-tiny.en speech
-model, in a worker), Vitest + jsdom, oxlint. Netlify hosts the static build
+model, in a worker), `@mediapipe/tasks-vision` (green screen cut-outs; model in `public/models`,
+engine from jsdelivr), Vitest + jsdom, oxlint. Netlify hosts the static build
 (`netlify.toml`: `npm run build` -> `dist`). Backend: two **Supabase Edge
 Functions** (Deno) plus Postgres tables, in project `uykuoibqdxmpbbrsmyad`,
 which is **shared with the planner app** (`ugc-planner` repo: its `public.*`
@@ -80,6 +81,9 @@ raw video file(s)
                                    sounds.ts (whoosh/ding/switch)
   middle:   cueClips.ts places an angle's "video in the middle" after its phrase, splitting
             the cut there; render.ts writes the clip between the two kept parts (`inserts`)
+  green:    cutout.ts cuts him out of a reaction once (MediaPipe selfie segmenter; his frame
+            over its mask in one MP4, kept by store.saveCutout); greenScreenRender.ts puts it
+            in a corner over a Batch background video, its sound only
   siblings: reactionRender.ts (reaction clip + product clip), montageRender.ts
             (clips only, music only), media/silenceCut.ts (the plain cutter)
   -> outbox.ts                     copy the finished MP4 to private storage, send in

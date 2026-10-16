@@ -94,7 +94,8 @@ import {
   type CampaignPosting,
 } from './look'
 import { forgetSend, queueSend, sending, startSending, watchSending } from './outbox'
-import { headlineFor, listen, make, makeCampaignVideo, makeMontage, makeReaction, plainCut, type CampaignResult, type PopSettings } from './pipeline'
+import { headlineFor, listen, make, makeCampaignVideo, makeGreenScreen, makeMontage, makeReaction, plainCut, type CampaignResult, type PopSettings } from './pipeline'
+import { makeCutout } from './cutout'
 import { popCue, posterOf, useVideoBank, videoFile, type BankVideo } from './videoBank'
 import { wordMoments } from './moments'
 import { DEFAULT_POP_POSITION, POP_SIZE, type PopPosition } from './popVideo'
@@ -161,6 +162,8 @@ import {
   loadBatchBank,
   loadOverlayFile,
   saveOverlayFile,
+  loadCutout,
+  saveCutout,
   deleteOverlayFile,
   loadCampaigns,
   loadBankFile,
@@ -1267,7 +1270,23 @@ export function CampaignApp() {
 
         const plan = planFor(next)
         let result: CampaignResult
-        if (next.montage) {
+        const green = next.montage?.bank?.greenScreen
+        if (next.montage?.bank && green) {
+          // Green screen: him cut out once per reaction, then over the background.
+          const reactionId = next.montage.bank.reaction.id
+          const background = await bankFileOf(next.montage.bank.product)
+          let cut = await loadCutout(reactionId).catch(() => null)
+          if (!cut) {
+            setPhase('cutout', 0)
+            cut = await watched(makeCutout(file, (p) => setPhase('cutout', p)))
+            await saveCutout(reactionId, cut).catch((error: unknown) => {
+              // Not kept: the next video cuts him out again, slower but fine.
+              console.warn('The cut-out could not be kept:', error)
+            })
+          }
+          setPhase('cutting', 0)
+          result = await watched(makeGreenScreen(background, cut, jobCampaign, jobAngle, next.headlineText, green, (p) => setPhase('cutting', p)))
+        } else if (next.montage) {
           const rest = await montageClips(next)
           const track = await montageMusic(next)
           setPhase('cutting', 0)
@@ -2059,7 +2078,13 @@ export function CampaignApp() {
       phase: 'cutting',
       progress: 0,
       montage: {
-        bank: { reaction: v.reaction, product: v.product, music: v.music, ...(v.formula ? { formula: v.formula } : {}) },
+        bank: {
+          reaction: v.reaction,
+          product: v.product,
+          music: v.music,
+          ...(v.formula ? { formula: v.formula } : {}),
+          ...(v.greenScreen ? { greenScreen: v.greenScreen } : {}),
+        },
         clips: [],
         music: 'bank',
       },

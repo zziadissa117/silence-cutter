@@ -107,6 +107,7 @@ export const PHASE_LABEL: Record<JobPhase, string> = {
   listening: 'listening for words',
   cutting: 'cutting and adding the look',
   joining: 'putting the parts together',
+  cutout: 'cutting you out of the background',
 }
 
 export function formatTime(seconds: number): string {

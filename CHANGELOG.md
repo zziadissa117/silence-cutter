@@ -3,6 +3,29 @@
 Newest first. Every change says what it does, how to use it, and how it works
 underneath. Kept up to date with each commit.
 
+## Batch 6: green screen reactions
+**What:** the Batch tab has a new **Layout**: **Reaction, then video** (as before) or **Green screen**. In green
+screen, each video is the brief's video playing full screen with its own sound, and you, cut out of your background
+(no box), reacting in a bottom corner - like TikTok's green screen effect. The video lasts as long as the background
+video; a reaction shorter than that starts over, so film reactions as long as the backgrounds (up to a minute).
+- **Reactions** are your clips; **Background videos** are the brief's (the product list, renamed in this layout).
+- **Your corner:** Bottom left or Bottom right, and Size (25-50% of the width, 38% to start).
+- **Headlines** are optional - none, and there's no headline. No music: the background's sound is the sound.
+- Cutting you out happens **once per reaction**, the first time a video uses it ("Cutting you out - once per
+  reaction" on the batch row), and is kept on the phone; every later video with that reaction reuses it. Taking a
+  reaction out of the bank deletes its cut-out too.
+- The first time, the phone downloads the cut-out tool (about 12 MB, from jsdelivr like the speech model).
+Only ./deploy.sh is needed (it installs the new add-on).
+**How:** new dependency `@mediapipe/tasks-vision` 1.0.1 (OK'd by the owner), its selfie segmenter model in
+`public/models/selfie_segmenter.tflite` (250 KB), its engine fetched from jsdelivr at that version. `cutout.ts`
+(`makeCutout`): every frame (at most 30 a second) at 540x960, mask steadied frame to frame and its edge softened,
+kept as one MP4 with his frame on top and the mask under it; `store.ts` `saveCutout`/`loadCutout` (pieces in
+`clipParts`, under the reaction's bank id, `CUTOUT_VERSION`). `greenScreenRender.ts` (`renderGreenScreen`,
+`cornerBox`): background covers the frame, the mask half made see-through (`greyToAlpha`) and him drawn through it,
+background sound to -14 LUFS under a limiter. `batch.ts` (`layout`, `corner`, `mixFrom`), `BatchView.tsx`,
+`pipeline.makeGreenScreen`, `CampaignApp` (phase `cutout`). Tests: `greenScreen.test.ts`. The segmenter was run in
+headless Chromium here (GPU, a 540x960 mask per frame); how well it cuts out a real person is checked on the phone.
+
 ## Batch 5: a video in the middle, when you say its words
 **What:** an angle can now have **videos in the middle**: in the angle's **Clips** tab, tap **+ Video in the
 middle**, type the words ("I'm going to show you how") and choose the clip. In every video of that angle where you
