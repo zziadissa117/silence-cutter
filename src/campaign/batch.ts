@@ -61,9 +61,11 @@ export interface BatchBank {
   layout?: BatchLayout
   /** Green screen: which corner he is in, and how big. */
   corner?: { side: 'left' | 'right'; sizePct: number }
+  /** On the engine: the batch it is making now, to follow. */
+  engineJob?: string
 }
 
-export type BatchLayout = 'after' | 'greenscreen'
+export type BatchLayout = 'after' | 'greenscreen' | 'engine'
 
 /** What a bank mixes from: in green screen, no music (the background's sound
  *  is the sound), and headlines are optional - none is the default. */

@@ -8,7 +8,7 @@ Instructions for coding agents (Codex, Claude Code). Full map:
 Phone-first PWA: cuts silences/"um"s out of talking-head video on-device, brands
 it per campaign, posts it to social platforms via Postiz. Vite + React + TS,
 Dexie, `mediabunny` (WebCodecs), Supabase (Postgres + 2 Edge Functions), Netlify.
-**No ffmpeg/ffprobe**: inspect media with `mediabunny` track metadata.
+**No ffmpeg/ffprobe** in the app: inspect media with `mediabunny` track metadata (only `engine/`, on a server, uses ffmpeg).
 
 ## Commands
 
@@ -38,8 +38,9 @@ only, no Supabase); `./deploy-server.sh` ships the `postiz` and `cutter` functio
 3. Show any SQL migration to the owner and wait for OK before applying it. The
    Supabase MCP `apply_migration`/`execute_sql` tool hangs on statements containing
    `delete`/`drop`; those are run by hand in the SQL editor.
-4. Videos never leave the phone except as the finished MP4 to Postiz. Never
-   upload a raw recording.
+4. Videos never leave the phone except as the finished MP4 to Postiz, and the
+   campaign bank sent to **the engine** (`engine/`, OK'd by the owner) when he
+   makes a batch there. Never upload a raw recording anywhere else.
 5. Local-first: every change lands on the phone at once and syncs in the
    background; nothing waits on the network except first sign-in and posting.
 6. One page runs at a time. Do not auto-update the service worker.
@@ -60,7 +61,9 @@ only, no Supabase); `./deploy-server.sh` ships the `postiz` and `cutter` functio
 - Posting (phone): `posting.ts`, `PostsView.tsx`, `NewPost.tsx`, `BatchView.tsx`
 - Posting (server): `supabase/functions/postiz/*` (`slots.ts` times, `caption.ts`, `batch.ts`, `hand.ts`, `attach.ts`, `failed.ts` missed accounts)
 - Duplicate protection: `campaign/fingerprint.ts` (never key a send or a bank file on a random id alone)
-- Login (server): `supabase/functions/cutter/index.ts`
+- Login (server): `supabase/functions/cutter/index.ts` (`whoami` is the engine's login check)
+- The engine (Railway, Python + ffmpeg, Ilyan's Le plateau): `engine/` (setup in `engine/README.md`); phone side
+  `campaign/engine.ts`, Batch layout "On the engine", Settings "Engine". Tests: `cd engine && python3 -m unittest tests.test_engine`
 
 ## Workflow
 

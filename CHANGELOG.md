@@ -3,6 +3,33 @@
 Newest first. Every change says what it does, how to use it, and how it works
 underneath. Kept up to date with each commit.
 
+## Batch 8: the engine - Ilyan's Le plateau on a server
+**What:** big batches made on a server (Railway) instead of the phone, with Ilyan's engine: many videos from each
+take, each a little different, never a near-copy, and the phone can be closed while it works.
+- **Set up once:** the steps are in `engine/README.md` (a Railway project from this repo, a volume, an address).
+  Then Settings, **Engine**: paste the address, **Connect** - it says how much room is left and whether Claude is on.
+- **Use:** Batch tab, Layout **On the engine** (shows once the engine is connected). Add **Hooks - your face** (takes
+  of 10-12 s; it cuts several hooks out of each), **Product clips**, **Headlines** (the words over the hook - Claude
+  rewords them a little for each video) and **Songs** (each video gets the one this campaign used least, from its
+  chorus). Pick the days as usual and tap Make: the phone sends what the engine doesn't have yet (once - after that,
+  only new files), hands it the batch and is free.
+- **Approving:** the videos arrive in Posts as a batch, each with its day and time, waiting for you - watch one, and
+  if it's right, **Approve all**.
+- The Batch tab shows how far it got (checked every 15 s), with **Stop** while it works and **Carry on** if it stopped
+  (a restart, a failure) - nothing is posted twice. A video that would be too close to one already sent (last 30 days,
+  90 for other campaigns) or to one in the batch is made again, up to three times, then skipped and counted.
+- Rule change, OK'd by you: the bank's footage now leaves the phone - to the engine only, and only for this layout.
+Needs deploying: run ./deploy-server.sh (the login function's new `whoami`), then ./deploy.sh.
+**How:** `engine/` (Python 3.12 stdlib server + ffmpeg, Dockerfile, `railway.json`): `server.py` routes, `auth.py`
+(token -> space via `cutter` `whoami`, cached 5 min), `uploads.py` (8 MB pieces), `series.py` (clips + settings ->
+Le plateau `serie`), `jobs.py` (one batch at a time; keys `engine-<batch>-<n>`; token in memory only; `again`),
+`guard.py` (dHash fingerprints every 0.5 s), `hooks.py` (Anthropic SDK 1.10.0, `claude-opus-5-5`, low effort, JSON
+schema output, server-side fallback), `poster.py` (the phone's start / signed pieces / sent protocol to `postiz`).
+`plateau/`: Ilyan's `remixer.py`, `sons.py`, `captions*.py` and TikTok Sans, unchanged (commit `f3c8678`), pointed at
+`/data` by `plateau_paths.py`. Phone: `campaign/engine.ts` (+ test), `BatchView` layout `engine`, `SettingsView`
+`EngineSetting`, `batch.ts` (`engineJob`). Tests: `engine/tests/test_engine.py` (14, with real renders and the real
+SDK against a stand-in server). Checked here: renders are 1080x1920, 30 fps, about 15 Mbps.
+
 ## Batch 7: the look of Apple's own apps, light and dark, tips hidden
 **What:**
 - **Light and dark:** Settings, **Appearance**: Automatic (follows the phone), Light or Dark. Colours are Apple's own -

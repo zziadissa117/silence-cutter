@@ -11,7 +11,10 @@ and posts the finished videos to TikTok / Instagram / YouTube / Facebook
 through **Postiz**, on each campaign's own posting times. **All video work
 happens in the browser, on the phone** (WebCodecs via `mediabunny`); videos
 never go to a server except as the finished file on its way to Postiz. There is
-no ffmpeg and no ffprobe anywhere in this stack.
+no ffmpeg and no ffprobe anywhere in the app. The one exception, OK'd by the
+owner: **the engine** (`engine/`, Python + ffmpeg on Railway) - Ilyan's Le
+plateau making big batches on a server. The phone sends it the campaign's bank
+for that (Batch, layout On the engine); see "The engine" below.
 
 ## Stack
 
@@ -63,6 +66,12 @@ first when something would be lost.
   function and stored in `cutter_profile_secrets`; never on the phone.
 - **Deploy hazard:** `supabase/functions/cutter/index.ts` in the repo must be
   the deployed one. Deploying an older copy reopens signup.
+- **The engine** (`engine/`) checks every call's cutter login token with the
+  `cutter` function's `whoami` (a valid token gets its space id, nothing else),
+  keeps each space's batches apart, and answers browsers only from
+  `ALLOWED_ORIGIN` (the Netlify app). It holds a phone's token in memory only,
+  while that phone's batch is made, and posts through the `postiz` function with
+  it - never to Postiz directly, never with a key of its own.
 
 ## Render pipeline (all on-device)
 
@@ -177,6 +186,25 @@ phone (outbox.ts, posting.ts)          Edge Function postiz            Postiz
 `test-fake-postiz:`). Each person has a **posting profile** (their own Postiz key,
 accounts, times) inside the shared login that holds campaigns.
 
+## The engine (`engine/`, on Railway)
+
+```
+phone, Batch "On the engine"                 engine (Python, ffmpeg, /data volume)
+ Settings: its address (engine.ts)
+ saveEngineSeries: hook lines  ---------->   series/<campaign>/settings.json
+ sendFootage: what it lacks, 8 MB pieces ->  uploads.py -> series/<campaign>/{hook,product}, songs (sons.py)
+ makeOnEngine: batch id, days+times  --->    jobs.py, one batch at a time:
+                                               hooks.py   Claude rewords the lines (optional key)
+                                               remixer.py Le plateau's render (Ilyan's, unchanged)
+                                               guard.py   near-copy check (dHash, 30/90 days, in-batch)
+                                               poster.py  -> postiz function start/parts/sent, key
+                                                          engine-<batch>-<n>, meta.batch day+time
+ polls /jobs/<id> every 15 s; Stop; Carry on (/jobs/<id>/again: same keys, sent ones skipped)
+```
+Videos made there wait in Posts like any batch (approval `me`): watch one, then Approve all.
+Which bank files were sent is kept on the phone (`cutter.engineSent`) and checked against the engine's list.
+Setup steps: `engine/README.md`. Tests: `engine/tests/test_engine.py` (real renders).
+
 ## Data model (Postgres, all RLS-locked)
 
 `cutter_spaces` (login: name, pass_salt, pass_hash, lockout) · `cutter_items`
@@ -198,8 +226,10 @@ point only moves forward (`pullFrom`/`readTo`); `applyRemote` keeps only newer r
 ## Env / secrets (names only)
 
 Client: none (the function URL and the public publishable key are constants in
-`campaign/cloud.ts`). Edge Function secrets: `CUTTER_ADMIN_PASSWORD`;
-`SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY` are injected by Supabase.
+`campaign/cloud.ts`; the engine's address is typed in Settings and kept on the phone). Edge Function secrets:
+`CUTTER_ADMIN_PASSWORD`; `SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY` are injected by Supabase. Engine (Railway
+variables, `engine/engine/config.py`): `ANTHROPIC_API_KEY` (optional), `ALLOWED_ORIGIN`, `ENGINE_DATA` (`/data`),
+`PORT`.
 
 ## Run, build, test
 
@@ -210,6 +240,7 @@ npm test                  # vitest, jsdom (321 tests)
 npx tsc -b
 npm run lint              # oxlint
 npm run build             # tsc -b && vite build -> dist/
+cd engine && python3 -m unittest tests.test_engine   # the engine (needs ffmpeg + requirements.txt)
 ```
 `tsconfig.tsbuildinfo` is tracked; `git checkout tsconfig.tsbuildinfo` after builds.
 
@@ -231,6 +262,7 @@ supabase/functions/postiz      posting, captions, scheduler, push (Edge Function
                                failed.ts (accounts a post missed: names, retry-accounts)
 supabase/migrations            SQL
 public/push-sw.js              service-worker push handler
+engine/                        the engine on Railway (Python): engine/ its code, plateau/ Ilyan's files, tests/
 ```
 
 ## Gotchas

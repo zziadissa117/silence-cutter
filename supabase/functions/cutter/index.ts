@@ -361,6 +361,10 @@ Deno.serve(async (req) => {
       return uploadUrls(spaceId, body)
     case 'download-urls':
       return downloadUrls(spaceId, body)
+    case 'whoami':
+      // The engine (engine/) checks a phone's login with this: a valid token
+      // gets its space's id back, nothing more.
+      return reply({ space: spaceId })
     default:
       return reply({ error: 'Unknown action.' }, 400)
   }

@@ -6,6 +6,7 @@ import { useEffect, useState } from 'react'
 import type { PresetName } from '../media/silenceMath'
 import type { Session, SyncState } from './cloud'
 import { savedTheme, savedTips, setTheme, setTips, type Theme } from '../theme'
+import { cleanEngineUrl, engineStatus, engineUrl, setEngineUrl } from './engine'
 import { DEFAULT_WINDOW } from '../../supabase/functions/postiz/window.ts'
 import { onFixedTimes, switchToRandom, windowLabel, type LocalPosting, type Profile } from './posting'
 import {
@@ -352,6 +353,8 @@ export function SettingsView({
         </div>
       )}
 
+      {posting ? <EngineSetting /> : null}
+
       <NoiseCutting />
 
       <div className="list-title">Pacing</div>
@@ -430,6 +433,74 @@ export function SettingsView({
   )
 }
 
+
+/** The engine's address (engine/ on Railway), checked against it with this login. */
+function EngineSetting() {
+  const [url, setUrl] = useState(() => engineUrl() ?? '')
+  const [line, setLine] = useState<{ text: string; bad: boolean } | null>(null)
+  const [busy, setBusy] = useState(false)
+  const check = async () => {
+    const clean = cleanEngineUrl(url)
+    if (!clean) {
+      setLine({ text: "That isn't a web address - paste the one Railway gives the engine (https://…).", bad: true })
+      return
+    }
+    setBusy(true)
+    setEngineUrl(clean)
+    setUrl(clean)
+    try {
+      const status = await engineStatus()
+      setLine({
+        text: `Connected · ${status.disk.freeGB} GB free · ${status.claude ? 'Claude rewords hooks' : 'no Claude key, hooks as written'}`,
+        bad: false,
+      })
+    } catch (error) {
+      setLine({ text: error instanceof Error ? error.message : String(error), bad: true })
+    } finally {
+      setBusy(false)
+    }
+  }
+  return (
+    <>
+      <div className="list-title">Engine</div>
+      <div className="setting engine-setting">
+        <div className="setting-text">
+          <input
+            type="url"
+            className="find"
+            inputMode="url"
+            autoCapitalize="off"
+            autoCorrect="off"
+            placeholder="https://your-engine.up.railway.app"
+            aria-label="Engine address"
+            value={url}
+            onChange={(e) => setUrl(e.target.value)}
+          />
+          {line ? <span className={`row-line wrap${line.bad ? ' warn-text' : ''}`}>{line.text}</span> : null}
+          <span className="hint tip" style={{ display: 'block' }}>
+            Makes big batches on a server, with the phone closed - Batch, On the engine.
+          </span>
+        </div>
+        <button type="button" className="btn small primary" disabled={busy || !url.trim()} onClick={() => void check()}>
+          {busy ? 'Checking…' : 'Connect'}
+        </button>
+      </div>
+      {engineUrl() ? (
+        <button
+          type="button"
+          className="linkbtn"
+          onClick={() => {
+            setEngineUrl(null)
+            setUrl('')
+            setLine(null)
+          }}
+        >
+          Disconnect the engine
+        </button>
+      ) : null}
+    </>
+  )
+}
 
 /** Light or dark (or as the phone is), and whether the explanations show. */
 function Appearance() {

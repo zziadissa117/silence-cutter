@@ -33,7 +33,7 @@ import {
 import { filmingOf } from './filming'
 import { fingerprint, skippedNotice } from './fingerprint'
 import { formatTime, labelOf, type Job } from './jobs'
-import type { Angle, Campaign } from './look'
+import { NO_POSTING, type Angle, type Campaign } from './look'
 import { copySong, useMusicBank } from './musicBank'
 import {
   BATCH_MAX_PER_DAY,
@@ -54,6 +54,17 @@ import {
 import { deleteBankFile, loadBankFile, loadBatchBank, saveBankFile, saveBatchBank, type JobBatch } from './store'
 import { FormulaPreview } from './FormulaPreview'
 import { CORNER_SIZES, DEFAULT_CORNER } from './greenScreenRender'
+import {
+  carryOnEngineJob,
+  EngineError,
+  engineJob,
+  engineUrl,
+  makeOnEngine,
+  saveEngineSeries,
+  sendFootage,
+  stopEngineJob,
+  type EngineJob,
+} from './engine'
 
 const LAST_KEY = 'batch.campaign'
 const MAX_DAYS = 14
@@ -168,6 +179,31 @@ export function BatchView({
    *  twice. Cleared once the batch's videos show up on this phone. */
   const making = useRef(false)
   const [tapped, setTapped] = useState(false)
+  /** The batch the engine is making for this campaign, as it last said. */
+  const [engineState, setEngineState] = useState<EngineJob | null>(null)
+  useEffect(() => {
+    const id = bank?.engineJob
+    setEngineState(null)
+    if (!id || !engineUrl()) return
+    let alive = true
+    let going = true
+    const look = () => {
+      if (!going) return
+      void engineJob(id)
+        .then((job) => {
+          if (!alive) return
+          setEngineState(job)
+          going = job.status === 'waiting' || job.status === 'making'
+        })
+        .catch(() => {})
+    }
+    look()
+    const timer = window.setInterval(look, 15_000)
+    return () => {
+      alive = false
+      window.clearInterval(timer)
+    }
+  }, [bank?.engineJob])
 
   useEffect(() => {
     if (!campaign) return
@@ -348,23 +384,27 @@ export function BatchView({
   const wanted = bank ? planSlots({ times: timesOnDate, perDay: bank.perDay, days: bank.days, madeThrough: stacking ? undefined : bank.madeThrough }) : []
   // Never a video twice: a batch stops at the last different one left.
   const green = bank?.layout === 'greenscreen'
+  const onEngine = bank?.layout === 'engine'
   const corner = bank?.corner ?? DEFAULT_CORNER
   const formulaHook = bank && !green ? hookOf(bank) === 'formula' : false
   const formula: BatchFormula = bank?.formula ?? DEFAULT_FORMULA
   const mixable = bank ? mixFrom(bank, green ? bank.headlines : headlinesToMix(bank)) : null
   const { total: different, left } = mixable ? combos(mixable) : { total: 0, left: 0 }
-  const slots = Number.isFinite(left) ? wanted.slice(0, left) : wanted
+  // The engine makes many videos from each take, so its batches are not capped
+  // by how many combinations the bank has.
+  const slots = onEngine || !Number.isFinite(left) ? wanted : wanted.slice(0, left)
   const spentShown = Boolean(bank?.spent) && (bank!.reactions.length === 0 || bank!.products.length === 0)
   const missing = !bank
     ? []
     : [
         bank.reactions.length === 0 ? 'a reaction' : '',
         bank.products.length === 0 ? (green ? 'a background video' : 'a product showcase') : '',
-        green ? '' : formulaHook ? (!formula.left || !formula.right ? 'both logos' : '') : bank.headlines.length === 0 ? 'a headline' : '',
+        green || onEngine ? '' : formulaHook ? (!formula.left || !formula.right ? 'both logos' : '') : bank.headlines.length === 0 ? 'a headline' : '',
       ].filter(Boolean)
   const inProgress = jobs.filter((j) => j.status !== 'failed' && j.status !== 'held')
   const makingHere = inProgress.filter((j) => j.campaignId === campaign.id)
-  const busyMaking = tapped || makingHere.length > 0
+  const engineBusy = onEngine && (engineState?.status === 'waiting' || engineState?.status === 'making')
+  const busyMaking = tapped || makingHere.length > 0 || engineBusy
   const madeHereTotal = [...new Map(jobs.filter((j) => j.campaignId === campaign.id).map((j) => [j.batch!.id, j.batch!.size])).values()].reduce(
     (a, b) => a + b,
     0,
@@ -374,7 +414,42 @@ export function BatchView({
   const working = jobs.find((j) => j.status === 'working')
   const canMake = Boolean(bank) && missing.length === 0 && slots.length > 0 && saving === null && !busyMaking
 
+  /** On the engine: sets it up, sends it what it's missing, then hands it the batch. */
+  const makeEngine = async () => {
+    if (!bank || !profile || !canMake || making.current) return
+    making.current = true
+    setTapped(true)
+    setProblem(null)
+    const id = `b-${Date.now().toString(36)}`
+    try {
+      await saveEngineSeries(campaign.id, { name: campaign.name, hooks: bank.headlines })
+      await sendFootage(campaign.id, bank, (file) => loadBankFile(file as BankFile), setSaving)
+      setSaving('Handing the batch to the engine…')
+      const job = await makeOnEngine({
+        campaign: { id: campaign.id, name: campaign.name, posting: campaign.posting ?? NO_POSTING },
+        profile: profile.id,
+        batchId: id,
+        slots: slots.map((s) => ({ date: s.date, time: s.time })),
+      })
+      remember(campaign.id)
+      const through = slots[slots.length - 1].date
+      const madeThrough = bank.madeThrough && bank.madeThrough > through ? bank.madeThrough : through
+      keep({ ...bank, madeThrough, lastPerDay: bank.perDay, engineJob: job.id })
+      setEngineState(job)
+    } catch (error) {
+      setProblem(error instanceof EngineError || error instanceof Error ? error.message : String(error))
+    } finally {
+      setSaving(null)
+      making.current = false
+      setTapped(false)
+    }
+  }
+
   const make = () => {
+    if (onEngine) {
+      void makeEngine()
+      return
+    }
     if (!bank || !canMake || making.current) return
     making.current = true
     jobsAtTap.current = jobs.length
@@ -491,7 +566,9 @@ export function BatchView({
 
   const nextDays = slots.length > 0 ? dayRange(slots[0].date, slots[slots.length - 1].date) : ''
   const makeLabel = busyMaking
-    ? makingHere.length > 0
+    ? engineBusy && !tapped
+      ? 'The engine is making this batch'
+      : makingHere.length > 0
       ? `Making ${Math.max(0, madeHereTotal - makingHere.length) + 1} of ${madeHereTotal}…`
       : 'Making…'
     : slots.length > 0
@@ -570,7 +647,18 @@ export function BatchView({
               <button type="button" role="radio" aria-checked={green} className={green ? 'active' : ''} onClick={() => keep({ ...bank, layout: 'greenscreen' })}>
                 Green screen
               </button>
+              {engineUrl() || onEngine ? (
+                <button type="button" role="radio" aria-checked={onEngine} className={onEngine ? 'active' : ''} onClick={() => keep({ ...bank, layout: 'engine' })}>
+                  On the engine
+                </button>
+              ) : null}
             </div>
+            {onEngine ? (
+              <p className="hint tip">
+                Made on the server - close the app once it says the batch is handed over. Each take gives several hooks, every video
+                a little different, never a near-copy. They wait in Posts: watch one, then Approve all.
+              </p>
+            ) : null}
           </div>
           {green ? (
             <>
@@ -607,13 +695,18 @@ export function BatchView({
                 </label>
               </div>
             </>
+          ) : onEngine ? (
+            <>
+              {list('reactions', 'Hooks - your face', 'Takes of 10-12 s; the engine cuts several hooks out of each.')}
+              {list('products', 'Product clips', 'Shown after the hook.')}
+            </>
           ) : (
             <>
               {list('reactions', 'Reactions', 'They go first, with the headline over them.')}
               {list('products', 'Product showcases', 'Shown after the reaction.')}
             </>
           )}
-          {green ? null : (
+          {green || onEngine ? null : (
           <div className="group">
             <div className="group-title">Hook</div>
             <div className="seg full" role="radiogroup" aria-label="Hook">
@@ -688,7 +781,13 @@ export function BatchView({
                 Headlines <span className="bank-count">{bank.headlines.length}</span>
               </span>
             </div>
-            <p className="hint bank-hint">{green ? 'Optional - none and the videos have no headline. One a line.' : 'One a line - paste them all in.'}</p>
+            <p className="hint bank-hint">
+              {green
+                ? 'Optional - none and the videos have no headline. One a line.'
+                : onEngine
+                  ? 'The words over the hook, one a line - Claude rewords them a little for each video.'
+                  : 'One a line - paste them all in.'}
+            </p>
             <textarea
               className="post-caption bank-headlines"
               rows={Math.min(8, Math.max(3, bank.headlines.length + 1))}
@@ -704,7 +803,11 @@ export function BatchView({
             />
           </div>
           )}
-          {green ? null : list('music', 'Music', 'The only sound - the clips are muted. With one track every video uses it; with more, each gets one at random.')}
+          {green
+            ? null
+            : onEngine
+              ? list('music', 'Songs', 'Each video gets the song this campaign used least, starting on its chorus.')
+              : list('music', 'Music', 'The only sound - the clips are muted. With one track every video uses it; with more, each gets one at random.')}
           {saving ? <p className="hint">{saving}</p> : null}
           {bankSize > 0 ? <p className="hint">The bank keeps {mb(bankSize)} on this phone.</p> : null}
 
@@ -795,7 +898,54 @@ export function BatchView({
           <button type="button" className="btn primary batch-make" disabled={!canMake} onClick={make}>
             {makeLabel}
           </button>
-          {different > 0 && Number.isFinite(different) ? (
+          {onEngine && engineState ? (
+            <div className="batch-progress">
+              <div className={`label${engineState.status === 'failed' ? ' warn-text' : ''}`}>
+                {engineState.status === 'done'
+                  ? `The engine sent ${engineState.sent} of ${engineState.total} to Posts`
+                  : engineState.status === 'failed' || engineState.status === 'stopped'
+                    ? `The engine stopped at ${engineState.sent} of ${engineState.total}`
+                    : `The engine is making ${engineState.total} · ${engineState.sent} sent`}
+              </div>
+              <div className="bar">
+                <div style={{ width: `${Math.round((engineState.sent / Math.max(1, engineState.total)) * 100)}%` }} />
+              </div>
+              {engineState.error ? <p className="hint warn-text">{engineState.error}</p> : null}
+              {engineState.skipped > 0 ? (
+                <p className="hint">{engineState.skipped} couldn't be made different enough from what already went out - film new hooks.</p>
+              ) : null}
+              {engineBusy ? (
+                <button
+                  type="button"
+                  className="linkbtn"
+                  onClick={() => {
+                    void stopEngineJob(engineState.id)
+                      .then(() => setEngineState({ ...engineState, status: 'stopped' }))
+                      .catch((error: unknown) => setProblem(error instanceof Error ? error.message : String(error)))
+                  }}
+                >
+                  Stop after the video it's on
+                </button>
+              ) : (engineState.status === 'failed' || engineState.status === 'stopped') && engineState.sent < engineState.total ? (
+                <button
+                  type="button"
+                  className="btn small"
+                  onClick={() => {
+                    setProblem(null)
+                    void carryOnEngineJob(engineState.id)
+                      .then((job) => {
+                        if (bank) keep({ ...bank, engineJob: job.id })
+                        setEngineState(job)
+                      })
+                      .catch((error: unknown) => setProblem(error instanceof Error ? error.message : String(error)))
+                  }}
+                >
+                  Carry on - make the other {engineState.total - engineState.sent}
+                </button>
+              ) : null}
+            </div>
+          ) : null}
+          {different > 0 && Number.isFinite(different) && !onEngine ? (
             <p className={`hint new-post-to batch-left${slots.length < wanted.length ? ' warn-text' : ''}`}>
               {left} of {different} different videos left
               {slots.length < wanted.length && slots.length > 0

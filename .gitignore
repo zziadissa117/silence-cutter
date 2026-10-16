@@ -5,3 +5,4 @@ dev-dist
 *.local
 .netlify
 .last-server-deploy
+__pycache__
