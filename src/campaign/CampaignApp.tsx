@@ -68,7 +68,8 @@ import {
   type ClipPlace,
   type JoinedClips,
 } from './clips'
-import { ClipsField } from './ClipsField'
+import { ClipsField, clipName } from './ClipsField'
+import { findPhrase } from './cueClips'
 import { ClipsMaker, type Montage } from './ClipsMaker'
 import { JoinPicker } from './JoinPicker'
 import { filmingOf, joinSuggestions, type Filming } from './filming'
@@ -389,6 +390,18 @@ export function CampaignApp() {
       const file = await clipFile(id).catch(() => null)
       if (file) joined[place] = file
       else missing.push(place)
+    }
+    // The angle's videos in the middle, unless he left them off this one.
+    if (job.day?.clips?.cues !== 'none') {
+      let cuesMissing = 0
+      const cues: { phrase: string; file: Blob }[] = []
+      for (const cue of angle.cues ?? []) {
+        const file = await clipFile(cue.clip).catch(() => null)
+        if (file) cues.push({ phrase: cue.phrase, file })
+        else cuesMissing++
+      }
+      if (cues.length > 0) joined.cues = cues
+      if (cuesMissing > 0) joined.cuesMissing = cuesMissing
     }
     return missing.length > 0 ? { ...joined, missing } : joined
   }
@@ -784,9 +797,31 @@ export function CampaignApp() {
     const clips: JobClips = { ...job.day.clips }
     if (choice) clips[place] = choice
     else delete clips[place]
-    const day = { ...job.day, clips: clips.before || clips.after ? clips : undefined }
+    const day = { ...job.day, clips: clips.before || clips.after || clips.cues ? clips : undefined }
     setJobs((js) => js.map((j) => (j.id === id ? { ...j, day } : j)))
     void recordDay(id, day, { campaignId: job.campaignId, angleId: job.angleId, headlineText: job.headlineText })
+  }
+
+  /** The angle's videos in the middle left off one video, or put back on. */
+  const setCuesOff = (id: string, off: boolean) => {
+    const job = jobsRef.current.find((j) => j.id === id)
+    if (!job?.day) return
+    const clips: JobClips = { ...job.day.clips }
+    if (off) clips.cues = 'none'
+    else delete clips.cues
+    const day = { ...job.day, clips: clips.before || clips.after || clips.cues ? clips : undefined }
+    setJobs((js) => js.map((j) => (j.id === id ? { ...j, day } : j)))
+    void recordDay(id, day, { campaignId: job.campaignId, angleId: job.angleId, headlineText: job.headlineText })
+  }
+
+  /** The angle's videos in the middle, and whether this video says each one's phrase. */
+  const cuesOf = (job: Job) => {
+    const plan = planFor(job)
+    const words = plan ? captionWordsFor(job, plan) : []
+    return (angleClips[angleKey(job.campaignId, job.angleId)]?.cues ?? []).map((cue) => {
+      const clip = clipList.find((c) => c.id === cue.clip)
+      return { phrase: cue.phrase, clipName: clip ? clipName(clip) : 'a clip no longer on this phone', said: findPhrase(words, cue.phrase) >= 0 }
+    })
   }
 
   /** Keeps a clip from the phone, to join onto videos. */
@@ -810,6 +845,9 @@ export function CampaignApp() {
           const clip = await newClip(file)
           setClip(job.id, place, clip.id)
         }}
+        cues={cuesOf(job)}
+        cuesOff={job.day.clips?.cues === 'none'}
+        onCuesOff={(off) => setCuesOff(job.id, off)}
       />
     )
 

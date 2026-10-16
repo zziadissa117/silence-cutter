@@ -2,7 +2,7 @@
 // in the angle gets, to watch, change or take off. Kept on this phone only -
 // see clips.ts.
 
-import { useEffect, useState } from 'react'
+import { useEffect, useState, type ReactNode } from 'react'
 
 import { VideoPicker } from '../VideoPicker'
 import { clipFile, type ClipInfo, type ClipPlace } from './clips'
@@ -20,8 +20,16 @@ export function ClipRow({
   all,
   onChange,
   onAdd,
+  title = TITLE[place],
+  none = NONE[place],
+  children,
 }: {
   place: ClipPlace
+  /** In place of "Video before" / "Video after", and its line when empty. */
+  title?: string
+  none?: string
+  /** Shown under the title: the phrase of a video in the middle. */
+  children?: ReactNode
   clipId: string | undefined
   /** Every clip on this phone, newest first. */
   all: ClipInfo[]
@@ -68,7 +76,8 @@ export function ClipRow({
 
   return (
     <div className="group">
-      <div className="group-title">{TITLE[place]}</div>
+      <div className="group-title">{title}</div>
+      {children}
       {clip ? (
         <>
           <div className="music-track">
@@ -80,7 +89,7 @@ export function ClipRow({
           {watching ? <video className="clip-watch" src={watching} controls autoPlay playsInline /> : null}
         </>
       ) : (
-        <div className="hint">{clipId ? "This clip isn't on the phone any more. Choose it again." : NONE[place]}</div>
+        <div className="hint">{clipId ? "This clip isn't on the phone any more. Choose it again." : none}</div>
       )}
       {others.length > 0 ? (
         <label className="field">
@@ -101,13 +110,13 @@ export function ClipRow({
         {adding ? (
           <span className="hint">Adding…</span>
         ) : (
-          <VideoPicker className={clip ? 'btn small' : 'btn'} label={`Choose the ${TITLE[place].toLowerCase()}`} onFiles={pick}>
+          <VideoPicker className={clip ? 'btn small' : 'btn'} label={`Choose the ${title.toLowerCase()}`} onFiles={pick}>
             {clip ? 'Change clip' : 'Choose a clip'}
           </VideoPicker>
         )}
         {clipId ? (
           <button type="button" className="linkbtn" onClick={() => onChange(null)}>
-            No {TITLE[place].toLowerCase()}
+            No {title.toLowerCase()}
           </button>
         ) : null}
       </div>

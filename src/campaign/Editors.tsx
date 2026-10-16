@@ -709,6 +709,45 @@ export function AngleEditor({
               onAdd={onAddClip}
             />
           ))}
+          {(clips.cues ?? []).map((cue, i) => (
+            <ClipRow
+              key={`cue-${i}`}
+              place="after"
+              title="Video in the middle"
+              none="Pick the clip that plays when you say the words above."
+              clipId={cue.clip || undefined}
+              all={clipList}
+              onChange={(id) =>
+                setClips((c) => {
+                  const cues = [...(c.cues ?? [])]
+                  if (id) cues[i] = { ...cues[i], clip: id }
+                  else cues.splice(i, 1)
+                  return { ...c, cues }
+                })
+              }
+              onAdd={onAddClip}
+            >
+              <label className="field">
+                <span className="label">Plays right after you say</span>
+                <input
+                  type="text"
+                  value={cue.phrase}
+                  maxLength={120}
+                  placeholder="I'm going to show you how"
+                  onChange={(e) =>
+                    setClips((c) => ({ ...c, cues: (c.cues ?? []).map((x, k) => (k === i ? { ...x, phrase: e.target.value } : x)) }))
+                  }
+                />
+              </label>
+            </ClipRow>
+          ))}
+          <button type="button" className="btn" onClick={() => setClips((c) => ({ ...c, cues: [...(c.cues ?? []), { phrase: '', clip: '' }] }))}>
+            + Video in the middle
+          </button>
+          <div className="hint">
+            A video in the middle plays whole, with its own sound, right after you say its words - then you carry on.
+            Only in videos where you say them.
+          </div>
         </>
       ) : (
         <EffectsSection look={look} hasBrand={hasBrand} onChange={(effects) => setAngle((a) => ({ ...a, effects }))} />

@@ -9,6 +9,7 @@
 
 import { SilenceCutError } from '../media/errors'
 import { openClip } from './clipParts'
+import { phraseWords, type ClipCue } from './cueClips'
 import {
   clipsPickedByJobs,
   deleteClipFile,
@@ -23,11 +24,18 @@ import {
 export type ClipPlace = 'before' | 'after'
 export const CLIP_PLACES: ClipPlace[] = ['before', 'after']
 export type ClipInfo = StoredClip
-/** The clips set on one angle, by clip id. */
-export type AngleClips = Partial<Record<ClipPlace, string>>
+/** The clips set on one angle, by clip id - and the videos played in the
+ *  middle of him when he says their phrase (cueClips.ts). */
+export type AngleClips = Partial<Record<ClipPlace, string>> & { cues?: ClipCue[] }
 /** The clips one video is made with, and any it should have had that are
  *  no longer on this phone. */
-export type JoinedClips = Partial<Record<ClipPlace, Blob>> & { missing?: ClipPlace[] }
+export type JoinedClips = Partial<Record<ClipPlace, Blob>> & {
+  missing?: ClipPlace[]
+  /** The videos in the middle, each with the phrase that brings it in. */
+  cues?: { phrase: string; file: Blob }[]
+  /** Videos in the middle no longer on this phone. */
+  cuesMissing?: number
+}
 
 const ANGLE_CLIPS = 'angleClips'
 /** Far past any hook or showcase; stops a whole film filling the phone. */
@@ -86,7 +94,9 @@ export async function saveAngleClips(key: string, clips: AngleClips): Promise<Re
   const all = { ...(await loadAngleClips()) }
   const kept: AngleClips = {}
   for (const place of CLIP_PLACES) if (clips[place]) kept[place] = clips[place]
-  if (kept.before || kept.after) all[key] = kept
+  const cues = (clips.cues ?? []).filter((c) => c.clip && phraseWords(c.phrase).length > 0)
+  if (cues.length > 0) kept.cues = cues
+  if (kept.before || kept.after || kept.cues) all[key] = kept
   else delete all[key]
   await setMeta(ANGLE_CLIPS, JSON.stringify(all))
   return all
@@ -103,7 +113,10 @@ export function clipFor(pick: string | undefined, angleClip: string | undefined)
  *  added. */
 export function unusedClips(clips: ClipInfo[], angleClips: Record<string, AngleClips>, picked: string[], now: number): string[] {
   const used = new Set(picked)
-  for (const set of Object.values(angleClips)) for (const place of CLIP_PLACES) if (set[place]) used.add(set[place]!)
+  for (const set of Object.values(angleClips)) {
+    for (const place of CLIP_PLACES) if (set[place]) used.add(set[place]!)
+    for (const cue of set.cues ?? []) used.add(cue.clip)
+  }
   return clips.filter((clip) => !used.has(clip.id) && now - clip.addedAt > FRESH_MS).map((clip) => clip.id)
 }
 

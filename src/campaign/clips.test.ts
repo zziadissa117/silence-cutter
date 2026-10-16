@@ -27,3 +27,10 @@ describe('unusedClips', () => {
     expect(unusedClips([clip('hook', 0)], { 'c/a': { after: 'hook' } }, [], now)).toEqual([])
   })
 })
+
+describe('videos in the middle', () => {
+  it('count as used, so their clips are kept', () => {
+    const angles = { 'c/a': { cues: [{ phrase: 'show you how', clip: 'demo' }] } }
+    expect(unusedClips([clip('demo', 0), clip('old', 0)], angles, [], 10 * HOUR)).toEqual(['old'])
+  })
+})

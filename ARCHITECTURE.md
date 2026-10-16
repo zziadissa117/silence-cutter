@@ -78,6 +78,8 @@ raw video file(s)
                                    audio mixed here: voice.ts (EQ/compress/loudness),
                                    music.ts (his track under the voice),
                                    sounds.ts (whoosh/ding/switch)
+  middle:   cueClips.ts places an angle's "video in the middle" after its phrase, splitting
+            the cut there; render.ts writes the clip between the two kept parts (`inserts`)
   siblings: reactionRender.ts (reaction clip + product clip), montageRender.ts
             (clips only, music only), media/silenceCut.ts (the plain cutter)
   -> outbox.ts                     copy the finished MP4 to private storage, send in

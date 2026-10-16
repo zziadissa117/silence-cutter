@@ -32,6 +32,7 @@ import { manualCues, type ManualPicture } from './manualPictures'
 import { wordMoments } from './moments'
 import { cutNoiseOn } from './noiseSetting'
 import { captionWords, type CaptionPosition, type CaptionSize, type CaptionStyle, type CaptionWord } from './captions'
+import { placeCues } from './cueClips'
 import type { ClipPlace, JoinedClips } from './clips'
 import { planCampaignCut, type CampaignPlan } from './plan'
 import { renderMontage } from './montageRender'
@@ -81,7 +82,17 @@ export interface CampaignResult {
   reaction?: { reactionSec: number; productSec: number; talking: boolean }
   /** The videos joined on before and after him, and any that were meant to
    *  be but couldn't be read or weren't on the phone. Absent when none. */
-  clips?: { beforeSec: number; afterSec: number; leftOut: ClipPlace[] }
+  clips?: {
+    beforeSec: number
+    afterSec: number
+    leftOut: ClipPlace[]
+    /** How long the videos played in the middle came out. */
+    middleSec?: number
+    /** Phrases of the angle's videos in the middle that this video never says. */
+    notSaid?: string[]
+    /** Videos in the middle that were said but couldn't be read, or are gone. */
+    middleLeftOut?: number
+  }
   /** A video of clips and music, no talking: how long each clip came out,
    *  the track under it, and why it went without one when it had to. */
   montage?: { seconds: number[]; music: string | null; musicFailed?: string }
@@ -222,10 +233,20 @@ export async function make(
     else popsMissing++
   }
 
+  // The videos in the middle: each after its phrase, the cut split there.
+  const cueWords = captions.length > 0 ? captions : captionWords(plan.spoken ?? plan.words, plan.keep, { rough: !plan.aligned })
+  let middle = placeCues(cueWords, plan.keep, clips.cues ?? [])
+  if (middle.notSaid.length > 0 && captions.length > 0) {
+    // Said under the headline, where the captions don't show: the words heard.
+    const heardWords = captionWords(plan.spoken ?? plan.words, plan.keep, { rough: !plan.aligned })
+    const again = placeCues(heardWords, plan.keep, clips.cues ?? [])
+    if (again.placed.length > middle.placed.length) middle = again
+  }
+
   const rendered = await renderCampaignCut(
     file,
     {
-      keep: plan.keep,
+      keep: middle.keep,
       look,
       headlineText,
       logoMoments: moments.logo,
@@ -243,12 +264,18 @@ export async function make(
       voice,
       music: track ? { audio: track.audio, level: track.level } : null,
       clips: { before: clips.before, after: clips.after },
+      inserts: middle.placed.map((p) => ({ after: p.after, file: clips.cues![p.cue].file })),
       pops: { clips: popClips, sizePct: pop.sizePct, position: pop.position },
     },
     onRenderProgress,
   )
   const popsLeftOut = popsMissing + rendered.popsLeftOut
-  const joined = { ...rendered.clips, leftOut: [...(clips.missing ?? []), ...rendered.clips.leftOut] }
+  const joined = {
+    ...rendered.clips,
+    leftOut: [...(clips.missing ?? []), ...rendered.clips.leftOut],
+    notSaid: middle.notSaid,
+    middleLeftOut: rendered.clips.middleLeftOut + (clips.cuesMissing ?? 0),
+  }
 
   const missed = [...new Map(notHeard.map((w) => [w.toLowerCase(), w])).values()]
   const heard = plan.words.map((w) => w.text.trim()).join(' ')
@@ -256,11 +283,13 @@ export async function make(
     blob: rendered.blob,
     storedAs: rendered.storedAs,
     originalDurationSec: plan.duration,
-    newDurationSec: totalDuration(plan.keep) + joined.beforeSec + joined.afterSec,
+    newDurationSec: totalDuration(plan.keep) + joined.beforeSec + joined.afterSec + joined.middleSec,
     cuts: plan.silences,
     ...(plan.checks?.some((c) => c.cut && c.kind === 'maybe-word') ? { soundsToCheck: plan.checks.filter((c) => c.cut && c.kind === 'maybe-word').length } : {}),
     ...(plan.cleanSpeech ? { fillerWords: plan.fillerWords, stutters: plan.stutters } : {}),
-    ...(joined.beforeSec || joined.afterSec || joined.leftOut.length ? { clips: joined } : {}),
+    ...(joined.beforeSec || joined.afterSec || joined.middleSec || joined.leftOut.length || joined.notSaid.length || joined.middleLeftOut
+      ? { clips: joined }
+      : {}),
     ...(track ? { music: track.name } : {}),
     ...(rendered.popsAt.length > 0 ? { popsAt: rendered.popsAt } : {}),
     ...(popsLeftOut > 0 ? { popsLeftOut } : {}),

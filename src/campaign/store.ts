@@ -169,6 +169,8 @@ export function jobOfPostKey(key: string): string {
 export interface JobClips {
   before?: string
   after?: string
+  /** "none": the angle's videos in the middle are left off this video. */
+  cues?: 'none'
 }
 
 export interface ReactionParts {

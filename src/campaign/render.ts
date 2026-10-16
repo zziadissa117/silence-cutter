@@ -157,6 +157,9 @@ export interface CampaignRenderInput {
   music?: { audio: Blob; level: MusicLevel } | null
   /** Videos joined on whole, before him and after him. */
   clips?: Partial<Record<ClipPlace, Blob | null>>
+  /** Videos played whole in the middle of him, each after kept part `after`
+   *  (cueClips.ts splits the cut so each lands between two parts). */
+  inserts?: { after: number; file: Blob }[]
   /** Bank videos that pop up over him when their words are said, muted,
    *  each playing to its end - see popVideo.ts. */
   pops?: {
@@ -180,7 +183,7 @@ export interface CampaignRenderResult {
   recovered: number
   /** How long the clips joined on came out, and any that couldn't be read
    *  and were left out. */
-  clips: { beforeSec: number; afterSec: number; leftOut: ClipPlace[] }
+  clips: { beforeSec: number; afterSec: number; leftOut: ClipPlace[]; middleSec: number; middleLeftOut: number }
   /** When a pop-up video came up, in seconds. */
   popsAt: number[]
   /** Pop-up videos that couldn't be played here and were left out. */
@@ -208,6 +211,7 @@ export async function renderCampaignCut(
     voice: boostVoice = false,
     music = null,
     clips: joining = {},
+    inserts = [],
     pops,
   }: CampaignRenderInput,
   onProgress?: (fraction: number) => void,
@@ -303,8 +307,22 @@ export async function renderCampaignCut(
     const afterClip = await openJoined('after')
     const beforeSec = beforeClip ? beforeClip.duration - beforeClip.first : 0
     const afterSec = afterClip ? afterClip.duration - afterClip.first : 0
+    // The videos in the middle, the same way: one that can't be read is left out.
+    let middleLeftOut = 0
+    const middle: { after: number; clip: Clip }[] = []
+    for (const insert of inserts) {
+      try {
+        const clip = await openClip(insert.file, 'video in the middle')
+        joined.push(clip)
+        middle.push({ after: insert.after, clip })
+      } catch (error) {
+        console.warn("A video in the middle couldn't be read, so it is left out:", error)
+        middleLeftOut++
+      }
+    }
+    const middleSec = middle.reduce((sum, m) => sum + (m.clip.duration - m.clip.first), 0)
     const keptSec = totalDuration(keep)
-    const allSec = beforeSec + keptSec + afterSec
+    const allSec = beforeSec + keptSec + middleSec + afterSec
 
     // The voice is measured on exactly the audio the video will have, read
     // through once or twice more - a second or two, audio only - so it lands
@@ -370,6 +388,8 @@ export async function renderCampaignCut(
     }
     const beforeGain = await levelFor(beforeClip)
     const afterGain = await levelFor(afterClip)
+    const middleGains: number[] = []
+    for (const m of middle) middleGains.push(await levelFor(m.clip))
 
     // A wide clip (Meta glasses) becomes 9:16; one already 9:16 is untouched.
     const mode = forceVertical && landscapeMode() === 'off' ? 'fill' : landscapeMode()
@@ -721,6 +741,14 @@ export async function renderCampaignCut(
       cursor = Math.max(videoEnd, audioEnd)
       doneSoFar += end - start
       onProgress?.(Math.min(0.99, doneSoFar / total))
+      // A video in the middle, said for right here: it plays whole, and the
+      // next part - and everything timed in it - starts after it.
+      for (const [i, m] of middle.entries()) {
+        if (m.after !== index) continue
+        const startedAt = cursor
+        cursor = await writeClip(m.clip, cursor, middleGains[i])
+        doneSoFar += cursor - startedAt
+      }
     }
 
     const afterStart = cursor
@@ -738,7 +766,7 @@ export async function renderCampaignCut(
       picturesAt: pictures.map((p) => [...p.placer.times]),
       bankAt: bank.flatMap((b) => [...b.placer.times]).sort((a, b) => a - b),
       recovered,
-      clips: { beforeSec: talkStart, afterSec: afterClip ? cursor - afterStart : 0, leftOut },
+      clips: { beforeSec: talkStart, afterSec: afterClip ? cursor - afterStart : 0, leftOut, middleSec, middleLeftOut },
       popsAt: popClips.flatMap((p) => [...p.placer.times]).sort((a, b) => a - b),
       popsLeftOut,
     }

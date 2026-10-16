@@ -20,9 +20,12 @@ export function ClipsField({
   compact = false,
   onPick,
   onNew,
+  cues = [],
+  cuesOff = false,
+  onCuesOff,
 }: {
   /** This video's own picks: a clip's id, or "none". Absent: the angle's. */
-  picks: AngleClips
+  picks: Partial<Record<ClipPlace, string>>
   /** The clips set on its angle. */
   angle: AngleClips
   /** Every clip on this phone, newest first. */
@@ -33,6 +36,11 @@ export function ClipsField({
   onPick: (place: ClipPlace, choice: string) => void
   /** Keeps a clip from the phone and picks it for this video. */
   onNew: (place: ClipPlace, file: File) => Promise<void>
+  /** The angle's videos in the middle, and whether this video says each phrase. */
+  cues?: { phrase: string; clipName: string; said: boolean }[]
+  /** They are left off this video. */
+  cuesOff?: boolean
+  onCuesOff?: (off: boolean) => void
 }) {
   const [added, setAdded] = useState<ClipPlace[]>([])
   const shown = CLIP_PLACES.filter((p) => angle[p] || picks[p] || added.includes(p))
@@ -59,6 +67,24 @@ export function ClipsField({
           onCancel={() => setAdded((a) => a.filter((p) => p !== place))}
         />
       ))}
+      {cues.length > 0 ? (
+        <div className="clip-cues">
+          {cues.map((cue, i) => (
+            <div key={i} className="clip-line">
+              <span className="clip-label">Video in the middle</span>
+              <span className="hint">
+                After "{cue.phrase}": {cue.clipName}
+                {cuesOff ? '' : cue.said ? '' : ' - not said in this video'}
+              </span>
+            </div>
+          ))}
+          {onCuesOff ? (
+            <label className="clip-cues-off">
+              <input type="checkbox" checked={!cuesOff} onChange={(e) => onCuesOff(!e.target.checked)} /> In this video
+            </label>
+          ) : null}
+        </div>
+      ) : null}
       {free.length > 0 ? (
         <select
           className="clip-add"

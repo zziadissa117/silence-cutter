@@ -3,6 +3,26 @@
 Newest first. Every change says what it does, how to use it, and how it works
 underneath. Kept up to date with each commit.
 
+## Batch 5: a video in the middle, when you say its words
+**What:** an angle can now have **videos in the middle**: in the angle's **Clips** tab, tap **+ Video in the
+middle**, type the words ("I'm going to show you how") and choose the clip. In every video of that angle where you
+say those words, the clip plays right after them - whole, with its own sound, filling the frame - and then you carry
+on. Not over you like a pop-up: in the timeline, so the video gets longer by the clip. If there's a short pause just
+after the words, it goes in the pause; otherwise straight after the last word.
+- The words are matched in what is kept of the take, whatever the case or punctuation; a phrase of four words or
+  more may have one word misheard (never the first or last).
+- Each video's Add list (on its row and on the edit screen) shows the angle's videos in the middle and says when a
+  video doesn't say the words; untick **In this video** to leave them off that one.
+- The finished row says "0:12 video in the middle", or that the words weren't said.
+- Captions, pictures, sounds and music after the clip all move on with it; the music keeps playing under it.
+- Not in the edit screen's preview yet - it plays your take; the clip is put in when the video is made.
+Only ./deploy.sh is needed.
+**How:** `cueClips.ts` (+ test): `findPhrase`, `placeCues` splits the cut where a clip goes (or uses the pause
+within 0.35 s); `render.ts` `inserts` writes each clip with `writeClip` after its kept part, so every
+`MomentPlacer` after it gets the new shift; `pipeline.make` places them (captions, else the words heard);
+`clips.ts` `AngleClips.cues` (kept on this phone, counted as used); `JobClips.cues: 'none'` per video;
+`ClipRow` takes a title and the phrase box; `ClipsField` shows the lines.
+
 ## Batch 4: cuts and captions on one page
 **What:** a video's cuts and its captions are now one screen: the video at the top with the captions drawn on it,
 the cuts timeline right under it (Split, Delete, Undo, + Picture as before), then the caption phrases, the look

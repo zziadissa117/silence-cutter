@@ -21,7 +21,8 @@ import { PlayButton } from './TrackPlayer'
 type Tone = 'now' | 'later' | 'ok' | 'warn' | 'bad'
 
 /** How long the clips joined on before and after came out. */
-const joinedSec = (result: NonNullable<Job['result']>) => (result.clips?.beforeSec ?? 0) + (result.clips?.afterSec ?? 0)
+const joinedSec = (result: NonNullable<Job['result']>) =>
+  (result.clips?.beforeSec ?? 0) + (result.clips?.afterSec ?? 0) + (result.clips?.middleSec ?? 0)
 /** His own part, cut. */
 const cutSec = (result: NonNullable<Job['result']>) => result.newDurationSec - joinedSec(result)
 
@@ -276,10 +277,19 @@ export function JobRow({
                 {result.soundsToCheck ? ` · ${result.soundsToCheck} cut sound${result.soundsToCheck === 1 ? '' : 's'} could be quiet words - Edit again to check` : ''}
                 {result.clips?.beforeSec ? ` · ${formatTime(result.clips.beforeSec)} video before` : ''}
                 {result.clips?.afterSec ? ` · ${formatTime(result.clips.afterSec)} video after` : ''}
+                {result.clips?.middleSec ? ` · ${formatTime(result.clips.middleSec)} video in the middle` : ''}
               </div>
               )}
               {result.montage?.musicFailed ? (
                 <div className="hint warn-text">Made without the music - {result.montage.musicFailed}.</div>
+              ) : null}
+              {result.clips?.notSaid?.length ? (
+                <div className="hint">
+                  No video in the middle for "{result.clips.notSaid.join('", "')}" - not said in this video.
+                </div>
+              ) : null}
+              {result.clips?.middleLeftOut ? (
+                <div className="hint warn-text">Made without a video in the middle - it isn't on this phone any more, or couldn't be read.</div>
               ) : null}
               {result.clips && result.clips.leftOut.length > 0 ? (
                 <div className="hint warn-text">
