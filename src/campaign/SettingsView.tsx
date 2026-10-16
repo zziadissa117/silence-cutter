@@ -23,7 +23,7 @@ import { PRESET_EFFECTS, defaultEffects, presetOf, setDefaultEffects, type Defau
 import type { AngleEffects, EffectLevel } from './effects'
 import { cutNoiseOn, setCutNoise } from './noiseSetting'
 import { LANDSCAPE_MODES, landscapeMode, setLandscapeMode, type LandscapeMode } from './framing916'
-import { PostingLimits } from './PostingLimits'
+import { PostingLimits, PostingLimitsRow } from './PostingLimits'
 import type { PushState } from './push'
 
 const PUSH_LINE: Record<PushState, string> = {
@@ -77,7 +77,7 @@ function DefaultEffectsSetting() {
   }
   const preset = presetOf(effects)
   const level = (key: 'cutPunch' | 'hookPush' | 'brandHit', label: string) => (
-    <label className="field">
+    <label className="field inline">
       <span className="label">{label}</span>
       <select value={effects[key]} onChange={(e) => change({ ...effects, [key]: e.target.value as EffectLevel })}>
         {EFFECT_LEVELS.map((l) => (
@@ -101,13 +101,15 @@ function DefaultEffectsSetting() {
       <p className="hint tip">
         Applied to every video whose angle has no effects of its own{preset === null ? ' (custom mix below)' : ''}. Turn them off for one video in its row. Applies to videos you make next.
       </p>
-      {level('cutPunch', 'Punch-in at cuts')}
-      {level('hookPush', 'Push-in under the hook')}
-      {level('brandHit', 'Punch when you say the brand')}
-      <label className="toggle">
-        <input type="checkbox" checked={effects.logoPop} onChange={(e) => change({ ...effects, logoPop: e.target.checked })} />
-        <span className="label">Logo and pictures spring in</span>
-      </label>
+      <div className="card-group">
+        {level('cutPunch', 'Punch-in at cuts')}
+        {level('hookPush', 'Push-in under the hook')}
+        {level('brandHit', 'Punch when you say the brand')}
+        <label className="toggle">
+          <input type="checkbox" checked={effects.logoPop} onChange={(e) => change({ ...effects, logoPop: e.target.checked })} />
+          <span className="label">Logo and pictures spring in</span>
+        </label>
+      </div>
     </>
   )
 }
@@ -258,6 +260,10 @@ export function SettingsView({
   onPlacesChanged: () => void
 }) {
   const used = useSpaceUsed()
+  const [limitsOpen, setLimitsOpen] = useState(false)
+  if (limitsOpen && posting) {
+    return <PostingLimits profile={posting.profile} onChanged={onLimitsChanged} onBack={() => setLimitsOpen(false)} />
+  }
   return (
     <section className="screen">
       <div className="screen-head">
@@ -292,6 +298,7 @@ export function SettingsView({
       <div className="list-title">Posting</div>
       {posting ? (
         <>
+          <div className="card-group">
           <div className="setting">
             <div className="setting-text">
               <span className="row-name">
@@ -313,7 +320,7 @@ export function SettingsView({
             </span>
           </label>
           <RandomForAll profile={posting.profile} campaigns={campaigns} onChanged={onPlacesChanged} />
-          <PostingLimits profile={posting.profile} onChanged={onLimitsChanged} />
+          <PostingLimitsRow profile={posting.profile} onOpen={() => setLimitsOpen(true)} />
           <div className="setting">
             <div className="setting-text">
               <span className="row-name">Notifications</span>
@@ -324,6 +331,7 @@ export function SettingsView({
                 Turn on
               </button>
             ) : null}
+          </div>
           </div>
           <button
             type="button"
@@ -373,6 +381,7 @@ export function SettingsView({
 
       <div className="list-title">Captions</div>
       <CaptionPlace />
+      <div className="card-group">
       <label className="toggle">
         <input type="checkbox" checked={captions} onChange={(e) => onCaptions(e.target.checked)} />
         <span>
@@ -391,8 +400,10 @@ export function SettingsView({
           </span>
         </span>
       </label>
+      </div>
 
       <div className="list-title">Speech</div>
+      <div className="card-group">
       <label className="toggle">
         <input type="checkbox" checked={voice} onChange={(e) => onVoice(e.target.checked)} />
         <span>
@@ -411,6 +422,7 @@ export function SettingsView({
           </span>
         </span>
       </label>
+      </div>
 
       {used !== null ? (
         <>

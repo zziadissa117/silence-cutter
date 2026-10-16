@@ -3,6 +3,27 @@
 Newest first. Every change says what it does, how to use it, and how it works
 underneath. Kept up to date with each commit.
 
+## Settings tidied, dark mode finished
+**What:**
+- **Pause and daily limits** has its own page: Settings shows one row - "Pause and daily limits", saying what is paused
+  or capped (or "Nothing paused, no daily limits") - and tapping it opens the list. There, each platform is one card:
+  "All of TikTok" first, then each account (its @ name), each with its most-a-day number and a pause switch (orange
+  when paused). Same settings as before, nothing changes in how they work.
+- **Settings is shorter:** each section's rows sit together on one card with thin lines between them, like the
+  iPhone's Settings (Posting, Default effects, Captions, Speech), instead of a card for every row. Default effects'
+  three choices are one line each ("Punch-in at cuts ... Off"). Row names are in regular weight, as on the iPhone.
+- **Dark mode:** the parts that were still drawn by the browser are finished - the limits' number boxes, the colour
+  well, the angle's Look / Pictures / Sound / Effects / Clips switcher (now on its grey track), the sounds picker
+  ("Your file..." on the same line), each effect on its own card, and numbers (-6 dB, 4.0 s) in the normal font
+  instead of a code font.
+Only ./deploy.sh is needed.
+**How:** `PostingLimits.tsx`: `PostingLimitsRow` + `limitsLine` (+ `postingLimits.test.ts`) and the page
+(`SettingsView` `limitsOpen`); `campaign.css`: `.limit-card`/`.limit-row`, `.card-group` (rows on one card, hairline
+by a background gradient, `.field.inline` for a choice on one line), `.seg.parts` track over `--ink`, `.effect`
+card, `input[type=color]`. Checked with screenshots in Chromium, light and dark, and a scan of every visible
+control on Videos, Batch, Campaigns, Bank, Settings, the angle's five parts, New campaign and Posts for any left
+with the browser's own look (none left).
+
 ## Batch 8: the engine - Ilyan's Le plateau on a server
 **What:** big batches made on a server (Railway) instead of the phone, with Ilyan's engine: many videos from each
 take, each a little different, never a near-copy, and the phone can be closed while it works.

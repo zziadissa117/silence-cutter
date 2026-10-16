@@ -568,12 +568,25 @@ html, body { overscroll-behavior-y: none; }
 .login-gate { max-width: 420px; margin: 0 auto; padding: 56px 20px; }
 
 /* Pause and daily limits (PostingLimits). */
-.posting-limits { display: flex; flex-direction: column; gap: 10px; padding: 8px 0; }
+/* Pause and daily limits (its own page): a card per platform, a row per account -
+   name, most a day, pause switch. */
 .limit-group { display: flex; flex-direction: column; gap: 6px; }
-.limit-row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
-.limit-row .toggle { flex: 1 1 10rem; }
-.limit-accounts { margin-left: 18px; display: flex; flex-direction: column; gap: 6px; }
-.limit-input { width: 5.5rem; }
+.limit-card { list-style: none; margin: 0; padding: 0 16px; border-radius: 14px; background: var(--surface); }
+.limit-row { display: flex; align-items: center; gap: 10px; min-height: 52px; padding: 8px 0; border-bottom: 0.5px solid var(--rule); }
+.limit-row:last-child { border-bottom: 0; }
+.limit-name { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; gap: 1px; }
+.limit-title { font-size: 17px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.limit-state { font-size: 13px; }
+.limit-unit { flex: none; font-size: 15px; color: var(--muted); }
+input.limit-input {
+  flex: none; width: 3.25rem; min-height: 34px; padding: 0 6px; border: 0; border-radius: 8px;
+  background: var(--field); color: var(--text); font: inherit; font-size: 16px; text-align: center;
+  -moz-appearance: textfield; appearance: textfield;
+}
+input.limit-input::-webkit-inner-spin-button, input.limit-input::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
+input.limit-input:focus { outline: 2px solid var(--focus); outline-offset: 0; }
+.limit-switch { flex: none; padding: 0; }
+.limit-switch > input[type='checkbox']:checked { background-color: var(--warn); }
 
 .bank-name.as-button { background: none; border: 0; padding: 0; color: inherit; font: inherit; font-weight: 600; text-align: left; cursor: text; }
 input.bank-name { background: transparent; border: 0; border-bottom: 1px solid currentColor; color: inherit; font: inherit; font-weight: 600; padding: 0; }
@@ -714,3 +727,38 @@ html:not(.tips-on) .tip { display: none !important; }
 .engine-setting { align-items: flex-start; }
 .engine-setting .setting-text { flex: 1; gap: 6px; }
 .engine-setting input.find { min-height: 40px; background-color: var(--field); }
+
+/* A section's rows on one card with hairlines between them, like the iPhone's
+   Settings - instead of a card for every row. */
+.card-group { display: flex; flex-direction: column; border-radius: 14px; background: var(--surface); overflow: hidden; }
+.card-group > .setting, .card-group > .toggle, .card-group > .field, .card-group > .rows {
+  margin: 0; border: 0; border-radius: 0; background-color: transparent; padding: 12px 16px;
+}
+.card-group > .rows { padding: 0 16px; }
+.card-group > * + * { background-image: linear-gradient(var(--rule), var(--rule)); background-repeat: no-repeat; background-position: 16px 0; background-size: calc(100% - 16px) 1px; }
+/* A choice in a row: its name left, the value right, as the iPhone shows it. */
+.card-group > .field.inline { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 48px; padding: 4px 16px; }
+.card-group > .field.inline > .label { font-weight: 400; font-size: 17px; }
+.card-group > .field.inline select {
+  width: auto; min-width: 0; min-height: 40px; padding: 0 22px 0 8px; border: 0; background-color: transparent;
+  background-position: right 2px center; color: var(--muted); text-align: right; text-align-last: right;
+}
+
+/* Numbers in the system font with even figures - not a code font. */
+.meter-read, .montage-n, .bank-count, .slider output, .pill, .caption-time { font-family: inherit; }
+
+/* The angle's parts (Look, Pictures, ...) as a real segmented control; it stays at
+   the top while scrolling, so its track is drawn over the page colour. */
+.seg.parts { background: linear-gradient(var(--seg-track), var(--seg-track)), var(--ink); }
+/* "Your file..." in the same row as the sounds when it fits. */
+.seg.chips button.file { flex-basis: auto; }
+
+/* Each effect on its own card, like the other parts of the angle. */
+.effect { padding: 14px 16px; border-bottom: 0; border-radius: 14px; background: var(--surface); }
+
+/* The colour well: the colour itself, rounded, no grey frame. */
+input[type='color'] { width: 44px; height: 32px; padding: 0; border: 0; border-radius: 8px; background: none; cursor: pointer; }
+input[type='color']::-webkit-color-swatch-wrapper { padding: 0; }
+input[type='color']::-webkit-color-swatch { border: 0.5px solid var(--edge); border-radius: 8px; }
+/* A switch row's name in regular weight, as in the iPhone's Settings. */
+.card-group > .toggle .label, .screen > .toggle .label { font-weight: 400; font-size: 17px; }

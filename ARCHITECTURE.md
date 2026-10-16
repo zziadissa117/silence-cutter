@@ -269,7 +269,8 @@ engine/                        the engine on Railway (Python): engine/ its code,
 
 - Colours only as tokens (`index.css` top: dark in `:root`, light under `prefers-color-scheme` and
   `[data-theme='light']`); `theme.ts` sets `data-theme` and `tips-on`. An explanation (not a status) gets the class
-  `tip` - hidden unless Settings, Show tips is on.
+  `tip` - hidden unless Settings, Show tips is on. A section's rows go on one card in a `.card-group` (Settings);
+  a long list (Pause and daily limits) gets its own page opened from one row, not a block in Settings.
 
 - Only one page runs at a time; never add a long-running second queue.
 - Never auto-update the service worker (UpdateBanner owns reloads).
