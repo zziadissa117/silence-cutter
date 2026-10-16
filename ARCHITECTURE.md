@@ -71,7 +71,8 @@ raw video file(s)
   -> listen  pipeline.ts / plan.ts silence curve (media/silenceMath.ts) + speech model
              transcribe.worker.ts   words (+ align.ts re-times them to the voice)
              media/fillerWords.ts   which "um"/stumbles to cut
-  -> review  CutsEditor.tsx/cuts.ts fix the cut by hand; CaptionReview.tsx fix words
+  -> review  EditScreen.tsx: CutsEditor.tsx/cuts.ts (the cut, by hand) with CaptionReview.tsx
+             (the words) under it, on one page; captions off: CutsEditor alone
   -> make    render.ts             ONE pass: decode -> canvas (headline overlay.ts,
                                    logo, effects.ts, captions.ts) -> encode -> mux,
                                    audio mixed here: voice.ts (EQ/compress/loudness),
@@ -237,6 +238,10 @@ public/push-sw.js              service-worker push handler
   screen there; the installed app's html/body are at least that tall so short screens reach the bottom.
   Changing the status-bar meta would fix it at the root, but iOS reads it only when the app is added to the
   Home Screen, and removing the app to add it again can wipe its storage (videos not yet sent with it).
+- The edit screen (`EditScreen.tsx`) is CutsEditor with CaptionReview `embedded` under its buttons: one video
+  (the cuts editor's), the captions drawn on it through `paintOver`, the phrases seeking and playing it through
+  `CutsControl`. A cut change settles for 0.4 s, then the captions follow (`CampaignApp.followCuts`,
+  `captions.withRestored`); leaving keeps cuts and captions in one write (`keepEdit`).
 - CutsEditor and CaptionReview hold only their head row and the video at the top (`.review-top`, sticky);
   anything else there (the caption look, the headline, the picture picker) left no room on a phone.
 - A change to a render function must keep preview and real frames on the same code.

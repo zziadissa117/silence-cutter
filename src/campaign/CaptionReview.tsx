@@ -52,6 +52,67 @@ export interface PopReview {
   onSkip: (id: string, skip: boolean) => void
 }
 
+/** When the captions are on the same page as the cuts (EditScreen): the cuts'
+ *  video is the one shown, so the phrases move and play it instead. */
+export interface EmbeddedVideo {
+  seek(t: number): void
+  playFrom(t: number): void
+  subscribe(listener: (t: number, playing: boolean) => void): () => void
+  /** He is typing in a phrase: the video above is made smaller. */
+  onTyping(typing: boolean): void
+}
+
+/** Each pop-up's still, to show its box at its size on the frame. */
+export function usePopStills(pops: PopReview | undefined): { stills: Map<string, ImageBitmap>; ready: number } {
+  const stills = useRef(new Map<string, ImageBitmap>())
+  const [ready, setReady] = useState(0)
+  const popsRef = useRef(pops)
+  popsRef.current = pops
+  const popIds = pops?.items.map((i) => i.id).join(',') ?? ''
+  useEffect(() => {
+    let alive = true
+    void (async () => {
+      for (const item of popsRef.current?.items ?? []) {
+        if (stills.current.has(item.id)) continue
+        const blob = await item.loadStill().catch(() => null)
+        if (!alive || !blob || typeof createImageBitmap !== 'function') continue
+        const bitmap = await createImageBitmap(blob).catch(() => null)
+        if (bitmap) stills.current.set(item.id, bitmap)
+      }
+      if (alive) setReady((n) => n + 1)
+    })()
+    return () => {
+      alive = false
+    }
+  }, [popIds])
+  useEffect(() => () => stills.current.forEach((b) => b.close()), [])
+  return { stills: stills.current, ready }
+}
+
+/** The pop-up video on at moment `t` (or, while he sizes it, the first one),
+ *  as its still, in the box it will have. */
+export function paintPopBox(
+  ctx: CanvasRenderingContext2D,
+  w: number,
+  h: number,
+  t: number,
+  p: PopReview | undefined,
+  stills: Map<string, ImageBitmap>,
+  showBox: boolean,
+): void {
+  if (!p) return
+  const on = p.items.filter((i) => !p.skipped.includes(i.id))
+  const now = on.find((i) => i.at.some((at) => at <= t && t < at + i.seconds)) ?? (showBox ? on[0] : undefined)
+  if (!now) return
+  const still = stills.get(now.id)
+  const box = popLayout(w, h, now, p.size, p.position)
+  if (still) drawPop(ctx, still, box, { scale: 1, alpha: 1 })
+  else {
+    ctx.fillStyle = 'rgba(0, 0, 0, 0.55)'
+    ctx.fillRect(box.x, box.y, box.width, box.height)
+  }
+}
+
 const textOf = (phrase: CaptionWord[]) =>
   phrase
     .map((w) => w.text.trim())
@@ -91,6 +152,7 @@ export function CaptionReview({
   vocabulary = [],
   riskSpans = [],
   pops,
+  embedded,
 }: {
   name: string
   /** The video itself, or null while it is being fetched from storage. */
@@ -133,6 +195,8 @@ export function CaptionReview({
   /** Bank videos said in this take, and how they pop up - absent when none
    *  is said. */
   pops?: PopReview
+  /** On the same page as the cuts: no video of its own. */
+  embedded?: EmbeddedVideo
 }) {
   // The phrases as heard: each keeps its moment however it is retyped.
   const [heard] = useState(() => phrasesOf(initial))
@@ -143,6 +207,8 @@ export function CaptionReview({
   const words = useMemo(() => phrases.flat(), [phrases])
   /** Which phrase each word is in. */
   const owner = useMemo(() => phrases.flatMap((p, k) => p.map(() => k)), [phrases])
+  const phrasesRef = useRef(phrases)
+  phrasesRef.current = phrases
 
   const [checking, setChecking] = useState(false)
   const [rechecked, setRechecked] = useState<{ changed: Set<number>; cents: number; before: string[]; error?: string } | null>(null)
@@ -168,29 +234,14 @@ export function CaptionReview({
   styleRef.current = captionStyle
   const popsRef = useRef(pops)
   popsRef.current = pops
-  // Each pop-up's still, to show the box at its size on the frame.
-  const stills = useRef(new Map<string, ImageBitmap>())
-  const [stillsReady, setStillsReady] = useState(0)
+  // Each pop-up's still, to show the box at its size on the frame - loaded
+  // by the page around it when it shows the video.
+  const own = usePopStills(embedded ? undefined : pops)
+  const stills = useRef(own.stills)
+  stills.current = own.stills
+  const stillsReady = own.ready
   /** Set while he is sizing or moving the box: shown whatever the moment. */
   const showBox = useRef(false)
-  const popIds = pops?.items.map((i) => i.id).join(',') ?? ''
-  useEffect(() => {
-    let alive = true
-    void (async () => {
-      for (const item of popsRef.current?.items ?? []) {
-        if (stills.current.has(item.id)) continue
-        const blob = await item.loadStill().catch(() => null)
-        if (!alive || !blob || typeof createImageBitmap !== 'function') continue
-        const bitmap = await createImageBitmap(blob).catch(() => null)
-        if (bitmap) stills.current.set(item.id, bitmap)
-      }
-      if (alive) setStillsReady((n) => n + 1)
-    })()
-    return () => {
-      alive = false
-    }
-  }, [popIds])
-  useEffect(() => () => stills.current.forEach((b) => b.close()), [])
 
   useEffect(() => {
     if (!file) return
@@ -215,24 +266,7 @@ export function CaptionReview({
     const ctx = c.getContext('2d')
     if (!ctx) return
     ctx.clearRect(0, 0, w, h)
-    // The pop-up video on now (or, while he sizes it, the first one), as its
-    // still, in the box it will have.
-    const p = popsRef.current
-    if (p) {
-      const t = video.current?.currentTime ?? 0
-      const on = p.items.filter((i) => !p.skipped.includes(i.id))
-      const now =
-        on.find((i) => i.at.some((at) => at <= t && t < at + i.seconds)) ?? (showBox.current ? on[0] : undefined)
-      const still = now ? stills.current.get(now.id) : undefined
-      if (now) {
-        const box = popLayout(w, h, now, p.size, p.position)
-        if (still) drawPop(ctx, still, box, { scale: 1, alpha: 1 })
-        else {
-          ctx.fillStyle = 'rgba(0, 0, 0, 0.55)'
-          ctx.fillRect(box.x, box.y, box.width, box.height)
-        }
-      }
-    }
+    paintPopBox(ctx, w, h, video.current?.currentTime ?? 0, popsRef.current, stills.current, showBox.current)
     const all = wordsRef.current
     if (!all[shown]) return
     drawStyledCaption(ctx, w, h, all, captionRanges(all, styleRef.current), shown, since, bare, positionRef.current, sizeRef.current, styleRef.current)
@@ -262,6 +296,27 @@ export function CaptionReview({
 
   useEffect(() => () => cancelAnimationFrame(frame.current), [])
 
+  // On the same page as the cuts: the phrase under the playhead is the one lit,
+  // and while it plays the list follows along.
+  const currentRef = useRef(current)
+  currentRef.current = current
+  const typingRef = useRef(typing)
+  typingRef.current = typing
+  useEffect(() => {
+    if (!embedded) return
+    return embedded.subscribe((t, isPlaying) => {
+      setPlaying(isPlaying)
+      if (typingRef.current) return
+      const starts = phrasesRef.current.map((p) => p.find((w) => w.text.trim())?.start ?? p[0]?.start ?? Infinity)
+      let k = -1
+      for (let i = 0; i < starts.length; i++) if (starts[i] <= t + CAPTION_LEAD) k = i
+      if (k < 0 || k === currentRef.current) return
+      setCurrent(k)
+      if (isPlaying) list.current?.children[k]?.scrollIntoView({ block: 'nearest', behavior: 'smooth' })
+    })
+  }, [embedded])
+  useEffect(() => embedded?.onTyping(typing), [embedded, typing])
+
   const stop = () => {
     cancelAnimationFrame(frame.current)
     video.current?.pause()
@@ -271,6 +326,14 @@ export function CaptionReview({
   /** Plays from just before phrase `k`, the captions popping in as they
    *  will in the video and the list following along; a tap stops it. */
   const playFrom = (k: number) => {
+    if (embedded) {
+      const first = firstWordOf(k)
+      if (first < 0) return
+      setCurrent(k)
+      if (playing && k === current) embedded.seek(words[first].start + 0.02)
+      else embedded.playFrom(Math.max(0, words[first].start - 0.3))
+      return
+    }
     const v = video.current
     if (!v) return
     showBox.current = false
@@ -352,10 +415,12 @@ export function CaptionReview({
 
   if (words.length === 0) {
     return (
-      <section className="screen review">
-        <button type="button" className="back" onClick={() => onClose(words)}>
-          <ChevronLeft /> Videos
-        </button>
+      <section className={embedded ? 'review review-embedded' : 'screen review'}>
+        {embedded ? null : (
+          <button type="button" className="back" onClick={() => onClose(words)}>
+            <ChevronLeft /> Videos
+          </button>
+        )}
         <p className="lede">No words were heard in this video, so there are no captions to check.</p>
         {clips}
         <button type="button" className="btn primary wide" onClick={() => onApprove(words)}>
@@ -366,7 +431,12 @@ export function CaptionReview({
   }
 
   return (
-    <section className={`screen review${typing ? ' typing' : ''}`} aria-label={`Captions for ${name}`}>
+    <section
+      className={embedded ? 'review review-embedded' : `screen review${typing ? ' typing' : ''}`}
+      aria-label={`Captions for ${name}`}
+    >
+      {embedded ? <div className="group-title review-embedded-title">Captions</div> : null}
+      {embedded ? null : (
       <div className="review-top">
         <div className="review-head">
           <button type="button" className="back" onClick={() => onClose(words)}>
@@ -409,6 +479,7 @@ export function CaptionReview({
           ) : null}
         </div>
       </div>
+      )}
 
       {onRecheck ? (
         <div className="recheck">
@@ -477,6 +548,8 @@ export function CaptionReview({
                 setTyping(true)
                 if (playing) stop()
                 setCurrent(k)
+                const first = firstWordOf(k)
+                if (embedded && first >= 0) embedded.seek(words[first].start + 0.02)
               }}
               onBlur={() => setTyping(false)}
               onChange={(e) => {

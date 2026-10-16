@@ -6,6 +6,7 @@ import {
   MIN_SHOW_SEC,
   captionAt,
   captionWords,
+  withRestored,
   captionedIndices,
   bareWord,
   cleanWord,
@@ -456,5 +457,22 @@ describe('the Phrase style', () => {
     for (let i = 0; i < words.length; i++) drawStyledCaption(ctx, 1080, 1920, words, ranges, i, 0, false, 'usual', 'normal', 'phrase')
     expect(new Set(drawn)).toEqual(new Set(['this app changed everything']))
     expect(drawn).toHaveLength(4)
+  })
+})
+
+describe('withRestored', () => {
+  const heard = [
+    { text: ' So', start: 0.2, end: 0.5 },
+    { text: ' um', start: 1.0, end: 1.2 },
+    { text: ' listen.', start: 2.0, end: 2.4 },
+  ]
+  it('brings back the words of a part he has put back, keeping his fixes', () => {
+    const fixed = [{ text: 'So,', start: 0.2, end: 0.5 }, { text: 'LISTEN.', start: 2.0, end: 2.4 }]
+    const out = withRestored(fixed, heard, [{ start: 0, end: 0.9 }, { start: 1.8, end: 3 }], [{ start: 0, end: 3 }])
+    expect(out.map((w) => w.text)).toEqual(['So,', 'um', 'LISTEN.'])
+  })
+  it('changes nothing when no part came back', () => {
+    const fixed = [{ text: 'So,', start: 0.2, end: 0.5 }]
+    expect(withRestored(fixed, heard, [{ start: 0, end: 3 }], [{ start: 0, end: 0.9 }])).toBe(fixed)
   })
 })

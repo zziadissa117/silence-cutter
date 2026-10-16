@@ -27,7 +27,9 @@ import {
   useMemo,
   useRef,
   useState,
+  type MutableRefObject,
   type PointerEvent as ReactPointerEvent,
+  type ReactNode,
 } from 'react'
 
 import { totalDuration, type Range } from '../media/silenceMath'
@@ -76,6 +78,19 @@ const PART_H = 64
 const WORD_TOP = PART_TOP + PART_H + 8
 
 const clampPx = (px: number) => Math.min(MAX_PX, Math.max(MIN_PX, px))
+
+/** What the page around the editor can do to it, when the captions are on
+ *  the same page (EditScreen). */
+export interface CutsControl {
+  /** Puts the playhead on this moment of the recording. */
+  seek(t: number): void
+  /** Plays the kept parts from this moment. */
+  playFrom(t: number): void
+  /** Draws what is over the video again (the captions changed). */
+  repaint(): void
+  /** Listens to where the playhead is, and whether it plays. */
+  subscribe(listener: (t: number, playing: boolean) => void): () => void
+}
 
 /** Which line each word goes on: the first where it clears the word before
  *  it on that line, or the one that ends earliest when none does. */
@@ -273,6 +288,12 @@ export function CutsEditor({
   onDone,
   onCaptions,
   onCancel,
+  paintOver,
+  below,
+  onState,
+  control,
+  headActions,
+  typing = false,
 }: {
   name: string
   /** The recording, or null while it is being fetched from storage. */
@@ -301,6 +322,18 @@ export function CutsEditor({
    *  Absent when captions are off. */
   onCaptions?: (keep: Range[], overlays: ManualPicture[], newFiles: Map<string, Blob>) => void
   onCancel: () => void
+  /** Draws over the video for moment `t` of the recording - the captions,
+   *  when they are on the same page. */
+  paintOver?: (ctx: CanvasRenderingContext2D, width: number, height: number, t: number, playing: boolean) => void
+  /** Shown under the cuts' buttons: the captions, on the same page. */
+  below?: ReactNode
+  /** Every change to the cuts and pictures, as it happens. */
+  onState?: (keep: Range[], overlays: ManualPicture[], newFiles: Map<string, Blob>) => void
+  control?: MutableRefObject<CutsControl | null>
+  /** In place of Captions and Done, at the top. */
+  headActions?: ReactNode
+  /** He is typing below: the video is made smaller to leave room. */
+  typing?: boolean
 }) {
   const [keep, setKeep] = useState(initial)
   const [history, setHistory] = useState<Range[][]>([])
@@ -335,6 +368,30 @@ export function CutsEditor({
   pxRef.current = px
   const tRef = useRef(t)
   const playingRef = useRef(false)
+  const overCanvas = useRef<HTMLCanvasElement>(null)
+  const paintRef = useRef(paintOver)
+  paintRef.current = paintOver
+  const listeners = useRef(new Set<(t: number, playing: boolean) => void>())
+
+  /** What is over the video, for the moment under the playhead. */
+  const repaint = useCallback(() => {
+    const c = overCanvas.current
+    const paint = paintRef.current
+    if (!c || !paint) return
+    const rect = c.getBoundingClientRect()
+    const scale = window.devicePixelRatio || 1
+    const w = Math.round(rect.width * scale)
+    const h = Math.round(rect.height * scale)
+    if (w === 0 || h === 0) return
+    if (c.width !== w || c.height !== h) {
+      c.width = w
+      c.height = h
+    }
+    const ctx = c.getContext('2d')
+    if (!ctx) return
+    ctx.clearRect(0, 0, w, h)
+    paint(ctx, w, h, tRef.current, playingRef.current)
+  }, [])
 
   useEffect(() => {
     if (!file) return
@@ -398,6 +455,16 @@ export function CutsEditor({
     })
   }, [])
   useEffect(() => () => cancelAnimationFrame(showTime.current), [])
+
+  // The captions over the video, and whoever follows the playhead.
+  useEffect(() => {
+    repaint()
+    for (const listener of listeners.current) listener(t, playingRef.current)
+  }, [t, playing, repaint, aspect, typing])
+
+  useEffect(() => {
+    onState?.(keep, overlays, newFiles.current)
+  }, [keep, overlays]) // eslint-disable-line react-hooks/exhaustive-deps
 
   /** Puts `to` under the playhead by scrolling the timeline there. */
   const scrollTo = useCallback((to: number) => {
@@ -632,6 +699,27 @@ export function CutsEditor({
     frame.current = requestAnimationFrame(tick)
   }
 
+  if (control) {
+    control.current = {
+      seek: (to: number) => {
+        stop()
+        scrollTo(to)
+        followTime(to)
+        seek(to)
+      },
+      playFrom: (from: number) => {
+        stop()
+        tRef.current = from
+        play()
+      },
+      repaint,
+      subscribe: (listener) => {
+        listeners.current.add(listener)
+        return () => listeners.current.delete(listener)
+      },
+    }
+  }
+
   // A finger on the timeline takes over from playback.
   const takeOver = () => {
     if (playingRef.current) stop()
@@ -729,21 +817,23 @@ export function CutsEditor({
   const marksTo = Math.min(duration, (around + 3) * chunk)
 
   return (
-    <section className="screen cuts" aria-label={`Cuts for ${name}`}>
+    <section className={`screen cuts${typing ? ' typing' : ''}`} aria-label={`Cuts for ${name}`}>
       <div className="review-top" ref={top}>
         <div className="review-head">
           <button type="button" className="back" onClick={onCancel}>
             <ChevronLeft /> Back
           </button>
           <div className="cuts-head-actions">
-            {onCaptions ? (
+            {headActions !== undefined ? headActions : onCaptions ? (
               <button type="button" className="btn small" onClick={() => onCaptions(keep, overlays, newFiles.current)}>
                 Captions
               </button>
             ) : null}
-            <button type="button" className="btn small primary" onClick={() => onDone(keep, overlays, newFiles.current)}>
-              Done
-            </button>
+            {headActions !== undefined ? null : (
+              <button type="button" className="btn small primary" onClick={() => onDone(keep, overlays, newFiles.current)}>
+                Done
+              </button>
+            )}
           </div>
         </div>
         <div className="review-frame" style={{ aspectRatio: String(aspect) }} onClick={play}>
@@ -772,6 +862,7 @@ export function CutsEditor({
           {showing && urls[showing.id] ? (
             <img className="cuts-pic-preview" alt="" src={urls[showing.id]} style={previewStyle(showing.position, showing.widthPct)} />
           ) : null}
+          {paintOver ? <canvas ref={overCanvas} aria-hidden /> : null}
           {inPart < 0 ? <span className="cuts-out">Cut out</span> : null}
           {url ? (
             <span className="review-playing" aria-hidden>
@@ -899,6 +990,8 @@ export function CutsEditor({
           </button>
         </div>
       ) : null}
+
+      {below}
 
       <div className="cuts-legend" aria-hidden>
         <span><i className="swatch kept" /> kept</span>

@@ -210,6 +210,20 @@ export function captionWords(words: WordChunk[], keep: Range[], { rough = false 
   return captions
 }
 
+/** The captions he has fixed, after a change to the cuts: words he could not
+ *  see before - in a part he has just brought back - come back from what was
+ *  heard, in their place. His fixes stay; words in parts he cut go with them
+ *  when the captions are next put through the cut (captionWords). */
+export function withRestored(captions: CaptionWord[], heard: WordChunk[], before: Range[], after: Range[]): CaptionWord[] {
+  const overlaps = (w: { start: number; end: number }, keep: Range[]) => keep.some((r) => w.end > r.start && w.start < r.end)
+  const back = heard.filter((w) => cleanWord(w.text) && !overlaps(w, before) && overlaps(w, after))
+  if (back.length === 0) return captions
+  const fresh = back
+    .filter((w) => !captions.some((c) => Math.abs(c.start - w.start) < 0.05 && bareWord(c.text).toLowerCase() === bareWord(w.text).toLowerCase()))
+    .map((w) => ({ text: w.text.trim(), start: w.start, end: w.end }))
+  return [...captions, ...fresh].sort((a, b) => a.start - b.start)
+}
+
 /** Longest phrase, in words - about what TikTok's own captions show. */
 const PHRASE_WORDS = 5
 /** A pause this long starts a new phrase. */

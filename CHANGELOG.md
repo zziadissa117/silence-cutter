@@ -3,6 +3,24 @@
 Newest first. Every change says what it does, how to use it, and how it works
 underneath. Kept up to date with each commit.
 
+## Batch 4: cuts and captions on one page
+**What:** a video's cuts and its captions are now one screen: the video at the top with the captions drawn on it,
+the cuts timeline right under it (Split, Delete, Undo, + Picture as before), then the caption phrases, the look
+settings and **Approve**. No more going back and forth between Cuts and Captions.
+- **Play** plays only the kept parts, with the captions popping in - exactly the video that will be made.
+- Tapping a phrase moves the timeline to it; its play button plays from there. While it plays, the phrase being
+  said is lit and the list follows.
+- Change a cut and, a moment later, the captions follow: words in a part you cut go, words in a part you bring
+  back come back, and what you typed stays.
+- **Cuts** on a video's row and **Check** both open this screen. The headline question before checking captions
+  is unchanged. With captions off in Settings, Cuts opens the cuts alone as before.
+Only ./deploy.sh is needed.
+**How:** `EditScreen.tsx` (+ `editScreen.test.tsx`) puts `CaptionReview` (`embedded`: no video of its own) under
+`CutsEditor` (`below`), draws the captions over its video (`paintOver`) and drives it through `CutsControl`
+(seek, playFrom, repaint, subscribe). Cut changes settle `SETTLE_MS` (0.4 s) before `CampaignApp.followCuts`
+applies them; `captions.withRestored` (+ test) brings back the words of a part put back; `keepEdit` keeps cuts and
+captions together. `usePopStills`/`paintPopBox` shared from `CaptionReview` for the pop-up box.
+
 ## Batch 3: phone storage freed, the picker waits longer, fewer false crash reports
 **What:**
 - **Storage:** every sent video used to keep a copy on the phone until its post went out - a 120-video batch posting

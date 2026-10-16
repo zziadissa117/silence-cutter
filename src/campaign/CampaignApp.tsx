@@ -35,11 +35,13 @@ import { CloudError, currentSession, signOut, syncNow, type Session, type SyncSt
 import { AngleEditor, CampaignEditor } from './Editors'
 import { ChevronRight, UploadIcon } from './icons'
 import { JobRow } from './JobRow'
-import { CaptionReview, type PopReview } from './CaptionReview'
+import type { PopReview } from './CaptionReview'
 import { CutsEditor } from './CutsEditor'
+import { EditScreen, type EditedCuts } from './EditScreen'
 import { HookQuestion } from './HookQuestion'
 import {
   captionWords,
+  withRestored,
   captionedIndices,
   defaultCaptionPosition,
   defaultCaptionSize,
@@ -2422,7 +2424,7 @@ export function CampaignApp() {
                 campaigns={campaigns ?? []}
                 onApprove={() => approve([job.id])}
                 onCheck={captionsOn && talkingIn(job) ? () => startCheck([job.id]) : undefined}
-                onCuts={talkingIn(job) ? () => setCutting({ id: job.id }) : undefined}
+                onCuts={talkingIn(job) ? () => (captionsOn ? setReviewing([job.id]) : setCutting({ id: job.id })) : undefined}
                 onMusic={(choice) => setMusic(job.id, choice)}
                 onNoEffects={(off) => setNoEffects(job.id, off)}
                 pictures={picturesFor(job)}
@@ -2695,8 +2697,6 @@ export function CampaignApp() {
     void recordDay(id, day, { campaignId: job.campaignId, angleId: job.angleId, headlineText: job.headlineText })
   }
 
-  /** Keeps the captions as he left them, approved or not - and, approved,
-   *  whether the video gets them at all. */
   /** A first or last word he typed back in: which step lost it. */
   const reportTypedBack = (job: Job, shown: CaptionWord[], approved: CaptionWord[]) => {
     const plan = planFor(job)
@@ -2711,17 +2711,39 @@ export function CampaignApp() {
     }
   }
 
-  const keepCaptions = (id: string, words: CaptionWord[], approved: false | 'with' | 'without') => {
+  /** A video's cuts and captions as he left them on the one edit screen,
+   *  kept together - and, approved, whether the video gets captions at all. */
+  const keepEdit = (id: string, cuts: EditedCuts, words: CaptionWord[], approved: false | 'with' | 'without') => {
     const job = jobs.find((j) => j.id === id)
-    if (!job?.day) return
+    if (!job?.day?.plan) return
+    const same = JSON.stringify(cuts.keep) === JSON.stringify(job.day.plan.keep)
+    const kept = new Set(cuts.overlays.map((o) => o.id))
+    for (const [pictureId, blob] of cuts.files) if (kept.has(pictureId)) void saveOverlayFile(id, pictureId, blob).catch(() => {})
+    for (const old of job.day.overlays ?? []) if (old.source.kind === 'phone' && !kept.has(old.id)) void deleteOverlayFile(id, old.id).catch(() => {})
     const day = {
       ...job.day,
+      keep: same ? undefined : cuts.keep,
+      overlays: cuts.overlays.length > 0 ? cuts.overlays : undefined,
       captions: words,
       ...(approved ? { checked: true, approved: true, noCaptions: approved === 'without' } : {}),
     }
     setJobs((js) => js.map((j) => (j.id === id ? { ...j, day, ...(approved ? { status: 'approved' as const } : {}) } : j)))
     void recordDay(id, day, { campaignId: job.campaignId, angleId: job.angleId, headlineText: job.headlineText })
   }
+
+  /** The cuts changed on the edit screen: the captions follow - his fixes
+   *  kept, the words of a part brought back back with it. Kept for good
+   *  when he leaves the screen. */
+  const followCuts = (id: string, keep: Range[], before: Range[]) =>
+    setJobs((js) =>
+      js.map((j) => {
+        if (j.id !== id || !j.day?.plan) return j
+        const plan = j.day.plan
+        const same = JSON.stringify(keep) === JSON.stringify(plan.keep)
+        const captions = j.day.captions ? withRestored(j.day.captions, plan.spoken ?? plan.words, before, keep) : undefined
+        return { ...j, day: { ...j.day, keep: same ? undefined : keep, ...(captions ? { captions } : {}) } }
+      }),
+    )
 
   // Every word of the video is kept, fixed or not; only those captioned -
   // the ones said after the headline has gone - are put in front of him.
@@ -2881,49 +2903,60 @@ export function CampaignApp() {
     ) : askingHook ? (
       <HookQuestion count={askingHook.length} onChoose={(on) => answerHook(askingHook, on)} onCancel={() => setAskingHook(null)} />
     ) : reviewJob && reviewing && review ? (
-      <CaptionReview
+      <EditScreen
         key={reviewJob.id}
-        bare={bareCaptions}
+        id={reviewJob.id}
         name={reviewJob.name}
         file={reviewFile?.id === reviewJob.id ? reviewFile.file : null}
         missing={reviewFile?.id === reviewJob.id && reviewFile.missing}
-        initial={review.shown.map((i) => review.all[i])}
-        approveLabel={reviewing.length > 1 ? 'Approve & next' : 'Approve'}
+        cuts={{
+          duration: reviewJob.day!.plan!.duration,
+          initial: planFor(reviewJob)!.keep,
+          checks: reviewJob.day!.plan!.checks,
+          peaks: reviewJob.day!.plan!.peaks,
+          noiseNote: reviewJob.day!.plan!.noiseNote,
+          words: captionWords(reviewJob.day!.plan!.spoken ?? reviewJob.day!.plan!.words, [{ start: 0, end: reviewJob.day!.plan!.duration }]),
+          overlays: reviewJob.day!.overlays,
+          bank: bankRef.current,
+          defaults: angleBankDefaults(reviewJob),
+          loadImage: (m) => (m.source.kind === 'phone' ? loadOverlayFile(reviewJob.id, m.id, m.source.type) : Promise.resolve(null)),
+        }}
+        shown={review.shown.map((i) => review.all[i])}
+        onKeep={(keep, before) => followCuts(reviewJob.id, keep, before)}
         onChange={(words) => {
           const all = review.merge(words)
           setJobs((js) => js.map((j) => (j.id === reviewJob.id && j.day ? { ...j, day: { ...j.day, captions: all } } : j)))
         }}
-        onApprove={(words) => {
-          reportTypedBack(reviewJob, review.shown.map((i) => review.all[i]), words)
-          keepCaptions(reviewJob.id, review.merge(words), 'with')
-          nextReview()
+        onFinish={(how, cuts, words) => {
+          const plan = planFor(reviewJob)!
+          let captions = review.merge(words)
+          // Cuts changed in the last moment, before the captions followed them.
+          if (JSON.stringify(cuts.keep) !== JSON.stringify(plan.keep)) {
+            captions = withRestored(captions, plan.spoken ?? plan.words, plan.keep, cuts.keep)
+          }
+          if (how === 'with') reportTypedBack(reviewJob, review.shown.map((i) => review.all[i]), words)
+          keepEdit(reviewJob.id, cuts, captions, how)
+          if (how) nextReview()
+          else setReviewing(null)
         }}
-        onSkip={(words) => {
-          keepCaptions(reviewJob.id, review.merge(words), 'without')
-          nextReview()
+        review={{
+          bare: bareCaptions,
+          approveLabel: reviewing.length > 1 ? 'Approve & next' : 'Approve',
+          clips: clipsField(reviewJob, true),
+          headline: reviewJob.headlineText,
+          onHeadline: (text) => setHeadline(reviewJob.id, text),
+          onHeadlineDone: () => saveHeadline(reviewJob.id),
+          vocabulary: vocabularyFor(reviewJob),
+          riskSpans: (reviewJob.day?.plan?.checks ?? []).filter((c) => c.kind !== 'noise').map((c) => ({ start: c.start, end: c.end })),
+          onRecheck: posting ? (phrases) => recheckCaptions(phrases, vocabularyFor(reviewJob)) : undefined,
+          position: reviewJob.day?.captionPosition ?? defaultCaptionPosition(),
+          onPosition: (position) => setCaptionPosition(reviewJob.id, position),
+          size: reviewJob.day?.captionSize ?? defaultCaptionSize(),
+          onSize: (size) => setCaptionSize(reviewJob.id, size),
+          captionStyle: reviewJob.day?.captionStyle ?? defaultCaptionStyle(),
+          onCaptionStyle: (style) => setCaptionStyle(reviewJob.id, style),
+          pops: popReviewFor(reviewJob),
         }}
-        onClose={(words) => {
-          keepCaptions(reviewJob.id, review.merge(words), false)
-          setReviewing(null)
-        }}
-        onCuts={(words) => {
-          keepCaptions(reviewJob.id, review.merge(words), false)
-          setCutting({ id: reviewJob.id })
-        }}
-        clips={clipsField(reviewJob, true)}
-        headline={reviewJob.headlineText}
-        onHeadline={(text) => setHeadline(reviewJob.id, text)}
-        onHeadlineDone={() => saveHeadline(reviewJob.id)}
-        vocabulary={vocabularyFor(reviewJob)}
-        riskSpans={(reviewJob.day?.plan?.checks ?? []).filter((c) => c.kind !== 'noise').map((c) => ({ start: c.start, end: c.end }))}
-        onRecheck={posting ? (phrases) => recheckCaptions(phrases, vocabularyFor(reviewJob)) : undefined}
-        position={reviewJob.day?.captionPosition ?? defaultCaptionPosition()}
-        onPosition={(position) => setCaptionPosition(reviewJob.id, position)}
-        size={reviewJob.day?.captionSize ?? defaultCaptionSize()}
-        onSize={(size) => setCaptionSize(reviewJob.id, size)}
-        captionStyle={reviewJob.day?.captionStyle ?? defaultCaptionStyle()}
-        onCaptionStyle={(style) => setCaptionStyle(reviewJob.id, style)}
-        pops={popReviewFor(reviewJob)}
       />
     ) : showPosts && posting ? (
       <PostsView

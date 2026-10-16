@@ -318,6 +318,10 @@ html, body { overscroll-behavior-y: none; }
   transition: height 0.2s ease;
 }
 .review.typing .review-frame { height: min(22svh, 260px); }
+.cuts.typing .review-frame { height: min(22svh, 260px); }
+/* The captions under the cuts, on the one edit screen. */
+.review-embedded { display: flex; flex-direction: column; gap: 12px; margin-top: 18px; padding-top: 14px; border-top: 1px solid var(--rule); }
+.review-embedded-title { margin: 0; }
 .review-frame video, .review-frame canvas {
   position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain;
 }
