@@ -20,6 +20,7 @@ import { within } from '../media/within'
 import { ModeNav } from '../ModeNav'
 import { lostPick, pickArrived, pickSaved, whenPickGoesWrong } from '../pickWatch'
 import { report } from '../report'
+import { typedBack } from './captionFixes'
 import { UpdateBanner } from '../UpdateBanner'
 import { VideoPicker } from '../VideoPicker'
 import { BankView } from './BankView'
@@ -2690,6 +2691,20 @@ export function CampaignApp() {
 
   /** Keeps the captions as he left them, approved or not - and, approved,
    *  whether the video gets them at all. */
+  /** A first or last word he typed back in: which step lost it. */
+  const reportTypedBack = (job: Job, shown: CaptionWord[], approved: CaptionWord[]) => {
+    const plan = planFor(job)
+    if (!plan) return
+    for (const fix of typedBack(shown, approved, plan.words)) {
+      report({
+        page: 'campaign',
+        kind: 'check',
+        phase: 'captions',
+        message: `${fix.where} word "${fix.word}" typed back · ${fix.heard ? 'heard, left out of the captions' : 'never heard by the speech model'} · ${plan.aligned ? 'aligned' : 'rough times'} · headline ${hookFor(job)} s${job.day?.hookCaptions ? ' (captioned)' : ''}`,
+      })
+    }
+  }
+
   const keepCaptions = (id: string, words: CaptionWord[], approved: false | 'with' | 'without') => {
     const job = jobs.find((j) => j.id === id)
     if (!job?.day) return
@@ -2873,6 +2888,7 @@ export function CampaignApp() {
           setJobs((js) => js.map((j) => (j.id === reviewJob.id && j.day ? { ...j, day: { ...j.day, captions: all } } : j)))
         }}
         onApprove={(words) => {
+          reportTypedBack(reviewJob, review.shown.map((i) => review.all[i]), words)
           keepCaptions(reviewJob.id, review.merge(words), 'with')
           nextReview()
         }}

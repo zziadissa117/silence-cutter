@@ -1,14 +1,15 @@
 // The campaign section's own copy of the speech model's worker. It is the
 // plain cutter's (media/transcribe.worker.ts) - same model, same memory
 // measures, same windows - with one addition: it can be told the brand's
-// name before it listens. That copy is left exactly as it is; see
-// campaign/keywords.ts for why the name matters so much.
+// name before it listens, and each stretch is heard with a little quiet
+// either side (timedWords.ts padWithQuiet). That copy is left exactly as it
+// is; see campaign/keywords.ts for why the name matters so much.
 
 import { env, pipeline } from '@huggingface/transformers'
 
 import type { WordChunk } from '../media/fillerWords'
 import type { Range } from '../media/silenceMath'
-import { timedWords, type TimestampedChunk } from './timedWords'
+import { QUIET_PAD_SEC, keepInWindow, padWithQuiet, timedWords, type TimestampedChunk } from './timedWords'
 
 export interface TranscribeRequest {
   samples: Float32Array
@@ -90,12 +91,14 @@ self.onmessage = async (event: MessageEvent<TranscribeRequest>) => {
         post({ type: 'progress', fraction: (i + 1) / windows.length })
         continue
       }
-      const result = await transcriber(slice, {
+      const heardSlice = padWithQuiet(slice, sampleRate)
+      const result = await transcriber(heardSlice, {
         return_timestamps: 'word',
         ...(primed ? { decoder_input_ids: primed } : {}),
       } as Parameters<typeof transcriber>[1])
       const output = Array.isArray(result) ? result[0] : result
-      words.push(...timedWords((output.chunks ?? []) as TimestampedChunk[], start, slice.length / sampleRate))
+      const timed = timedWords((output.chunks ?? []) as TimestampedChunk[], start - QUIET_PAD_SEC, heardSlice.length / sampleRate)
+      words.push(...keepInWindow(timed, start, start + slice.length / sampleRate))
       post({ type: 'progress', fraction: (i + 1) / windows.length })
       if (i < windows.length - 1) await new Promise((r) => setTimeout(r, PAUSE_BETWEEN_WINDOWS_MS))
     }

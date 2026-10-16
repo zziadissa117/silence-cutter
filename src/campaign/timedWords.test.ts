@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { timedWords } from './timedWords'
+import { keepInWindow, padWithQuiet, timedWords } from './timedWords'
 
 describe('the words of a window', () => {
   it('puts them on the video\'s timeline', () => {
@@ -44,5 +44,27 @@ describe('the words of a window', () => {
       2,
     )
     expect(words[0].end).toBeCloseTo(0.3)
+  })
+})
+
+describe('a stretch heard with quiet either side', () => {
+  it('puts the quiet before and after, the sound itself untouched', () => {
+    const padded = padWithQuiet(new Float32Array([0.5, -0.5]), 4, 0.5)
+    expect([...padded]).toEqual([0, 0, 0.5, -0.5, 0, 0])
+  })
+
+  it('keeps a word timed into the quiet, moved onto the stretch', () => {
+    const words = keepInWindow(
+      [
+        { text: ' So', start: 9.6, end: 10.3 },
+        { text: ' done.', start: 12.9, end: 13.4 },
+      ],
+      10,
+      13,
+    )
+    expect(words).toEqual([
+      { text: ' So', start: 10, end: 10.3 },
+      { text: ' done.', start: 12.9, end: 13 },
+    ])
   })
 })

@@ -3,6 +3,26 @@
 Newest first. Every change says what it does, how to use it, and how it works
 underneath. Kept up to date with each commit.
 
+## Batch 2: captions keep their first word
+**What:** the first word of the captions (and sometimes the last) no longer goes missing, so it doesn't have to be
+typed back in. Three causes, all fixed:
+- **The headline cut the first phrase in half.** Captions start once the headline has gone - at that exact second,
+  even mid-sentence, so "This app changed my life" came out as "app changed my life". Now captions start with a
+  whole phrase: one mostly said after the headline is captioned whole (its first word can show as the headline
+  goes), one mostly said under it is left out whole.
+- **A soft first sound** ("so", "hey", "for") sits under the line the pauses are found with, so the kept stretch
+  started a moment after the word and the word was dropped. A word whose sound runs on into the stretch is now kept.
+- **The speech model missed the first or last word** of a take that starts the moment you talk or stops the moment
+  you finish. Each stretch is now heard with half a second of quiet either side.
+And when a word still has to be typed back, Approve sends a "check" report saying whether the speech model heard it
+- so a next fix goes to the right step.
+Only ./deploy.sh is needed.
+**How:** `captions.ts` (`captionedIndices` works on `phrasesOf`, majority after the headline; `captionWords`
+keeps a word starting up to 0.6 s before a stretch when 50 ms of it is inside, never an "um" or a repeat),
+`timedWords.ts` (`padWithQuiet`, `keepInWindow`) used by `campaign/transcribe.worker.ts` only (the plain cutter's
+worker is unchanged), `captionFixes.ts` (`typedBack`) reported from `CampaignApp` on Approve (kind `check`, phase
+`captions`). Tests for each.
+
 ## Batch 1: post one now and one later, one-tap music, Reaction video, and a retry for missed accounts
 **What:**
 - **New post, One by one:** with two or more videos there is now **One by one** next to Spread them / All now.

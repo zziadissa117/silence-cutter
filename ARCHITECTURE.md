@@ -112,6 +112,9 @@ attempt before it starts (a video that kills the tab cannot loop).
   speech-model window is heard in pieces of at most `ALIGN_PIECE_SEC` (8 s) cut mid-pause (`pieceCuts`), the
   letter scores joined (`joinPieces`) and the words aligned over the whole window. If it fails or goes quiet
   for 60 s, captions fall back to the speech model's own times (`HEARD_LATE_SEC`), reported as `fallback/aligning`.
+  The campaign speech worker hears each window with 0.5 s of digital quiet either side (`timedWords.padWithQuiet`).
+  With a headline, captions start at the first phrase mostly said after it (`captions.captionedIndices`). A word he
+  types back at the start or end on Approve is reported (`captionFixes.typedBack`, kind `check`, phase `captions`).
 - Cut decisions: `campaign/plan.ts` `planCampaignCut` decodes and listens, then runs
   the pure steps `fromHeard` (word times, "um"s, caption words), `plainKeep` (the cut;
   the whole cut when noise cutting is off, the default) and, with noise cutting on,

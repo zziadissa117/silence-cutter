@@ -70,6 +70,23 @@ describe('spokenWords', () => {
 })
 
 describe('captionWords', () => {
+  it('keeps a first word whose soft start sits in the cut before its stretch', () => {
+    const words = [
+      { text: ' So', start: 0.85, end: 1.25 },
+      { text: ' listen.', start: 1.3, end: 1.7 },
+    ]
+    const keep = [{ start: 1.1, end: 2 }]
+    const captions = captionWords(words, keep)
+    expect(captions.map((w) => w.text)).toEqual(['So', 'listen.'])
+    expect(captions[0].start).toBe(1.1)
+  })
+
+  it('still leaves out an "um" or a repeat cut just before a stretch', () => {
+    const keep = [{ start: 1.1, end: 2 }]
+    expect(captionWords([{ text: ' um', start: 0.8, end: 1.2 }, { text: ' listen', start: 1.3, end: 1.7 }], keep).map((w) => w.text)).toEqual(['listen'])
+    expect(captionWords([{ text: ' I', start: 0.8, end: 1.2 }, { text: ' I', start: 1.3, end: 1.5 }], keep).map((w) => w.text)).toEqual(['I'])
+  })
+
   it('keeps only the words still in the video, punctuation and all', () => {
     const words = [
       { text: ' So,', start: 0.1, end: 0.3 },
@@ -271,8 +288,17 @@ describe('captionedIndices', () => {
   const keep = [{ start: 0, end: 10 }]
   const words = [0.5, 2, 3.9, 4.1, 6].map((start) => ({ text: 'w', start, end: start + 0.3 }))
 
-  it('leaves out every word said while the headline is up', () => {
-    expect(captionedIndices(words, keep, 4)).toEqual([3, 4])
+  it('leaves out every phrase said while the headline is up', () => {
+    expect(captionedIndices(words, keep, 4.5)).toEqual([4])
+  })
+
+  it('never starts the captions in the middle of a phrase', () => {
+    // "This app changed my life", the headline going just after "This".
+    const said = ['This', 'app', 'changed', 'my', 'life.'].map((text, i) => ({ text, start: 2.8 + i * 0.25, end: 3.0 + i * 0.25 }))
+    expect(captionedIndices(said, keep, 3)).toEqual([0, 1, 2, 3, 4])
+    // Mostly said under it: left out whole, the next phrase starts clean.
+    const more = [...said, { text: 'Seriously.', start: 5, end: 5.4 }]
+    expect(captionedIndices(more, keep, 3.6)).toEqual([5])
   })
 
   it('captions everything when there is no headline', () => {

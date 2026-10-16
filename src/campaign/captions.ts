@@ -135,6 +135,13 @@ const ROUGH_LATE_SEC = 0.5
  *  nothing was said after them, so there is nothing else they could belong
  *  to. "...link in bio." was the word most often missing. */
 const LAST_WORDS_SEC = 1.0
+/** A word starting up to this long before a kept stretch, in the pause cut
+ *  before it, whose sound runs on into the stretch, is in the video: a soft
+ *  first sound ("so", "hey", "for") sits under the line the pauses are found
+ *  with, so the stretch starts a moment after the word does. */
+const EARLY_RUN_SEC = 0.6
+/** How much of such a word must be in the stretch to count as heard there. */
+const EARLY_RUN_IN_SEC = 0.05
 /** Never pulled back like that: an "um" or a stumble was cut on purpose. */
 const CUT_ON_PURPOSE = new Set(['um', 'uh', 'er', 'erm', 'ah', 'hmm', 'mm'])
 
@@ -156,6 +163,11 @@ export function captionWords(words: WordChunk[], keep: Range[], { rough = false 
       return
     }
     const repeated = bare(w) === bare(words[i - 1]) || bare(w) === bare(words[i + 1])
+    const into = keep.find((r) => w.start < r.start && r.start - w.start <= EARLY_RUN_SEC && w.end >= r.start + EARLY_RUN_IN_SEC)
+    if (into && !repeated && !CUT_ON_PURPOSE.has(bare(w))) {
+      captions.push({ text, start: into.start, end: Math.max(w.end, into.start + MIN_SHOW_SEC) })
+      return
+    }
     const before =
       keep.find((r) => w.start >= r.end && w.start <= r.end + late) ??
       (last && w.start >= last.end && w.start <= last.end + LAST_WORDS_SEC ? last : undefined)
@@ -270,13 +282,23 @@ export function cutTime(raw: number, keep: Range[]): number {
 }
 
 /** Which of `words` get a caption: none while the headline is up - the
- *  hook reads on its own - so the captions start with the first word said
- *  once it has gone. `hookSec` is how long the headline shows, 0 for none. */
+ *  hook reads on its own - so the captions start once it has gone. They
+ *  start with a whole phrase, never in the middle of one: cut at the exact
+ *  second, "This app changed my life" with the headline going just after
+ *  "This" came out as "app changed my life", and he typed the first word
+ *  back in by hand on most videos. A phrase mostly said after the headline
+ *  is captioned whole - its first word or two can show as the headline
+ *  goes - one mostly said under it is left out whole. `hookSec` is how long
+ *  the headline shows, 0 for none. */
 export function captionedIndices(words: CaptionWord[], keep: Range[], hookSec: number): number[] {
+  if (hookSec <= 0) return words.map((_, i) => i)
   const shown: number[] = []
-  words.forEach((w, i) => {
-    if (cutTime(w.start, keep) >= hookSec) shown.push(i)
-  })
+  let first = 0
+  for (const phrase of phrasesOf(words)) {
+    const after = phrase.filter((w) => cutTime(w.start, keep) >= hookSec).length
+    if (after > 0 && after * 2 >= phrase.length) phrase.forEach((_, k) => shown.push(first + k))
+    first += phrase.length
+  }
   return shown
 }
 
