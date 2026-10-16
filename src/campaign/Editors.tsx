@@ -184,7 +184,7 @@ export function CampaignEditor({
             }
       }
     >
-      <div className="hint">
+      <div className="hint tip">
         The brand - shared by every angle. Videos that fit no angle of their own go to its General angle.
       </div>
       <label className="field">
@@ -253,7 +253,7 @@ export function CampaignEditor({
               setCampaign((c) => ({ ...c, brandWords: parseWordList(e.target.value) }))
             }}
           />
-          <span className="hint">
+          <span className="hint tip">
             Brings the logo up when you say it. The speech model is told this name before it listens, and a word that
             sounds like it counts too - so one spelling is enough.
           </span>
@@ -274,7 +274,7 @@ export function CampaignEditor({
           }}
         />
         <div className="row">
-          {logoUrl ? <img className="thumb" src={logoUrl} alt="The campaign's logo" /> : <span className="hint">A PNG with a clear background looks best.</span>}
+          {logoUrl ? <img className="thumb" src={logoUrl} alt="The campaign's logo" /> : <span className="hint tip">A PNG with a clear background looks best.</span>}
           <div className="actions">
             {campaign.logo ? (
               <button type="button" className="linkbtn" onClick={() => setCampaign((c) => ({ ...c, logo: null }))}>
@@ -449,14 +449,14 @@ export function AngleEditor({
                   setAngle((a) => ({ ...a, recognize: parseWordList(e.target.value) }))
                 }}
               />
-              <span className="hint">Say these in a video and Sort the day puts it here.</span>
+              <span className="hint tip">Say these in a video and Sort the day puts it here.</span>
             </label>
           ) : null}
 
           <div className="group">
             <div className="group-title">Headline</div>
             <label className="field">
-              <span className="hint">Shown for the first few seconds. Empty for none.</span>
+              <span className="hint tip">Shown for the first few seconds. Empty for none.</span>
               {!angle.headline.fromFirstLine ? (
                 <textarea
                   rows={2}
@@ -475,7 +475,7 @@ export function AngleEditor({
               />
               <span>
                 <span className="label">Make it from my first line</span>
-                <span className="hint" style={{ display: 'block' }}>
+                <span className="hint tip" style={{ display: 'block' }}>
                   Each video's headline is the first thing you say in it, up to eight words. You see it and can change it
                   before the video is made.
                 </span>
@@ -577,7 +577,7 @@ export function AngleEditor({
         <>
           <div className="group">
             <div className="group-title">Pictures on words</div>
-            <div className="hint">
+            <div className="hint tip">
               A picture that comes up when you say something - her photo when you say "Sydney Sweeney".
             </div>
             <input
@@ -624,7 +624,7 @@ export function AngleEditor({
               />
               <span>
                 <span className="label">Use the picture bank</span>
-                <span className="hint" style={{ display: 'block' }}>
+                <span className="hint tip" style={{ display: 'block' }}>
                   Any bank picture whose words you say comes up - one at a time, in this spot.
                 </span>
               </span>
@@ -696,7 +696,7 @@ export function AngleEditor({
         </>
       ) : part === 'clips' && onAddClip ? (
         <>
-          <div className="hint">
+          <div className="hint tip">
             Kept on this phone only - your friend's phone doesn't get them. Each video can change them before it's made.
           </div>
           {CLIP_PLACES.map((place) => (
@@ -744,7 +744,7 @@ export function AngleEditor({
           <button type="button" className="btn" onClick={() => setClips((c) => ({ ...c, cues: [...(c.cues ?? []), { phrase: '', clip: '' }] }))}>
             + Video in the middle
           </button>
-          <div className="hint">
+          <div className="hint tip">
             A video in the middle plays whole, with its own sound, right after you say its words - then you carry on.
             Only in videos where you say them.
           </div>

@@ -45,7 +45,7 @@ export function PostingSetup({
           Cancel
         </button>
       </div>
-      <div className="hint">
+      <div className="hint tip">
         Finished videos go to your own Postiz, with a caption Claude writes from what you say. Your keys are kept on the
         server, never on the phone - your friend uses his own.
       </div>

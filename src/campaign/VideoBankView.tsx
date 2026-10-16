@@ -34,7 +34,7 @@ export function VideoBankView() {
   return (
     <section className="screen" aria-label="Video bank">
       <div className="screen-head">
-        <h1>Videos</h1>
+        <h2>Videos</h2>
         <div className="btn small primary picker">
           {busy ? 'Adding…' : 'Add videos'}
           <input
@@ -51,7 +51,7 @@ export function VideoBankView() {
           />
         </div>
       </div>
-      <p className="lede">
+      <p className="lede tip">
         Each pops up over you when you say its words - muted, in a big box, playing to its end. Set how big and where on
         each video's caption check. Used by angles that use the bank, like General.
       </p>

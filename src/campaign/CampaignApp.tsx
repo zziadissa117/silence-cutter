@@ -2332,7 +2332,7 @@ export function CampaignApp() {
         <div className="callout">
           <div>
             <div className="label">Set up your first campaign</div>
-            <div className="hint">Until then, videos go to General.</div>
+            <div className="hint tip">Until then, videos go to General.</div>
           </div>
           <button
             type="button"
@@ -3065,6 +3065,9 @@ export function CampaignApp() {
       />
     ) : tab === 'pictures' ? (
       <>
+        <div className="screen-head">
+          <h1>Bank</h1>
+        </div>
         <BankView bank={bank} onChange={setBank} />
         <VideoBankView />
         <MusicBankView />

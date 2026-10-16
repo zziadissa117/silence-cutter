@@ -235,6 +235,10 @@ public/push-sw.js              service-worker push handler
 
 ## Gotchas
 
+- Colours only as tokens (`index.css` top: dark in `:root`, light under `prefers-color-scheme` and
+  `[data-theme='light']`); `theme.ts` sets `data-theme` and `tips-on`. An explanation (not a status) gets the class
+  `tip` - hidden unless Settings, Show tips is on.
+
 - Only one page runs at a time; never add a long-running second queue.
 - Never auto-update the service worker (UpdateBanner owns reloads).
 - The campaign page scrolls as the document and `.tabbar` is `position: fixed` to its bottom. Never size a

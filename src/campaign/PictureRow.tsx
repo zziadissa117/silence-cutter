@@ -99,7 +99,7 @@ export function PictureRow({
             onChange({ words: parseWordList(e.target.value) })
           }}
         />
-        <span className="hint">
+        <span className="hint tip">
           A name of a few words counts when each word is heard, even spelled a bit differently. Add more, separated by
           commas - "Sydney Sweeney, Sydney".
         </span>

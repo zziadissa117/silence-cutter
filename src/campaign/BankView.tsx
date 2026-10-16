@@ -62,12 +62,12 @@ export function BankView({ bank, onChange }: { bank: BankPicture[]; onChange: (b
   return (
     <section className="screen">
       <div className="screen-head">
-        <h1>Pictures</h1>
+        <h2>Pictures</h2>
         <button type="button" className="btn small primary" disabled={adding > 0} onClick={() => picker.current?.click()}>
           {adding > 0 ? `Adding ${adding}…` : 'Add pictures'}
         </button>
       </div>
-      <p className="lede">
+      <p className="lede tip">
         Each comes up when you say its words - a Claude logo on "Claude". Used by angles that use the bank, like
         General.
       </p>

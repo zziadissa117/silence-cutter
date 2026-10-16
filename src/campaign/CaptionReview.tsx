@@ -660,7 +660,7 @@ export function CaptionReview({
                 </button>
               ))}
             </div>
-            <p className="hint">Muted. Each plays to its end over you when you say its words - shown on the frame above as it will sit.</p>
+            <p className="hint tip">Muted. Each plays to its end over you when you say its words - shown on the frame above as it will sit.</p>
           </div>
         ) : null}
         {onSize ? (

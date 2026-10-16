@@ -100,7 +100,7 @@ export function StopPicker({
           {problem}
         </div>
       ) : null}
-      <div className="hint">Tick what to stop - a whole campaign, or posts one by one.</div>
+      <div className="hint tip">Tick what to stop - a whole campaign, or posts one by one.</div>
       <div className="seg chips" role="group" aria-label="Tick a whole campaign">
         <button type="button" className={allOf(everything) ? 'active' : ''} aria-pressed={allOf(everything)} onClick={() => toggleAll(everything)}>
           All {everything.length}

@@ -998,7 +998,7 @@ export function CutsEditor({
         <span><i className="swatch gone" /> cut out</span>
         {checks.length > 0 ? <span><i className="swatch check" /> check this</span> : null}
       </div>
-      <p className="hint cuts-hint">Scroll to move through the video and pinch to zoom. Tap a part, then drag its edges to trim it.</p>
+      <p className="hint cuts-hint tip">Scroll to move through the video and pinch to zoom. Tap a part, then drag its edges to trim it.</p>
       {overlays.length > 0 ? (
         <div className="pic-list">
           <div className="group-title">
@@ -1052,7 +1052,7 @@ export function CutsEditor({
           <div className="group-title">
             Check these <span className="bank-count">{checks.filter((c) => c.kind !== 'noise').length}</span>
           </div>
-          <p className="hint">
+          <p className="hint tip">
             Sounds with no words in them that the cutter took out, or left in. Tap one to go there, listen, and put it back if it was you talking.
           </p>
           {checks.map((c, i) => ({ c, i }))

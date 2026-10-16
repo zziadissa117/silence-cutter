@@ -94,7 +94,7 @@ export function MusicRow({ music, onChange }: { music: AngleMusic | null; onChan
               </button>
             ))}
           </div>
-          <div className="hint">Set under your voice in every video, and dips while you talk.</div>
+          <div className="hint tip">Set under your voice in every video, and dips while you talk.</div>
           <div className="actions-row">
             <button type="button" className="btn small" onClick={() => picker.current?.click()}>
               Change track

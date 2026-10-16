@@ -5,6 +5,7 @@ import { useEffect, useState } from 'react'
 
 import type { PresetName } from '../media/silenceMath'
 import type { Session, SyncState } from './cloud'
+import { savedTheme, savedTips, setTheme, setTips, type Theme } from '../theme'
 import { DEFAULT_WINDOW } from '../../supabase/functions/postiz/window.ts'
 import { onFixedTimes, switchToRandom, windowLabel, type LocalPosting, type Profile } from './posting'
 import {
@@ -96,7 +97,7 @@ function DefaultEffectsSetting() {
           </button>
         ))}
       </div>
-      <p className="hint">
+      <p className="hint tip">
         Applied to every video whose angle has no effects of its own{preset === null ? ' (custom mix below)' : ''}. Turn them off for one video in its row. Applies to videos you make next.
       </p>
       {level('cutPunch', 'Punch-in at cuts')}
@@ -126,7 +127,7 @@ function NoiseCutting() {
         />
         <span>
           <span className="label">Also cut sounds that aren't speech (off by default)</span>
-          <span className="hint" style={{ display: 'block' }}>
+          <span className="hint tip" style={{ display: 'block' }}>
             Coughs, bumps and room noise go as well as the pauses. Leave it off for the plain cut that always worked. It never
             cuts a word it heard, listens a second time to anything it is unsure about, and lists what it cut so you can
             listen and put it back. Takes a little longer: every video is listened to.
@@ -176,7 +177,7 @@ function CaptionPlace() {
           </button>
         ))}
       </div>
-      <p className="hint">Where and how big captions start on each video. You can change both for one video while checking its captions.</p>
+      <p className="hint tip">Where and how big captions start on each video. You can change both for one video while checking its captions.</p>
     </>
   )
 }
@@ -197,7 +198,7 @@ function WideClips() {
           </button>
         ))}
       </div>
-      <p className="hint">
+      <p className="hint tip">
         {LANDSCAPE_MODES.find((m) => m.id === mode)?.note} Clips already 9:16 are never touched. Applies to videos you make next.
       </p>
     </>
@@ -262,6 +263,8 @@ export function SettingsView({
         <h1>Settings</h1>
       </div>
 
+      <Appearance />
+
       <div className="list-title">Sharing</div>
       <div className="setting">
         <div className="setting-text">
@@ -303,7 +306,7 @@ export function SettingsView({
             <input type="checkbox" checked={posting.sendHere} onChange={(e) => onSendHere(e.target.checked)} />
             <span>
               <span className="label">Send finished videos from this phone</span>
-              <span className="hint" style={{ display: 'block' }}>
+              <span className="hint tip" style={{ display: 'block' }}>
                 Each one goes to Postiz with a caption, for the campaigns with accounts picked.
               </span>
             </span>
@@ -359,7 +362,7 @@ export function SettingsView({
           </button>
         ))}
       </div>
-      <p className="hint">{PRESET_HINT[preset]} Applies to videos you add next.</p>
+      <p className="hint tip">{PRESET_HINT[preset]} Applies to videos you add next.</p>
 
       <DefaultEffectsSetting />
 
@@ -371,7 +374,7 @@ export function SettingsView({
         <input type="checkbox" checked={captions} onChange={(e) => onCaptions(e.target.checked)} />
         <span>
           <span className="label">Captions on the videos</span>
-          <span className="hint" style={{ display: 'block' }}>
+          <span className="hint tip" style={{ display: 'block' }}>
             One word at a time as you say it. You check them before each video is made.
           </span>
         </span>
@@ -380,7 +383,7 @@ export function SettingsView({
         <input type="checkbox" checked={bareCaptions} disabled={!captions} onChange={(e) => onBareCaptions(e.target.checked)} />
         <span>
           <span className="label">Leave out punctuation</span>
-          <span className="hint" style={{ display: 'block' }}>
+          <span className="hint tip" style={{ display: 'block' }}>
             No ? or ! either - commas and full stops are always left off. "Don't" and "2.5" stay as they are.
           </span>
         </span>
@@ -391,7 +394,7 @@ export function SettingsView({
         <input type="checkbox" checked={voice} onChange={(e) => onVoice(e.target.checked)} />
         <span>
           <span className="label">Make my voice louder and clearer</span>
-          <span className="hint" style={{ display: 'block' }}>
+          <span className="hint tip" style={{ display: 'block' }}>
             Evens it out and brings it to normal TikTok loudness, never past a safe level.
           </span>
         </span>
@@ -400,7 +403,7 @@ export function SettingsView({
         <input type="checkbox" checked={cleanSpeech} onChange={(e) => onCleanSpeech(e.target.checked)} />
         <span>
           <span className="label">Also cut "um"s and stumbles</span>
-          <span className="hint" style={{ display: 'block' }}>
+          <span className="hint tip" style={{ display: 'block' }}>
             Uses more memory. If a video keeps stopping the page, turn it off.
           </span>
         </span>
@@ -427,6 +430,51 @@ export function SettingsView({
   )
 }
 
+
+/** Light or dark (or as the phone is), and whether the explanations show. */
+function Appearance() {
+  const [theme, setThemeState] = useState<Theme>(savedTheme)
+  const [tips, setTipsState] = useState(savedTips)
+  return (
+    <>
+      <div className="list-title">Appearance</div>
+      <div className="seg full" role="radiogroup" aria-label="Appearance">
+        {THEMES.map((t) => (
+          <button
+            key={t.id}
+            type="button"
+            role="radio"
+            aria-checked={theme === t.id}
+            className={theme === t.id ? 'active' : ''}
+            onClick={() => {
+              setTheme(t.id)
+              setThemeState(t.id)
+            }}
+          >
+            {t.label}
+          </button>
+        ))}
+      </div>
+      <label className="toggle">
+        <input
+          type="checkbox"
+          checked={tips}
+          onChange={(e) => {
+            setTips(e.target.checked)
+            setTipsState(e.target.checked)
+          }}
+        />
+        <span className="label">Show tips</span>
+      </label>
+    </>
+  )
+}
+
+const THEMES: { id: Theme; label: string }[] = [
+  { id: 'system', label: 'Automatic' },
+  { id: 'light', label: 'Light' },
+  { id: 'dark', label: 'Dark' },
+]
 
 /** Every campaign posts at random unless he gave it fixed times; this
  *  switches the ones he did, in one tap. */

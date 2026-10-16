@@ -30,12 +30,12 @@
   appearance: none;
   -webkit-appearance: none;
   padding: 0 36px 0 12px;
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8' fill='none' stroke='%23a4b1c3' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M1 1.5l5 5 5-5'/%3E%3C/svg%3E");
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8' fill='none' stroke='%238e8e93' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M1 1.5l5 5 5-5'/%3E%3C/svg%3E");
   background-repeat: no-repeat;
   background-position: right 14px center;
 }
 .field input:focus, .field textarea:focus, .field select:focus,
-.sound select:focus, .sound input.words:focus { border-color: rgb(255 255 255 / 0.8); outline: none; }
+.sound select:focus, .sound input.words:focus { border-color: var(--focus); outline: none; }
 ::placeholder { color: var(--muted); opacity: 1; }
 
 /* --- Setting up a look --------------------------------------------------- */
@@ -215,7 +215,7 @@ html, body { overscroll-behavior-y: none; }
 }
 .chooser select {
   appearance: none; -webkit-appearance: none; padding-right: 40px; font-weight: 600;
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8' fill='none' stroke='%23a4b1c3' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M1 1.5l5 5 5-5'/%3E%3C/svg%3E");
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8' fill='none' stroke='%238e8e93' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M1 1.5l5 5 5-5'/%3E%3C/svg%3E");
   background-repeat: no-repeat; background-position: right 16px center;
 }
 
@@ -381,15 +381,15 @@ html, body { overscroll-behavior-y: none; }
 .cuts-ruler {
   position: relative; height: 166px;
   /* Cut-out time is red-striped, so it reads at a glance against the kept parts. */
-  background: repeating-linear-gradient(135deg, rgb(242 86 76 / 0.26) 0 6px, rgb(242 86 76 / 0.1) 6px 12px);
+  background: repeating-linear-gradient(135deg, color-mix(in srgb, var(--bad) 26%, transparent) 0 6px, color-mix(in srgb, var(--bad) 10%, transparent) 6px 12px);
 }
 .cuts-part {
   position: absolute; top: 22px; height: 64px; box-sizing: border-box;
-  border: 2px solid var(--ok); border-radius: 8px; background: rgb(47 212 114 / 0.22);
+  border: 2px solid var(--ok); border-radius: 8px; background: color-mix(in srgb, var(--ok) 22%, transparent);
 }
-.cuts-part.on { border-color: var(--now); background: rgb(47 212 114 / 0.34); }
+.cuts-part.on { border-color: var(--now); background: color-mix(in srgb, var(--ok) 34%, transparent); }
 .cuts-wave { position: absolute; pointer-events: none; }
-.cuts-wave path { fill: rgb(255 255 255 / 0.8); }
+.cuts-wave path { fill: color-mix(in srgb, var(--text) 75%, transparent); }
 .cuts-handle {
   position: absolute; top: -6px; bottom: -6px; width: 22px;
   touch-action: none; cursor: ew-resize;
@@ -404,10 +404,10 @@ html, body { overscroll-behavior-y: none; }
 .cuts-flag {
   position: absolute; box-sizing: border-box; padding: 0; border-radius: 8px;
   border: 2px solid var(--warn); color: var(--warn); font: inherit; font-weight: 800; font-size: 15px;
-  background: repeating-linear-gradient(135deg, rgb(240 168 60 / 0.4) 0 5px, rgb(240 168 60 / 0.14) 5px 10px);
+  background: repeating-linear-gradient(135deg, color-mix(in srgb, var(--warn) 40%, transparent) 0 5px, color-mix(in srgb, var(--warn) 14%, transparent) 5px 10px);
   display: flex; align-items: center; justify-content: center; cursor: pointer;
 }
-.cuts-flag.back { border-style: dashed; background: rgb(240 168 60 / 0.12); }
+.cuts-flag.back { border-style: dashed; background: color-mix(in srgb, var(--warn) 12%, transparent); }
 .cuts-flag.on { border-color: var(--now); color: var(--now); }
 .cuts-word {
   position: absolute; top: 62px; white-space: nowrap; pointer-events: none;
@@ -469,7 +469,7 @@ html, body { overscroll-behavior-y: none; }
   resize: vertical;
 }
 .post .field input[type=datetime-local], .time-add input[type=time] { width: 100%; }
-.post-caption:focus, .post .field input:focus, .time-add input:focus { border-color: rgb(255 255 255 / 0.8); outline: none; }
+.post-caption:focus, .post .field input:focus, .time-add input:focus { border-color: var(--focus); outline: none; }
 .post-caption-read { white-space: pre-wrap; color: var(--dim); font-size: 15px; }
 .post-video { width: 160px; max-width: calc(100% - 20px); aspect-ratio: 9 / 16; border-radius: 10px; background: #000; }
 .post-links { display: flex; flex-wrap: wrap; gap: 4px 14px; }
@@ -493,7 +493,7 @@ html, body { overscroll-behavior-y: none; }
   padding: 0 34px 0 12px;
   border: 1px solid var(--edge);
   border-radius: 11px;
-  background: var(--surface) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8' fill='none' stroke='%23a4b1c3' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M1 1.5l5 5 5-5'/%3E%3C/svg%3E") no-repeat right 12px center;
+  background: var(--surface) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8' fill='none' stroke='%238e8e93' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M1 1.5l5 5 5-5'/%3E%3C/svg%3E") no-repeat right 12px center;
   color: var(--text);
   font: inherit;
   /* 16px or iOS zooms the page when it is tapped. */
@@ -580,9 +580,9 @@ input.bank-name { background: transparent; border: 0; border-bottom: 1px solid c
 
 .cuts-legend { display: flex; gap: 16px; justify-content: center; font-size: 13px; color: var(--dim); }
 .cuts-legend .swatch { display: inline-block; width: 14px; height: 14px; border-radius: 4px; vertical-align: -2px; margin-right: 4px; border: 2px solid transparent; box-sizing: border-box; }
-.cuts-legend .swatch.kept { border-color: var(--ok); background: rgb(47 212 114 / 0.3); }
-.cuts-legend .swatch.gone { background: repeating-linear-gradient(135deg, rgb(242 86 76 / 0.5) 0 3px, rgb(242 86 76 / 0.15) 3px 6px); }
-.cuts-legend .swatch.check { border-color: var(--warn); background: rgb(240 168 60 / 0.4); }
+.cuts-legend .swatch.kept { border-color: var(--ok); background: color-mix(in srgb, var(--ok) 30%, transparent); }
+.cuts-legend .swatch.gone { background: repeating-linear-gradient(135deg, color-mix(in srgb, var(--bad) 50%, transparent) 0 3px, color-mix(in srgb, var(--bad) 15%, transparent) 3px 6px); }
+.cuts-legend .swatch.check { border-color: var(--warn); background: color-mix(in srgb, var(--warn) 40%, transparent); }
 .cuts-checks { display: flex; flex-direction: column; gap: 8px; }
 .cuts-check { display: flex; align-items: center; gap: 8px; padding: 10px; border: 1px solid var(--edge); border-radius: 10px; background: var(--surface); }
 .cuts-check.on { border-color: var(--now); }
@@ -601,9 +601,9 @@ input.bank-name { background: transparent; border: 0; border-bottom: 1px solid c
 /* Pictures put on by hand: a marker on the timeline, a preview on the frame,
    a picker and a list. */
 .cuts-ruler { height: 188px; }
-.cuts-pic { position: absolute; top: 162px; height: 22px; box-sizing: border-box; padding: 0; overflow: hidden; border: 2px solid var(--now); border-radius: 6px; background: rgb(255 255 255 / 0.12); cursor: pointer; }
+.cuts-pic { position: absolute; top: 162px; height: 22px; box-sizing: border-box; padding: 0; overflow: hidden; border: 2px solid var(--now); border-radius: 6px; background: color-mix(in srgb, var(--now) 12%, transparent); cursor: pointer; }
 .cuts-pic img { height: 100%; width: auto; object-fit: cover; display: block; }
-.cuts-pic.on { background: rgb(255 255 255 / 0.3); }
+.cuts-pic.on { background: color-mix(in srgb, var(--now) 30%, transparent); }
 .cuts-pic-preview { pointer-events: none; z-index: 2; border-radius: 6px; }
 .pic-picker, .pic-list { display: flex; flex-direction: column; gap: 10px; }
 .pic-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(84px, 1fr)); gap: 8px; }
@@ -612,7 +612,7 @@ input.bank-name { background: transparent; border: 0; border-bottom: 1px solid c
 .pic-row { display: flex; flex-direction: column; gap: 8px; padding: 10px; border: 1px solid var(--edge); border-radius: 10px; background: var(--surface); }
 .pic-row.on { border-color: var(--now); }
 .pic-row-main { display: flex; align-items: center; gap: 10px; background: none; border: 0; padding: 0; color: inherit; font: inherit; text-align: left; cursor: pointer; }
-.pic-row-main img { width: 44px; height: 44px; object-fit: contain; border-radius: 6px; background: rgb(255 255 255 / 0.06); }
+.pic-row-main img { width: 44px; height: 44px; object-fit: contain; border-radius: 6px; background: color-mix(in srgb, var(--text) 6%, transparent); }
 .pic-missing { display: inline-flex; width: 44px; height: 44px; align-items: center; justify-content: center; border: 1px dashed var(--warn); border-radius: 6px; color: var(--warn); }
 .pic-row-title { font-weight: 600; }
 .pic-row-controls { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
@@ -653,3 +653,61 @@ input.bank-name { background: transparent; border: 0; border-bottom: 1px solid c
 .pop-review { display: flex; flex-direction: column; gap: 8px; }
 .pop-row { display: flex; align-items: center; gap: 8px; }
 .pop-row .hint { margin: 0 0 0 auto; }
+
+/* --- The look of Apple's own apps ----------------------------------------
+   Each part on its own rounded card on the grey ground; inputs filled, not
+   outlined; lists as inset groups; the tab bar see-through. Last, so it is
+   what shows. */
+
+.screen-head h1 { font-size: 34px; }
+
+.field input[type=text],
+.field input[type=password],
+.field textarea,
+.field select,
+.sound select,
+.sound input.words,
+.chooser select,
+.chooser > input[type=text],
+input.find,
+.post-caption,
+.post .field input[type=datetime-local],
+.time-add input[type=time] {
+  background-color: var(--field);
+  border-color: transparent;
+}
+.chooser select, .chooser > input[type=text], input.find { background-color: var(--surface); }
+
+.group { padding: 14px 16px; border-top: 0; border-radius: 14px; background: var(--surface); }
+.group .group, .review-look .group { padding: 0; border-radius: 0; background: none; }
+.group-title { font-size: 17px; }
+
+.callout, .setting { padding: 12px 16px; border: 0; border-radius: 14px; background: var(--surface); }
+
+.rows, .vlist, .posts-list, .bank-list { border-top: 0; border-radius: 14px; background: var(--surface); padding: 0 16px; overflow: hidden; }
+.group .bank-list { padding: 0; background: none; border-radius: 0; }
+.row-link:last-child, .vrow:last-child, .post:last-child { border-bottom: 0; }
+.post { padding: 14px 0; }
+
+.tabbar {
+  background: var(--bar-bg);
+  -webkit-backdrop-filter: saturate(180%) blur(20px);
+  backdrop-filter: saturate(180%) blur(20px);
+  border-top: 0.5px solid var(--edge);
+}
+.tabbar button.active { color: var(--accent); }
+
+.summary, .editor-foot.sticky, .seg.parts { background: var(--ink); }
+
+.dot.now { background: var(--accent); box-shadow: none; }
+.meter-fill { background: var(--accent); }
+.phrase textarea:focus { border-color: var(--accent); }
+.phrase.on .phrase-play { color: var(--accent); }
+.now-text { color: var(--accent); }
+
+/* Explanations show only with Settings, Show tips (theme.ts). */
+html:not(.tips-on) .tip { display: none !important; }
+
+/* A switch on its own is a card, like a row in the iPhone's Settings. */
+.screen > .toggle, .screen > .seg + .toggle { padding: 12px 16px; border-radius: 14px; background: var(--surface); }
+.list-title { margin-top: 14px; font-size: 13px; font-weight: 500; text-transform: uppercase; letter-spacing: 0.02em; color: var(--muted); padding-left: 16px; }

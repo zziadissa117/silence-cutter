@@ -634,7 +634,7 @@ export function BatchView({
           )}
           {formulaHook ? (
             <div className="group">
-              <p className="hint bank-hint">Two logos with a plus between them over every reaction, then a different amount a day on each video. No headline.</p>
+              <p className="hint bank-hint tip">Two logos with a plus between them over every reaction, then a different amount a day on each video. No headline.</p>
               <div className="formula-logos">
                 {(['left', 'right'] as const).map((side) => (
                   <label key={side} className="btn small formula-pick">

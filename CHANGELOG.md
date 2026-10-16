@@ -3,6 +3,28 @@
 Newest first. Every change says what it does, how to use it, and how it works
 underneath. Kept up to date with each commit.
 
+## Batch 7: the look of Apple's own apps, light and dark, tips hidden
+**What:**
+- **Light and dark:** Settings, **Appearance**: Automatic (follows the phone), Light or Dark. Colours are Apple's own -
+  grey ground, white (or dark grey) cards, system blue for the thing to do next, green / orange / red for done /
+  look at this / failed - in both.
+- **Tidier:** each section sits on its own rounded card; the switches are the iPhone's (Cut only / Campaign videos,
+  every segmented choice, and on/off switches on the right instead of tick boxes); buttons are filled blue for the
+  main one and light blue for the rest; links are plain blue; the tab bar is see-through like iOS; section names are
+  small grey capitals like the iPhone's Settings; the Bank tab has one big title.
+- **Tips off:** the explanations under settings and buttons (41 of them) are hidden unless **Show tips** is on in
+  Settings, Appearance. Anything that says what is happening - warnings, "not synced", what is missing, progress -
+  always shows.
+- One thing that can't follow the theme: the iPhone's own status bar at the very top of the home-screen app stays
+  black (it is set when the app is added to the Home Screen; changing it means re-adding the app, which can lose
+  videos not yet sent).
+Only ./deploy.sh is needed.
+**How:** `theme.ts` (+ test): `data-theme` and `tips-on` on the page, set before the first paint in both `main.tsx`;
+`index.css` tokens for dark (`:root`) and light (`prefers-color-scheme` / `data-theme='light'`), plus `--accent`,
+`--field`, `--seg-track`, `--seg-on`, `--bar-bg`; an "Apple's own apps" block at the end of `index.css`,
+`campaign.css` and `modes.css`; hard-coded colours replaced with tokens (`color-mix`). Explanations carry the class
+`tip`. Checked with screenshots in light and dark in Chromium.
+
 ## Batch 6: green screen reactions
 **What:** the Batch tab has a new **Layout**: **Reaction, then video** (as before) or **Green screen**. In green
 screen, each video is the brief's video playing full screen with its own sound, and you, cut out of your background

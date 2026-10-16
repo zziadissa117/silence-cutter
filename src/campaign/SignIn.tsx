@@ -40,7 +40,7 @@ export function SignIn({ onSignedIn, onCancel }: { onSignedIn: (session: Session
           </button>
         ) : null}
       </div>
-      <div className="hint">
+      <div className="hint tip">
         Private. Your campaigns, angles and picture bank are kept on this login and backed up. You stay signed in until
         you sign out.
       </div>

@@ -32,3 +32,8 @@
 @media (prefers-reduced-motion: reduce) {
   .modes > a, .modes > a:active { transition: none; transform: none; }
 }
+
+/* The two sections' switch as the iPhone's segmented control. */
+.modes { padding: 2px; gap: 2px; border-radius: 10px; background: var(--seg-track); }
+.modes > a, .modes > span { min-height: 34px; border: 0; border-radius: 8px; color: var(--text); font-weight: 500; }
+.modes > span.active { background: var(--seg-on); color: var(--text); font-weight: 600; box-shadow: var(--shadow); }

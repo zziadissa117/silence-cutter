@@ -123,7 +123,7 @@ export function PostingEditor({
         })
       }
     >
-      <div className="hint">Your accounts and times are yours. How it's approved and captioned is shared with your friend.</div>
+      <div className="hint tip">Your accounts and times are yours. How it's approved and captioned is shared with your friend.</div>
 
       <div className="group">
         <div className="group-title">Your accounts</div>
@@ -232,7 +232,7 @@ export function PostingEditor({
               {place.times.length === 0 ? (
                 <div className="hint">No times of its own yet - until you add one, it posts at random ({windowLabel(DEFAULT_WINDOW)}).</div>
               ) : (
-                <div className="hint">Each video takes the next free time, a few minutes after it.</div>
+                <div className="hint tip">Each video takes the next free time, a few minutes after it.</div>
               )}
               {place.times.some((t) => !inDay(t)) ? (
                 <div className="hint">
@@ -314,7 +314,7 @@ export function PostingEditor({
           <input type="checkbox" checked={posting.remind} onChange={(e) => change({ remind: e.target.checked })} />
           <span>
             <span className="label">Remind me to submit it when it goes live</span>
-            <span className="hint" style={{ display: 'block' }}>
+            <span className="hint tip" style={{ display: 'block' }}>
               A notification the moment it's posted - for a brand that pays only if you submit within 2 hours.
             </span>
           </span>
@@ -331,7 +331,7 @@ export function PostingEditor({
           />
           <span>
             <span className="label">Remind me to repost it</span>
-            <span className="hint" style={{ display: 'block' }}>
+            <span className="hint tip" style={{ display: 'block' }}>
               A notification with the post's link, so you can tap the platform's own Repost button. Off unless you turn it on.
             </span>
           </span>
@@ -379,7 +379,7 @@ export function PostingEditor({
                 placeholder={'e.g. Always end with a variation of: Comment "CLIP" and I\'ll send it over to you'}
                 onChange={(e) => change({ rules: e.target.value })}
               />
-              <span className="hint">
+              <span className="hint tip">
                 Claude writes each caption from what you say in the video, with hashtags for the niche. Never "ad" or
                 "paid partnership".
               </span>
@@ -416,12 +416,12 @@ export function PostingEditor({
             <input type="checkbox" checked={rewrite} onChange={() => setRewrite((on) => !on)} />
             <span>
               <span className="label">Rewrite them with the new rules instead</span>
-              <span className="hint" style={{ display: 'block' }}>Claude writes each caption again from the video, with these rules.</span>
+              <span className="hint tip" style={{ display: 'block' }}>Claude writes each caption again from the video, with these rules.</span>
             </span>
           </label>
         ) : null}
         {posting.caption === 'claude' ? null : (
-          <div className="hint">The Posts screen asks you to paste it - a brand's tracking caption - before the post can go.</div>
+          <div className="hint tip">The Posts screen asks you to paste it - a brand's tracking caption - before the post can go.</div>
         )}
       </div>
     </EditorFrame>

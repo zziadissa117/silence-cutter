@@ -33,7 +33,7 @@ export function MusicBankView() {
   return (
     <section className="screen" aria-label="Music bank">
       <div className="screen-head">
-        <h1>Music</h1>
+        <h2>Music</h2>
         <div className="btn small primary picker">
           {busy ? 'Adding…' : 'Add music'}
           <input
@@ -50,7 +50,7 @@ export function MusicBankView() {
           />
         </div>
       </div>
-      <p className="lede">
+      <p className="lede tip">
         Songs for every campaign. Add an MP3 or a video - only its sound is kept. Name each one so you know it when you pick
         music for a video, and tap ▶ to hear it.
       </p>

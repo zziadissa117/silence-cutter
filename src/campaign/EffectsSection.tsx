@@ -264,7 +264,7 @@ export function EffectsSection({
 
   return (
     <div className="effects">
-      <div className="hint">
+      <div className="hint tip">
         All off until you turn one on - play its example first. Every video varies a little; the headline and logo
         stay steady.
       </div>

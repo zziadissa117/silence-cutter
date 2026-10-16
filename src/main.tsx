@@ -4,10 +4,15 @@ import { createRoot } from 'react-dom/client'
 import { App } from './App'
 import { currentSession } from './campaign/cloud'
 import { CrashGuard } from './CrashGuard'
+import { applyTheme, followPhone } from './theme'
 import { ModeNav, plainCutterWorkToLose } from './ModeNav'
 import { CUT_ONLY_HASH, staysOnCutOnly } from './opening'
 import './index.css'
 import './modes.css'
+
+// Light or dark before anything is drawn, so nothing flashes the other one.
+applyTheme()
+followPhone()
 
 void staysOnCutOnly().then((stay) => {
   // Signed out, this page does not open at all: the sign-in page is
