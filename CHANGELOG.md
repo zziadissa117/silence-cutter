@@ -3,6 +3,22 @@
 Newest first. Every change says what it does, how to use it, and how it works
 underneath. Kept up to date with each commit.
 
+## Fix: no more click at every cut
+**What:** every cut had a little click - the sound a video makes when it ends and starts. Now the sound fades out
+over the last 8 thousandths of a second before each cut and back in over the first 8 after it: far too short to hear
+as a fade, and the click is gone. The same where a video before / after / in the middle meets you, and where two
+recordings are joined. Your music and pops/whooshes are untouched - they're laid over the finished video and play
+straight through the cuts. Videos made from now on; ones already made keep their clicks (Edit again remakes one).
+Only ./deploy.sh is needed.
+**Why it clicked:** the sound is read in chunks of about 20 ms and each kept part took whole chunks - the one already
+playing at its start and every one starting before its end - so at each cut the sound wave jumped from wherever one
+part stopped to wherever the next started, and a few ms of the cut pause came along on each side.
+**How:** `cutFades.ts` (+ test, which rebuilds a click from two joined chunks and checks it is gone): `cutEdges` (which
+ends of each kept part are a cut - a gap, a video in the middle, the start and end of him; two parts with nothing
+between them play on as one), `edgeGain` / `fadeAtCuts` (silent outside the part, 8 ms ramps inside it), `nearCut`
+(only chunks at a cut are touched). `render.ts` fades his voice before the voice chain, the music and the sounds;
+clip edges in `writeClip`; `joinRender.ts` at each join. The plain cutter is unchanged (rule 7).
+
 ## Captions: "Usual" sits a little lower
 **What:** the Usual caption place is a little lower - its middle is now 66% of the way down the video instead of 63%
 (about 58 pixels lower on a 1080x1920 video), still well above Bottom (80%) and TikTok's own caption. Every video

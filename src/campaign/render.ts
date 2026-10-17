@@ -57,6 +57,7 @@ import { decoderGaveUp, eachSound, openClip, pause, visibleAgain, wholeOf, write
 import type { ClipPlace } from './clips'
 import { framingAt, logoPop, placeFrame, planMotion } from './effects'
 import { ColourCheck } from './colourCheck'
+import { cutEdges, fadeAtCuts, nearCut } from './cutFades'
 import { headlineFontReady } from './headlineFont'
 import { framedSize, landscapeMode, makeBlurBackdrop, planFrame } from './framing916'
 import { drawHeadline, drawLogo, drawPoppedLogo, layoutHeadline, layoutLogo } from './overlay'
@@ -516,6 +517,10 @@ export async function renderCampaignCut(
      *  with the music under it. Returns where it ends. */
     const writeClip = (clip: Clip, at: number, gain: number): Promise<number> => {
       const place = cover(clip.width, clip.height, width, height)
+      // Its sound fades in and out over a few ms too, so it doesn't click
+      // against him either side (cutFades.ts).
+      const clipEnd = at + (clip.duration - clip.first)
+      const clipEdges = { fadeIn: true, fadeOut: true }
       return writeWhole(clip, at, {
         rate: sampleRate,
         channels,
@@ -540,6 +545,7 @@ export async function renderCampaignCut(
             return into
           })
           const firstFrame = Math.round(timestamp * sampleRate)
+          if (nearCut(timestamp, length / sampleRate, at, clipEnd, clipEdges)) fadeAtCuts(out, timestamp, sampleRate, at, clipEnd, clipEdges)
           bed?.mixInto(out, firstFrame)
           mixInto(out, firstFrame, placed, !voice)
           if (voice) voice.limit(out)
@@ -559,6 +565,8 @@ export async function renderCampaignCut(
     // timed from here.
     const talkStart = cursor
     placeStartSounds(talkStart)
+    // Which ends of each kept part are a cut, where his sound fades.
+    const edges = cutEdges(keep, middle.map((m) => m.after))
 
     for (let index = 0; index < keep.length; index++) {
       const { start, end } = keep[index]
@@ -708,13 +716,17 @@ export async function renderCampaignCut(
             }
             const timestamp = audioClock(sample.timestamp + audioShift, sample.duration)
             audioEnd = timestamp + sample.duration
-            if (voice || bed) {
-              // Voice first, then the music under it and the sounds over it,
-              // then the ceiling over all of them.
+            // A chunk at a cut fades, so the join doesn't click (cutFades.ts).
+            const at = sample.timestamp
+            const fading = nearCut(at, sample.duration, start, end, edges[index])
+            if (voice || bed || fading) {
+              // Voice first (faded at the cuts), then the music under it and
+              // the sounds over it, then the ceiling over all of them.
               const { data, planes } = planesOf(sample)
               const { sampleRate: rate, numberOfChannels } = sample
               sample.close()
               const firstFrame = Math.round(timestamp * rate)
+              if (fading) fadeAtCuts(planes, at, rate, start, end, edges[index])
               voice?.shape(planes)
               bed?.mixInto(planes, firstFrame)
               mixInto(planes, firstFrame, placed, !voice)

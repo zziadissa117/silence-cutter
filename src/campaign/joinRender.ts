@@ -23,6 +23,7 @@ import {
 
 import { SilenceCutError } from '../media/errors'
 import { contiguousAudio, forwardOnly } from '../media/forwardOnly'
+import { fadeAtCuts, nearCut } from './cutFades'
 import { createOutputSink } from '../media/outputSink'
 import { isSilenceCutSupported } from '../media/silenceCut'
 import { openClip, writeWhole, type Clip } from './clipParts'
@@ -86,9 +87,14 @@ export async function joinRecordings(files: Blob[], onProgress?: (fraction: numb
     const audioClock = contiguousAudio()
     const offsets: number[] = []
     let at = 0
-    for (const clip of clips) {
+    for (const [index, clip] of clips.entries()) {
       offsets.push(at - clip.first)
       const place = cover(clip.width, clip.height, width, height)
+      // Where one recording meets the next, the sound fades out and in over a
+      // few ms, so the join doesn't click (cutFades.ts).
+      const from = at
+      const until = at + (clip.duration - clip.first)
+      const edges = { fadeIn: index > 0, fadeOut: index < clips.length - 1 }
       at = await writeWhole(clip, at, {
         rate,
         channels,
@@ -106,6 +112,7 @@ export async function joinRecordings(files: Blob[], onProgress?: (fraction: numb
         },
         onSound: async (planes, timestamp) => {
           const length = planes[0].length
+          if (nearCut(timestamp, length / rate, from, until, edges)) fadeAtCuts(planes, timestamp, rate, from, until, edges)
           const data = new Float32Array(length * channels)
           planes.forEach((plane, c) => data.set(plane, c * length))
           const sample = new AudioSample({ data, format: 'f32-planar', numberOfChannels: channels, sampleRate: rate, timestamp })
