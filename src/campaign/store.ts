@@ -141,6 +141,25 @@ interface StoredJob {
    *  posts nowhere yet. Kept UNSENT_KEEP_MS so it can still be given a
    *  campaign and sent. */
   unsent?: boolean
+  /** A take for a format (the Formats tab): the format's angle id. It is cut
+   *  and captioned with that angle's look and joined with its clips, then
+   *  kept on the phone - not sent - until he schedules it. (Not the
+   *  campaign's `format`, which says talking or reaction.) */
+  forFormat?: string
+  /** A format video made and waiting to be scheduled: what its post needs
+   *  (the words heard, for the caption; the headline; how long it is). Its
+   *  finished MP4 is kept under heldKey(id) until it is scheduled or he
+   *  takes it out - never expired. */
+  held?: HeldVideo
+}
+
+export interface HeldVideo {
+  transcript: string
+  headline: string
+  duration: number
+  size: number
+  /** A plain cut, kept because the look failed on it. */
+  plain?: boolean
 }
 
 /** How long a made video can still be edited and made again. */
@@ -306,6 +325,9 @@ export interface SendEntry {
     }
     /** Made from the Batch tab: waits for his approval, for this day and time. */
     batch?: JobBatch
+    /** A Formats video he scheduled himself, once the brand saw it: it goes
+     *  at its batch day and time without asking again. */
+    scheduled?: boolean
   }
   size: number
   /** Where the phone's own copy is: the browser's private files, or - on a
@@ -789,6 +811,7 @@ export async function forgetJob(id: string): Promise<void> {
     await db.jobs.bulkDelete(gone)
     await db.videos.bulkDelete(gone)
     for (const jobId of gone) await db.videos.where('id').startsWith(montagePrefix(jobId)).delete()
+    await db.videos.bulkDelete(gone.map(heldKey))
     for (const jobId of gone) await db.clipParts.where('key').startsWith(`overlay-${jobId}-`).delete()
     for (const productId of products) {
       if (!(await db.jobs.filter((j) => j.reaction?.productId === productId).first())) await db.videos.delete(productKey(productId))
@@ -816,6 +839,30 @@ export async function keepJobVideo(id: string, video: Blob): Promise<boolean> {
   }
 }
 
+/** A format video made: its finished MP4 kept, with what its post needs,
+ *  until he schedules it. False when the phone had no room for it - the
+ *  video is still there for this session. */
+export async function holdMade(id: string, video: Blob, held: HeldVideo, now = Date.now()): Promise<boolean> {
+  try {
+    await db.videos.put({ id: heldKey(id), blob: video })
+    await db.jobs.update(id, { madeAt: now, held, attempts: 0, failed: undefined })
+    return true
+  } catch {
+    return false
+  }
+}
+
+/** Every format video made and waiting to be scheduled, oldest first. */
+export async function heldVideos(): Promise<PendingJob[]> {
+  const rows = await db.jobs.filter((j) => j.held !== undefined && j.madeAt !== undefined).toArray()
+  return rows.sort((a, b) => (a.madeAt ?? 0) - (b.madeAt ?? 0)).map(({ addedAt: _added, ...meta }) => meta)
+}
+
+/** A held format video's finished MP4. */
+export async function loadHeldVideo(id: string): Promise<Blob | null> {
+  return (await db.videos.get(heldKey(id)))?.blob ?? null
+}
+
 /** Takes a joined video apart again: it goes, its recordings come back. */
 export async function splitJoined(id: string): Promise<void> {
   await db.transaction('rw', db.jobs, db.videos, async () => {
@@ -834,6 +881,8 @@ const productKey = (productId: string) => `product:${productId}`
 
 /** A clips-and-music video's other files, kept under its job's id. */
 const montagePrefix = (jobId: string) => `montage:${jobId}:`
+/** Where a format video's finished MP4 is kept until it is scheduled. */
+export const heldKey = (jobId: string) => `held:${jobId}`
 const montageKey = (jobId: string, part: number | 'song') => `${montagePrefix(jobId)}${part}`
 
 /** Recordings joined first, now one video: it replaces the first as the
@@ -1141,10 +1190,14 @@ export const UNSENT_KEEP_MAX = 10
 /** Lets go of made jobs past their window, recording and all - and unsent
  *  ones beyond the newest UNSENT_KEEP_MAX. */
 export async function expireMade(now = Date.now()): Promise<number> {
+  // A held format video never goes by itself - only its recording does,
+  // once it can no longer be edited, to give the phone its space back.
+  const held = await db.jobs.filter((j) => j.held !== undefined && j.madeAt !== undefined && now - j.madeAt >= EDIT_WINDOW_MS).primaryKeys()
+  if (held.length > 0) await db.videos.bulkDelete(held).catch(() => {})
   const unsent = (await db.jobs.filter((j) => j.unsent === true && j.madeAt !== undefined).toArray()).sort((a, b) => (b.madeAt ?? 0) - (a.madeAt ?? 0))
   const tooMany = new Set(unsent.slice(UNSENT_KEEP_MAX).map((j) => j.id))
   const old = await db.jobs
-    .filter((j) => j.madeAt !== undefined && (now - j.madeAt >= keptFor(j) || (tooMany.has(j.id) && now - j.madeAt >= EDIT_WINDOW_MS)))
+    .filter((j) => j.held === undefined && j.madeAt !== undefined && (now - j.madeAt >= keptFor(j) || (tooMany.has(j.id) && now - j.madeAt >= EDIT_WINDOW_MS)))
     .primaryKeys()
   for (const id of old) await forgetJob(id)
   return old.length
@@ -1205,7 +1258,8 @@ export async function loadPendingJobs(): Promise<PendingJob[]> {
     // the same moment is never mistaken for one.
     const live = new Set(rows.flatMap((row) => (row.reaction ? [row.id, productKey(row.reaction.productId)] : [row.id])))
     const ids = new Set(rows.map((row) => row.id))
-    const kept = (id: string) => live.has(id) || (id.startsWith('montage:') && ids.has(id.split(':')[1]))
+    const kept = (id: string) =>
+      live.has(id) || ((id.startsWith('montage:') || id.startsWith('held:')) && ids.has(id.split(':')[1]))
     const orphans = (await db.videos.toCollection().primaryKeys()).filter((id) => !kept(id))
     if (orphans.length > 0) await db.videos.bulkDelete(orphans)
     return rows

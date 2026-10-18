@@ -214,6 +214,21 @@ Lowering the number (or 0, a pause) works at once too: `overfull` finds the days
 started are dropped, posts not out are stopped (`stopPostsNow`), posted or being-made ones stay.
 On the engine, a batch still being made is stopped first and the days recounted (`countedDays`).
 
+## Formats (`formats.ts`, `FormatsView.tsx`)
+
+A format is an angle with `isFormat`: its look and the clips joined onto every take (clips.ts,
+set in the angle editor's Clips). It is never a candidate when sorting a day's videos. Takes
+added on the Formats tab (`CampaignApp.addFormatTakes`) are jobs with `forFormat` and
+`day.chosen`: listened to for captions, then `approved` at once, made like any talking video,
+and on `done` kept instead of sent (`holdFormat` -> `store.holdMade`: the finished MP4 under
+`held:<id>`, the transcript/headline/duration on the row; never expired, the recording goes after
+the edit window). They are left out of the Videos tab. Save opens the share sheet with the
+files (to send the brand). Schedule (`scheduleFormat`) spreads them over 7 or 5 days
+(`spreadOver`: `perDayCounts`, the campaign's `batchTimesOn`, `stackTimesOn` clear of taken
+times, today only with room an hour ahead) and queues each with `meta.batch` and
+`meta.scheduled`; the server's `approvalFor` makes such a post `direct`, so `takeBatchSlot` puts
+it at its day and time and it is scheduled without waiting in Posts.
+
 ## Analytics (`analytics.ts`, `AnalyticsView.tsx`, server `postiz/views.ts`)
 
 The tick reads one account's views from Postiz (`GET /analytics/:id?date=7`) - the stalest of

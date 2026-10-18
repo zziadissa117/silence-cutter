@@ -426,7 +426,7 @@ export function AngleEditor({
       {part === 'look' ? (
         <>
           <label className="field">
-            <span className="label">Angle name</span>
+            <span className="label">{angle.isFormat ? 'Format name' : 'Angle name'}</span>
             <input
               type="text"
               value={angle.name}
@@ -435,7 +435,13 @@ export function AngleEditor({
             />
           </label>
 
-          {!campaign.general ? (
+          {angle.isFormat ? (
+            <p className="hint tip">
+              A format: its look, and the clips joined onto every take - set them under Clips. Add its takes on the Formats tab.
+            </p>
+          ) : null}
+
+          {!campaign.general && !angle.isFormat ? (
             <label className="field">
               <span className="label">Recognise it by</span>
               <input

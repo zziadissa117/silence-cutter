@@ -4,12 +4,13 @@
 
 import type { ReactNode } from 'react'
 
-import { AnalyticsIcon, BatchIcon, CampaignsIcon, PicturesIcon, SettingsIcon, VideosIcon } from './icons'
+import { AnalyticsIcon, BatchIcon, CampaignsIcon, FormatsIcon, PicturesIcon, SettingsIcon, VideosIcon } from './icons'
 
-export type Tab = 'videos' | 'batch' | 'analytics' | 'campaigns' | 'pictures' | 'settings'
+export type Tab = 'videos' | 'formats' | 'batch' | 'analytics' | 'campaigns' | 'pictures' | 'settings'
 
 const TABS: { tab: Tab; label: string; icon: ReactNode }[] = [
   { tab: 'videos', label: 'Videos', icon: <VideosIcon /> },
+  { tab: 'formats', label: 'Formats', icon: <FormatsIcon /> },
   { tab: 'batch', label: 'Batch', icon: <BatchIcon /> },
   { tab: 'analytics', label: 'Analytics', icon: <AnalyticsIcon /> },
   { tab: 'campaigns', label: 'Campaigns', icon: <CampaignsIcon /> },

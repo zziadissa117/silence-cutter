@@ -134,6 +134,10 @@ export interface Angle {
    *  other angles - see generalAngle. Every campaign has one; it can be
    *  changed but not deleted. */
   general?: boolean
+  /** A format (the Formats tab): takes he drops in for it are made with this
+   *  look and joined with its clips. Never picked when sorting a day's
+   *  videos - his takes go to it by hand. */
+  isFormat?: boolean
 }
 
 export interface Campaign {

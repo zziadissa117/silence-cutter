@@ -31,6 +31,8 @@ import { loadMusicBank, songFile } from './musicBank'
 import { BatchView } from './BatchView'
 import { oneAtATime, overfull, takenBy, topUp, trimDown, type BatchVideo } from './batchRun'
 import { AnalyticsView, answerSuggestion, saveTarget, useCampaignRows } from './AnalyticsView'
+import { FormatsView, type FormatClips } from './FormatsView'
+import { daysLine, spreadOver } from './formats'
 import type { ViewsByAccount } from './analytics'
 import { filesOf, type BankFile } from './batch'
 import { CampaignsView } from './CampaignsView'
@@ -156,6 +158,9 @@ import {
   forgetJob,
   jobOfPostKey,
   keepJobVideo,
+  holdMade,
+  heldVideos,
+  loadHeldVideo,
   madeNotSent,
   markJobSent,
   markMade,
@@ -514,6 +519,85 @@ export function CampaignApp() {
     } catch (error) {
       setNotice(`The edited video was sent, but the old post could not be removed - reject it in Posts. (${error instanceof Error ? error.message : String(error)})`)
     }
+  }
+
+  /** Bumped when a format video is kept or scheduled: Formats reads them again. */
+  const [heldVersion, setHeldVersion] = useState(0)
+  /** A format's take, made: kept on the phone with what its post needs (the
+   *  words heard, for the caption), not sent, until he schedules it from the
+   *  Formats tab. */
+  /** The words heard in a video, for its caption to be written from. */
+  const transcriptOf = (job: Job, result: CampaignResult, plan: CampaignPlan | null): string =>
+    plan
+      ? captionWordsFor(job, plan)
+          .map((w) => w.text.trim())
+          .filter(Boolean)
+          .join(' ')
+      : (result.said ?? '')
+  const holdFormat = async (job: Job, result: CampaignResult, plan: CampaignPlan | null, plain = false): Promise<void> => {
+    const transcript = transcriptOf(job, result, plan)
+    const held = { transcript, headline: result.headline, duration: result.newDurationSec, size: result.blob.size, ...(plain ? { plain: true } : {}) }
+    if (!(await holdMade(job.id, result.blob, held))) {
+      setNotice(`${job.name} is made, but the phone had no room to keep it - save it to your phone from Formats before you close the app.`)
+    }
+    setHeldVersion((v) => v + 1)
+  }
+
+  /** Takes dropped into a format: each is listened to for its captions, then
+   *  made with the format's look and joined with its clips - and kept, not
+   *  sent, for the Formats tab. Always cut, whatever their shape. */
+  const addFormatTakes = (owner: Campaign, angle: Angle, files: File[]) => {
+    const problem = pickArrived(files)
+    if (problem) setNotice(problem)
+    if (files.length === 0) {
+      pickSaved()
+      return
+    }
+    void (async () => {
+      const filming = await Promise.all(files.map(filmingOf))
+      const order = files.map((file, i) => ({ file, filming: filming[i] }))
+      if (order.every((o) => o.filming.filmedAt !== undefined)) order.sort((a, b) => a.filming.filmedAt! - b.filming.filmedAt!)
+      const settings = { ...PRESETS[preset] }
+      const added: Job[] = order.map(({ file, filming: filmed }) => ({
+        id: `${Date.now()}-${nextId++}`,
+        name: file.name,
+        file,
+        campaignId: owner.id,
+        angleId: angle.id,
+        label: labelOf(owner, angle),
+        headlineText: '',
+        settings,
+        cleanSpeech,
+        status: 'queued',
+        phase: 'cutting',
+        progress: 0,
+        day: { approved: false, chosen: true },
+        forFormat: angle.id,
+        ...filmed,
+      }))
+      setJobs((current) => [...current, ...added])
+      const saving: Promise<unknown>[] = []
+      for (const job of added) {
+        const saved = persistJob({
+          id: job.id,
+          fileBlob: job.file!,
+          fileName: job.name,
+          fileType: job.file!.type,
+          campaignId: job.campaignId,
+          angleId: job.angleId,
+          headlineText: '',
+          settings,
+          cleanSpeech,
+          day: job.day,
+          forFormat: angle.id,
+          ...(job.filmedAt !== undefined ? { filmedAt: job.filmedAt } : {}),
+          ...(job.seconds !== undefined ? { seconds: job.seconds } : {}),
+        }).catch(() => {})
+        persisting.current.set(job.id, saved)
+        saving.push(saved)
+      }
+      void Promise.all(saving).finally(pickSaved)
+    })()
   }
 
   /** Returns whether it went: false when nothing here sends it. */
@@ -1086,6 +1170,7 @@ export function CampaignApp() {
         ...(p.reaction ? { reaction: p.reaction } : {}),
         ...(p.montage ? { montage: p.montage } : {}),
         ...(p.batch ? { batch: p.batch } : {}),
+        ...(p.forFormat ? { forFormat: p.forFormat } : {}),
         ...(p.prejoin ? { prejoin: p.prejoin } : {}),
       }))
       setJobs((current) => [...restored, ...current])
@@ -1234,9 +1319,13 @@ export function CampaignApp() {
           ))
           // A video he added for a campaign himself stays there: it was
           // listened to for its captions, not to be sorted.
+          // A format is never a guess: his takes go to one by hand.
           const guess = next.day?.chosen
             ? { campaignId: next.campaignId, angleId: next.angleId, sure: true, why: 'Chosen by you' }
-            : sortVideo(plan.words, campaigns.filter((c) => !isReaction(c)))
+            : sortVideo(
+                plan.words,
+                campaigns.filter((c) => !isReaction(c)).map((c) => ({ ...c, angles: c.angles.filter((a) => !a.isFormat || a.general) })),
+              )
           const campaign = campaigns.find((c) => c.id === guess.campaignId)
           const angle = campaign?.angles.find((a) => a.id === guess.angleId)
           // A reaction's headline is the hook he typed, never a line he says.
@@ -1245,9 +1334,12 @@ export function CampaignApp() {
             : angle
               ? headlineFor(angle, plan, next.day?.chosen && next.headlineText ? next.headlineText : angle.headline.text)
               : ''
-          const day = { plan, guess, approved: false, ...(next.day?.chosen ? { chosen: true } : {}) }
+          // A format's take is made straight away: he checks the finished
+          // videos on the Formats tab instead.
+          const approved = Boolean(next.forFormat)
+          const day = { plan, guess, approved, ...(next.day?.chosen ? { chosen: true } : {}) }
           patch({
-            status: 'sorted',
+            status: approved ? 'approved' : 'sorted',
             day,
             campaignId: guess.campaignId,
             angleId: guess.angleId,
@@ -1410,6 +1502,10 @@ export function CampaignApp() {
           })
         }
         patch({ status: 'done', result, url: next.batch ? undefined : URL.createObjectURL(result.blob) })
+        if (next.forFormat) {
+          await holdFormat(next, result, plan ?? result.plan ?? null)
+          return
+        }
         const sent = sendToPostiz(next, jobCampaign, result)
         // A talking video keeps its recording and edits for a couple of hours,
         // so a caption, a cut or the music can be fixed and it made again.
@@ -1469,7 +1565,9 @@ export function CampaignApp() {
             const result = await watched(plainCut(kept, planFor(next), next.settings, why, (p) => setPhase('cutting', p)))
             patch({ status: 'done', result, url: URL.createObjectURL(result.blob) })
             report({ page: 'campaign', kind: 'fallback', phase, message: why, video: kept })
-            await forgetJob(next.id)
+            // A format's take is kept all the same, marked as a plain cut.
+            if (next.forFormat) await holdFormat(next, result, planFor(next) ?? null, true)
+            else await forgetJob(next.id)
             return
           } catch (plainError) {
             if (pageLeaving()) return
@@ -1632,7 +1730,7 @@ export function CampaignApp() {
   /** A made video that went nowhere this session: no campaign accounts, not
    *  being sent, not a batch video. */
   const wentNowhere = (job: Job): boolean => {
-    if (job.status !== 'done' || !job.result || job.batch || job.reaction || job.montage) return false
+    if (job.status !== 'done' || !job.result || job.batch || job.forFormat || job.reaction || job.montage) return false
     if (outgoing.some((o) => jobOfPostKey(o.entry.key) === job.id)) return false
     const owner = campaigns?.find((c) => c.id === job.campaignId)
     return !posting || !owner || placeFor(posting.profile, owner.id).accounts.length === 0
@@ -1985,14 +2083,97 @@ export function CampaignApp() {
     setEditing({ kind: 'angle', campaign: owner, angle, isNew: true, copiedFrom: from.name })
   }
 
-  const finished = useMemo(() => jobs.filter((j) => j.status === 'done' && j.result && !j.batch), [jobs])
+  /** A new format: the campaign's General look to start from, under his
+   *  name, then straight into its editor to set the clips joined onto every
+   *  take. Never used to sort a day's videos (no words to listen for). */
+  const newFormat = (owner: Campaign, name: string) => {
+    const from = owner.angles.find((a) => a.general) ?? owner.angles[0]
+    const angle: Angle = { ...copyAngle(from, crypto.randomUUID(), name), isFormat: true, recognize: [] }
+    setEditing({ kind: 'angle', campaign: owner, angle, isNew: true, copiedFrom: from.name })
+  }
+
+  /** The clips a format joins onto every take, by name. */
+  const formatClips = (owner: Campaign, angle: Angle): FormatClips => {
+    const set = angleClips[angleKey(owner.id, angle.id)] ?? {}
+    const name = (id: string | undefined) => {
+      const clip = id ? clipList.find((c) => c.id === id) : undefined
+      return clip ? clipName(clip) : undefined
+    }
+    return { before: name(set.before), after: name(set.after), middle: set.cues?.length ?? 0 }
+  }
+
+  /** A format video taken out: still being made, made this session, or kept
+   *  from before - none of them posted anywhere yet. */
+  const removeFormatVideo = (id: string) => {
+    if (jobsRef.current.some((j) => j.id === id)) removeJob(id)
+    else void forgetJob(id).finally(() => setHeldVersion((v) => v + 1))
+    setTimeout(() => setHeldVersion((v) => v + 1), 500)
+  }
+
+  /** "Schedule for the week" (or the next 5 days) on a format: its made
+   *  videos spread over those days at the campaign's times (formats.ts), sent
+   *  as scheduled - they go at their time without asking again. Each leaves
+   *  the phone's keeping once the outbox has its own copy. Says how it went. */
+  const scheduleFormat = async (owner: Campaign, _angle: Angle, ids: string[], days: number): Promise<string> => {
+    const local = postingHere()
+    if (!local) return 'Set posting up in Settings first.'
+    const place = placeFor(local.profile, owner.id)
+    if (place.accounts.length === 0) return `Pick ${owner.name}'s accounts first: Campaigns, open it, then Posting.`
+    const kept = (await heldVideos()).filter((r) => ids.includes(r.id) && r.held)
+    // Made this session but not kept (the phone had no room): from memory.
+    const memory = jobsRef.current.filter((j) => ids.includes(j.id) && j.status === 'done' && j.result && !kept.some((r) => r.id === j.id))
+    const items = [
+      ...kept.map((r) => ({ id: r.id, version: r.version, name: r.fileName, held: r.held!, blob: null as Blob | null })),
+      ...memory.map((j) => ({
+        id: j.id,
+        version: j.version,
+        name: j.name,
+        held: { transcript: transcriptOf(j, j.result!, planFor(j) ?? null), headline: j.result!.headline, duration: j.result!.newDurationSec, size: j.result!.blob.size },
+        blob: j.result!.blob as Blob | null,
+      })),
+    ]
+    if (items.length === 0) return 'Nothing left to schedule.'
+    const slots = spreadOver({ count: items.length, days, place, campaignId: owner.id, taken: takenBy(lastPosts(), jobsRef.current, owner.id) })
+    const batchId = `f-${Date.now().toString(36)}`
+    const went: typeof slots = []
+    for (const [i, item] of items.entries()) {
+      const slot = slots[i]
+      const blob = item.blob ?? (await loadHeldVideo(item.id))
+      if (!slot || !blob) continue
+      await queueSend(
+        {
+          key: postKeyOf(item.id, item.version),
+          profileId: local.profile.id,
+          campaign: { id: owner.id, name: owner.name, posting: owner.posting ?? NO_POSTING },
+          meta: {
+            transcript: item.held.transcript,
+            headline: item.held.headline,
+            duration: item.held.duration,
+            fileName: item.name,
+            batch: { id: batchId, date: slot.date, time: slot.time, size: items.length },
+            scheduled: true,
+          },
+        },
+        blob,
+      )
+      await forgetJob(item.id)
+      setJobs((js) => js.filter((j) => j.id !== item.id))
+      went.push(slot)
+    }
+    setHeldVersion((v) => v + 1)
+    if (went.length === 0) return "They couldn't be scheduled - they're no longer on this phone."
+    return `${went.length} scheduled: ${daysLine(went)}, at ${owner.name}'s times. They post by themselves - see them in Posts.`
+  }
+
+  const finished = useMemo(() => jobs.filter((j) => j.status === 'done' && j.result && !j.batch && !j.forFormat), [jobs])
   // "Approve all" never covers a video marked Needs you - those wait for him
   // to look.
   const sorted = jobs.filter((j) => j.status === 'sorted' && j.day?.guess?.sure !== false)
   const reactionCampaigns = (campaigns ?? []).filter(isReaction)
-  // Batch videos are followed on the Batch tab.
-  const listed = useMemo(() => jobs.filter((j) => j.status !== 'joined' && !j.batch), [jobs])
+  // Batch videos are followed on the Batch tab, format takes on Formats.
+  const listed = useMemo(() => jobs.filter((j) => j.status !== 'joined' && !j.batch && !j.forFormat), [jobs])
   const batchJobs = useMemo(() => jobs.filter((j) => j.batch), [jobs])
+  const formatJobs = useMemo(() => jobs.filter((j) => j.forFormat), [jobs])
   const [dismissedJoins, setDismissedJoins] = useState<Set<string>>(() => new Set())
   // Recordings filmed one right after the other, offered to be joined.
   const joinPairs = useMemo(
@@ -2004,7 +2185,7 @@ export function CampaignApp() {
     const parts: string[] = []
     const unsure = jobs.filter((j) => j.status === 'sorted' && j.day?.guess?.sure === false).length
     const toApprove = jobs.filter((j) => j.status === 'sorted').length - unsure
-    const failed = jobs.filter((j) => j.status === 'failed' || j.status === 'held').length
+    const failed = listed.filter((j) => j.status === 'failed' || j.status === 'held').length
     if (unsure > 0) parts.push(`${unsure} need${unsure === 1 ? 's' : ''} you`)
     if (toApprove > 0) parts.push(`${toApprove} to approve`)
     parts.push(`${finished.length} of ${listed.length} ready`)
@@ -2385,7 +2566,7 @@ export function CampaignApp() {
   const unsent = posting
     ? jobs.filter((j) => {
         const owner = campaigns?.find((c) => c.id === j.campaignId)
-        return j.status === 'done' && j.result && owner && placeFor(posting.profile, owner.id).accounts.length === 0
+        return j.status === 'done' && j.result && !j.forFormat && owner && placeFor(posting.profile, owner.id).accounts.length === 0
       })
     : []
 
@@ -3212,6 +3393,20 @@ export function CampaignApp() {
         <VideoBankView />
         <MusicBankView />
       </>
+    ) : tab === 'formats' ? (
+      <FormatsView
+        campaigns={campaigns}
+        profile={posting?.profile ?? null}
+        jobs={formatJobs}
+        heldVersion={heldVersion}
+        clipsOf={formatClips}
+        onNewFormat={newFormat}
+        onEditFormat={(c, a) => setEditing({ kind: 'angle', campaign: c, angle: a, isNew: false })}
+        onAddTakes={addFormatTakes}
+        onSchedule={scheduleFormat}
+        onRemove={removeFormatVideo}
+        onRetry={startHeld}
+      />
     ) : tab === 'analytics' ? (
       <AnalyticsView
         rows={analyticsRows}

@@ -55,3 +55,17 @@ export function batchSpan(dates: string[]): string {
   if (sorted.length === 0) return ''
   return sorted.length === 1 ? day(sorted[0]) : `${day(sorted[0])} to ${day(sorted[sorted.length - 1])}`
 }
+
+/** Who says a video arriving can go. By hand, or made again with "approve":
+ *  nobody - it goes. A batch video: always him, on the Posts screen, whatever
+ *  the campaign says - unless it is a Formats video he scheduled himself
+ *  (`scheduled`), once the brand had seen it: it goes at its day and time.
+ *  Anything else: the campaign's own rule. */
+export function approvalFor(
+  campaign: 'me' | 'direct' | 'brand',
+  { hand, approveNow, batch, scheduled }: { hand: boolean; approveNow: boolean; batch: boolean; scheduled: boolean },
+): 'me' | 'direct' | 'brand' {
+  if (hand || approveNow || (batch && scheduled)) return 'direct'
+  if (batch) return 'me'
+  return campaign
+}

@@ -3,6 +3,33 @@
 Newest first. Every change says what it does, how to use it, and how it works
 underneath. Kept up to date with each commit.
 
+## Formats tab: drop in your takes, get them made, send them to the brand, schedule the week
+Needs deploying: run ./deploy-server.sh (scheduled videos skip approval), then ./deploy.sh.
+**What:** a new **Formats** tab (next to Videos).
+- **Pick the campaign, tap + New format, name it** (e.g. "Morning routine"). Its editor opens: set its look like any
+  angle and, under **Clips**, the clips joined onto every take - intro before, product demo or outro after, clips in
+  the middle at a phrase.
+- **Open the format, tap + Add takes** and pick all the takes you filmed for it. Each one becomes its own video: cut,
+  captioned, joined with the format's clips, with its headline and logo - like the Videos tab, but no sorting and no
+  approving in between.
+- **They wait in the format, not posted.** Tap **Watch** to check one, **Save** (or **Save all to my phone**) to put
+  them in your Photos/Files and send them to the brand. They're kept on the phone until you schedule them - closing
+  the app doesn't lose them.
+- **Brand said yes?** Tap **Schedule for the week** or **Next 5 days**: the videos are spread as evenly as possible
+  over those days (it shows which days before you tap), at the campaign's posting times, clear of what's already
+  there. They post by themselves - no approving again - and show in Posts like any post.
+- A take that fails shows **Try again**; ✕ takes one out. If the headline/caption look fails on one, you still get a
+  plain cut (marked).
+**How:** formats are angles with `isFormat` (never used to sort a day's videos; no "Recognise it by"). Takes are jobs
+with `forFormat`: listened to for captions, then made straight away (`approved`), and when made `holdFormat` keeps the
+finished MP4 (`store.holdMade`, `held:<id>` in the videos table) with the transcript/headline/duration, instead of
+sending. Held videos never expire; their recording goes after the 2 h edit window. `scheduleFormat` spreads them
+(`formats.spreadOver`, `perDayCounts`) and queues each with `meta.batch` + `meta.scheduled`; the server's
+`approvalFor` makes a scheduled batch video `direct`, so it goes at its time. `FormatsView.tsx`; tab bar now 7 tabs
+(10 px labels, iOS's own size). Tests: `formats.test.ts`, `formatsView.test.tsx`, `postiz/batch.test.ts`.
+**Not checked here:** making real videos (this browser can't encode H.264) and the iPhone share sheet with several
+videos at once - the store keeping is typechecked, not run.
+
 ## Analytics tab: views per video, the trend, and "ready for more a day?" - one tap
 Needs deploying: run ./deploy-server.sh (the server reads the views), then ./deploy.sh.
 **What:** a new **Analytics** tab (between Batch and Campaigns):

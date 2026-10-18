@@ -32,6 +32,7 @@
 //   push           { profile, subscription }    -> { ok }
 //   unpush         { endpoint }                 -> { ok }
 //   start          { profile, key, campaign, meta, size } -> { id, partBytes, uploads }
+//                  meta.batch { id, date, time, size }: its day and time; with meta.scheduled (Formats), no approval
 //   sent           { profile, key }             -> { id, status } or { missing }
 //   posts          { profile }                  -> { posts }
 //   edit / approve / ready { profile, id, caption?, title?, at? } -> { post }   ready: approved, held until he taps Post (approve)
@@ -68,7 +69,7 @@ import { RECHECK_SCHEMA, RECHECK_SYSTEM, acceptFix, costCents } from './recheck.
 import { accountName, failedRefs, notPostedNote } from './failed.ts'
 import { carryOver, cleanCaptions, cleanRepost, repostDueAt, textFor, variationNote, type AccountText } from './repost.ts'
 import { FAKE_CLAUDE, FakeError, fakeCaption, fakePostiz, isFakePostiz } from './fake.ts'
-import { batchChoices, batchInfo, batchSpan, type BatchInfo } from './batch.ts'
+import { approvalFor, batchChoices, batchInfo, batchSpan, type BatchInfo } from './batch.ts'
 import { handFields } from './hand.ts'
 import { dayTimeFor, lastTimeToday, nextSlot, normalTimes, pickTime, spreadDay, spreadEnd, timesFor, type OtherPost, type Spread, addDays, localDate, localTime, zoned } from './slots.ts'
 import { cleanWindow, inDay, type PostingWindow } from './window.ts'
@@ -970,8 +971,12 @@ async function start(profile: Profile, body: Record<string, unknown>): Promise<R
         client_key: key,
         campaign_id: campaign.id,
         campaign_name: text(campaign.name, 200) ?? 'Campaign',
-        // By hand: nothing to approve. A batch: always his approval.
-        rules: hand || approveNow ? { ...rules, approval: 'direct' } : batch ? { ...rules, approval: 'me' } : rules,
+        // By hand: nothing to approve. A batch: always his approval - but a
+        // Formats video he scheduled himself goes at its time (approvalFor).
+        rules: {
+          ...rules,
+          approval: approvalFor(rules.approval, { hand: Boolean(hand), approveNow, batch: Boolean(batch), scheduled: meta.scheduled === true }),
+        },
         status: 'uploading',
         parts,
         size,

@@ -29,6 +29,15 @@ export const VideosIcon = () => (
   </Icon>
 )
 
+/** Stacked cards: one format, filmed again and again. */
+export const FormatsIcon = () => (
+  <Icon>
+    <rect x="6.25" y="7.75" width="11.5" height="12.5" rx="2.25" />
+    <path d="M8.25 4.75h7.5a2 2 0 0 1 2 2" opacity="0.9" />
+    <path d="M10.75 11.75v5l4-2.5z" />
+  </Icon>
+)
+
 /** Rising bars: how the videos are doing. */
 export const AnalyticsIcon = () => (
   <Icon>

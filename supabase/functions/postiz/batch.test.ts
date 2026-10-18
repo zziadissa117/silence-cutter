@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { batchChoices, batchInfo, batchSpan } from './batch.ts'
+import { approvalFor, batchChoices, batchInfo, batchSpan } from './batch.ts'
 
 describe('a batch video', () => {
   it('is only taken as one with a real id, day, time and size', () => {
@@ -36,5 +36,27 @@ describe('a batch video made for the night', () => {
   it('keeps its own time when it is in the day', () => {
     const choices = batchChoices({ id: 'b', date: '2026-10-14', time: '13:42', size: 6 }, ['13:42', '16:43'], 'America/Toronto')
     expect(choices[0].slot).toBe('2026-10-14 13:42')
+  })
+})
+
+describe('who says a video can go', () => {
+  const plain = { hand: false, approveNow: false, batch: false, scheduled: false }
+  it("takes the campaign's own rule for an ordinary video", () => {
+    expect(approvalFor('brand', plain)).toBe('brand')
+    expect(approvalFor('direct', plain)).toBe('direct')
+  })
+  it('always asks him for a batch video, whatever the campaign says', () => {
+    expect(approvalFor('direct', { ...plain, batch: true })).toBe('me')
+    expect(approvalFor('brand', { ...plain, batch: true })).toBe('me')
+  })
+  it('lets a Formats video he scheduled himself go at its time', () => {
+    expect(approvalFor('me', { ...plain, batch: true, scheduled: true })).toBe('direct')
+    expect(approvalFor('brand', { ...plain, batch: true, scheduled: true })).toBe('direct')
+    // "Scheduled" means nothing without a day and time.
+    expect(approvalFor('me', { ...plain, scheduled: true })).toBe('me')
+  })
+  it('lets one made by hand, or approved with its music, go', () => {
+    expect(approvalFor('me', { ...plain, hand: true })).toBe('direct')
+    expect(approvalFor('me', { ...plain, approveNow: true })).toBe('direct')
   })
 })

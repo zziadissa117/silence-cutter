@@ -79,6 +79,10 @@ export type Job = {
   /** Made from the Batch tab, for this day and time. Shown there, not in
    *  the Videos list, and gone from the phone once it is on its way. */
   batch?: JobBatch
+  /** A take for a format (the Formats tab): the format's angle id. Shown
+   *  there, not in the Videos list; when made it is kept, not sent, until he
+   *  schedules it. */
+  forFormat?: string
   /** Recordings he joined before anything else, put together first: this
    *  job's own file is the first until then. */
   prejoin?: { clips: { name: string; type: string }[]; files?: File[] }
