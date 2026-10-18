@@ -27,6 +27,7 @@ import {
   PostingError,
   accountLabel,
   handleOf,
+  isBeingRemade,
   lastPosts,
   listPosts,
   localInput,
@@ -516,13 +517,18 @@ export function PostsView({
   onBack,
   editable,
   onEditAgain,
+  remaking = [],
 }: {
   campaigns: Campaign[]
   onBack: () => void
   editable: Record<string, number>
   onEditAgain: (key: string) => void
+  /** Post keys he is making again: not shown until the new version replaces them. */
+  remaking?: string[]
 }) {
-  const [posts, setPosts] = useState<ServerPost[]>(lastPosts)
+  const [allPosts, setPosts] = useState<ServerPost[]>(lastPosts)
+  const remakingSet = new Set(remaking)
+  const posts = allPosts.filter((p) => !isBeingRemade(p, remakingSet))
   const [making, setMaking] = useState(false)
   const profile = postingHere()?.profile ?? null
   const [problem, setProblem] = useState<string | null>(null)

@@ -136,3 +136,21 @@ describe('where a headline line is actually drawn', () => {
     expect(inkColumns(new Uint8ClampedArray(width * height * 4), width, height)).toBeNull()
   })
 })
+
+describe('a headline too wide for the frame', () => {
+  it('gets a little smaller instead of running off the sides', () => {
+    // Letters about 0.6 of the font size wide, as a bold font draws them.
+    const ctx = {
+      font: '',
+      measureText(this: { font: string }, s: string) {
+        const px = Number(/(\d+)px/.exec(this.font)?.[1] ?? 10)
+        return { width: s.length * px * 0.6, fontBoundingBoxAscent: px * 0.9, fontBoundingBoxDescent: px * 0.25 }
+      },
+    } as unknown as Parameters<typeof layoutHeadline>[0]
+    const fits = layoutHeadline(ctx, 1080, 1920, { text: 'short words here', position: 'top', size: 'large', style: 'outline' })!
+    const long = layoutHeadline(ctx, 1080, 1920, { text: 'unbelievablyextraordinarilylongword', position: 'top', size: 'large', style: 'outline' })!
+    const room = 1080 * (1 - 2 * TIKTOK_ZONES.side)
+    expect(long.fontPx).toBeLessThan(fits.fontPx)
+    for (const line of long.lines) expect(line.width).toBeLessThanOrEqual(room)
+  })
+})

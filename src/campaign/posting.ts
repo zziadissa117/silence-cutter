@@ -388,6 +388,15 @@ export function sendsFrom(campaign: Campaign, local: LocalPosting | null = posti
 const POSTS_KEY = 'cutter.posts'
 
 /** The posts as last seen, for opening the screen with no signal. */
+/** Whether a post is one he is making again (Edit again) and it hasn't gone
+ *  out: it is left out of Posts and its counts until the new version is sent
+ *  and replaces it. One that went out stays - it can't be taken back. */
+export function isBeingRemade(post: ServerPost, remaking: ReadonlySet<string>, now = Date.now()): boolean {
+  if (!remaking.has(post.key)) return false
+  if (post.status === 'scheduled') return post.postAt === null || Date.parse(post.postAt) > now
+  return post.status === 'waiting' || post.status === 'approved' || post.status === 'writing' || post.status === 'uploading'
+}
+
 export function lastPosts(): ServerPost[] {
   try {
     return JSON.parse(localStorage.getItem(POSTS_KEY) ?? '[]') as ServerPost[]

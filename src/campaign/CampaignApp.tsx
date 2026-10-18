@@ -103,6 +103,7 @@ import { PostingEditor } from './PostingEditor'
 import { PostingSetup } from './PostingSetup'
 import {
   disconnect as disconnectPosting,
+  isBeingRemade,
   lastPosts,
   attachAccounts,
   attachSummary,
@@ -585,6 +586,11 @@ export function CampaignApp() {
   const [tab, setTab] = useState<Tab>('videos')
   const [openCampaignId, setOpenCampaignId] = useState<string | null>(null)
   const [jobs, setJobs] = useState<Job[]>([])
+  /** Posts being made again (Edit again): kept out of Posts and its count
+   *  until the new version is sent and replaces them. */
+  const remaking = useMemo(() => jobs.flatMap((j) => (j.replaces ? [j.replaces] : [])), [jobs])
+  const remakingRef = useRef(new Set<string>())
+  remakingRef.current = new Set(remaking)
   const jobsRef = useRef(jobs)
   jobsRef.current = jobs
   const [bank, setBank] = useState<BankPicture[]>([])
@@ -733,7 +739,7 @@ export function CampaignApp() {
   const countPosts = useCallback(() => {
     if (!postingHere()) return
     void listPosts()
-      .then((posts) => setToApprove(posts.filter((p) => p.status === 'waiting').length))
+      .then((posts) => setToApprove(posts.filter((p) => p.status === 'waiting' && !isBeingRemade(p, remakingRef.current)).length))
       .catch(() => {})
   }, [])
   const sentNow = outgoing.filter((o) => o.entry.state === 'sent').length
@@ -1526,6 +1532,7 @@ export function CampaignApp() {
   const makeBatchAgain = async (edit: NonNullable<typeof batchEditing>, fields: { headline: string; music: BankFile | null }) => {
     const row = await reopenBatchJob(edit.id, edit.postKey, { headlineText: fields.headline, music: fields.music })
     setBatchEditing(null)
+    if (row) holdWhileRemade(edit.postKey)
     if (!row?.montage || !row.batch) {
       setNotice(`The footage is only kept for ${EDIT_WINDOW_MS / 3_600_000} hours after a video is made, and this one's is gone.`)
       void refreshEditable()
@@ -1645,10 +1652,22 @@ export function CampaignApp() {
     }
     const restored = restoredJob(reopened)
     setJobs((js) => [restored, ...js.filter((j) => j.id !== restored.id)])
+    holdWhileRemade(postKey)
     void refreshEditable()
     setShowPosts(false)
     setTab('videos')
     setReviewing([restored.id])
+  }
+
+  /** The post being made again leaves Posts at once (remaking), and if it was
+   *  already scheduled in Postiz it is taken back out, so the old version
+   *  can't go out while he edits; the new one replaces it when sent. */
+  const holdWhileRemade = (postKey: string) => {
+    const old = lastPosts().find((p) => p.key === postKey)
+    if (old?.status === 'scheduled' && old.postAt !== null && Date.parse(old.postAt) > Date.now()) {
+      void postAction('unschedule', old.id).catch(() => {})
+    }
+    countPosts()
   }
 
   /** Adds the picked videos to the list. `cutWide`: a wide clip (not 9:16)
@@ -3035,6 +3054,7 @@ export function CampaignApp() {
         campaigns={campaigns ?? []}
         editable={editable}
         onEditAgain={(key) => void editAgain(key)}
+        remaking={remaking}
         onBack={() => {
           setShowPosts(false)
           if (window.location.hash === '#posts') history.replaceState(null, '', window.location.pathname)

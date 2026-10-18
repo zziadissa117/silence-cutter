@@ -97,20 +97,41 @@ export function layoutHeadline(
   if (!text) return null
   // Sized off the shorter side, so a landscape video does not get a
   // headline taller than the frame.
-  const fontPx = Math.round(Math.min(width, height * (9 / 16)) * SIZE_FACTOR[headline.size])
-  const font = `${HEADLINE_WEIGHT} ${fontPx}px ${HEADLINE_FAMILY}`
-  ctx.font = font
   const boxed = headline.style === 'box'
-  const maxWidth = width * (1 - 2 * TIKTOK_ZONES.side) - (boxed ? fontPx * BOX.padX * 2 : 0)
-  const lines = wrapText(text, maxWidth, (s) => ctx.measureText(s).width).map((line) => {
-    const measured = ctx.measureText(line).width
-    const ink = inkOf(line, font, fontPx, measured)
-    if (!ink) return { text: line, width: measured }
-    // Normal letters sit a hair inside their measured width, and the box
-    // keeps that hair; a glyph drawn narrower than measured (an emoji, on
-    // some phones) does not widen the box on one side.
-    return { text: line, width: ink.width + Math.min(Math.max(0, measured - ink.width), fontPx * 0.12), shift: -ink.center }
-  })
+  const lay = (fontPx: number) => {
+    const font = `${HEADLINE_WEIGHT} ${fontPx}px ${HEADLINE_FAMILY}`
+    ctx.font = font
+    const maxWidth = width * (1 - 2 * TIKTOK_ZONES.side) - (boxed ? fontPx * BOX.padX * 2 : 0)
+    // Where the lines break is decided on how wide they are really drawn: an
+    // emoji's measured width can be far off, and a line that came out wider
+    // than measured ran off one side.
+    const drawnWidth = (s: string) => {
+      const measured = ctx.measureText(s).width
+      if (!EMOJI.test(s)) return measured
+      const ink = inkOf(s, font, fontPx, measured)
+      return ink ? Math.max(measured, ink.width) : measured
+    }
+    const lines = wrapText(text, maxWidth, drawnWidth).map((line) => {
+      const measured = ctx.measureText(line).width
+      const ink = inkOf(line, font, fontPx, measured)
+      if (!ink) return { text: line, width: measured }
+      // Normal letters sit a hair inside their measured width, and the box
+      // keeps that hair; a glyph drawn narrower than measured (an emoji, on
+      // some phones) does not widen the box on one side.
+      return { text: line, width: ink.width + Math.min(Math.max(0, measured - ink.width), fontPx * 0.12), shift: -ink.center }
+    })
+    return { font, fontPx, maxWidth, lines }
+  }
+  let laid = lay(Math.round(Math.min(width, height * (9 / 16)) * SIZE_FACTOR[headline.size]))
+  // A line that still can't fit (one long word, a row of emoji) makes the
+  // whole headline a little smaller rather than spill off the sides.
+  for (let tries = 0; tries < 3; tries++) {
+    const widest = Math.max(...laid.lines.map((l) => l.width))
+    if (widest <= laid.maxWidth) break
+    laid = lay(Math.max(8, Math.floor((laid.fontPx * laid.maxWidth) / widest)))
+  }
+  const { font, fontPx, lines } = laid
+  ctx.font = font
   const lineHeight = fontPx * (boxed ? BOX.lineHeight : OUTLINE.lineHeight)
   const blockHeight = lineHeight * lines.length
   const top = Math.max(height * TIKTOK_ZONES.top, height * HEADLINE_Y[headline.position] - blockHeight / 2)
@@ -160,23 +181,37 @@ export function inkColumns(data: Uint8ClampedArray, width: number, height: numbe
 function inkOf(line: string, font: string, fontPx: number, measured: number): { width: number; center: number } | null {
   if (typeof OffscreenCanvas === 'undefined') return null
   try {
-    const width = Math.ceil(measured + fontPx * 4)
+    // Room for the widest it could be drawn - an emoji can come out far wider
+    // than it was measured, and ink cut off at the edge was centred wrong.
+    let width = Math.ceil(Math.max(measured, [...line].length * fontPx * 1.3) + fontPx * 4)
     const height = Math.ceil(fontPx * 2.2)
-    const scratch = new OffscreenCanvas(width, height)
-    const c = scratch.getContext('2d')
-    if (!c) return null
-    c.font = font
-    c.textAlign = 'center'
-    c.textBaseline = 'alphabetic'
-    c.fillStyle = '#000'
-    c.fillText(line, width / 2, fontPx * 1.5)
-    const ink = inkColumns(c.getImageData(0, 0, width, height).data, width, height)
-    if (!ink) return null
-    return { width: ink.last - ink.first + 1, center: (ink.first + ink.last + 1) / 2 - width / 2 }
+    for (let attempt = 0; attempt < 2; attempt++) {
+      const scratch = new OffscreenCanvas(width, height)
+      const c = scratch.getContext('2d')
+      if (!c) return null
+      c.font = font
+      c.textAlign = 'center'
+      c.textBaseline = 'alphabetic'
+      c.fillStyle = '#000'
+      // Drawn once to have the phone's emoji ready, then for real: the very
+      // first emoji drawn could come out missing, and the line was then
+      // centred as if it weren't there.
+      c.fillText(line, width / 2, fontPx * 1.5)
+      c.clearRect(0, 0, width, height)
+      c.fillText(line, width / 2, fontPx * 1.5)
+      const ink = inkColumns(c.getImageData(0, 0, width, height).data, width, height)
+      if (!ink) return null
+      if (ink.first > 0 && ink.last < width - 1) return { width: ink.last - ink.first + 1, center: (ink.first + ink.last + 1) / 2 - width / 2 }
+      width *= 2
+    }
+    return null
   } catch {
     return null
   }
 }
+
+/** Emoji and other pictures in text - drawn by the phone at its own width. */
+const EMOJI = /\p{Extended_Pictographic}/u
 
 export function layoutLogo(
   width: number,

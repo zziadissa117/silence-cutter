@@ -3,6 +3,28 @@
 Newest first. Every change says what it does, how to use it, and how it works
 underneath. Kept up to date with each commit.
 
+## Fix: Edit again takes the post out of Posts until the new version is ready
+**What:** tapping **Edit again** on a post now takes it off the Posts screen (and out of the "to approve" count) right
+away. It stays off while you edit and while the new version is made; the new version shows up in Posts once it's made
+and sent, replacing the old one. If the old one was already scheduled in Postiz, it's taken back out while you edit,
+so the old version can't go out in the meantime. Remove the edited video from the list and the old post comes back.
+One already posted stays, as before. Same for batch videos (new headline / track).
+**How:** `posting.isBeingRemade` (+ `remade.test.ts`): a post whose key a job `replaces`, not gone out yet.
+`PostsView` `remaking` (filters it out of every list), `CampaignApp` `remaking` / `remakingRef` (also the count),
+`holdWhileRemade` (unschedules a scheduled one) on Edit again and on a batch remake.
+
+## Fix: headlines with emoji centred, and never off the sides
+**What:** on the iPhone an emoji is drawn wider or narrower than Safari says it is, and a headline with one could come
+out off to one side - sometimes. The headline is now laid out on how it is really drawn: where lines break, how wide
+each is, and where its middle is. A line that still can't fit (one long word, a row of emoji) makes the headline a
+little smaller instead of running off the edges. Only ./deploy.sh is needed.
+**Why "sometimes":** the centring already drew each line once to find its real middle, but (1) where lines broke still
+used Safari's width, so a line could come out too wide; (2) the scratch canvas was sized from that width too, so a much
+wider emoji was cut off and centred wrong; (3) the first emoji drawn could come out missing. All three are fixed.
+**How:** `overlay.ts` `layoutHeadline` (wraps on drawn width for lines with emoji, shrinks to fit, up to 3 tries),
+`inkOf` (room for the widest it could be, draws twice, retries wider if the ink touches the edge). Checked in Chromium
+with real emoji (every line centred to the pixel, before and after - the bug is Safari's), and a test for the shrink.
+
 ## Batch: product showcase in steps (Set order), and the reaction zoom really on batches
 **What:**
 - **Set order** (Batch tab, next to the campaign): name the steps of the campaign's product showcase in order - e.g.
