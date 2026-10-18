@@ -3,8 +3,33 @@
 Newest first. Every change says what it does, how to use it, and how it works
 underneath. Kept up to date with each commit.
 
+## Batch: product showcase in steps (Set order), and the reaction zoom really on batches
+**What:**
+- **Set order** (Batch tab, next to the campaign): name the steps of the campaign's product showcase in order - e.g.
+  "Claude", "The app", "The prompt" - up to 10, each with how long it plays (2-3 s to start; 1-15 s). Save order,
+  and the product showcases become one list per step ("1. Claude", "2. The app"...): add as many clips to each as you
+  like. Every video plays the reaction, then one clip from each step in your order - a random few seconds of it, from
+  a random place - with the song over all of it (the step clips are muted).
+- **Many more different videos:** each step is its own choice, so 5 reactions x 4 clips in each of 3 steps x 20
+  headlines x 5 songs = 32,000 combinations before the random slices; each is made once before any comes again, and
+  every clip comes round evenly. Big banks are picked in a moment (it stops listing every combination past 20,000 and
+  takes the least-used of each part, still never repeating one it remembers).
+- Each campaign keeps its own order. Campaigns with no order set work exactly as before (one list, each clip whole).
+  Taking a step out takes its clips with it (asks first if it has any). When every combination is made, the clips go
+  (film new ones) and the step names stay. Green screen and the engine don't use steps yet.
+- **The reaction zoom now reaches batch videos:** the last update only zoomed reaction videos made one at a time - the
+  Batch tab makes its videos another way. Now every batch reaction slowly zooms in too (8%, under the headline or the
+  formula).
+Only ./deploy.sh is needed.
+**How:** `batch.ts`: `BatchStep`, `usesSteps`, `cleanStepSeconds`, `stepWindow`, `filesOf`; `pickBatch` / `combos`
+generalised to any number of product lists (keys unchanged for banks without steps), `MAX_COMBOS` 20,000, unlisted banks
+remember 5,000 made, `spend` keeps step names. `StepOrder.tsx` (the sheet); `BatchView` (Set order button, step lists,
+`add` to a step, `takeOutOfStep`, `saveOrder`); `store.ts` `MontageParts.bank.steps`, cleanup via `filesOf`;
+`clipParts.writeWhole` `window`; `montageRender` `windows` (seeded per video) and `reactionFirst`; `pipeline.makeMontage`,
+`CampaignApp` (clips, windows, names). Tests in `batch.test.ts`.
+
 ## Batch: every reaction slowly zooms in
-**What:** in the Batch tab's "Reaction, then video" layout, every reaction now has a slow zoom-in for its whole length -
+**What:** (Reached only reaction videos made one at a time - batch videos got it in the next update.) Every reaction now has a slow zoom-in for its whole length -
 the full frame at the start, 8% closer by the end, easing in and out. Only the video moves: the headline (or the
 formula) stays still on top. Always on, whatever the angle's effects say; where the angle's own "Push-in under the
 hook" is on and closer, that one shows. Green screen and the engine are as they were. Only ./deploy.sh is needed.

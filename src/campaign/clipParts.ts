@@ -130,6 +130,7 @@ export async function writeWhole(
     maxRecoveries,
     onFrame,
     onSound,
+    window,
   }: {
     rate: number
     channels: number
@@ -138,9 +139,13 @@ export async function writeWhole(
     maxRecoveries: number
     onFrame: (sample: VideoSample, timestamp: number) => Promise<void>
     onSound: (planes: Float32Array[], timestamp: number) => Promise<void>
+    /** Only this part of the clip (a batch step's few seconds); all of it
+     *  when absent. */
+    window?: Range
   },
 ): Promise<number> {
-  const whole = wholeOf(clip)
+  const all = wholeOf(clip)
+  const whole = window ? { start: Math.max(all.start, window.start), end: Math.min(all.end, window.end) } : all
   const packets = new EncodedPacketSink(clip.video)
   const keyAt = async (t: number) => (await packets.getKeyPacket(t, { verifyKeyPackets: true }))?.timestamp ?? -Infinity
   let videoEnd = at

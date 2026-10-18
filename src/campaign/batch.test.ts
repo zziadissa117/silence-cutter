@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { combos, dayTimes, emptyBank, headlinesFrom, pickBatch, planSlots, spend, type BankFile, type BatchBank } from './batch'
+import { cleanStepSeconds, combos, dayTimes, emptyBank, filesOf, headlinesFrom, pickBatch, planSlots, spend, stepWindow, usesSteps, type BankFile, type BatchBank } from './batch'
 
 const files = (prefix: string, n: number): BankFile[] =>
   Array.from({ length: n }, (_, i) => ({ id: `${prefix}${i + 1}`, name: `${prefix}${i + 1}.mov`, type: 'video/quicktime', size: 1 }))
@@ -198,5 +198,85 @@ describe('when a batch posts', () => {
       { date: '2026-10-08', time: '09:55' },
       { date: '2026-10-08', time: '19:03' },
     ])
+  })
+})
+
+describe('a product showcase in steps (Set order)', () => {
+  const stepped = (): BatchBank => ({
+    ...emptyBank('lovable', 'lovable-a1'),
+    reactions: files('r', 3),
+    products: files('old', 2),
+    headlines: ['h1', 'h2'],
+    music: files('m', 2),
+    steps: [
+      { id: 's1', name: 'Claude', files: files('claude', 2), minSec: 2, maxSec: 3 },
+      { id: 's2', name: 'The app', files: files('app', 3), minSec: 2, maxSec: 3 },
+      { id: 's3', name: 'The prompt', files: files('prompt', 2), minSec: 3, maxSec: 4 },
+    ],
+  })
+
+  it('multiplies the videos: every step is its own choice', () => {
+    // 3 reactions x (2 x 3 x 2 clips) x 2 headlines x 2 tracks.
+    expect(combos(stepped()).total).toBe(3 * 12 * 2 * 2)
+    // The old list of product showcases isn't used while there are steps.
+    expect(usesSteps(stepped())).toBe(true)
+    // ...and is again in green screen, which has no steps.
+    expect(usesSteps({ ...stepped(), layout: 'greenscreen' })).toBe(false)
+  })
+
+  it('puts one clip of every step in each video, in order, and none twice before all are made', () => {
+    const { picks } = pickBatch(stepped(), 144, seeded(3))
+    for (const pick of picks) {
+      expect(pick.steps).toHaveLength(3)
+      expect(pick.steps![0]).toMatch(/^claude/)
+      expect(pick.steps![1]).toMatch(/^app/)
+      expect(pick.steps![2]).toMatch(/^prompt/)
+      expect(pick.product).toBe(pick.steps![0])
+    }
+    const keys = picks.map((p) => `${p.reaction}|${p.steps!.join('+')}|${p.headline}|${p.music}`)
+    expect(new Set(keys).size).toBe(144)
+    // Each clip of a step comes round evenly.
+    expect(Object.values(count(picks.map((p) => p.steps![1])))).toEqual([48, 48, 48])
+  })
+
+  it('still mixes evenly and without repeats when there are too many to list', () => {
+    const big: BatchBank = {
+      ...stepped(),
+      reactions: files('r', 10),
+      headlines: Array.from({ length: 20 }, (_, i) => `h${i}`),
+      steps: stepped().steps!.map((step) => ({ ...step, files: files(step.id, 8) })),
+    }
+    expect(combos(big).total).toBe(Infinity)
+    const { picks, made } = pickBatch(big, 350, seeded(9))
+    const keys = picks.map((p) => `${p.reaction}|${p.steps!.join('+')}|${p.headline}|${p.music}`)
+    expect(new Set(keys).size).toBe(350)
+    const reactionUse = Object.values(count(picks.map((p) => p.reaction)))
+    expect(Math.max(...reactionUse) - Math.min(...reactionUse)).toBeLessThanOrEqual(1)
+    expect(made.length).toBeLessThanOrEqual(5000)
+  })
+
+  it('lets the clips go, but keeps the step names, once every video is made', () => {
+    const { bank: after, retired } = spend(stepped(), '2026-11-01')
+    expect(after.steps!.map((s) => [s.name, s.files.length])).toEqual([['Claude', 0], ['The app', 0], ['The prompt', 0]])
+    expect(retired).toContain('app3')
+  })
+
+  it('plays a random few seconds of each clip, or all of a short one', () => {
+    expect(stepWindow(0, 10, 2, 3, () => 0)).toEqual({ start: 0, end: 2 })
+    const late = stepWindow(0, 10, 2, 3, () => 1)
+    expect(late.end).toBeCloseTo(10)
+    expect(late.end - late.start).toBeCloseTo(3)
+    expect(stepWindow(0.1, 1.5, 2, 3, () => 0.5)).toEqual({ start: 0.1, end: 1.5 })
+  })
+
+  it('keeps the lengths he types sensible', () => {
+    expect(cleanStepSeconds(4, 2)).toEqual({ minSec: 2, maxSec: 4 })
+    expect(cleanStepSeconds(0, 99)).toEqual({ minSec: 1, maxSec: 15 })
+    expect(cleanStepSeconds(Number.NaN, 2.2)).toEqual({ minSec: 2, maxSec: 2 })
+  })
+
+  it('knows every file a video needs', () => {
+    const f = files('x', 3)
+    expect(filesOf({ reaction: f[0], product: f[1], steps: [{ file: f[1] }, { file: f[2] }] })).toEqual(['x1', 'x2', 'x2', 'x3'])
   })
 })

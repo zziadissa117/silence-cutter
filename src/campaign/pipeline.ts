@@ -416,10 +416,27 @@ export async function makeMontage(
   headlineText: string,
   music: { audio: Blob; name: string } | null,
   onRenderProgress?: (fraction: number) => void,
-  extra: { seed?: string; defaults?: AngleEffects | null; formula?: { left: Blob | null; right: Blob | null; line: string } | null } = {},
+  extra: {
+    seed?: string
+    defaults?: AngleEffects | null
+    formula?: { left: Blob | null; right: Blob | null; line: string } | null
+    /** Per clip: a random few seconds of it (a batch's product steps). */
+    windows?: ({ minSec: number; maxSec: number } | null)[]
+    /** The first clip is a batch reaction: it always pushes in slowly. */
+    reactionFirst?: boolean
+  } = {},
 ): Promise<CampaignResult> {
   const rendered = await renderMontage(
-    { clips, look: videoLook(campaign, angle, [], extra.defaults ?? null), headlineText, music, seed: extra.seed, formula: extra.formula ?? null },
+    {
+      clips,
+      look: videoLook(campaign, angle, [], extra.defaults ?? null),
+      headlineText,
+      music,
+      seed: extra.seed,
+      formula: extra.formula ?? null,
+      windows: extra.windows,
+      reactionFirst: extra.reactionFirst,
+    },
     onRenderProgress,
   )
   return {

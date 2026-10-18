@@ -29,7 +29,7 @@ import { MusicBankView } from './MusicBankView'
 import { VideoBankView } from './VideoBankView'
 import { loadMusicBank, songFile } from './musicBank'
 import { BatchView, type BatchVideo } from './BatchView'
-import type { BankFile } from './batch'
+import { filesOf, type BankFile } from './batch'
 import { CampaignsView } from './CampaignsView'
 import { CloudError, currentSession, signOut, syncNow, type Session, type SyncState } from './cloud'
 import { AngleEditor, CampaignEditor } from './Editors'
@@ -428,6 +428,7 @@ export function CampaignApp() {
    *  back from the phone - a batch's product from its bank. */
   const montageClips = async (job: Job): Promise<File[]> => {
     const parts = job.montage!
+    if (parts.bank?.steps?.length) return Promise.all(parts.bank.steps.map((step) => bankFileOf(step.file)))
     if (parts.bank) return [await bankFileOf(parts.bank.product)]
     const files: File[] = []
     for (const [i, clip] of parts.clips.entries()) {
@@ -1303,6 +1304,10 @@ export function CampaignApp() {
               seed: next.id,
               defaults: next.day?.noEffects ? null : defaultEffects(),
               formula,
+              // A batch: the reaction always zooms in slowly, and product
+              // steps play a random few seconds each.
+              reactionFirst: Boolean(next.montage.bank),
+              windows: next.montage.bank?.steps ? [null, ...next.montage.bank.steps.map((s) => ({ minSec: s.minSec, maxSec: s.maxSec }))] : undefined,
             }),
           )
         } else if (next.reaction) {
@@ -2058,7 +2063,7 @@ export function CampaignApp() {
   /** Deletes the footage a spent bank let go of, once nothing needs it. */
   const sweepBank = () => {
     sweepBankRef.current = sweepBank
-    const inUse = jobsNow.current.flatMap((j) => (j.montage?.bank && j.status !== 'done' ? [j.montage.bank.reaction.id, j.montage.bank.product.id] : []))
+    const inUse = jobsNow.current.flatMap((j) => (j.montage?.bank && j.status !== 'done' ? filesOf(j.montage.bank) : []))
     void sweepRetiredBankFiles(inUse)
   }
 
@@ -2069,7 +2074,7 @@ export function CampaignApp() {
     const settings = { ...PRESETS[preset] }
     const added: Job[] = videos.map((v) => ({
       id: `${Date.now()}-${nextId++}`,
-      name: `${v.reaction.name.replace(/\.[^./]+$/, '')} + ${v.product.name.replace(/\.[^./]+$/, '')}.mp4`,
+      name: `${[v.reaction, ...(v.steps ? v.steps.map((s) => s.file) : [v.product])].map((f) => f.name.replace(/\.[^./]+$/, '')).join(' + ')}.mp4`,
       file: null,
       campaignId: owner.id,
       angleId: ownerAngle.id,
@@ -2087,6 +2092,7 @@ export function CampaignApp() {
           music: v.music,
           ...(v.formula ? { formula: v.formula } : {}),
           ...(v.greenScreen ? { greenScreen: v.greenScreen } : {}),
+          ...(v.steps ? { steps: v.steps } : {}),
         },
         clips: [],
         music: 'bank',

@@ -26,10 +26,13 @@ import {
   planSlots,
   todayHere,
   spend,
+  usesSteps,
   type BankFile,
   type BatchBank,
   type BatchFormula,
+  type BatchStep,
 } from './batch'
+import { StepOrder } from './StepOrder'
 import { filmingOf } from './filming'
 import { fingerprint, skippedNotice } from './fingerprint'
 import { formatTime, labelOf, type Job } from './jobs'
@@ -81,10 +84,14 @@ export interface BatchVideo {
   formula?: { left: BankFile | null; right: BankFile | null; line: string }
   /** Green screen: the product behind him, him cut out in this corner. */
   greenScreen?: { side: 'left' | 'right'; sizePct: number }
+  /** The product showcase in steps: one clip each, in order. */
+  steps?: { file: BankFile; minSec: number; maxSec: number }[]
   batch: JobBatch
 }
 
 type Kind = 'reactions' | 'products' | 'music'
+/** Where new clips go: one of the bank's lists, or a step of the product. */
+type Target = Kind | { step: string }
 
 const LEFT_KEY = 'batch.formulaLeft'
 
@@ -179,6 +186,8 @@ export function BatchView({
    *  twice. Cleared once the batch's videos show up on this phone. */
   const making = useRef(false)
   const [tapped, setTapped] = useState(false)
+  /** The Set order sheet is open. */
+  const [ordering, setOrdering] = useState(false)
   /** The batch the engine is making for this campaign, as it last said. */
   const [engineState, setEngineState] = useState<EngineJob | null>(null)
   useEffect(() => {
@@ -283,7 +292,10 @@ export function BatchView({
   const random = ownDayTimes(place).length === 0
   const angle = campaign.angles.find((a) => a.id === bank?.angleId) ?? campaign.angles[0]
 
-  const add = async (kind: Kind, files: File[]) => {
+  const add = async (target: Target, files: File[]) => {
+    const kind: Kind = typeof target === 'string' ? target : 'products'
+    const stepId = typeof target === 'string' ? null : target.step
+    const listOf = (b: BatchBank | null): BankFile[] => (stepId ? (b?.steps?.find((s) => s.id === stepId)?.files ?? []) : (b?.[kind] ?? []))
     if (kind !== 'music') {
       const problemPicking = pickArrived(files)
       if (problemPicking) {
@@ -302,7 +314,7 @@ export function BatchView({
         // The same recording is never kept twice: by what is in it, and for
         // files kept before fingerprints existed, by name and size.
         const fp = await fingerprint(file)
-        const inBank = bankRef.current?.[kind] ?? []
+        const inBank = listOf(bankRef.current)
         const alreadyKept =
           adding.current.has(fp) ||
           inBank.some((f) => (f.fp ? f.fp === fp : f.name === file.name && f.size === file.size)) ||
@@ -323,10 +335,13 @@ export function BatchView({
       setProblem(`Not all of them could be kept: ${error instanceof Error ? error.message : String(error)}`)
     } finally {
       setSaving(null)
-      setNotice(skippedNotice(skipped, `in the ${kind === 'music' ? 'music' : kind} bank`))
+      setNotice(skippedNotice(skipped, stepId ? 'in this step' : `in the ${kind === 'music' ? 'music' : kind} bank`))
       if (kind !== 'music') pickSaved()
       const current = bankRef.current
-      if (current && added.length > 0) keep({ ...current, [kind]: [...current[kind], ...added] })
+      if (current && added.length > 0) {
+        if (stepId) keep({ ...current, steps: (current.steps ?? []).map((s) => (s.id === stepId ? { ...s, files: [...s.files, ...added] } : s)) })
+        else keep({ ...current, [kind]: [...current[kind], ...added] })
+      }
       for (const fp of mine) adding.current.delete(fp)
     }
   }
@@ -379,6 +394,18 @@ export function BatchView({
     void deleteBankFile(file.id).catch(() => {})
     keep({ ...bank, [kind]: bank[kind].filter((f) => f.id !== file.id) })
   }
+  const takeOutOfStep = (stepId: string, file: BankFile) => {
+    if (!bank || !window.confirm(`Take ${file.name} out of the bank?`)) return
+    void deleteBankFile(file.id).catch(() => {})
+    keep({ ...bank, steps: (bank.steps ?? []).map((s) => (s.id === stepId ? { ...s, files: s.files.filter((f) => f.id !== file.id) } : s)) })
+  }
+  /** The order saved: a step taken out goes with its clips. */
+  const saveOrder = (steps: BatchStep[]) => {
+    if (!bank) return
+    const kept = new Set(steps.map((s) => s.id))
+    for (const gone of (bank.steps ?? []).filter((s) => !kept.has(s.id))) for (const f of gone.files) void deleteBankFile(f.id).catch(() => {})
+    keep({ ...bank, steps })
+  }
 
   // On top: planned as if nothing were running, so it starts today.
   const wanted = bank ? planSlots({ times: timesOnDate, perDay: bank.perDay, days: bank.days, madeThrough: stacking ? undefined : bank.madeThrough }) : []
@@ -393,12 +420,16 @@ export function BatchView({
   // The engine makes many videos from each take, so its batches are not capped
   // by how many combinations the bank has.
   const slots = onEngine || !Number.isFinite(left) ? wanted : wanted.slice(0, left)
-  const spentShown = Boolean(bank?.spent) && (bank!.reactions.length === 0 || bank!.products.length === 0)
+  const stepped = bank ? usesSteps(bank) : false
+  const productCount = !bank ? 0 : stepped ? Math.min(...bank.steps!.map((s) => s.files.length)) : bank.products.length
+  const spentShown = Boolean(bank?.spent) && (bank!.reactions.length === 0 || productCount === 0)
   const missing = !bank
     ? []
     : [
         bank.reactions.length === 0 ? 'a reaction' : '',
-        bank.products.length === 0 ? (green ? 'a background video' : 'a product showcase') : '',
+        ...(stepped
+          ? bank.steps!.filter((s) => s.files.length === 0).map((s) => `a clip for ${s.name}`)
+          : [bank.products.length === 0 ? (green ? 'a background video' : 'a product showcase') : '']),
         green || onEngine ? '' : formulaHook ? (!formula.left || !formula.right ? 'both logos' : '') : bank.headlines.length === 0 ? 'a headline' : '',
       ].filter(Boolean)
   const inProgress = jobs.filter((j) => j.status !== 'failed' && j.status !== 'held')
@@ -459,7 +490,16 @@ export function BatchView({
     const byId = (list: BankFile[], fileId: string | null) => list.find((f) => f.id === fileId) ?? null
     const videos: BatchVideo[] = picks.map((pick, i) => ({
       reaction: byId(bank.reactions, pick.reaction)!,
-      product: byId(bank.products, pick.product)!,
+      ...(pick.steps && bank.steps
+        ? (() => {
+            const steps = pick.steps.map((fileId, s) => ({
+              file: byId(bank.steps![s].files, fileId)!,
+              minSec: bank.steps![s].minSec,
+              maxSec: bank.steps![s].maxSec,
+            }))
+            return { product: steps[0].file, steps }
+          })()
+        : { product: byId(bank.products, pick.product)! }),
       music: green ? null : byId(bank.music, pick.music),
       ...(green ? { greenScreen: corner } : {}),
       ...(formulaHook
@@ -486,7 +526,40 @@ export function BatchView({
     onMake(campaign, angle, videos, retire)
   }
 
-  const bankSize = bank ? [...bank.reactions, ...bank.products, ...bank.music].reduce((n, f) => n + f.size, 0) : 0
+  const bankSize = bank
+    ? [...bank.reactions, ...bank.products, ...bank.music, ...(bank.steps ?? []).flatMap((s) => s.files)].reduce((n, f) => n + f.size, 0)
+    : 0
+
+  /** One step of the product showcase: its clips, one of which - a random
+   *  few seconds of it - goes in each video. */
+  const stepList = (step: BatchStep, index: number) => (
+    <div className="group" key={step.id}>
+      <div className="bank-head">
+        <span className="group-title">
+          {index + 1}. {step.name} <span className="bank-count">{step.files.length}</span>
+        </span>
+        <VideoPicker className="btn small" label={`Add clips for ${step.name}`} onFiles={(files) => void add({ step: step.id }, files)}>
+          + Add
+        </VideoPicker>
+      </div>
+      <p className="hint bank-hint">
+        {step.minSec === step.maxSec ? `${step.minSec} s` : `${step.minSec}-${step.maxSec} s`} of one of these in every video, from a random place.
+      </p>
+      {step.files.length > 0 ? (
+        <ul className="bank-list">
+          {step.files.map((file) => (
+            <li key={file.id} className="bank-item">
+              <span className="bank-name">{file.name}</span>
+              <span className="hint">{[file.seconds ? formatTime(file.seconds) : '', mb(file.size)].filter(Boolean).join(' · ')}</span>
+              <button type="button" className="btn small icon-btn" aria-label={`Take out ${file.name}`} onClick={() => takeOutOfStep(step.id, file)}>
+                ✕
+              </button>
+            </li>
+          ))}
+        </ul>
+      ) : null}
+    </div>
+  )
 
   const list = (kind: Kind, title: string, hint: string) => (
     <div className="group">
@@ -582,6 +655,7 @@ export function BatchView({
       </div>
 
       <div className="chooser">
+        <div className="chooser-row">
         <select
           aria-label="Campaign"
           value={campaign.id}
@@ -589,6 +663,7 @@ export function BatchView({
             setCampaignId(e.target.value)
             remember(e.target.value)
             setProblem(null)
+            setOrdering(false)
           }}
         >
           {choices.map((c) => (
@@ -597,6 +672,12 @@ export function BatchView({
             </option>
           ))}
         </select>
+        {bank && (bank.layout ?? 'after') === 'after' ? (
+          <button type="button" className="btn small" aria-expanded={ordering} onClick={() => setOrdering((o) => !o)}>
+            {bank.steps?.length ? `Order · ${bank.steps.length} steps` : 'Set order'}
+          </button>
+        ) : null}
+        </div>
         {campaign.angles.length > 1 && bank ? (
           <div className="seg chips" role="radiogroup" aria-label="Headline look">
             {campaign.angles.map((a) => (
@@ -622,6 +703,10 @@ export function BatchView({
               : ''}
         </p>
       </div>
+
+      {bank && ordering ? (
+        <StepOrder campaignName={campaign.name} steps={bank.steps ?? []} onSave={saveOrder} onClose={() => setOrdering(false)} />
+      ) : null}
 
       {bank && spentShown && bank.spent ? (
         <div className="callout batch-spent">
@@ -702,8 +787,10 @@ export function BatchView({
             </>
           ) : (
             <>
-              {list('reactions', 'Reactions', 'They go first, with the headline over them.')}
-              {list('products', 'Product showcases', 'Shown after the reaction.')}
+              {list('reactions', 'Reactions', 'They go first, with the headline over them - slowly zooming in.')}
+              {stepped
+                ? bank.steps!.map((step, i) => stepList(step, i))
+                : list('products', 'Product showcases', 'Shown after the reaction. To show several in a set order, tap Set order at the top.')}
             </>
           )}
           {green || onEngine ? null : (

@@ -94,7 +94,10 @@ raw video file(s)
             over its mask in one MP4, kept by store.saveCutout); greenScreenRender.ts puts it
             in a corner over a Batch background video, its sound only
   siblings: reactionRender.ts (reaction clip + product clip), montageRender.ts
-            (clips only, music only), media/silenceCut.ts (the plain cutter)
+            (clips only, music only - the Batch tab's videos: reaction first, slowly
+            zooming in, then the product whole or, with steps, a random slice of one
+            clip per step - batch.ts BatchStep, StepOrder.tsx), media/silenceCut.ts
+            (the plain cutter)
   -> outbox.ts                     copy the finished MP4 to private storage, send in
                                    parts, resume after a dropped connection
 ```

@@ -63,6 +63,51 @@ export interface BatchBank {
   corner?: { side: 'left' | 'right'; sizePct: number }
   /** On the engine: the batch it is making now, to follow. */
   engineJob?: string
+  /** The campaign's product showcase in order (Set order): each step its own
+   *  clips, one of them - a random few seconds of it - in every video, the
+   *  steps always in this order after the reaction. None: the one list of
+   *  product showcases, each played whole. */
+  steps?: BatchStep[]
+}
+
+/** One step of a campaign's product showcase - "Claude", "The app", "The
+ *  prompt" - and the clips that can play there. */
+export interface BatchStep {
+  id: string
+  name: string
+  files: BankFile[]
+  /** How long the step plays: a random length in this range, from a random
+   *  place in the clip picked. */
+  minSec: number
+  maxSec: number
+}
+
+export const STEP_SECONDS = { min: 1, max: 15, defaultMin: 2, defaultMax: 3 } as const
+
+/** The product showcase is in steps: the layout plays the reaction then the
+ *  product, and he has set an order for the campaign. */
+export function usesSteps(bank: Pick<BatchBank, 'layout' | 'steps'>): boolean {
+  return (bank.layout ?? 'after') === 'after' && (bank.steps?.length ?? 0) > 0
+}
+
+/** The step lengths as he typed them, made sensible: whole seconds within
+ *  STEP_SECONDS, the shorter first. */
+export function cleanStepSeconds(min: number, max: number): { minSec: number; maxSec: number } {
+  const fit = (n: number, fallback: number) => (Number.isFinite(n) ? Math.min(STEP_SECONDS.max, Math.max(STEP_SECONDS.min, Math.round(n * 2) / 2)) : fallback)
+  const a = fit(min, STEP_SECONDS.defaultMin)
+  const b = fit(max, STEP_SECONDS.defaultMax)
+  return { minSec: Math.min(a, b), maxSec: Math.max(a, b) }
+}
+
+/** Where a step plays from in a clip that runs `first`..`duration`, and how
+ *  long: a length from the step's range, from a random place - the whole clip
+ *  when it is no longer than that. */
+export function stepWindow(first: number, duration: number, minSec: number, maxSec: number, rand: () => number): { start: number; end: number } {
+  const span = duration - first
+  const length = minSec + (maxSec - minSec) * rand()
+  if (!(span > length)) return { start: first, end: duration }
+  const start = first + (span - length) * rand()
+  return { start, end: start + length }
 }
 
 export type BatchLayout = 'after' | 'greenscreen' | 'engine'
@@ -156,7 +201,10 @@ export function formulaText(formula: BatchFormula, line: string): string {
 
 export interface BatchPick {
   reaction: string
+  /** The product showcase - or, in steps, the first step's clip. */
   product: string
+  /** In steps: one clip per step, in order. */
+  steps?: string[]
   headline: string
   music: string | null
 }
@@ -182,20 +230,54 @@ export function headlinesFrom(text: string): string[] {
 const headlineKey = (headline: string) => `h:${headline.trim().toLowerCase()}`
 
 /** More combinations than this and they are not all listed - a bank that
- *  big never runs out before its items are balanced anyway. */
-const MAX_COMBOS = 200_000
+ *  big never runs out before its items are balanced anyway. Kept low enough
+ *  that a two-week batch is picked in a moment on a phone. */
+const MAX_COMBOS = 20_000
+/** How many made combinations a bank too big to list remembers, so a repeat
+ *  is still avoided. */
+const REMEMBERED = 5_000
+
+/** What a bank's videos are mixed from: the reactions, the product - one
+ *  list, or one per step - the headlines and the tracks (none: one empty). */
+type MixBank = Pick<BatchBank, 'reactions' | 'products' | 'headlines' | 'music' | 'layout' | 'steps'>
+
+function dimensions(bank: MixBank): { reactions: string[]; products: string[][]; headlines: { text: string; key: string }[]; tracks: (string | null)[] } {
+  return {
+    reactions: bank.reactions.map((r) => r.id),
+    products: usesSteps(bank) ? bank.steps!.map((step) => step.files.map((f) => f.id)) : [bank.products.map((p) => p.id)],
+    headlines: bank.headlines.map((h) => ({ text: h, key: headlineKey(h) })),
+    tracks: bank.music.length > 0 ? bank.music.map((m) => m.id) : [null],
+  }
+}
+
+/** One video's combination, as it is remembered. The product part is the
+ *  clip's id - or every step's, joined - so a bank without steps keeps the
+ *  keys it always had. */
+const comboKey = (r: string, product: readonly string[], h: string, m: string | null) => `${r}|${product.join('+')}|${h}|${m ?? ''}`
+
+/** Every choice of one item from each list, in order. */
+function* everyChoice(lists: readonly (readonly string[])[]): Generator<string[]> {
+  if (lists.some((l) => l.length === 0)) return
+  const at = lists.map(() => 0)
+  for (;;) {
+    yield lists.map((l, i) => l[at[i]])
+    let i = lists.length - 1
+    while (i >= 0 && ++at[i] === lists[i].length) at[i--] = 0
+    if (i < 0) return
+  }
+}
 
 /** `count` videos' worth of picks, and what has been used after them.
  *
- *  Every combination of reaction, product, headline and track is made once
- *  before any is made again: each video is the unmade combination whose
- *  items have been used least, ties broken at random - so the order is
- *  different every time and each reaction, headline and track still comes
- *  round evenly. Only when every combination has been made does the round
- *  start again. The same reaction is never used twice in a row while there
- *  is another. */
+ *  Every combination of reaction, product (one clip per step, in steps),
+ *  headline and track is made once before any is made again: each video is
+ *  the unmade combination whose items have been used least, ties broken at
+ *  random - so the order is different every time and each reaction, clip,
+ *  headline and track still comes round evenly. Only when every combination
+ *  has been made does the round start again. The same reaction is never used
+ *  twice in a row while there is another. */
 export function pickBatch(
-  bank: Pick<BatchBank, 'reactions' | 'products' | 'headlines' | 'music' | 'used' | 'lastPair' | 'made'>,
+  bank: MixBank & Pick<BatchBank, 'used' | 'lastPair' | 'made'>,
   count: number,
   rand: () => number = Math.random,
 ): { picks: BatchPick[]; used: Record<string, number>; lastPair?: string; made: string[] } {
@@ -203,44 +285,47 @@ export function pickBatch(
   let lastPair = bank.lastPair
   const picks: BatchPick[] = []
   const made = new Set(bank.made ?? [])
-  if (bank.reactions.length === 0 || bank.products.length === 0 || bank.headlines.length === 0) {
-    return { picks, used, lastPair, made: [...made] }
-  }
-  const reactions = bank.reactions.map((r) => r.id)
-  const products = bank.products.map((p) => p.id)
-  const headlines = bank.headlines.map((h) => ({ text: h, key: headlineKey(h) }))
-  const tracks: (string | null)[] = bank.music.length > 0 ? bank.music.map((m) => m.id) : [null]
-  const total = reactions.length * products.length * headlines.length * tracks.length
-  const comboKey = (r: string, p: string, h: string, m: string | null) => `${r}|${p}|${h}|${m ?? ''}`
+  const { reactions, products, headlines, tracks } = dimensions(bank)
+  const total = reactions.length * products.reduce((n, l) => n * l.length, 1) * headlines.length * tracks.length
+  if (total === 0) return { picks, used, lastPair, made: [...made] }
+  const listed = total <= MAX_COMBOS
   // Combinations made before, with items since taken out of the bank, no
   // longer count against this round.
-  const live = new Set<string>()
-  if (total <= MAX_COMBOS) {
-    for (const r of reactions) for (const p of products) for (const h of headlines) for (const m of tracks) live.add(comboKey(r, p, h.key, m))
+  if (listed) {
+    const live = new Set<string>()
+    for (const r of reactions) for (const p of everyChoice(products)) for (const h of headlines) for (const m of tracks) live.add(comboKey(r, p, h.key, m))
     for (const key of made) if (!live.has(key)) made.delete(key)
   }
+  const usedOf = (key: string | null) => (key ? (used[key] ?? 0) : 0)
 
   for (let i = 0; i < count; i++) {
-    if (total <= MAX_COMBOS && made.size >= total) made.clear()
+    if (listed && made.size >= total) made.clear()
     const lastReaction = lastPair?.split('|')[0]
-    let best: { r: string; p: string; h: (typeof headlines)[number]; m: string | null; score: number }[] = []
-    let bestScore = Infinity
-    const consider = (avoidLast: boolean) => {
-      for (const r of reactions) {
-        if (avoidLast && reactions.length > 1 && r === lastReaction) continue
-        for (const p of products)
-          for (const h of headlines)
-            for (const m of tracks) {
-              if (total <= MAX_COMBOS && made.has(comboKey(r, p, h.key, m))) continue
-              const score = (used[r] ?? 0) + (used[p] ?? 0) + (used[h.key] ?? 0) + (m ? (used[m] ?? 0) : 0)
-              if (score < bestScore) {
-                bestScore = score
-                best = [{ r, p, h, m, score }]
-              } else if (score === bestScore) best.push({ r, p, h, m, score })
-            }
+    type Choice = { r: string; p: string[]; h: (typeof headlines)[number]; m: string | null }
+    let best: Choice[] = []
+    if (listed) {
+      let bestScore = Infinity
+      const consider = (avoidLast: boolean) => {
+        for (const r of reactions) {
+          if (avoidLast && reactions.length > 1 && r === lastReaction) continue
+          for (const p of everyChoice(products)) {
+            const productScore = p.reduce((n, id) => n + usedOf(id), 0)
+            for (const h of headlines)
+              for (const m of tracks) {
+                if (made.has(comboKey(r, p, h.key, m))) continue
+                const score = usedOf(r) + productScore + usedOf(h.key) + usedOf(m)
+                if (score < bestScore) {
+                  bestScore = score
+                  best = [{ r, p, h, m }]
+                } else if (score === bestScore) best.push({ r, p, h, m })
+              }
+          }
+        }
       }
-    }
-    if (total > MAX_COMBOS) {
+      consider(true)
+      // Only combinations with the last reaction are left unmade.
+      if (best.length === 0) consider(false)
+    } else {
       // Too many to list: each part on its own, least used first.
       const least = (keys: string[], avoid?: string) => {
         const pool = keys.filter((k) => k !== avoid).length > 0 ? keys.filter((k) => k !== avoid) : keys
@@ -248,49 +333,76 @@ export function pickBatch(
         const ties = pool.filter((k) => (used[k] ?? 0) === low)
         return ties[Math.min(ties.length - 1, Math.floor(rand() * ties.length))]
       }
-      const hKey = least(headlines.map((h) => h.key))
-      best = [{ r: least(reactions, lastReaction), p: least(products), h: headlines.find((h) => h.key === hKey)!, m: tracks[0] === null ? null : least(tracks as string[]), score: 0 }]
-    } else {
-      consider(true)
-      // Only combinations with the last reaction are left unmade.
-      if (best.length === 0) consider(false)
+      const draw = (): Choice => {
+        const hKey = least(headlines.map((h) => h.key))
+        return {
+          r: least(reactions, lastReaction),
+          p: products.map((list) => least(list)),
+          h: headlines.find((h) => h.key === hKey)!,
+          m: tracks[0] === null ? null : least(tracks as string[]),
+        }
+      }
+      // The least-used of each part, drawn again (ties fall differently)
+      // while it would make one already made.
+      let choice = draw()
+      for (let tries = 0; tries < 20 && made.has(comboKey(choice.r, choice.p, choice.h.key, choice.m)); tries++) choice = draw()
+      best = [choice]
     }
     const choice = best[Math.min(best.length - 1, Math.floor(rand() * best.length))]
-    for (const key of [choice.r, choice.p, choice.h.key, choice.m]) if (key) used[key] = (used[key] ?? 0) + 1
+    for (const key of [choice.r, ...choice.p, choice.h.key, choice.m]) if (key) used[key] = (used[key] ?? 0) + 1
     made.add(comboKey(choice.r, choice.p, choice.h.key, choice.m))
-    lastPair = `${choice.r}|${choice.p}`
-    picks.push({ reaction: choice.r, product: choice.p, headline: choice.h.text, music: choice.m })
+    lastPair = `${choice.r}|${choice.p.join('+')}`
+    picks.push({
+      reaction: choice.r,
+      product: choice.p[0],
+      ...(usesSteps(bank) ? { steps: choice.p } : {}),
+      headline: choice.h.text,
+      music: choice.m,
+    })
   }
-  return { picks, used, lastPair, made: [...made] }
+  const kept = [...made]
+  return { picks, used, lastPair, made: listed ? kept : kept.slice(-REMEMBERED) }
 }
 
 /** How many different videos the bank can make, and how many of those are
  *  still to be made. Infinity for a bank too big to count. */
-export function combos(bank: Pick<BatchBank, 'reactions' | 'products' | 'headlines' | 'music' | 'made'>): { total: number; left: number } {
-  const tracks: (string | null)[] = bank.music.length > 0 ? bank.music.map((m) => m.id) : [null]
-  const total = bank.reactions.length * bank.products.length * bank.headlines.length * tracks.length
+export function combos(bank: MixBank & Pick<BatchBank, 'made'>): { total: number; left: number } {
+  const { reactions, products, headlines, tracks } = dimensions(bank)
+  const total = reactions.length * products.reduce((n, l) => n * l.length, 1) * headlines.length * tracks.length
   if (total === 0) return { total: 0, left: 0 }
   if (total > MAX_COMBOS) return { total: Infinity, left: Infinity }
   const live = new Set<string>()
-  for (const r of bank.reactions)
-    for (const p of bank.products)
-      for (const h of bank.headlines) for (const m of tracks) live.add(`${r.id}|${p.id}|${headlineKey(h)}|${m ?? ''}`)
+  for (const r of reactions) for (const p of everyChoice(products)) for (const h of headlines) for (const m of tracks) live.add(comboKey(r, p, h.key, m))
   const made = (bank.made ?? []).filter((key) => live.has(key)).length
   return { total, left: total - made }
 }
 
 /** Once every different video has been made: the reactions and product
- *  showcases go - he films new ones - and the headlines and music stay. The
- *  files are only deleted once the videos made from them are finished. */
+ *  showcases go - he films new ones - and the headlines, music and the
+ *  steps' names stay. The files are only deleted once the videos made from
+ *  them are finished. */
 export function spend(bank: BatchBank, through: string): { bank: BatchBank; retired: string[] } {
   const { total } = combos(bank)
+  const stepFiles = (bank.steps ?? []).flatMap((step) => step.files)
   return {
-    bank: { ...bank, reactions: [], products: [], made: [], lastPair: undefined, spent: { videos: total, through } },
-    retired: [...bank.reactions, ...bank.products].map((f) => f.id),
+    bank: {
+      ...bank,
+      reactions: [],
+      products: [],
+      ...(bank.steps ? { steps: bank.steps.map((step) => ({ ...step, files: [] })) } : {}),
+      made: [],
+      lastPair: undefined,
+      spent: { videos: total, through },
+    },
+    retired: [...bank.reactions, ...bank.products, ...stepFiles].map((f) => f.id),
   }
 }
 
-/** "18:00" in minutes since midnight. */
+/** Every bank file a batch video is made from. */
+export function filesOf(bank: { reaction: BankFile; product: BankFile; steps?: { file: BankFile }[] }): string[] {
+  return [bank.reaction.id, bank.product.id, ...(bank.steps ?? []).map((s) => s.file.id)]
+}
+
 const minutes = (time: string) => {
   const [h, m] = time.split(':').map(Number)
   return h * 60 + m

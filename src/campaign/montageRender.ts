@@ -23,7 +23,8 @@ import { contiguousAudio, forwardOnly } from '../media/forwardOnly'
 import { createOutputSink } from '../media/outputSink'
 import { isSilenceCutSupported } from '../media/silenceCut'
 import { openClip, writeWhole, type Clip } from './clipParts'
-import { framingAt, planMotion, zoomPlace } from './effects'
+import { stepWindow } from './batch'
+import { framingAt, planMotion, randomFrom, reactionZoom, zoomPlace } from './effects'
 import { drawFormula, formulaPush, layoutFormula } from './formulaOverlay'
 import { headlineFontReady } from './headlineFont'
 import type { VideoLook } from './look'
@@ -60,6 +61,12 @@ export interface MontageRenderInput {
   /** The "Claude + X = $ a day" hook instead of a headline: the two logos,
    *  and this video's money line. The reaction pushes in slowly under it. */
   formula?: { left: Blob | null; right: Blob | null; line: string } | null
+  /** Per clip, in order: play only a random `minSec`-`maxSec` of it, from a
+   *  random place (a batch's product steps); null, or absent, for all of it. */
+  windows?: ({ minSec: number; maxSec: number } | null)[]
+  /** The first clip is his reaction (a batch): it slowly pushes in for its
+   *  whole length, whatever the angle's effects (effects.reactionZoom). */
+  reactionFirst?: boolean
 }
 
 export interface MontageRenderResult {
@@ -96,7 +103,7 @@ export function liftMusic(channels: Float32Array[], gain: number, sampleRate: nu
 }
 
 export async function renderMontage(
-  { clips: files, look, headlineText, music, seed = '', formula = null }: MontageRenderInput,
+  { clips: files, look, headlineText, music, seed = '', formula = null, windows = [], reactionFirst = false }: MontageRenderInput,
   onProgress?: (fraction: number) => void,
 ): Promise<MontageRenderResult> {
   if (files.length === 0) throw new SilenceCutError('Add at least one clip.')
@@ -114,7 +121,14 @@ export async function renderMontage(
   let logos: { left: ImageBitmap | null; right: ImageBitmap | null } | null = null
   try {
     for (const [i, file] of files.entries()) clips.push(await openClip(file, `number ${i + 1}`))
-    const total = clips.reduce((sum, c) => sum + (c.duration - c.first), 0)
+    // The part of each clip that plays: a step's few seconds, from a random
+    // place picked from this video's own seed, or all of it.
+    const random = randomFrom(`${seed || 'montage'}-steps`)
+    const parts = clips.map((clip, i) => {
+      const want = windows[i]
+      return want ? stepWindow(clip.first, clip.duration, want.minSec, want.maxSec, random) : { start: clip.first, end: clip.duration }
+    })
+    const total = parts.reduce((sum, p) => sum + (p.end - p.start), 0)
 
     let bed: MusicBed | null = null
     let musicFailed: string | undefined
@@ -165,7 +179,7 @@ export async function renderMontage(
     await output.start()
 
     // Zoom effects: each clip is a stretch, so a punch can land at every cut.
-    const motion = planMotion(look.effects, clips.map((c) => Math.max(0.1, c.duration - c.first)), seed || 'montage')
+    const motion = planMotion(look.effects, parts.map((p) => Math.max(0.1, p.end - p.start)), seed || 'montage')
     const videoClock = forwardOnly()
     const audioClock = contiguousAudio()
     const seconds: number[] = []
@@ -173,7 +187,9 @@ export async function renderMontage(
     for (const [i, clip] of clips.entries()) {
       const place = cover(clip.width, clip.height, width, height)
       const start = at
+      const length = Math.max(0.1, parts[i].end - parts[i].start)
       at = await writeWhole(clip, at, {
+        window: windows[i] ? parts[i] : undefined,
         rate: RATE,
         channels: CHANNELS,
         videoClock,
@@ -185,10 +201,15 @@ export async function renderMontage(
           ctx.fillRect(0, 0, width, height)
           // Under the formula, the reaction pushes in slowly for its whole
           // length instead of the usual opening push.
+          // A batch's reaction always pushes in slowly too, or the angle's
+          // own push-in where that is closer.
+          const own = framingAt(motion, i, timestamp - start, [])
           const framing =
             i === 0 && formulaLayout
-              ? formulaPush(timestamp - start, Math.max(0.1, clip.duration - clip.first))
-              : framingAt(motion, i, timestamp - start, [])
+              ? formulaPush(timestamp - start, length)
+              : i === 0 && reactionFirst
+                ? { ...own, scale: Math.max(own.scale, reactionZoom(timestamp - start, length)) }
+                : own
           const spot = zoomPlace(place, framing, width, height)
           sample.draw(ctx, spot.x, spot.y, spot.width, spot.height)
           if (i === 0 && headline) drawHeadline(ctx, headline)

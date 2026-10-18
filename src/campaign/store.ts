@@ -25,7 +25,7 @@ import {
   type CampaignV1,
   type PictureCue,
 } from './look'
-import type { BankFile, BatchBank } from './batch'
+import { filesOf, type BankFile, type BatchBank } from './batch'
 import type { ManualPicture } from './manualPictures'
 import type { MusicLevel } from './music'
 import type { CaptionPosition, CaptionSize, CaptionStyle, CaptionWord } from './captions'
@@ -203,6 +203,10 @@ export interface MontageParts {
     /** Green screen: the product is the background video, and he is cut out
      *  in this corner over it (greenScreenRender.ts). */
     greenScreen?: { side: 'left' | 'right'; sizePct: number }
+    /** The campaign's product showcase in steps (batch.ts BatchStep): one
+     *  clip per step, in order, a random `minSec`-`maxSec` of each. `product`
+     *  is then the first step's clip. */
+    steps?: { file: BankFile; minSec: number; maxSec: number }[]
   }
   clips: { name: string; type: string }[]
   /** The track under it: "" for its angle's, "none", another angle's as
@@ -1035,7 +1039,7 @@ export async function sweepRetiredBankFiles(inUse: string[] = []): Promise<void>
       ...inUse,
       ...rows.flatMap((row) => {
         const bank = row.montage?.bank
-        return bank ? [bank.reaction.id, bank.product.id] : []
+        return bank ? filesOf(bank) : []
       }),
     ])
     const keep: string[] = []
