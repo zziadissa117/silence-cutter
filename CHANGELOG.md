@@ -3,6 +3,15 @@
 Newest first. Every change says what it does, how to use it, and how it works
 underneath. Kept up to date with each commit.
 
+## Headline: Snapchat style
+**What:** a third headline style, next to White box and Outline: **Snapchat** - white words on a see-through black
+band right across the video, the way a Snapchat caption looks. Pick it in the angle's Headline -> Style; Where and
+Size work as for the others, and batches made with that angle use it. On the iPhone it is drawn in Apple's own font,
+as Snapchat's is. Only ./deploy.sh is needed.
+**How:** `look.HeadlineStyle` 'snap'; `overlay.layoutHeadline` (system font, smaller sizes, a band's padding kept
+below TikTok's tabs) and `drawHeadline` (one `fillRect` the canvas's full width at 60% black, then white text);
+`Editors` STYLES. Test in `overlay.test.ts`.
+
 ## Batch: change videos a day any time - up, down, or 0 to pause - and it follows at once
 **What:** while a batch runs, change **Videos a day** whenever you like and the week ahead follows straight away:
 - **Up** (2 -> 10 -> 25): the extra videos are added to the days already made, as before.

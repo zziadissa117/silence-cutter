@@ -44,6 +44,7 @@ const POSITIONS: { value: HeadlinePosition; label: string }[] = [
 const STYLES: { value: HeadlineStyle; label: string }[] = [
   { value: 'box', label: 'White box' },
   { value: 'outline', label: 'Outline' },
+  { value: 'snap', label: 'Snapchat' },
 ]
 const OUTLINE_WIDTHS: { value: OutlineWidth; label: string }[] = [
   { value: 'thin', label: 'Thin' },

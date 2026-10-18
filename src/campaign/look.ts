@@ -21,7 +21,9 @@ import { without } from './skipPictures'
 import type { MusicLevel } from './music'
 
 export type HeadlinePosition = 'top' | 'middle' | 'bottom'
-export type HeadlineStyle = 'box' | 'outline'
+/** TikTok's white boxes, TikTok's outlined letters, or Snapchat's caption:
+ *  white words on a see-through black band across the whole frame. */
+export type HeadlineStyle = 'box' | 'outline' | 'snap'
 export type HeadlineSize = 'small' | 'medium' | 'large'
 export type LogoPosition = 'top' | 'top-left' | 'top-right' | 'middle' | 'bottom-left' | 'bottom-right'
 

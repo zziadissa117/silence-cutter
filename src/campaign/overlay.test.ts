@@ -116,6 +116,27 @@ describe('outlined headlines', () => {
     expect(width(thick.calls)).toBeGreaterThan(width(normal.calls))
   })
 
+  it("draws Snapchat's caption: one dark band across the whole frame, white words, no outline", () => {
+    const { ctx, calls } = recorder()
+    const rects: number[][] = []
+    Object.assign(ctx, {
+      canvas: { width: 1080, height: 1920 },
+      fillRect: (...r: number[]) => rects.push(r),
+    })
+    const layout = layoutHeadline(ctx, 1080, 1920, { ...base, style: 'snap', text: 'when the app pays you back' })!
+    expect(layout.font).toContain('-apple-system')
+    drawHeadline(ctx, layout)
+    expect(rects).toHaveLength(1)
+    const [x, y, w, h] = rects[0]
+    expect([x, w]).toEqual([0, 1080])
+    // The band holds every line, with room above and below the words.
+    expect(y).toBeLessThan(layout.top)
+    expect(y + h).toBeGreaterThan(layout.top + layout.lines.length * layout.lineHeight)
+    expect(y).toBeGreaterThanOrEqual(1920 * TIKTOK_ZONES.top)
+    expect(calls.some((c) => c.startsWith('stroke'))).toBe(false)
+    expect(calls).toContain('fill #ffffff')
+  })
+
   it('never lets a bad colour reach the canvas', () => {
     expect(outlineColorOf('#12ab9f')).toBe('#12ab9f')
     expect(outlineColorOf('red')).toBe('#000000')

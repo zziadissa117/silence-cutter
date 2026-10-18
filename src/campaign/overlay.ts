@@ -30,6 +30,12 @@ const HEADLINE_WEIGHT = 600
  *  in its own box, the boxes touch, and the corners are gently rounded. */
 const BOX = { lineHeight: 1.32, padX: 0.3, radius: 0.24 } as const
 const OUTLINE = { lineHeight: 1.18, stroke: 0.14 } as const
+/** Snapchat's caption: the phone's own font, white on a black band at 60%
+ *  across the whole frame, the band a little taller than the words - in
+ *  fractions of the font size. Its words are smaller than TikTok's text. */
+const SNAP = { lineHeight: 1.28, padY: 0.42, margin: 0.05, band: 'rgba(0, 0, 0, 0.6)', weight: 500 } as const
+const SNAP_FAMILY = '-apple-system, "SF Pro Text", "Helvetica Neue", Helvetica, "Apple Color Emoji", Arial, sans-serif'
+const SNAP_SIZE: Record<HeadlineSize, number> = { small: 0.042, medium: 0.05, large: 0.06 }
 /** The outline's thickness, as a multiple of the normal one. */
 const OUTLINE_WIDTH: Record<OutlineWidth, number> = { thin: 0.55, normal: 1, thick: 1.5 }
 
@@ -98,10 +104,11 @@ export function layoutHeadline(
   // Sized off the shorter side, so a landscape video does not get a
   // headline taller than the frame.
   const boxed = headline.style === 'box'
+  const snap = headline.style === 'snap'
   const lay = (fontPx: number) => {
-    const font = `${HEADLINE_WEIGHT} ${fontPx}px ${HEADLINE_FAMILY}`
+    const font = snap ? `${SNAP.weight} ${fontPx}px ${SNAP_FAMILY}` : `${HEADLINE_WEIGHT} ${fontPx}px ${HEADLINE_FAMILY}`
     ctx.font = font
-    const maxWidth = width * (1 - 2 * TIKTOK_ZONES.side) - (boxed ? fontPx * BOX.padX * 2 : 0)
+    const maxWidth = snap ? width * (1 - 2 * SNAP.margin) : width * (1 - 2 * TIKTOK_ZONES.side) - (boxed ? fontPx * BOX.padX * 2 : 0)
     // Where the lines break is decided on how wide they are really drawn: an
     // emoji's measured width can be far off, and a line that came out wider
     // than measured ran off one side.
@@ -122,7 +129,7 @@ export function layoutHeadline(
     })
     return { font, fontPx, maxWidth, lines }
   }
-  let laid = lay(Math.round(Math.min(width, height * (9 / 16)) * SIZE_FACTOR[headline.size]))
+  let laid = lay(Math.round(Math.min(width, height * (9 / 16)) * (snap ? SNAP_SIZE : SIZE_FACTOR)[headline.size]))
   // A line that still can't fit (one long word, a row of emoji) makes the
   // whole headline a little smaller rather than spill off the sides.
   for (let tries = 0; tries < 3; tries++) {
@@ -132,9 +139,11 @@ export function layoutHeadline(
   }
   const { font, fontPx, lines } = laid
   ctx.font = font
-  const lineHeight = fontPx * (boxed ? BOX.lineHeight : OUTLINE.lineHeight)
+  const lineHeight = fontPx * (boxed ? BOX.lineHeight : snap ? SNAP.lineHeight : OUTLINE.lineHeight)
   const blockHeight = lineHeight * lines.length
-  const top = Math.max(height * TIKTOK_ZONES.top, height * HEADLINE_Y[headline.position] - blockHeight / 2)
+  // Snapchat's band reaches a little above the words: it stays below TikTok's tabs too.
+  const above = snap ? fontPx * SNAP.padY : 0
+  const top = Math.max(height * TIKTOK_ZONES.top + above, height * HEADLINE_Y[headline.position] - blockHeight / 2)
   // Each line's text centred on the font's own height, top of the tallest
   // letter to the bottom of a "g", as TikTok lays its text out - so a line
   // with descenders has as much room below as above.
@@ -321,18 +330,30 @@ function drawBoxes(ctx: Ctx, layout: HeadlineLayout): void {
 }
 
 /** TikTok's own text looks: black on white background boxes, or white
- *  letters with a black edge that read over anything. */
+ *  letters with a black edge that read over anything - or Snapchat's
+ *  caption, white words on a dark band from one side of the frame to the
+ *  other. */
 export function drawHeadline(ctx: Ctx, layout: HeadlineLayout): void {
   ctx.save()
   ctx.font = layout.font
   ctx.textAlign = 'center'
   ctx.textBaseline = 'alphabetic'
   if (layout.style === 'box') drawBoxes(ctx, layout)
+  if (layout.style === 'snap') {
+    const padY = layout.fontPx * SNAP.padY
+    ctx.fillStyle = SNAP.band
+    // The whole frame's width, whatever width the words were laid out in
+    // (the Claude + X money line is laid out bigger, then placed).
+    ctx.fillRect(0, layout.top - padY, ctx.canvas?.width ?? layout.centerX * 2, layout.lines.length * layout.lineHeight + 2 * padY)
+  }
   layout.lines.forEach((line, i) => {
     const baseline = layout.top + i * layout.lineHeight + layout.baselineOffset
     const x = layout.centerX + (line.shift ?? 0)
     if (layout.style === 'box') {
       ctx.fillStyle = '#000000'
+      ctx.fillText(line.text, x, baseline)
+    } else if (layout.style === 'snap') {
+      ctx.fillStyle = '#ffffff'
       ctx.fillText(line.text, x, baseline)
     } else {
       ctx.lineJoin = 'round'
