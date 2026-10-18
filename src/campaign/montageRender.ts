@@ -23,7 +23,6 @@ import { contiguousAudio, forwardOnly } from '../media/forwardOnly'
 import { createOutputSink } from '../media/outputSink'
 import { isSilenceCutSupported } from '../media/silenceCut'
 import { openClip, writeWhole, type Clip } from './clipParts'
-import { stepWindow } from './batch'
 import { framingAt, planMotion, randomFrom, reactionZoom, zoomPlace } from './effects'
 import { drawFormula, formulaPush, layoutFormula } from './formulaOverlay'
 import { headlineFontReady } from './headlineFont'
@@ -33,6 +32,7 @@ import { Limiter } from './voice'
 import { drawHeadline, layoutHeadline, outputSize } from './overlay'
 import { frameRateOf, makeSize, videoQuality } from './quality'
 import { cover } from './reaction'
+import { fitShowcase, pickPiece, readActivity } from './stepPiece'
 import { musicProblem, prepareMusic } from './sounds'
 import { report as reportProblem } from '../report'
 import { onEncodedPacketMatchingColour } from './colourCheck'
@@ -61,9 +61,10 @@ export interface MontageRenderInput {
   /** The "Claude + X = $ a day" hook instead of a headline: the two logos,
    *  and this video's money line. The reaction pushes in slowly under it. */
   formula?: { left: Blob | null; right: Blob | null; line: string } | null
-  /** Per clip, in order: play only a random `minSec`-`maxSec` of it, from a
-   *  random place (a batch's product steps); null, or absent, for all of it. */
-  windows?: ({ minSec: number; maxSec: number } | null)[]
+  /** Per clip, in order: true to play only the moment something happens in
+   *  it (a batch's product steps, stepPiece.ts); false, or absent, for all
+   *  of it. */
+  windows?: boolean[]
   /** The first clip is his reaction (a batch): it slowly pushes in for its
    *  whole length, whatever the angle's effects (effects.reactionZoom). */
   reactionFirst?: boolean
@@ -121,13 +122,22 @@ export async function renderMontage(
   let logos: { left: ImageBitmap | null; right: ImageBitmap | null } | null = null
   try {
     for (const [i, file] of files.entries()) clips.push(await openClip(file, `number ${i + 1}`))
-    // The part of each clip that plays: a step's few seconds, from a random
-    // place picked from this video's own seed, or all of it.
+    // The part of each clip that plays: a step's moment, found in the clip
+    // and picked with this video's own seed, or all of it.
     const random = randomFrom(`${seed || 'montage'}-steps`)
-    const parts = clips.map((clip, i) => {
-      const want = windows[i]
-      return want ? stepWindow(clip.first, clip.duration, want.minSec, want.maxSec, random) : { start: clip.first, end: clip.duration }
-    })
+    const parts: { start: number; end: number }[] = []
+    for (const [i, clip] of clips.entries()) {
+      if (!windows[i]) {
+        parts.push({ start: clip.first, end: clip.duration })
+        continue
+      }
+      // Unreadable sizes only mean no moment is found: a random couple of
+      // seconds plays instead.
+      const activity = await readActivity(clip.video, clip.first, clip.duration).catch(() => null)
+      parts.push(pickPiece(activity, clip.first, clip.duration, random))
+    }
+    const stepped = parts.flatMap((_, i) => (windows[i] ? [i] : []))
+    fitShowcase(stepped.map((i) => parts[i])).forEach((piece, k) => (parts[stepped[k]] = piece))
     const total = parts.reduce((sum, p) => sum + (p.end - p.start), 0)
 
     let bed: MusicBed | null = null

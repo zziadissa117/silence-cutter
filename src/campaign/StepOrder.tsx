@@ -1,29 +1,22 @@
 // Set order: a campaign's product showcase as steps - "Claude", "The app",
 // "The prompt" - in the order every batch video shows them after the
 // reaction. Each step then gets its own clips in the Batch tab; every video
-// takes one clip per step and plays a random few seconds of it (batch.ts).
+// takes one clip per step and plays the moment something happens in it
+// (stepPiece.ts). Names and order are all he sets - never seconds.
 
 import { useState } from 'react'
 
-import { STEP_SECONDS, cleanStepSeconds, type BatchStep } from './batch'
+import type { BatchStep } from './batch'
 
 interface Draft {
   id: string
   name: string
-  min: string
-  max: string
   clips: number
 }
 
-const draftOf = (step: BatchStep): Draft => ({ id: step.id, name: step.name, min: String(step.minSec), max: String(step.maxSec), clips: step.files.length })
+const draftOf = (step: BatchStep): Draft => ({ id: step.id, name: step.name, clips: step.files.length })
 
-const blank = (n: number): Draft => ({
-  id: crypto.randomUUID(),
-  name: `Step ${n}`,
-  min: String(STEP_SECONDS.defaultMin),
-  max: String(STEP_SECONDS.defaultMax),
-  clips: 0,
-})
+const blank = (n: number): Draft => ({ id: crypto.randomUUID(), name: `Step ${n}`, clips: 0 })
 
 export function StepOrder({
   campaignName,
@@ -55,7 +48,6 @@ export function StepOrder({
         id: d.id,
         name: d.name.trim() || `Step ${i + 1}`,
         files: byId.get(d.id)?.files ?? [],
-        ...cleanStepSeconds(Number(d.min), Number(d.max)),
       })),
     )
     onClose()
@@ -66,7 +58,7 @@ export function StepOrder({
       <div className="group-title">Product showcase order · {campaignName}</div>
       <p className="hint">
         The steps every video shows after the reaction, always in this order. Each step gets its own clips below; every video takes
-        one clip per step and plays a random few seconds of it.
+        one clip per step and plays the moment something happens in it - a short clip plays whole.
       </p>
       <ol className="step-list">
         {drafts.map((d, i) => (
@@ -80,32 +72,6 @@ export function StepOrder({
               maxLength={40}
               onChange={(e) => change(d.id, { name: e.target.value })}
             />
-            <span className="step-secs">
-              <input
-                type="number"
-                inputMode="decimal"
-                className="limit-input"
-                aria-label={`Step ${i + 1} shortest seconds`}
-                min={STEP_SECONDS.min}
-                max={STEP_SECONDS.max}
-                step={0.5}
-                value={d.min}
-                onChange={(e) => change(d.id, { min: e.target.value })}
-              />
-              –
-              <input
-                type="number"
-                inputMode="decimal"
-                className="limit-input"
-                aria-label={`Step ${i + 1} longest seconds`}
-                min={STEP_SECONDS.min}
-                max={STEP_SECONDS.max}
-                step={0.5}
-                value={d.max}
-                onChange={(e) => change(d.id, { max: e.target.value })}
-              />
-              s
-            </span>
             <span className="step-tools">
               <button type="button" className="btn small icon-btn" aria-label={`Move ${d.name} up`} disabled={i === 0} onClick={() => move(i, -1)}>
                 ↑

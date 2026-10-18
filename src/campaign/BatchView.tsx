@@ -85,7 +85,7 @@ export interface BatchVideo {
   /** Green screen: the product behind him, him cut out in this corner. */
   greenScreen?: { side: 'left' | 'right'; sizePct: number }
   /** The product showcase in steps: one clip each, in order. */
-  steps?: { file: BankFile; minSec: number; maxSec: number }[]
+  steps?: { file: BankFile }[]
   batch: JobBatch
 }
 
@@ -492,11 +492,7 @@ export function BatchView({
       reaction: byId(bank.reactions, pick.reaction)!,
       ...(pick.steps && bank.steps
         ? (() => {
-            const steps = pick.steps.map((fileId, s) => ({
-              file: byId(bank.steps![s].files, fileId)!,
-              minSec: bank.steps![s].minSec,
-              maxSec: bank.steps![s].maxSec,
-            }))
+            const steps = pick.steps.map((fileId, s) => ({ file: byId(bank.steps![s].files, fileId)! }))
             return { product: steps[0].file, steps }
           })()
         : { product: byId(bank.products, pick.product)! }),
@@ -530,8 +526,8 @@ export function BatchView({
     ? [...bank.reactions, ...bank.products, ...bank.music, ...(bank.steps ?? []).flatMap((s) => s.files)].reduce((n, f) => n + f.size, 0)
     : 0
 
-  /** One step of the product showcase: its clips, one of which - a random
-   *  few seconds of it - goes in each video. */
+  /** One step of the product showcase: its clips, one of which - the moment
+   *  something happens in it - goes in each video. */
   const stepList = (step: BatchStep, index: number) => (
     <div className="group" key={step.id}>
       <div className="bank-head">
@@ -542,9 +538,7 @@ export function BatchView({
           + Add
         </VideoPicker>
       </div>
-      <p className="hint bank-hint">
-        {step.minSec === step.maxSec ? `${step.minSec} s` : `${step.minSec}-${step.maxSec} s`} of one of these in every video, from a random place.
-      </p>
+      <p className="hint bank-hint">One of these in every video: the moment something happens in it, or all of it when it&rsquo;s short.</p>
       {step.files.length > 0 ? (
         <ul className="bank-list">
           {step.files.map((file) => (

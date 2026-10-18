@@ -95,8 +95,9 @@ raw video file(s)
             in a corner over a Batch background video, its sound only
   siblings: reactionRender.ts (reaction clip + product clip), montageRender.ts
             (clips only, music only - the Batch tab's videos: reaction first, slowly
-            zooming in, then the product whole or, with steps, a random slice of one
-            clip per step - batch.ts BatchStep, StepOrder.tsx), media/silenceCut.ts
+            zooming in, then the product whole or, with steps, one clip per step
+            playing the moment something happens in it - stepPiece.ts finds it from
+            the clip's frame sizes - batch.ts BatchStep, StepOrder.tsx), media/silenceCut.ts
             (the plain cutter)
   -> outbox.ts                     copy the finished MP4 to private storage, send in
                                    parts, resume after a dropped connection

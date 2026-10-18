@@ -64,50 +64,27 @@ export interface BatchBank {
   /** On the engine: the batch it is making now, to follow. */
   engineJob?: string
   /** The campaign's product showcase in order (Set order): each step its own
-   *  clips, one of them - a random few seconds of it - in every video, the
-   *  steps always in this order after the reaction. None: the one list of
-   *  product showcases, each played whole. */
+   *  clips, one of them in every video - the moment something happens in it
+   *  (stepPiece.ts) - the steps always in this order after the reaction.
+   *  None: the one list of product showcases, each played whole. */
   steps?: BatchStep[]
 }
 
 /** One step of a campaign's product showcase - "Claude", "The app", "The
- *  prompt" - and the clips that can play there. */
+ *  prompt" - and the clips that can play there. How long it plays is never
+ *  set: each video plays the part of the clip where something happens
+ *  (stepPiece.ts). Steps saved before that may still carry the minSec and
+ *  maxSec he used to type; nothing reads them. */
 export interface BatchStep {
   id: string
   name: string
   files: BankFile[]
-  /** How long the step plays: a random length in this range, from a random
-   *  place in the clip picked. */
-  minSec: number
-  maxSec: number
 }
-
-export const STEP_SECONDS = { min: 1, max: 15, defaultMin: 2, defaultMax: 3 } as const
 
 /** The product showcase is in steps: the layout plays the reaction then the
  *  product, and he has set an order for the campaign. */
 export function usesSteps(bank: Pick<BatchBank, 'layout' | 'steps'>): boolean {
   return (bank.layout ?? 'after') === 'after' && (bank.steps?.length ?? 0) > 0
-}
-
-/** The step lengths as he typed them, made sensible: whole seconds within
- *  STEP_SECONDS, the shorter first. */
-export function cleanStepSeconds(min: number, max: number): { minSec: number; maxSec: number } {
-  const fit = (n: number, fallback: number) => (Number.isFinite(n) ? Math.min(STEP_SECONDS.max, Math.max(STEP_SECONDS.min, Math.round(n * 2) / 2)) : fallback)
-  const a = fit(min, STEP_SECONDS.defaultMin)
-  const b = fit(max, STEP_SECONDS.defaultMax)
-  return { minSec: Math.min(a, b), maxSec: Math.max(a, b) }
-}
-
-/** Where a step plays from in a clip that runs `first`..`duration`, and how
- *  long: a length from the step's range, from a random place - the whole clip
- *  when it is no longer than that. */
-export function stepWindow(first: number, duration: number, minSec: number, maxSec: number, rand: () => number): { start: number; end: number } {
-  const span = duration - first
-  const length = minSec + (maxSec - minSec) * rand()
-  if (!(span > length)) return { start: first, end: duration }
-  const start = first + (span - length) * rand()
-  return { start, end: start + length }
 }
 
 export type BatchLayout = 'after' | 'greenscreen' | 'engine'

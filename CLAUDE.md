@@ -71,3 +71,8 @@ and why. These notes are what earlier sessions learned the hard way.
   for him and the deploy command, then caveats.
 - Ask before anything that changes how a feature behaves for him; fix bugs
   without asking. Never invent campaign content.
+- Least input, most output (rule in AGENTS.md, his words: "I have to do the
+  least input possible. The program has to do as much output as possible. If
+  you need to take 2 more hours to make a functionality that's going to save me
+  a second a day, then do it."). No box for a number the app can work out - he
+  had the step seconds taken out for exactly this.

@@ -1310,10 +1310,10 @@ export function CampaignApp() {
               seed: next.id,
               defaults: next.day?.noEffects ? null : defaultEffects(),
               formula,
-              // A batch: the reaction always zooms in slowly, and product
-              // steps play a random few seconds each.
+              // A batch: the reaction always zooms in slowly, and each
+              // product step plays the moment something happens in it.
               reactionFirst: Boolean(next.montage.bank),
-              windows: next.montage.bank?.steps ? [null, ...next.montage.bank.steps.map((s) => ({ minSec: s.minSec, maxSec: s.maxSec }))] : undefined,
+              windows: next.montage.bank?.steps ? [false, ...next.montage.bank.steps.map(() => true)] : undefined,
             }),
           )
         } else if (next.reaction) {

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { cleanStepSeconds, combos, dayTimes, emptyBank, filesOf, headlinesFrom, pickBatch, planSlots, spend, stepWindow, usesSteps, type BankFile, type BatchBank } from './batch'
+import { combos, dayTimes, emptyBank, filesOf, headlinesFrom, pickBatch, planSlots, spend, usesSteps, type BankFile, type BatchBank } from './batch'
 
 const files = (prefix: string, n: number): BankFile[] =>
   Array.from({ length: n }, (_, i) => ({ id: `${prefix}${i + 1}`, name: `${prefix}${i + 1}.mov`, type: 'video/quicktime', size: 1 }))
@@ -209,9 +209,9 @@ describe('a product showcase in steps (Set order)', () => {
     headlines: ['h1', 'h2'],
     music: files('m', 2),
     steps: [
-      { id: 's1', name: 'Claude', files: files('claude', 2), minSec: 2, maxSec: 3 },
-      { id: 's2', name: 'The app', files: files('app', 3), minSec: 2, maxSec: 3 },
-      { id: 's3', name: 'The prompt', files: files('prompt', 2), minSec: 3, maxSec: 4 },
+      { id: 's1', name: 'Claude', files: files('claude', 2) },
+      { id: 's2', name: 'The app', files: files('app', 3) },
+      { id: 's3', name: 'The prompt', files: files('prompt', 2) },
     ],
   })
 
@@ -259,20 +259,6 @@ describe('a product showcase in steps (Set order)', () => {
     const { bank: after, retired } = spend(stepped(), '2026-11-01')
     expect(after.steps!.map((s) => [s.name, s.files.length])).toEqual([['Claude', 0], ['The app', 0], ['The prompt', 0]])
     expect(retired).toContain('app3')
-  })
-
-  it('plays a random few seconds of each clip, or all of a short one', () => {
-    expect(stepWindow(0, 10, 2, 3, () => 0)).toEqual({ start: 0, end: 2 })
-    const late = stepWindow(0, 10, 2, 3, () => 1)
-    expect(late.end).toBeCloseTo(10)
-    expect(late.end - late.start).toBeCloseTo(3)
-    expect(stepWindow(0.1, 1.5, 2, 3, () => 0.5)).toEqual({ start: 0.1, end: 1.5 })
-  })
-
-  it('keeps the lengths he types sensible', () => {
-    expect(cleanStepSeconds(4, 2)).toEqual({ minSec: 2, maxSec: 4 })
-    expect(cleanStepSeconds(0, 99)).toEqual({ minSec: 1, maxSec: 15 })
-    expect(cleanStepSeconds(Number.NaN, 2.2)).toEqual({ minSec: 2, maxSec: 2 })
   })
 
   it('knows every file a video needs', () => {

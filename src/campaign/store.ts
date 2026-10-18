@@ -204,9 +204,11 @@ export interface MontageParts {
      *  in this corner over it (greenScreenRender.ts). */
     greenScreen?: { side: 'left' | 'right'; sizePct: number }
     /** The campaign's product showcase in steps (batch.ts BatchStep): one
-     *  clip per step, in order, a random `minSec`-`maxSec` of each. `product`
-     *  is then the first step's clip. */
-    steps?: { file: BankFile; minSec: number; maxSec: number }[]
+     *  clip per step, in order, each playing the moment something happens in
+     *  it (stepPiece.ts). `product` is then the first step's clip. Videos
+     *  planned before may carry the old typed minSec/maxSec; nothing reads
+     *  them. */
+    steps?: { file: BankFile }[]
   }
   clips: { name: string; type: string }[]
   /** The track under it: "" for its angle's, "none", another angle's as

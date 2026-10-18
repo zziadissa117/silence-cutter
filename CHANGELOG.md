@@ -3,6 +3,26 @@
 Newest first. Every change says what it does, how to use it, and how it works
 underneath. Kept up to date with each commit.
 
+## Batch: no seconds to set - each step plays the moment something happens in its clip
+**What:** **Set order** is now just the step names and their order; the seconds boxes are gone. When a video is made,
+the Cutter looks at each step's clip and plays the moment something happens in it - a scroll, an answer appearing,
+typing - from just before it starts to just after it settles (2-5 s).
+- A clip with several moments: different videos play different ones, the bigger ones more often.
+- A long moment (a minute of typing): 3-5 s of it, from a different place in each video.
+- A clip you trimmed to 4 s or less: plays whole.
+- Nothing stands out (all still, or filmed footage moving the whole time): a random 2-3.5 s of it.
+- All the steps together never run past 12 s (each shortened evenly, none under 1 s).
+Steps you already set keep their names and clips; the seconds typed before are ignored, and videos already planned
+use the new way when they're made. Only ./deploy.sh is needed.
+**How:** `stepPiece.ts`. A still frame is stored in a few bytes and a changing one in many, so the clip's frame sizes,
+read from its index (mediabunny `EncodedPacketSink`, metadata only - no picture decoded, a few ms even for a long 4K
+clip), show when something happens: `activityOf` (bytes per quarter second, key frames counted as ordinary frames,
+smoothed), `momentsOf` (above 25% of the way from the quiet level to the busiest, gaps under 0.75 s joined; none unless
+the busiest is 2.5x the quiet), `pickPiece`, `fitShowcase`. `montageRender` `windows` is now true/false per clip;
+`BatchStep` has no `minSec`/`maxSec`. Tests: `stepPiece.test.ts` (including an MP4 written and read back). Checked on
+ffmpeg-made H.264 and HEVC clips: a scroll at 3-5 s found at 2.75-5.25 s; still and always-moving clips find none.
+**Also:** AGENTS.md now opens with the rule behind every feature - least input from him, most output from the app.
+
 ## Fix: Edit again takes the post out of Posts until the new version is ready
 **What:** tapping **Edit again** on a post now takes it off the Posts screen (and out of the "to approve" count) right
 away. It stays off while you edit and while the new version is made; the new version shows up in Posts once it's made

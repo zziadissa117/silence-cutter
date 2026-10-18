@@ -10,6 +10,20 @@ it per campaign, posts it to social platforms via Postiz. Vite + React + TS,
 Dexie, `mediabunny` (WebCodecs), Supabase (Postgres + 2 Edge Functions), Netlify.
 **No ffmpeg/ffprobe** in the app: inspect media with `mediabunny` track metadata (only `engine/`, on a server, uses ffmpeg).
 
+## The rule behind every feature: least input, most output
+
+He makes thousands of videos a month (25 posts a day). Every tap, number or
+choice the app asks of him is paid again every day; the program's time is free.
+
+- The app works things out itself: from the footage, what was made and posted
+  before, the accounts, the clock. Never ask him to type a value the program
+  could measure or decide (seconds, sizes, levels, times, counts).
+- A setting is the last resort: a default that is right without being touched,
+  shown only when there is truly no way to decide it.
+- Two more hours of building to save him one second a day is worth it. Take the
+  automatic version even when it is much more work.
+- Anything he still sets by hand is a candidate to automate; say so when you see one.
+
 ## Commands
 
 ```
@@ -55,7 +69,7 @@ only, no Supabase); `./deploy-server.sh` ships the `postiz` and `cutter` functio
 - Audio: `voice.ts`, `music.ts`, `sounds.ts`; captions `captions.ts`; headline `overlay.ts`, `look.ts`; effects `effects.ts`
 - Videos before/after/in the middle (at a phrase): `clips.ts`, `cueClips.ts`, `ClipRow.tsx`, `ClipsField.tsx`
 - Green screen (Batch layout): `cutout.ts` (once per reaction), `greenScreenRender.ts`
-- Batch mixing: `batch.ts` (`pickBatch`, `combos`; product steps `BatchStep` set in `StepOrder.tsx`), made by `montageRender.ts` (step `windows`, reaction zoom)
+- Batch mixing: `batch.ts` (`pickBatch`, `combos`; product steps `BatchStep` set in `StepOrder.tsx` - names and order only), made by `montageRender.ts` (reaction zoom; each step clip plays its moment, found by `stepPiece.ts` from frame sizes)
 - Wide clips -> 9:16: `framing916.ts` (Settings: Fill/Fit/Off)
 - Edit again: `store.ts` (markMade/reopenJob/expireMade, 2 h window), `PostsView.EditAgain`, `CampaignApp.editAgain/retireOld` (see ARCHITECTURE.md)
 - Queue/storage: `store.ts`, `outbox.ts`; sync + login: `cloud.ts`, `SignIn.tsx`, `LoginGate.tsx`

@@ -774,7 +774,6 @@ input[type='color']::-webkit-color-swatch { border: 0.5px solid var(--edge); bor
 .step-row:last-child { border-bottom: 0; padding-bottom: 0; }
 .step-n { flex: none; width: 1.5em; font-weight: 600; color: var(--muted); font-variant-numeric: tabular-nums; }
 .step-row input.step-name { flex: 1 1 8rem; min-width: 0; min-height: 40px; background-color: var(--field); }
-.step-secs { display: inline-flex; align-items: center; gap: 6px; color: var(--muted); font-size: 15px; }
 .step-tools { display: inline-flex; gap: 4px; margin-left: auto; }
 .chooser-row { display: flex; align-items: center; gap: 8px; }
 .chooser-row select { flex: 1 1 auto; min-width: 0; }
