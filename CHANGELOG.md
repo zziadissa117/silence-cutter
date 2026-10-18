@@ -3,6 +3,14 @@
 Newest first. Every change says what it does, how to use it, and how it works
 underneath. Kept up to date with each commit.
 
+## Batch: every reaction slowly zooms in
+**What:** in the Batch tab's "Reaction, then video" layout, every reaction now has a slow zoom-in for its whole length -
+the full frame at the start, 8% closer by the end, easing in and out. Only the video moves: the headline (or the
+formula) stays still on top. Always on, whatever the angle's effects say; where the angle's own "Push-in under the
+hook" is on and closer, that one shows. Green screen and the engine are as they were. Only ./deploy.sh is needed.
+**How:** `effects.ts` `REACTION_ZOOM` / `reactionZoom` (+ test); `reactionRender.ts` takes the larger of it and the
+angle's framing for the reaction stretch.
+
 ## Fix: no more click at every cut
 **What:** every cut had a little click - the sound a video makes when it ends and starts. Now the sound fades out
 over the last 8 thousandths of a second before each cut and back in over the first 8 after it: far too short to hear

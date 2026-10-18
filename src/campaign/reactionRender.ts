@@ -29,7 +29,7 @@ import { RangeReader, inTimestampOrder } from '../media/rangeReader'
 import { isSilenceCutSupported } from '../media/silenceCut'
 import type { Range } from '../media/silenceMath'
 import { CAPTION_LEAD, captionAt, drawStyledCaption, captionRanges, type CaptionPosition, type CaptionSize, type CaptionStyle, type CaptionWord } from './captions'
-import { framingAt, planMotion, zoomPlace } from './effects'
+import { framingAt, planMotion, reactionZoom, zoomPlace } from './effects'
 import { eachSound, openClip, type Clip } from './clipParts'
 import { headlineFontReady } from './headlineFont'
 import type { BuiltInSound, VideoLook } from './look'
@@ -187,7 +187,11 @@ export async function renderReaction(
               const duration = sample.duration
               onProgress?.(Math.min(0.99, timestamp / total))
               if (part === 'reaction') {
-                const spot = zoomPlace(reactionPlace, framingAt(motion, 0, timestamp, []), width, height)
+                // Always a slow push-in over the reaction (effects.reactionZoom),
+                // or the angle's own push-in where that is closer.
+                const framing = framingAt(motion, 0, timestamp, [])
+                const zoomed = { ...framing, scale: Math.max(framing.scale, reactionZoom(timestamp, switchAt)) }
+                const spot = zoomPlace(reactionPlace, zoomed, width, height)
                 sample.draw(ctx, spot.x, spot.y, spot.width, spot.height)
                 if (headline) drawHeadline(ctx, headline)
               } else {

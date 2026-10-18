@@ -155,6 +155,18 @@ export function framingAt(plan: MotionPlan, index: number, t: number, brandAt: r
   return { scale: Math.min(MAX_SCALE, segment.scale * hook * (1 + hit)), dx: segment.dx }
 }
 
+/** How much closer a batch reaction ends than it starts: every reaction gets a
+ *  slow push-in for its whole length, whatever the angle's effects say - a
+ *  little movement keeps people watching. Only the picture moves; the
+ *  headline is drawn over it, steady. */
+export const REACTION_ZOOM = 0.08
+
+/** The reaction's zoom `t` seconds into a reaction `seconds` long: 1 at the
+ *  start, easing in and out to 1 + REACTION_ZOOM at the end. */
+export function reactionZoom(t: number, seconds: number): number {
+  return 1 + REACTION_ZOOM * easeInOut(seconds > 0 ? t / seconds : 1)
+}
+
 /** Where to draw a frame of `width`×`height` so it is `framing.scale` times
  *  bigger and centred toward the face - and still covers the whole canvas. */
 export function placeFrame(framing: Framing, width: number, height: number): { x: number; y: number; width: number; height: number } {

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { FACE, NO_EFFECTS, framingAt, hitAmount, logoPop, placeFrame, planMotion, randomFrom } from './effects'
+import { FACE, NO_EFFECTS, REACTION_ZOOM, framingAt, hitAmount, logoPop, placeFrame, planMotion, randomFrom, reactionZoom } from './effects'
 
 const segments = [2, 1.5, 0.4, 2.2, 1.8, 1.1, 3, 0.9, 1.6, 2.4]
 
@@ -140,5 +140,18 @@ describe('zoomPlace', () => {
     expect(z.x + z.width).toBeGreaterThanOrEqual(canvas.w)
     expect(z.y).toBeLessThanOrEqual(0)
     expect(z.y + z.height).toBeGreaterThanOrEqual(canvas.h)
+  })
+})
+
+describe('the batch reaction push-in', () => {
+  it('goes from the full frame to a little closer over the whole reaction', () => {
+    expect(reactionZoom(0, 4)).toBe(1)
+    expect(reactionZoom(4, 4)).toBeCloseTo(1 + REACTION_ZOOM)
+    let last = 0
+    for (let t = 0; t <= 4; t += 0.25) {
+      const z = reactionZoom(t, 4)
+      expect(z).toBeGreaterThanOrEqual(last)
+      last = z
+    }
   })
 })
