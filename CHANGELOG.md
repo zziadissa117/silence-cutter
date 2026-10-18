@@ -3,6 +3,26 @@
 Newest first. Every change says what it does, how to use it, and how it works
 underneath. Kept up to date with each commit.
 
+## Batch: no more Days - pick videos a day, tap Start, it keeps going
+**What:** the Batch tab's Posting is now just **Videos a day**. Days and the "On top / After" choice are gone. Tap
+**Start**: the next 7 days are made straight away. After that, every time you open the Cutter, the batch makes the
+days it's missing by itself - no tap - so there's always a week of videos waiting. It stops on its own once every
+different video your footage can make has been made (you get "Time to film new ones", as before), or when you tap
+**Stop**. Raise Videos a day and the days already made get the extra ones too (clear of their times); lower it and
+the days not made yet get fewer. It says how many different videos are left and how many days that lasts. Same on the
+engine: each top-up is handed to it. Every video still waits in Posts for your approval. Batches you made before keep
+their days; tap Start once to keep them going. Only ./deploy.sh is needed.
+**Good to know:** the phone layouts still make videos only while the app is open (as before) - now it just happens
+without you asking. The engine makes them with the app closed.
+**How:** `batchRun.ts`: `runSlots` (every day from today through a week, up to the number; empty days take the
+campaign's batch times, part-filled days `stackTimesOn` clear of their times), `planVideos` (mixing moved out of
+`BatchView.make`; caps at the different videos left, spends and stops at the last), `topUp` (saves the bank, then
+queues or hands to the engine; failures kept in `runProblem`). `BatchBank.running`, `filled` (count per day; old days
+count as `lastPerDay`). Top-ups: the Batch tab for its campaign (`WhenDue`, 1.2 s after the last change), and
+`CampaignApp` for every running campaign when the app opens, comes back on screen and every 30 min; `oneAtATime` /
+`settled` keep them from overlapping. `planSlots` and the stacking UI are gone. Tests: `batchRun.test.ts`,
+`batchView.test.tsx` (Start, Stop, top-ups, old batches).
+
 ## Batch: no seconds to set - each step plays the moment something happens in its clip
 **What:** **Set order** is now just the step names and their order; the seconds boxes are gone. When a video is made,
 the Cutter looks at each step's clip and plays the moment something happens in it - a scroll, an answer appearing,

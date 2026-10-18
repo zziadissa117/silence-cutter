@@ -195,6 +195,20 @@ with anything else on it is kept, with the reason shown.
 `test-fake-postiz:`). Each person has a **posting profile** (their own Postiz key,
 accounts, times) inside the shared login that holds campaigns.
 
+## Batches that keep going (`batchRun.ts`)
+
+He sets Videos a day and taps Start once (`BatchBank.running`). `runSlots` fills every day
+from today through `AHEAD_DAYS` (7) up to his number - an empty day takes `batchTimesOn`, one
+already holding some takes `stackTimesOn` clear of its times - counting what it put on each
+day in `BatchBank.filled` (days made before that count as `lastPerDay`). `planVideos` mixes
+them (`pickBatch`), never past the different videos left; the last of them spends the bank
+and stops the run. `topUp` saves the bank, then queues the videos (`CampaignApp.addBatch`) or
+hands the days to the engine; a failure is kept in `runProblem` and tried again. Who tops up:
+the Batch tab for its own campaign while open (`WhenDue`, a moment after the last change),
+otherwise `CampaignApp` for every running campaign when the app opens, comes back on screen,
+and every 30 min. `oneAtATime`/`settled` keep the two from making the same days at once.
+Batch banks are on the phone with the footage, never synced, so a second phone never tops up.
+
 ## The engine (`engine/`, on Railway)
 
 ```
@@ -203,6 +217,7 @@ phone, Batch "On the engine"                 engine (Python, ffmpeg, /data volum
  saveEngineSeries: hook lines  ---------->   series/<campaign>/settings.json
  sendFootage: what it lacks, 8 MB pieces ->  uploads.py -> series/<campaign>/{hook,product}, songs (sons.py)
  makeOnEngine: batch id, days+times  --->    jobs.py, one batch at a time:
+   (each top-up of a running batch is one)
                                                hooks.py   Claude rewords the lines (optional key)
                                                remixer.py Le plateau's render (Ilyan's, unchanged)
                                                guard.py   near-copy check (dHash, 30/90 days, in-batch)

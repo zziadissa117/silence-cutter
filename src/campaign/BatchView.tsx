@@ -1,9 +1,10 @@
 // The Batch tab: for one campaign, a bank of reactions (they go first, with
 // the headline), product showcases, headlines and music. He picks how many
-// a day and for how many days, taps once, and the videos are mixed from the
-// bank (batch.ts), made one after another on this phone, and sent up - each
-// for one of the campaign's posting times - to wait for his approval. He
-// hears once, when the whole batch is ready.
+// a day and taps Start once; the batch keeps going (batchRun.ts) - the next
+// week made now, the days after whenever the app is open - until every
+// different video is made. The videos are mixed from the bank (batch.ts),
+// made one after another on this phone or on the engine, and sent up - each
+// for one of the campaign's posting times - to wait for his approval.
 
 import { TrackName, TrackPlayer } from './TrackPlayer'
 import { useEffect, useRef, useState } from 'react'
@@ -11,21 +12,13 @@ import { useEffect, useRef, useState } from 'react'
 import { VideoPicker } from '../VideoPicker'
 import { pickArrived, pickSaved } from '../pickWatch'
 import {
-  addDays,
-  combos,
   dayLabel,
   emptyBank,
   DEFAULT_FORMULA,
   formulaLine,
-  formulaText,
   headlinesFrom,
-  headlinesToMix,
   hookOf,
-  mixFrom,
-  pickBatch,
-  planSlots,
   todayHere,
-  spend,
   usesSteps,
   type BankFile,
   type BatchBank,
@@ -36,7 +29,7 @@ import { StepOrder } from './StepOrder'
 import { filmingOf } from './filming'
 import { fingerprint, skippedNotice } from './fingerprint'
 import { formatTime, labelOf, type Job } from './jobs'
-import { NO_POSTING, type Angle, type Campaign } from './look'
+import type { Angle, Campaign } from './look'
 import { copySong, useMusicBank } from './musicBank'
 import {
   BATCH_MAX_PER_DAY,
@@ -46,47 +39,42 @@ import {
   listPosts,
   ownDayTimes,
   placeFor,
-  stackTimesOn,
-  takenTimes,
   timeLabel,
   windowLabel,
   windowOf,
   type LocalPosting,
   type ServerPost,
 } from './posting'
-import { deleteBankFile, loadBankFile, loadBatchBank, saveBankFile, saveBatchBank, type JobBatch } from './store'
+import { deleteBankFile, loadBankFile, loadBatchBank, saveBankFile, saveBatchBank } from './store'
+import { leftToMake, missingFor, oneAtATime, runSlots, settled, takenBy, topUp, AHEAD_DAYS, type BatchVideo } from './batchRun'
 import { FormulaPreview } from './FormulaPreview'
 import { CORNER_SIZES, DEFAULT_CORNER } from './greenScreenRender'
 import {
   carryOnEngineJob,
-  EngineError,
   engineJob,
   engineUrl,
-  makeOnEngine,
-  saveEngineSeries,
-  sendFootage,
   stopEngineJob,
   type EngineJob,
 } from './engine'
 
 const LAST_KEY = 'batch.campaign'
-const MAX_DAYS = 14
 /** A track this big is any song there is. */
 const MAX_SONG_MB = 30
 
-export interface BatchVideo {
-  reaction: BankFile
-  product: BankFile
-  music: BankFile | null
-  headline: string
-  /** The "Claude + X" hook, when the bank uses it: the headline above is then
-   *  what it says in words, for the caption. */
-  formula?: { left: BankFile | null; right: BankFile | null; line: string }
-  /** Green screen: the product behind him, him cut out in this corner. */
-  greenScreen?: { side: 'left' | 'right'; sizePct: number }
-  /** The product showcase in steps: one clip each, in order. */
-  steps?: { file: BankFile }[]
-  batch: JobBatch
+export type { BatchVideo } from './batchRun'
+
+/** Calls `run` a moment after `due` is true for a new `signal` - so tapping
+ *  + five times makes one top-up, not five. A component of its own so its
+ *  hook can sit below the Batch tab's early returns. */
+function WhenDue({ due, signal, run }: { due: boolean; signal: string; run: () => void }) {
+  const runRef = useRef(run)
+  runRef.current = run
+  useEffect(() => {
+    if (!due) return
+    const timer = setTimeout(() => runRef.current(), 1200)
+    return () => clearTimeout(timer)
+  }, [due, signal])
+  return null
 }
 
 type Kind = 'reactions' | 'products' | 'music'
@@ -158,10 +146,9 @@ export function BatchView({
   const [problem, setProblem] = useState<string | null>(null)
   const [notice, setNotice] = useState<string | null>(null)
   const songs = useMusicBank()
-  /** The campaign's posts as the server has them, for the times a batch
-   *  stacked on top must keep clear of; the last copy seen until they come. */
+  /** The campaign's posts as the server has them, for the times a day
+   *  topped up keeps clear of; the last copy seen until they come. */
   const [posts, setPosts] = useState<ServerPost[]>(() => lastPosts())
-  const [postsFresh, setPostsFresh] = useState(false)
   useEffect(() => {
     if (!posting) return
     let alive = true
@@ -169,7 +156,6 @@ export function BatchView({
       .then((list) => {
         if (!alive) return
         setPosts(list)
-        setPostsFresh(true)
       })
       .catch(() => {})
     return () => {
@@ -181,11 +167,8 @@ export function BatchView({
   const adding = useRef(new Set<string>())
   const bankRef = useRef(bank)
   bankRef.current = bank
-  /** Set the moment "Make" is tapped, before React has re-rendered: a second
-   *  tap in between would plan the same days again and make every video
-   *  twice. Cleared once the batch's videos show up on this phone. */
-  const making = useRef(false)
-  const [tapped, setTapped] = useState(false)
+  /** A top-up of this campaign's batch is being worked out or handed over. */
+  const [topping, setTopping] = useState(false)
   /** The Set order sheet is open. */
   const [ordering, setOrdering] = useState(false)
   /** The batch the engine is making for this campaign, as it last said. */
@@ -218,30 +201,20 @@ export function BatchView({
     if (!campaign) return
     let cancelled = false
     setBank(null)
-    void loadBatchBank(campaign.id).then((stored) => {
-      if (cancelled) return
-      const loaded = stored ?? emptyBank(campaign.id, campaign.angles[0].id)
-      setBank(loaded)
-      setHeadlineText(loaded.headlines.join('\n'))
-    })
+    // After the app's own top-up of this campaign, if one is running, so the
+    // bank shown is the one it saved.
+    void settled(campaign.id)
+      .then(() => loadBatchBank(campaign.id))
+      .then((stored) => {
+        if (cancelled) return
+        const loaded = stored ?? emptyBank(campaign.id, campaign.angles[0].id)
+        setBank(loaded)
+        setHeadlineText(loaded.headlines.join('\n'))
+      })
     return () => {
       cancelled = true
     }
   }, [campaign?.id]) // eslint-disable-line react-hooks/exhaustive-deps
-
-  // The tap's videos have reached the job list (or nothing came of it): from
-  // here the running jobs keep the button busy until they are made.
-  const jobsAtTap = useRef(0)
-  useEffect(() => {
-    if (!tapped) return
-    const done = () => {
-      making.current = false
-      setTapped(false)
-    }
-    if (jobs.length !== jobsAtTap.current) return done()
-    const timer = setTimeout(done, 5000)
-    return () => clearTimeout(timer)
-  }, [tapped, jobs.length])
 
   const keep = (next: BatchBank) => {
     setBank(next)
@@ -275,20 +248,9 @@ export function BatchView({
   // As many times a day as he picked: random ones from the campaign's
   // window, or his own (with random extras when he wants more than he has).
   const perDay = bank?.perDay ?? 1
-  // A batch still running: the next one goes on top of it, from today (to
-  // post more a day), unless he picked after it.
-  const running = Boolean(bank?.madeThrough && bank.madeThrough >= todayHere())
-  const stacking = running && bank?.stack !== false
-  const taken = takenTimes(posts, campaign.id)
-  for (const job of jobs) {
-    if (job.campaignId !== campaign.id || !job.batch) continue
-    const day = taken.get(job.batch.date) ?? []
-    if (!day.includes(job.batch.time)) taken.set(job.batch.date, [...day, job.batch.time])
-  }
-  const takenOn = (date: string) => taken.get(date) ?? []
-  const timesOnDate = (date: string) =>
-    stacking ? stackTimesOn(place, campaign.id, date, perDay, takenOn(date)) : batchTimesOn(place, campaign.id, date, perDay)
-  const times = timesOnDate(todayHere())
+  const running = Boolean(bank?.running)
+  const takenOn = takenBy(posts, jobs, campaign.id)
+  const times = batchTimesOn(place, campaign.id, todayHere(), perDay)
   const random = ownDayTimes(place).length === 0
   const angle = campaign.angles.find((a) => a.id === bank?.angleId) ?? campaign.angles[0]
 
@@ -407,35 +369,23 @@ export function BatchView({
     keep({ ...bank, steps })
   }
 
-  // On top: planned as if nothing were running, so it starts today.
-  const wanted = bank ? planSlots({ times: timesOnDate, perDay: bank.perDay, days: bank.days, madeThrough: stacking ? undefined : bank.madeThrough }) : []
-  // Never a video twice: a batch stops at the last different one left.
+  // The days the batch is still missing, up to a week ahead.
+  const due = bank ? runSlots({ bank, place, campaignId: campaign.id, taken: takenOn }) : []
   const green = bank?.layout === 'greenscreen'
   const onEngine = bank?.layout === 'engine'
   const corner = bank?.corner ?? DEFAULT_CORNER
   const formulaHook = bank && !green ? hookOf(bank) === 'formula' : false
   const formula: BatchFormula = bank?.formula ?? DEFAULT_FORMULA
-  const mixable = bank ? mixFrom(bank, green ? bank.headlines : headlinesToMix(bank)) : null
-  const { total: different, left } = mixable ? combos(mixable) : { total: 0, left: 0 }
-  // The engine makes many videos from each take, so its batches are not capped
-  // by how many combinations the bank has.
-  const slots = onEngine || !Number.isFinite(left) ? wanted : wanted.slice(0, left)
+  // The engine makes many videos from each take, so it never runs out.
+  const { total: different, left } = bank && !onEngine ? leftToMake(bank) : { total: Infinity, left: Infinity }
   const stepped = bank ? usesSteps(bank) : false
   const productCount = !bank ? 0 : stepped ? Math.min(...bank.steps!.map((s) => s.files.length)) : bank.products.length
   const spentShown = Boolean(bank?.spent) && (bank!.reactions.length === 0 || productCount === 0)
-  const missing = !bank
-    ? []
-    : [
-        bank.reactions.length === 0 ? 'a reaction' : '',
-        ...(stepped
-          ? bank.steps!.filter((s) => s.files.length === 0).map((s) => `a clip for ${s.name}`)
-          : [bank.products.length === 0 ? (green ? 'a background video' : 'a product showcase') : '']),
-        green || onEngine ? '' : formulaHook ? (!formula.left || !formula.right ? 'both logos' : '') : bank.headlines.length === 0 ? 'a headline' : '',
-      ].filter(Boolean)
+  const missing = bank ? missingFor(bank) : []
   const inProgress = jobs.filter((j) => j.status !== 'failed' && j.status !== 'held')
   const makingHere = inProgress.filter((j) => j.campaignId === campaign.id)
   const engineBusy = onEngine && (engineState?.status === 'waiting' || engineState?.status === 'making')
-  const busyMaking = tapped || makingHere.length > 0 || engineBusy
+  const busyMaking = topping || makingHere.length > 0 || engineBusy
   const madeHereTotal = [...new Map(jobs.filter((j) => j.campaignId === campaign.id).map((j) => [j.batch!.id, j.batch!.size])).values()].reduce(
     (a, b) => a + b,
     0,
@@ -443,84 +393,52 @@ export function BatchView({
   const failed = jobs.filter((j) => j.status === 'failed' || j.status === 'held')
   const total = [...new Map(jobs.map((j) => [j.batch!.id, j.batch!.size])).values()].reduce((a, b) => a + b, 0)
   const working = jobs.find((j) => j.status === 'working')
-  const canMake = Boolean(bank) && missing.length === 0 && slots.length > 0 && saving === null && !busyMaking
+  const canStart = Boolean(bank) && !running && missing.length === 0 && saving === null && !topping
 
-  /** On the engine: sets it up, sends it what it's missing, then hands it the batch. */
-  const makeEngine = async () => {
-    if (!bank || !profile || !canMake || making.current) return
-    making.current = true
-    setTapped(true)
-    setProblem(null)
-    const id = `b-${Date.now().toString(36)}`
-    try {
-      await saveEngineSeries(campaign.id, { name: campaign.name, hooks: bank.headlines })
-      await sendFootage(campaign.id, bank, (file) => loadBankFile(file as BankFile), setSaving)
-      setSaving('Handing the batch to the engine…')
-      const job = await makeOnEngine({
-        campaign: { id: campaign.id, name: campaign.name, posting: campaign.posting ?? NO_POSTING },
-        profile: profile.id,
-        batchId: id,
-        slots: slots.map((s) => ({ date: s.date, time: s.time })),
-      })
-      remember(campaign.id)
-      const through = slots[slots.length - 1].date
-      const madeThrough = bank.madeThrough && bank.madeThrough > through ? bank.madeThrough : through
-      keep({ ...bank, madeThrough, lastPerDay: bank.perDay, engineJob: job.id })
-      setEngineState(job)
-    } catch (error) {
-      setProblem(error instanceof EngineError || error instanceof Error ? error.message : String(error))
-    } finally {
-      setSaving(null)
-      making.current = false
-      setTapped(false)
-    }
+  /** Makes the days the batch is missing (batchRun.topUp) - on this phone or
+   *  on the engine - unless a top-up of it is already going. */
+  const runTopUp = (from: BatchBank) => {
+    if (!profile) return
+    setTopping(true)
+    void oneAtATime(campaign.id, () =>
+      topUp({
+        bank: from,
+        campaign,
+        place,
+        profileId: profile.id,
+        taken: takenOn,
+        save: async (next) => {
+          setBank(next)
+          bankRef.current = next
+          await saveBatchBank(next)
+        },
+        make: (videos, retire) => onMake(campaign, angle, videos, retire),
+        say: setSaving,
+        latest: () => bankRef.current ?? from,
+      }),
+    )
+      .catch(() => setProblem("The bank couldn't be saved on this phone. Free some space and try again."))
+      .finally(() => setTopping(false))
   }
 
-  const make = () => {
-    if (onEngine) {
-      void makeEngine()
-      return
-    }
-    if (!bank || !canMake || making.current) return
-    making.current = true
-    jobsAtTap.current = jobs.length
-    setTapped(true)
-    const { picks, used, lastPair, made } = pickBatch(mixable!, slots.length)
-    const id = `b-${Date.now().toString(36)}`
-    const byId = (list: BankFile[], fileId: string | null) => list.find((f) => f.id === fileId) ?? null
-    const videos: BatchVideo[] = picks.map((pick, i) => ({
-      reaction: byId(bank.reactions, pick.reaction)!,
-      ...(pick.steps && bank.steps
-        ? (() => {
-            const steps = pick.steps.map((fileId, s) => ({ file: byId(bank.steps![s].files, fileId)! }))
-            return { product: steps[0].file, steps }
-          })()
-        : { product: byId(bank.products, pick.product)! }),
-      music: green ? null : byId(bank.music, pick.music),
-      ...(green ? { greenScreen: corner } : {}),
-      ...(formulaHook
-        ? (() => {
-            const line = formulaLine(formula, `${id}-${i}`)
-            return { headline: formulaText(formula, line), formula: { left: formula.left, right: formula.right, line } }
-          })()
-        : { headline: pick.headline }),
-      batch: { id, date: slots[i].date, time: slots[i].time, size: slots.length },
-    }))
+  /** One tap: the batch starts and keeps going. */
+  const start = () => {
+    const current = bankRef.current
+    if (!current || current.running || !canStart) return
     remember(campaign.id)
-    const through = slots[slots.length - 1].date
-    // Stacked on top, the later of the two runs is where the next "after"
-    // batch starts.
-    const madeThrough = bank.madeThrough && bank.madeThrough > through ? bank.madeThrough : through
-    let next: BatchBank = { ...bank, used, lastPair, made, madeThrough, lastPerDay: bank.perDay }
-    let retire: string[] = []
-    if (Number.isFinite(left) && slots.length >= left) {
-      // That was every different video: the footage goes, for new filming.
-      ;({ bank: next, retired: retire } = spend(next, through))
-      setProblem(null)
-    }
+    setProblem(null)
+    const next = { ...current, running: true, runProblem: undefined, spent: undefined }
     keep(next)
-    onMake(campaign, angle, videos, retire)
+    runTopUp(next)
   }
+
+  const stop = () => {
+    if (bank) keep({ ...bank, running: false })
+  }
+
+  // While the tab is open, a running batch makes what it's missing on its
+  // own: a day gone by, or more a day picked (WhenDue).
+  const dueNow = running && due.length > 0 && missing.length === 0 && saving === null && !topping
 
   const bankSize = bank
     ? [...bank.reactions, ...bank.products, ...bank.music, ...(bank.steps ?? []).flatMap((s) => s.files)].reduce((n, f) => n + f.size, 0)
@@ -631,16 +549,18 @@ export function BatchView({
     </div>
   )
 
-  const nextDays = slots.length > 0 ? dayRange(slots[0].date, slots[slots.length - 1].date) : ''
-  const makeLabel = busyMaking
-    ? engineBusy && !tapped
-      ? 'The engine is making this batch'
-      : makingHere.length > 0
+  const makeLabel =
+    makingHere.length > 0
       ? `Making ${Math.max(0, madeHereTotal - makingHere.length) + 1} of ${madeHereTotal}…`
-      : 'Making…'
-    : slots.length > 0
-      ? `Make ${slots.length}${running ? ' more' : ''} video${slots.length === 1 ? '' : 's'} - ${nextDays}`
-      : 'Make them'
+      : topping
+        ? 'Making…'
+        : engineBusy
+          ? 'The engine is making the next days'
+          : running
+            ? `Running · ${perDay} a day`
+            : `Start · ${perDay} a day`
+  // How long the footage lasts at this many a day.
+  const daysLeft = Number.isFinite(left) ? Math.ceil(left / Math.max(1, perDay)) : Infinity
 
   return (
     <section className="screen batch">
@@ -894,91 +814,65 @@ export function BatchView({
 
           <div className="group">
             <div className="group-title">Posting</div>
-            {running ? (
-              <div className="seg full batch-stack" role="radiogroup" aria-label="When this batch posts">
-                <button type="button" role="radio" aria-checked={stacking} className={stacking ? 'active' : ''} onClick={() => keep({ ...bank, stack: true })}>
-                  On top - from today
+            <div className="field">
+              <span className="label">Videos a day</span>
+              <div className="stepper">
+                <button
+                  type="button"
+                  className="btn small icon-btn"
+                  aria-label="Fewer a day"
+                  disabled={bank.perDay <= 1}
+                  onClick={() => keep({ ...bank, perDay: bank.perDay - 1 })}
+                >
+                  −
                 </button>
-                <button type="button" role="radio" aria-checked={!stacking} className={!stacking ? 'active' : ''} onClick={() => keep({ ...bank, stack: false })}>
-                  After {dayLabel(addDays(bank.madeThrough!, 1))}
+                <span className="stepper-value" aria-label="Videos a day">
+                  {bank.perDay}
+                </span>
+                <button
+                  type="button"
+                  className="btn small icon-btn"
+                  aria-label="More a day"
+                  disabled={bank.perDay >= BATCH_MAX_PER_DAY}
+                  onClick={() => keep({ ...bank, perDay: bank.perDay + 1 })}
+                >
+                  +
                 </button>
               </div>
-            ) : null}
-            <>
-                <div className="field">
-                  <span className="label">{stacking ? 'More a day' : 'Videos a day'}</span>
-                  <div className="stepper">
-                    <button
-                      type="button"
-                      className="btn small icon-btn"
-                      aria-label="Fewer a day"
-                      disabled={bank.perDay <= 1}
-                      onClick={() => keep({ ...bank, perDay: bank.perDay - 1 })}
-                    >
-                      −
-                    </button>
-                    <span className="stepper-value" aria-label="Videos a day">
-                      {bank.perDay}
-                    </span>
-                    <button
-                      type="button"
-                      className="btn small icon-btn"
-                      aria-label="More a day"
-                      disabled={bank.perDay >= BATCH_MAX_PER_DAY}
-                      onClick={() => keep({ ...bank, perDay: bank.perDay + 1 })}
-                    >
-                      +
-                    </button>
-                  </div>
-                  {stacking ? (
-                    <span className="hint batch-total">
-                      {(() => {
-                        const day = slots[0]?.date ?? todayHere()
-                        const already = takenOn(day).length || (postsFresh ? 0 : (bank.lastPerDay ?? 0))
-                        return already > 0
-                          ? `${already} already on ${dayLabel(day)} + ${bank.perDay} = ${already + bank.perDay} that day, while both run.`
-                          : `${bank.perDay} more a day, from ${dayLabel(day)}.`
-                      })()}
-                    </span>
-                  ) : null}
-                  <span className={`hint${times.length < bank.perDay ? ' warn-text' : ''}`}>
-                    {times.length < bank.perDay
-                      ? `The window only fits ${times.length} a day, 10 minutes apart - widen it in the campaign's Posting. `
-                      : ''}
-                    {random
-                      ? `At random times inside the window, different each day - today ${times.map(timeLabel).join(', ')}.`
-                      : times.length > place.times.length
-                        ? `At your times and random ones in between - today ${times.map(timeLabel).join(', ')}.`
-                        : `At ${times.map(timeLabel).join(', ')}.`}
-                  </span>
-                </div>
-                <div className="field">
-                  <span className="label">Days</span>
-                  <div className="stepper">
-                    <button type="button" className="btn small icon-btn" aria-label="Fewer days" disabled={bank.days <= 1} onClick={() => keep({ ...bank, days: bank.days - 1 })}>
-                      −
-                    </button>
-                    <span className="stepper-value">{bank.days}</span>
-                    <button
-                      type="button"
-                      className="btn small icon-btn"
-                      aria-label="More days"
-                      disabled={bank.days >= MAX_DAYS}
-                      onClick={() => keep({ ...bank, days: bank.days + 1 })}
-                    >
-                      +
-                    </button>
-                  </div>
-                </div>
-              </>
+              <span className={`hint${times.length < bank.perDay ? ' warn-text' : ''}`}>
+                {times.length < bank.perDay
+                  ? `The window only fits ${times.length} a day, 10 minutes apart - widen it in the campaign's Posting. `
+                  : ''}
+                {random
+                  ? `At random times inside the window, different each day - today ${times.map(timeLabel).join(', ')}.`
+                  : times.length > place.times.length
+                    ? `At your times and random ones in between - today ${times.map(timeLabel).join(', ')}.`
+                    : `At ${times.map(timeLabel).join(', ')}.`}
+              </span>
+            </div>
           </div>
 
           {problem ? <p className="error">{problem}</p> : null}
           {notice ? <p className="notice">{notice}</p> : null}
 
-          <button type="button" className="btn primary batch-make" disabled={!canMake} onClick={make}>
+          <WhenDue due={dueNow} signal={`${perDay}|${due.length}`} run={() => bankRef.current && runTopUp(bankRef.current)} />
+          <button type="button" className="btn primary batch-make" disabled={!canStart || busyMaking} onClick={start}>
             {makeLabel}
           </button>
+          {bank.runProblem && running ? <p className="hint warn-text">The last days couldn't be made: {bank.runProblem} It tries again next time.</p> : null}
+          <p className="hint new-post-to batch-span">
+            {running
+              ? `${bank.madeThrough ? `Made through ${dayLabel(bank.madeThrough)}. ` : ''}It makes the next days on its own whenever the app is open${onEngine ? '' : ' - until every different video is made'}.`
+              : `Makes the next ${AHEAD_DAYS} days now, then keeps going on its own whenever the app is open${onEngine ? '' : ', until every different video is made'}.`}
+            {running ? (
+              <>
+                {' '}
+                <button type="button" className="linkbtn" onClick={stop}>
+                  Stop
+                </button>
+              </>
+            ) : null}
+          </p>
           {onEngine && engineState ? (
             <div className="batch-progress">
               <div className={`label${engineState.status === 'failed' ? ' warn-text' : ''}`}>
@@ -1026,18 +920,10 @@ export function BatchView({
               ) : null}
             </div>
           ) : null}
-          {different > 0 && Number.isFinite(different) && !onEngine ? (
-            <p className={`hint new-post-to batch-left${slots.length < wanted.length ? ' warn-text' : ''}`}>
-              {left} of {different} different videos left
-              {slots.length < wanted.length && slots.length > 0
-                ? ` - that's all this batch can be. After them, film new reactions and product showcases.`
-                : ''}
-            </p>
-          ) : null}
-          {slots.length > 0 ? (
-            <p className="hint new-post-to batch-span">
-              {dayLabel(slots[0].date)}
-              {slots[slots.length - 1].date !== slots[0].date ? ` to ${dayLabel(slots[slots.length - 1].date)}` : ''}
+          {different > 0 && Number.isFinite(different) ? (
+            <p className={`hint new-post-to batch-left${daysLeft <= AHEAD_DAYS ? ' warn-text' : ''}`}>
+              {left} of {different} different videos left - {daysLeft} day{daysLeft === 1 ? '' : 's'} at {perDay} a day.
+              {daysLeft <= AHEAD_DAYS ? ' After them, film new reactions and product showcases.' : ''}
             </p>
           ) : null}
           <p className="hint new-post-to">
@@ -1045,9 +931,10 @@ export function BatchView({
               ? `Add ${missing.join(', ')} first.`
               : !green && bank.music.length === 0
                 ? 'No music yet, so the videos will be silent.'
-                : `Keep the app open with the screen on while they're made - about half a minute each. Each waits for your approval in Posts, and you get one notification when they're all ready.`}
+                : onEngine
+                  ? 'Keep the app open while new clips go up to the engine; after that it makes the videos with the app closed. Each waits for your approval in Posts.'
+                  : `Keep the app open with the screen on while they're made - about half a minute each. Each waits for your approval in Posts, and you get one notification when they're all ready.`}
           </p>
-          {bank.madeThrough ? <p className="hint new-post-to">Made through {dayLabel(bank.madeThrough)}.</p> : null}
 
           {inProgress.length > 0 ? (
             <div className="batch-progress">
@@ -1092,7 +979,3 @@ export function BatchView({
   )
 }
 
-/** "Wed Oct 14" or "Wed Oct 14 to Fri Oct 16". */
-function dayRange(first: string, last: string): string {
-  return first === last ? dayLabel(first) : `${dayLabel(first)} to ${dayLabel(last)}`
-}

@@ -1,5 +1,5 @@
-// The Batch tab's Make button: one tap, one batch - and as many videos a day
-// as he picks, whatever times the campaign has.
+// The Batch tab's Start button: one tap, and the batch keeps going - as many
+// videos a day as he picks, whatever times the campaign has.
 
 import { act } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
@@ -75,8 +75,22 @@ async function show(place: Partial<CampaignPlace>, jobs: Job[] = [], onMake = vi
 
 const makeButton = () => host.querySelector('.batch-make') as HTMLButtonElement
 
-describe('the Make button', () => {
-  it('makes one batch however fast it is tapped twice', async () => {
+const savedBank = async () => {
+  const { saveBatchBank } = await import('./store')
+  return (saveBatchBank as unknown as { mock: { calls: [BatchBank][] } }).mock.calls.at(-1)![0]
+}
+
+const iso = (offset: number) => {
+  const d = new Date()
+  d.setDate(d.getDate() + offset)
+  return d.toLocaleDateString('en-CA')
+}
+
+/** Long enough for a top-up that waits a moment after the last change. */
+const settle = () => act(() => new Promise((resolve) => setTimeout(resolve, 1400)))
+
+describe('the Start button', () => {
+  it('starts once however fast it is tapped twice, and makes the next week', async () => {
     const { onMake } = await show({})
     expect(makeButton().disabled).toBe(false)
     await act(async () => {
@@ -85,7 +99,14 @@ describe('the Make button', () => {
     })
     expect(onMake).toHaveBeenCalledTimes(1)
     expect(makeButton().disabled).toBe(true)
-    expect(makeButton().textContent).toBe('Making…')
+    expect(makeButton().textContent).toBe('Running · 3 a day')
+    const videos = onMake.mock.calls[0][2] as { batch: { date: string } }[]
+    // Today's times still an hour away, then six whole days of 3.
+    expect(videos.filter((v) => v.batch.date > iso(0))).toHaveLength(18)
+    expect(videos.every((v) => v.batch.date <= iso(6))).toBe(true)
+    const saved = await savedBank()
+    expect(saved.running).toBe(true)
+    expect(saved.filled?.[iso(6)]).toBe(3)
   })
 
   it("stays busy, counting, while this campaign's batch is made", async () => {
@@ -95,9 +116,23 @@ describe('the Make button', () => {
     expect(makeButton().textContent).toBe('Making 3 of 6…')
   })
 
-  it('names the days it would make', async () => {
+  it('says it keeps going, with no days to pick', async () => {
     await show({})
-    expect(makeButton().textContent).toMatch(/^Make \d+ videos - .+ to .+$/)
+    expect(makeButton().textContent).toBe('Start · 3 a day')
+    expect(host.textContent).toContain('Makes the next 7 days now, then keeps going on its own')
+    expect(host.textContent).not.toContain('Days')
+    // 3 reactions x 3 products x 3 headlines, at 3 a day.
+    expect(host.textContent).toContain('27 of 27 different videos left - 9 days at 3 a day.')
+  })
+
+  it('stops when he says', async () => {
+    storedBank = { ...bank, running: true, filled: Object.fromEntries([0, 1, 2, 3, 4, 5, 6].map((d) => [iso(d), 3])) }
+    const { onMake } = await show({})
+    const stop = [...host.querySelectorAll('button')].find((b) => b.textContent === 'Stop') as HTMLButtonElement
+    await act(async () => stop.click())
+    expect((await savedBank()).running).toBe(false)
+    expect(makeButton().textContent).toBe('Start · 3 a day')
+    expect(onMake).not.toHaveBeenCalled()
   })
 })
 
@@ -156,64 +191,53 @@ describe('the "Claude + X" hook', () => {
   })
 })
 
-describe('a batch on top of one still running', () => {
+describe('a batch that keeps going', () => {
   const minutes = (t: string) => Number(t.slice(0, 2)) * 60 + Number(t.slice(3, 5))
-  const day = (offset: number) => {
+  const post = (offset: number, hhmm: string) => {
     const d = new Date()
     d.setDate(d.getDate() + offset)
-    return d
-  }
-  const iso = (d: Date) => d.toLocaleDateString('en-CA')
-  const post = (offset: number, hhmm: string) => {
-    const d = day(offset)
     d.setHours(Number(hhmm.slice(0, 2)), Number(hhmm.slice(3, 5)), 0, 0)
     return { id: `${offset}-${hhmm}`, campaignId: 'inflow', status: 'scheduled', postAt: d.toISOString() }
   }
-  const scheduled = [1, 2, 3].flatMap((o) => [post(o, '12:00'), post(o, '14:30'), post(o, '17:00')])
+  const scheduled = [1, 2, 3].flatMap((o) => [post(o, '12:00'), post(o, '14:30')])
+  const week = (n: number) => Object.fromEntries([0, 1, 2, 3, 4, 5, 6].map((d) => [iso(d), n]))
 
   beforeEach(() => {
-    storedBank = { ...bank, perDay: 2, days: 3, madeThrough: '2099-12-31', lastPerDay: 3 }
     localStorage.setItem('cutter.posts', JSON.stringify(scheduled))
   })
 
-  it('goes on top, from today, on the days already scheduled - clear of their times', async () => {
+  it('makes nothing while the week ahead is full', async () => {
+    storedBank = { ...bank, perDay: 2, running: true, filled: week(2) }
     const { onMake } = await show({})
-    const choice = host.querySelector('[aria-label="When this batch posts"] [aria-checked="true"]')
-    expect(choice?.textContent).toBe('On top - from today')
-    expect(host.textContent).toContain('More a day')
-    expect(makeButton().textContent).toMatch(/^Make \d+ more videos - /)
-    await act(async () => makeButton().click())
+    await settle()
+    expect(onMake).not.toHaveBeenCalled()
+    expect(makeButton().textContent).toBe('Running · 2 a day')
+  })
+
+  it('tops up the days already made when he picks more a day, clear of their times', async () => {
+    storedBank = { ...bank, perDay: 2, running: true, filled: week(2) }
+    const { onMake } = await show({})
+    await act(async () => (host.querySelector('[aria-label="More a day"]') as HTMLButtonElement).click())
+    await settle()
+    expect(onMake).toHaveBeenCalledTimes(1)
     const videos = onMake.mock.calls[0][2] as { batch: { date: string; time: string } }[]
-    expect(videos[0].batch.date <= iso(day(1))).toBe(true)
+    // One more on each day still to come.
+    expect(videos.filter((v) => v.batch.date > iso(0)).map((v) => v.batch.date)).toEqual([1, 2, 3, 4, 5, 6].map(iso))
     for (const v of videos) {
-      expect(v.batch.time >= '11:00' && v.batch.time <= '18:00').toBe(true)
-      const taken = scheduled.filter((p) => new Date(p.postAt).toLocaleDateString('en-CA') === v.batch.date)
-      for (const p of taken) {
+      for (const p of scheduled.filter((x) => new Date(x.postAt).toLocaleDateString('en-CA') === v.batch.date)) {
         const t = new Date(p.postAt)
-        const at = t.getHours() * 60 + t.getMinutes()
-        expect(Math.abs(at - minutes(v.batch.time))).toBeGreaterThanOrEqual(20)
+        expect(Math.abs(t.getHours() * 60 + t.getMinutes() - minutes(v.batch.time))).toBeGreaterThanOrEqual(20)
       }
     }
+    expect((await savedBank()).filled?.[iso(6)]).toBe(3)
   })
 
-  it('says how many a day that makes while both run', async () => {
-    await show({})
-    expect(host.querySelector('.batch-total')?.textContent).toMatch(/3 already on .+ \+ 2 = 5 that day/)
-  })
-
-  it('keeps where the next batch after them starts', async () => {
-    const { saveBatchBank } = await import('./store')
+  it('carries on after days made before it kept going, without making them again', async () => {
+    storedBank = { ...bank, perDay: 3, running: true, madeThrough: iso(3), lastPerDay: 3 }
     const { onMake } = await show({})
-    await act(async () => makeButton().click())
-    expect(onMake).toHaveBeenCalled()
-    const saved = (saveBatchBank as unknown as { mock: { calls: [BatchBank][] } }).mock.calls.at(-1)![0]
-    expect(saved.madeThrough).toBe('2099-12-31')
-  })
-
-  it('can still go after the last one instead', async () => {
-    await show({})
-    const after = [...host.querySelectorAll('[aria-label="When this batch posts"] button')].find((b) => b.textContent?.startsWith('After')) as HTMLButtonElement
-    await act(async () => after.click())
-    expect(makeButton().textContent).toMatch(/Jan 1/)
+    await settle()
+    expect(onMake).toHaveBeenCalledTimes(1)
+    const videos = onMake.mock.calls[0][2] as { batch: { date: string } }[]
+    expect(videos.map((v) => v.batch.date)).toEqual([4, 4, 4, 5, 5, 5, 6, 6, 6].map(iso))
   })
 })

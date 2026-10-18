@@ -31,7 +31,16 @@ export interface BatchBank {
   headlines: string[]
   music: BankFile[]
   perDay: number
+  /** No longer used: the batch keeps going (batchRun.ts) instead of being
+   *  made for a number of days. Kept so banks saved before still load. */
   days: number
+  /** The batch keeps going (batchRun.ts): the next days are made whenever
+   *  the app is open, until every different video is made or he stops it. */
+  running?: boolean
+  /** How many videos the batch has put on each day still to come, by date. */
+  filled?: Record<string, number>
+  /** Why the last top-up couldn't be made, until one is. */
+  runProblem?: string
   /** How often each item has gone into a video: files by id, headlines by
    *  their words. */
   used: Record<string, number>
@@ -42,11 +51,11 @@ export interface BatchBank {
   made?: string[]
   /** The last day a batch has been made for. */
   madeThrough?: string
-  /** The next batch goes on top of the ones running, on the same days from
-   *  today - to post more a day - rather than after the last one. Absent
-   *  means on top. */
+  /** No longer used (batches stacked on top of each other, before a batch
+   *  kept going). */
   stack?: boolean
-  /** How many a day the last batch made posts. */
+  /** How many a day the batches made before days were counted (`filled`)
+   *  put on each of their days. */
   lastPerDay?: number
   /** Every different video its reactions and products could make has been
    *  made, so they were cleared out for new footage: how many videos that
@@ -380,11 +389,6 @@ export function filesOf(bank: { reaction: BankFile; product: BankFile; steps?: {
   return [bank.reaction.id, bank.product.id, ...(bank.steps ?? []).map((s) => s.file.id)]
 }
 
-const minutes = (time: string) => {
-  const [h, m] = time.split(':').map(Number)
-  return h * 60 + m
-}
-
 /** The campaign's times as a sorted list, bad ones out. */
 export function cleanTimes(times: string[]): string[] {
   return [...new Set(times.map((t) => t.trim()).filter((t) => /^([01]\d|2[0-3]):[0-5]\d$/.test(t)))].sort()
@@ -416,38 +420,6 @@ export const LEAD_MINUTES = 60
 export interface BatchSlot {
   date: string
   time: string
-}
-
-/** Where a batch goes: `days` days of `perDay` times each, from the day
- *  after the last batch - or from today, with only the times still an hour
- *  or more away, when there is no batch yet for today. `times` is his own
- *  list, or a rule giving each day its own (a campaign's random window). */
-export function planSlots({
-  times,
-  perDay,
-  days,
-  madeThrough,
-  now = new Date(),
-}: {
-  times: string[] | ((date: string) => string[])
-  perDay: number
-  days: number
-  madeThrough?: string
-  now?: Date
-}): BatchSlot[] {
-  const today = todayHere(now)
-  const nowMinutes = now.getHours() * 60 + now.getMinutes()
-  const daily = (date: string) => dayTimes(typeof times === 'function' ? times(date) : times, perDay)
-  if ((Array.isArray(times) && daily(today).length === 0) || days < 1) return []
-  let first = madeThrough && madeThrough >= today ? addDays(madeThrough, 1) : today
-  const leftOn = (date: string) => daily(date).filter((t) => date !== today || minutes(t) >= nowMinutes + LEAD_MINUTES)
-  if (leftOn(first).length === 0) first = addDays(first, 1)
-  const slots: BatchSlot[] = []
-  for (let d = 0; d < days; d++) {
-    const date = addDays(first, d)
-    for (const time of leftOn(date)) slots.push({ date, time })
-  }
-  return slots
 }
 
 /** "Wed Sep 30" - how a day reads on the phone. */

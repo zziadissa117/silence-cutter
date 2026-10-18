@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { combos, dayTimes, emptyBank, filesOf, headlinesFrom, pickBatch, planSlots, spend, usesSteps, type BankFile, type BatchBank } from './batch'
+import { combos, dayTimes, emptyBank, filesOf, headlinesFrom, pickBatch, spend, usesSteps, type BankFile, type BatchBank } from './batch'
 
 const files = (prefix: string, n: number): BankFile[] =>
   Array.from({ length: n }, (_, i) => ({ id: `${prefix}${i + 1}`, name: `${prefix}${i + 1}.mov`, type: 'video/quicktime', size: 1 }))
@@ -159,45 +159,6 @@ describe('when a batch posts', () => {
     expect(dayTimes(polsia, 6)).toEqual(polsia)
     expect(dayTimes(polsia, 9)).toEqual(polsia)
     expect(dayTimes(['20:00', '08:00', 'nope'], 1)).toEqual(['08:00'])
-  })
-
-  it('starts today with the times still an hour away, then whole days', () => {
-    const now = new Date(2026, 8, 30, 12, 30)
-    const slots = planSlots({ times: polsia, perDay: 3, days: 2, now })
-    expect(slots).toEqual([
-      { date: '2026-09-30', time: '14:00' },
-      { date: '2026-09-30', time: '20:00' },
-      { date: '2026-10-01', time: '08:00' },
-      { date: '2026-10-01', time: '14:00' },
-      { date: '2026-10-01', time: '20:00' },
-    ])
-  })
-
-  it('starts tomorrow when today has no time left', () => {
-    const slots = planSlots({ times: polsia, perDay: 3, days: 1, now: new Date(2026, 8, 30, 19, 30) })
-    expect(slots.map((s) => s.date)).toEqual(['2026-10-01', '2026-10-01', '2026-10-01'])
-  })
-
-  it('carries on the day after the last batch', () => {
-    const slots = planSlots({ times: polsia, perDay: 3, days: 7, madeThrough: '2026-10-06', now: new Date(2026, 8, 30, 9, 0) })
-    expect(slots[0]).toEqual({ date: '2026-10-07', time: '08:00' })
-    expect(slots).toHaveLength(21)
-    expect(slots[20]).toEqual({ date: '2026-10-13', time: '20:00' })
-  })
-
-  it('makes nothing with no posting times', () => {
-    expect(planSlots({ times: [], perDay: 3, days: 7 })).toEqual([])
-  })
-
-  it("takes each day's own times from a campaign's random window", () => {
-    const own: Record<string, string[]> = { '2026-10-07': ['11:12', '16:40'], '2026-10-08': ['09:55', '19:03'] }
-    const slots = planSlots({ times: (date) => own[date] ?? [], perDay: 2, days: 2, madeThrough: '2026-10-06', now: new Date(2026, 8, 30, 9, 0) })
-    expect(slots).toEqual([
-      { date: '2026-10-07', time: '11:12' },
-      { date: '2026-10-07', time: '16:40' },
-      { date: '2026-10-08', time: '09:55' },
-      { date: '2026-10-08', time: '19:03' },
-    ])
   })
 })
 

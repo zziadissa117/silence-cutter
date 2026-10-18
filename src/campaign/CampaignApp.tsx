@@ -28,7 +28,8 @@ import { BankView } from './BankView'
 import { MusicBankView } from './MusicBankView'
 import { VideoBankView } from './VideoBankView'
 import { loadMusicBank, songFile } from './musicBank'
-import { BatchView, type BatchVideo } from './BatchView'
+import { BatchView } from './BatchView'
+import { oneAtATime, takenBy, topUp, type BatchVideo } from './batchRun'
 import { filesOf, type BankFile } from './batch'
 import { CampaignsView } from './CampaignsView'
 import { CloudError, currentSession, signOut, syncNow, type Session, type SyncState } from './cloud'
@@ -161,6 +162,7 @@ import {
   reopenJob,
   loadBank,
   loadBatchBank,
+  saveBatchBank,
   loadOverlayFile,
   saveOverlayFile,
   loadCutout,
@@ -2142,6 +2144,52 @@ export function CampaignApp() {
         .then(() => sweepBank())
     }
   }
+
+  const addBatchRef = useRef(addBatch)
+  addBatchRef.current = addBatch
+  // Batches that keep going (batchRun.ts): whenever the app is open - opened,
+  // back on screen, or every half hour - each running batch makes the days it
+  // is missing. The Batch tab does its own campaign while it is open, so this
+  // waits until it is closed.
+  useEffect(() => {
+    const profile = posting?.profile
+    if (!profile || !campaigns || tab === 'batch') return
+    let alive = true
+    const run = async () => {
+      for (const owner of campaigns) {
+        if (!alive || document.visibilityState !== 'visible') return
+        const place = placeFor(profile, owner.id)
+        if (place.accounts.length === 0) continue
+        // Read inside the lock, so it is never a copy from before another
+        // top-up of it saved.
+        await oneAtATime(owner.id, async () => {
+          const bank = await loadBatchBank(owner.id)
+          if (!alive || !bank?.running) return null
+          const angle = owner.angles.find((a) => a.id === bank.angleId) ?? owner.angles[0]
+          return topUp({
+            bank,
+            campaign: owner,
+            place,
+            profileId: profile.id,
+            taken: takenBy(lastPosts(), jobsRef.current, owner.id),
+            save: saveBatchBank,
+            make: (videos, retire) => addBatchRef.current(owner, angle, videos, retire),
+          })
+        }).catch(() => {})
+      }
+    }
+    void run()
+    const onShow = () => {
+      if (document.visibilityState === 'visible') void run()
+    }
+    document.addEventListener('visibilitychange', onShow)
+    const timer = window.setInterval(() => void run(), 30 * 60_000)
+    return () => {
+      alive = false
+      document.removeEventListener('visibilitychange', onShow)
+      window.clearInterval(timer)
+    }
+  }, [posting?.profile, campaigns, tab])
 
   /** Recordings he joined before adding: one video, put together first,
    *  then heard and sorted like any other he drops in. */
