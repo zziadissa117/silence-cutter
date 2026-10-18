@@ -27,6 +27,16 @@ vi.mock('./store', async (original) => {
   return { ...stubs, loadBatchBank: vi.fn(async () => structuredClone(storedBank)), saveBatchBank: vi.fn(async () => undefined) }
 })
 
+vi.mock('./posting', async (original) => {
+  const real = await original<Record<string, unknown>>()
+  return {
+    ...real,
+    // The server's posts: whatever the test left as the last copy seen.
+    listPosts: vi.fn(async () => JSON.parse(localStorage.getItem('cutter.posts') ?? '[]')),
+    stopPostsNow: vi.fn(async (posts: unknown[]) => ({ stopped: posts.length, unposting: 0, failed: [] })),
+  }
+})
+
 import { BatchView } from './BatchView'
 import type { Job } from './jobs'
 import type { Campaign } from './look'
@@ -138,7 +148,7 @@ describe('the Start button', () => {
 
 describe('videos a day', () => {
   const more = () => host.querySelector('[aria-label="More a day"]') as HTMLButtonElement
-  const value = () => host.querySelector('[aria-label="Videos a day"]')?.textContent
+  const value = () => (host.querySelector('[aria-label="Videos a day"]') as HTMLInputElement | null)?.value
   const upTo = async (n: number) => {
     while (Number(value()) < n) await act(async () => more().click())
   }
@@ -239,5 +249,71 @@ describe('a batch that keeps going', () => {
     expect(onMake).toHaveBeenCalledTimes(1)
     const videos = onMake.mock.calls[0][2] as { batch: { date: string } }[]
     expect(videos.map((v) => v.batch.date)).toEqual([4, 4, 4, 5, 5, 5, 6, 6, 6].map(iso))
+  })
+})
+
+describe('changing the number while it runs', () => {
+  const week = (n: number) => Object.fromEntries([0, 1, 2, 3, 4, 5, 6].map((d) => [iso(d), n]))
+  const times = ['12:00', '14:00', '16:00', '18:00', '20:00']
+  const posts = [1, 2, 3, 4, 5, 6].flatMap((d) =>
+    times.map((t, i) => {
+      const at = new Date(`${iso(d)}T${t}:00`)
+      return { id: `${d}-${i}`, key: `k${d}-${i}`, campaignId: 'inflow', status: 'scheduled', postAt: at.toISOString(), batch: { id: 'b', date: iso(d), time: t, size: 30 } }
+    }),
+  )
+  const field = () => host.querySelector('[aria-label="Videos a day"]') as HTMLInputElement
+  const type = async (text: string) => {
+    const set = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!
+    await act(async () => {
+      set.call(field(), text)
+      field().dispatchEvent(new Event('input', { bubbles: true }))
+    })
+  }
+
+  beforeEach(async () => {
+    localStorage.setItem('cutter.posts', JSON.stringify(posts))
+    const { stopPostsNow } = await import('./posting')
+    vi.mocked(stopPostsNow).mockClear()
+  })
+
+  it('takes the extra videos back out of the days ahead when he lowers it', async () => {
+    storedBank = { ...bank, perDay: 5, running: true, filled: { ...week(5), [iso(0)]: 0 } }
+    const { onMake } = await show({})
+    await type('2')
+    await settle()
+    const { stopPostsNow } = await import('./posting')
+    const stopped = vi.mocked(stopPostsNow).mock.calls[0][0] as { batch: { date: string } }[]
+    // 3 of the 5 on each of the 6 days ahead.
+    expect(stopped).toHaveLength(18)
+    expect((await savedBank()).filled?.[iso(3)]).toBe(2)
+    // Nothing new is made for the days it just lowered.
+    expect(onMake.mock.calls.flatMap((c) => c[2] as { batch: { date: string } }[]).filter((v) => v.batch.date > iso(0))).toEqual([])
+  })
+
+  it('pauses at 0: everything not out yet comes out, and nothing more is made', async () => {
+    storedBank = { ...bank, perDay: 5, running: true, filled: { ...week(5), [iso(0)]: 0 } }
+    const { onMake } = await show({})
+    await type('0')
+    await settle()
+    const { stopPostsNow } = await import('./posting')
+    expect(vi.mocked(stopPostsNow).mock.calls[0][0]).toHaveLength(30)
+    expect(makeButton().textContent).toBe('Paused · 0 a day')
+    expect(host.textContent).toContain('Paused: nothing more goes out until you raise it.')
+    expect(onMake).not.toHaveBeenCalled()
+  })
+
+  it('goes straight to any number he types', async () => {
+    // Enough different videos for a week at 25.
+    storedBank = { ...bank, headlines: Array.from({ length: 30 }, (_, i) => `line ${i}`), perDay: 2, running: true, filled: week(2) }
+    const { onMake } = await show({})
+    await type('2')
+    await type('25')
+    await settle()
+    expect(field().value).toBe('25')
+    expect((await savedBank()).perDay).toBe(25)
+    expect(onMake).toHaveBeenCalledTimes(1)
+    // Typing 2 then 5 made one top-up, for 25 a day.
+    const videos = onMake.mock.calls[0][2] as { batch: { date: string } }[]
+    expect(videos.filter((v) => v.batch.date === iso(6)).length).toBe(23)
   })
 })

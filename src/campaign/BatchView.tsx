@@ -37,6 +37,7 @@ import {
   batchTimesOn,
   lastPosts,
   listPosts,
+  stopPostsNow,
   ownDayTimes,
   placeFor,
   timeLabel,
@@ -46,7 +47,21 @@ import {
   type ServerPost,
 } from './posting'
 import { deleteBankFile, loadBankFile, loadBatchBank, saveBankFile, saveBatchBank } from './store'
-import { leftToMake, missingFor, oneAtATime, runSlots, settled, takenBy, topUp, AHEAD_DAYS, type BatchVideo } from './batchRun'
+import {
+  AHEAD_DAYS,
+  countedDays,
+  dayVideos,
+  leftToMake,
+  missingFor,
+  oneAtATime,
+  overfull,
+  runSlots,
+  settled,
+  takenBy,
+  topUp,
+  trimPlan,
+  type BatchVideo,
+} from './batchRun'
 import { FormulaPreview } from './FormulaPreview'
 import { CORNER_SIZES, DEFAULT_CORNER } from './greenScreenRender'
 import {
@@ -169,6 +184,8 @@ export function BatchView({
   bankRef.current = bank
   /** A top-up of this campaign's batch is being worked out or handed over. */
   const [topping, setTopping] = useState(false)
+  /** What he is typing as videos a day, until it is a number. */
+  const [perDayDraft, setPerDayDraft] = useState<string | null>(null)
   /** The Set order sheet is open. */
   const [ordering, setOrdering] = useState(false)
   /** The batch the engine is making for this campaign, as it last said. */
@@ -393,7 +410,7 @@ export function BatchView({
   const failed = jobs.filter((j) => j.status === 'failed' || j.status === 'held')
   const total = [...new Map(jobs.map((j) => [j.batch!.id, j.batch!.size])).values()].reduce((a, b) => a + b, 0)
   const working = jobs.find((j) => j.status === 'working')
-  const canStart = Boolean(bank) && !running && missing.length === 0 && saving === null && !topping
+  const canStart = Boolean(bank) && !running && perDay > 0 && missing.length === 0 && saving === null && !topping
 
   /** Makes the days the batch is missing (batchRun.topUp) - on this phone or
    *  on the engine - unless a top-up of it is already going. */
@@ -436,9 +453,48 @@ export function BatchView({
     if (bank) keep({ ...bank, running: false })
   }
 
-  // While the tab is open, a running batch makes what it's missing on its
-  // own: a day gone by, or more a day picked (WhenDue).
-  const dueNow = running && due.length > 0 && missing.length === 0 && saving === null && !topping
+  /** He lowered the number: the extra videos come back out of the days
+   *  ahead (batchRun.trimPlan) - jobs not started yet are dropped, posts not
+   *  out yet are stopped, the same way Posts stops them. */
+  const runTrim = (from: BatchBank) => {
+    setTopping(true)
+    setSaving('Taking the extra videos out of the days ahead…')
+    void oneAtATime(campaign.id, async () => {
+      // The engine still making videos for those days would put them back:
+      // it stops, and the days count what it has really sent.
+      const stopEngine = from.layout === 'engine' && engineBusy && from.engineJob
+      if (stopEngine) await stopEngineJob(from.engineJob!)
+      const fresh = await listPosts()
+      setPosts(fresh)
+      const videos = dayVideos(fresh, jobs, campaign.id)
+      const plan = trimPlan(stopEngine ? { ...from, filled: countedDays(videos) } : from, videos)
+      for (const v of plan.remove) if (v.kind === 'job') onRemove(v.id)
+      const outcome = await stopPostsNow(plan.remove.flatMap((v) => (v.post ? [v.post] : [])))
+      const filled = { ...plan.filled }
+      for (const { post } of outcome.failed) if (post.batch) filled[post.batch.date] = (filled[post.batch.date] ?? 0) + 1
+      const next = { ...(bankRef.current ?? from), filled }
+      setBank(next)
+      bankRef.current = next
+      await saveBatchBank(next)
+      if (outcome.failed.length > 0) setProblem(`${outcome.failed.length} couldn't be taken out: ${outcome.failed[0].reason}`)
+      void listPosts().then(setPosts).catch(() => {})
+    })
+      .catch((error: unknown) => setProblem(error instanceof Error ? error.message : String(error)))
+      .finally(() => {
+        setSaving(null)
+        setTopping(false)
+      })
+  }
+
+  // While the tab is open, a running batch keeps up with the number on its
+  // own (WhenDue): days over it lose the extra first, then a day gone by or
+  // a higher number is made.
+  const over = running && bank ? overfull(bank) : []
+  const trimNow = over.length > 0 && saving === null && !topping
+  const dueNow = running && over.length === 0 && due.length > 0 && missing.length === 0 && saving === null && !topping
+  const setPerDay = (n: number) => {
+    if (bank && Number.isFinite(n)) keep({ ...bank, perDay: Math.min(BATCH_MAX_PER_DAY, Math.max(0, Math.round(n))) })
+  }
 
   const bankSize = bank
     ? [...bank.reactions, ...bank.products, ...bank.music, ...(bank.steps ?? []).flatMap((s) => s.files)].reduce((n, f) => n + f.size, 0)
@@ -557,10 +613,12 @@ export function BatchView({
         : engineBusy
           ? 'The engine is making the next days'
           : running
-            ? `Running · ${perDay} a day`
+            ? perDay === 0
+              ? 'Paused · 0 a day'
+              : `Running · ${perDay} a day`
             : `Start · ${perDay} a day`
   // How long the footage lasts at this many a day.
-  const daysLeft = Number.isFinite(left) ? Math.ceil(left / Math.max(1, perDay)) : Infinity
+  const daysLeft = Number.isFinite(left) && perDay > 0 ? Math.ceil(left / perDay) : Infinity
 
   return (
     <section className="screen batch">
@@ -821,40 +879,58 @@ export function BatchView({
                   type="button"
                   className="btn small icon-btn"
                   aria-label="Fewer a day"
-                  disabled={bank.perDay <= 1}
-                  onClick={() => keep({ ...bank, perDay: bank.perDay - 1 })}
+                  disabled={bank.perDay <= 0}
+                  onClick={() => setPerDay(bank.perDay - 1)}
                 >
                   −
                 </button>
-                <span className="stepper-value" aria-label="Videos a day">
-                  {bank.perDay}
-                </span>
+                <input
+                  type="number"
+                  inputMode="numeric"
+                  className="stepper-value"
+                  aria-label="Videos a day"
+                  min={0}
+                  max={BATCH_MAX_PER_DAY}
+                  value={perDayDraft ?? String(bank.perDay)}
+                  onFocus={(e) => e.target.select()}
+                  onChange={(e) => {
+                    setPerDayDraft(e.target.value)
+                    if (e.target.value.trim() !== '') setPerDay(Number(e.target.value))
+                  }}
+                  onBlur={() => setPerDayDraft(null)}
+                />
                 <button
                   type="button"
                   className="btn small icon-btn"
                   aria-label="More a day"
                   disabled={bank.perDay >= BATCH_MAX_PER_DAY}
-                  onClick={() => keep({ ...bank, perDay: bank.perDay + 1 })}
+                  onClick={() => setPerDay(bank.perDay + 1)}
                 >
                   +
                 </button>
               </div>
-              <span className={`hint${times.length < bank.perDay ? ' warn-text' : ''}`}>
-                {times.length < bank.perDay
-                  ? `The window only fits ${times.length} a day, 10 minutes apart - widen it in the campaign's Posting. `
-                  : ''}
-                {random
-                  ? `At random times inside the window, different each day - today ${times.map(timeLabel).join(', ')}.`
-                  : times.length > place.times.length
-                    ? `At your times and random ones in between - today ${times.map(timeLabel).join(', ')}.`
-                    : `At ${times.map(timeLabel).join(', ')}.`}
-              </span>
+              {bank.perDay === 0 ? (
+                <span className="hint">Paused: nothing more goes out until you raise it. Your clips and what's left to make are kept.</span>
+              ) : (
+                <span className={`hint${times.length < bank.perDay ? ' warn-text' : ''}`}>
+                  {times.length < bank.perDay
+                    ? `The window only fits ${times.length} a day, 10 minutes apart - widen it in the campaign's Posting. `
+                    : ''}
+                  {random
+                    ? `At random times inside the window, different each day - today ${times.map(timeLabel).join(', ')}.`
+                    : times.length > place.times.length
+                      ? `At your times and random ones in between - today ${times.map(timeLabel).join(', ')}.`
+                      : `At ${times.map(timeLabel).join(', ')}.`}
+                </span>
+              )}
+              {running ? <span className="hint">Change it any time - the week ahead follows at once, up or down.</span> : null}
             </div>
           </div>
 
           {problem ? <p className="error">{problem}</p> : null}
           {notice ? <p className="notice">{notice}</p> : null}
 
+          <WhenDue due={trimNow} signal={`${perDay}|${over.join(',')}`} run={() => bankRef.current && runTrim(bankRef.current)} />
           <WhenDue due={dueNow} signal={`${perDay}|${due.length}`} run={() => bankRef.current && runTopUp(bankRef.current)} />
           <button type="button" className="btn primary batch-make" disabled={!canStart || busyMaking} onClick={start}>
             {makeLabel}
@@ -920,7 +996,7 @@ export function BatchView({
               ) : null}
             </div>
           ) : null}
-          {different > 0 && Number.isFinite(different) ? (
+          {different > 0 && Number.isFinite(different) && perDay > 0 ? (
             <p className={`hint new-post-to batch-left${daysLeft <= AHEAD_DAYS ? ' warn-text' : ''}`}>
               {left} of {different} different videos left - {daysLeft} day{daysLeft === 1 ? '' : 's'} at {perDay} a day.
               {daysLeft <= AHEAD_DAYS ? ' After them, film new reactions and product showcases.' : ''}

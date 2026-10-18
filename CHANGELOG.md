@@ -3,6 +3,23 @@
 Newest first. Every change says what it does, how to use it, and how it works
 underneath. Kept up to date with each commit.
 
+## Batch: change videos a day any time - up, down, or 0 to pause - and it follows at once
+**What:** while a batch runs, change **Videos a day** whenever you like and the week ahead follows straight away:
+- **Up** (2 -> 10 -> 25): the extra videos are added to the days already made, as before.
+- **Down** (25 -> 2): the extra videos come back out of the days ahead, leaving the rest spread through each day.
+  Ones not made yet are dropped; ones waiting or scheduled are stopped, the same way Posts stops them. One already
+  posted, or being made right that second, stays.
+- **0**: paused. Everything not out yet comes out, nothing new is made, your clips and what's left to make are kept.
+  Raise it again and it picks up from there - no need to tap Start.
+- **Tap the number to type it** (2 to 25 in one go) instead of tapping + 23 times. The +/- still work; quick taps
+  make one change, not one per tap.
+On the engine, lowering also stops the batch it is making, then hands it the days again at the new number.
+Only ./deploy.sh is needed.
+**How:** `batchRun.ts` `overfull`, `dayVideos` (server posts + jobs here, one per key), `trimPlan` (keeps an even
+spread; never posted, never the job being made), `countedDays` (after the engine is stopped). `BatchView.runTrim`
+(`WhenDue`, before any top-up); 0 allowed (`BATCH_MAX_PER_DAY` still the top); the number is an input. Tests in
+`batchRun.test.ts` and `batchView.test.tsx` (lower, pause, typing 25).
+
 ## Batch: no more Days - pick videos a day, tap Start, it keeps going
 **What:** the Batch tab's Posting is now just **Videos a day**. Days and the "On top / After" choice are gone. Tap
 **Start**: the next 7 days are made straight away. After that, every time you open the Cutter, the batch makes the

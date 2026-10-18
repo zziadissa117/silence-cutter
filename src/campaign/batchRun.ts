@@ -4,7 +4,9 @@
 // every time the Cutter is opened after that, the days still missing are made
 // - each day filled up to his number, one already holding some topped up -
 // until every different video his footage can make has been made, or he
-// stops it. Raising the number tops up the days already made too.
+// stops it. Changing the number works at once, both ways: raising it tops up
+// the days already made, lowering it takes the extra videos back out of them
+// (never one already posted), and 0 pauses it.
 //
 // Each day counts what this batch has put on it (BatchBank.filled), kept on
 // this phone with the bank: a top-up never waits on the server, and a day is
@@ -33,7 +35,7 @@ import { makeOnEngine, saveEngineSeries, sendFootage } from './engine'
 import { DEFAULT_CORNER } from './greenScreenRender'
 import type { Job } from './jobs'
 import { NO_POSTING, type Campaign } from './look'
-import { BATCH_MAX_PER_DAY, batchTimesOn, stackTimesOn, takenTimes, type CampaignPlace, type ServerPost } from './posting'
+import { BATCH_MAX_PER_DAY, batchTimesOn, stackTimesOn, stoppable, takenTimes, type CampaignPlace, type ServerPost } from './posting'
 import { loadBankFile, type JobBatch } from './store'
 
 /** How many days are kept made ahead: a week of posts waiting, so a few days
@@ -281,4 +283,86 @@ export async function topUp({
   } finally {
     say(null)
   }
+}
+
+/** One of the batch's videos on a day still to come: being made on this
+ *  phone (a job) or on the server (a post), and whether it can still be
+ *  taken out - not once it is posted, nor while this phone is making it. */
+export interface DayVideo {
+  kind: 'job' | 'post'
+  id: string
+  date: string
+  time: string
+  removable: boolean
+  post?: ServerPost
+}
+
+/** Jobs that can go without stopping anything: not started, or stuck. */
+const UNSTARTED = new Set(['queued', 'held', 'failed'])
+
+/** The campaign's batch videos from today on: its posts on the server, and
+ *  the jobs on this phone not sent yet. */
+export function dayVideos(posts: readonly ServerPost[], jobs: readonly Job[], campaignId: string, now = new Date()): DayVideo[] {
+  const today = todayHere(now)
+  const out: DayVideo[] = []
+  const sent = new Set<string>()
+  for (const post of posts) {
+    if (post.campaignId !== campaignId || !post.batch || post.batch.date < today) continue
+    if (post.status === 'rejected' || post.status === 'failed') continue
+    sent.add(post.key)
+    const removable = stoppable([post], now.getTime()).length > 0
+    out.push({ kind: 'post', id: post.id, date: post.batch.date, time: post.batch.time, removable, post })
+  }
+  for (const job of jobs) {
+    if (job.campaignId !== campaignId || !job.batch || job.batch.date < today || sent.has(job.id)) continue
+    out.push({ kind: 'job', id: job.id, date: job.batch.date, time: job.batch.time, removable: UNSTARTED.has(job.status) })
+  }
+  return out
+}
+
+/** The days holding more than his number, from today on. */
+export function overfull(bank: Pick<BatchBank, 'perDay' | 'filled' | 'madeThrough' | 'lastPerDay'>, now = new Date()): string[] {
+  const today = todayHere(now)
+  const dates = new Set(Object.keys(bank.filled ?? {}).filter((d) => d >= today))
+  for (let d = 0; d < AHEAD_DAYS; d++) dates.add(addDays(today, d))
+  return [...dates].filter((date) => filledOn(bank, date) > bank.perDay).sort()
+}
+
+/** Which videos to take out so each day holds no more than his number: the
+ *  ones that leave the rest spread evenly through the day, among those that
+ *  can still go; and the days' counts after. A day that can't lose enough
+ *  (posted already, or being made right now) keeps the rest. */
+export function trimPlan(
+  bank: Pick<BatchBank, 'perDay' | 'filled' | 'madeThrough' | 'lastPerDay'>,
+  videos: readonly DayVideo[],
+  now = new Date(),
+): { remove: DayVideo[]; filled: Record<string, number> } {
+  const today = todayHere(now)
+  const filled: Record<string, number> = {}
+  for (const [date, n] of Object.entries(bank.filled ?? {})) if (date >= today) filled[date] = n
+  const remove: DayVideo[] = []
+  for (const date of overfull(bank, now)) {
+    const count = filledOn(bank, date)
+    const excess = count - bank.perDay
+    const day = videos.filter((v) => v.date === date).sort((a, b) => a.time.localeCompare(b.time))
+    const keep = new Set<number>()
+    for (let i = 0; i < bank.perDay; i++) keep.add(Math.min(day.length - 1, Math.round((i * day.length) / bank.perDay)))
+    const going = day.filter((v, i) => v.removable && !keep.has(i)).slice(0, excess)
+    // Not enough of those: the latest of the rest that can go.
+    for (const v of [...day].reverse()) if (going.length < excess && v.removable && !going.includes(v)) going.push(v)
+    remove.push(...going)
+    filled[date] = count - going.length
+  }
+  return { remove, filled }
+}
+
+/** The days from today on as they really are: how many of the batch's
+ *  videos each holds now - for after the engine was stopped partway, when
+ *  the days it hadn't reached hold fewer than were handed to it. */
+export function countedDays(videos: readonly DayVideo[], now = new Date()): Record<string, number> {
+  const today = todayHere(now)
+  const filled: Record<string, number> = {}
+  for (let d = 0; d < AHEAD_DAYS; d++) filled[addDays(today, d)] = 0
+  for (const v of videos) if (v.date >= today) filled[v.date] = (filled[v.date] ?? 0) + 1
+  return filled
 }

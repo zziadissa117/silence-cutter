@@ -560,6 +560,9 @@ html, body { overscroll-behavior-y: none; }
 .batch .post-caption.bank-headlines { margin: 8px 0 0; width: 100%; }
 .stepper { display: flex; align-items: center; gap: 14px; }
 .stepper-value { min-width: 28px; text-align: center; font-size: 22px; font-weight: 600; font-variant-numeric: tabular-nums; }
+input.stepper-value { width: 3.2em; min-height: 40px; padding: 0; border: 0; border-radius: 10px; background: transparent; color: inherit; font-family: inherit; -moz-appearance: textfield; appearance: textfield; }
+input.stepper-value:focus { background: var(--field); outline: none; }
+input.stepper-value::-webkit-inner-spin-button, input.stepper-value::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
 .btn.primary.batch-make { min-height: 52px; }
 .batch-progress, .batch-failed { display: flex; flex-direction: column; gap: 8px; }
 .batch-spent { border-color: var(--now); }

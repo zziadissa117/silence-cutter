@@ -208,6 +208,11 @@ the Batch tab for its own campaign while open (`WhenDue`, a moment after the las
 otherwise `CampaignApp` for every running campaign when the app opens, comes back on screen,
 and every 30 min. `oneAtATime`/`settled` keep the two from making the same days at once.
 Batch banks are on the phone with the footage, never synced, so a second phone never tops up.
+Lowering the number (or 0, a pause) works at once too: `overfull` finds the days over it,
+`dayVideos` lists the batch's videos on them (server posts + jobs here, one per key), and
+`trimPlan` picks the extra to take out, leaving the rest spread through the day - jobs not
+started are dropped, posts not out are stopped (`stopPostsNow`), posted or being-made ones stay.
+On the engine, a batch still being made is stopped first and the days recounted (`countedDays`).
 
 ## The engine (`engine/`, on Railway)
 

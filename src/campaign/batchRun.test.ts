@@ -8,7 +8,7 @@ vi.mock('./engine', () => ({
 vi.mock('./store', () => ({ loadBankFile: vi.fn(async () => null) }))
 
 import { emptyBank, type BankFile, type BatchBank } from './batch'
-import { AHEAD_DAYS, filledOn, planVideos, runSlots, takenBy, topUp } from './batchRun'
+import { AHEAD_DAYS, countedDays, dayVideos, filledOn, overfull, planVideos, runSlots, takenBy, topUp, trimPlan } from './batchRun'
 import { makeOnEngine } from './engine'
 import type { Job } from './jobs'
 import type { CampaignPlace, ServerPost } from './posting'
@@ -161,5 +161,61 @@ describe('the times a day already holds', () => {
     const jobs = [{ campaignId: 'c1', batch: { id: 'b', date: '2026-10-01', time: '18:30', size: 1 } }] as Job[]
     expect(takenBy(posts, jobs, 'c1')('2026-10-01')).toEqual(['14:00', '18:30'])
     expect(takenBy(posts, jobs, 'other')('2026-10-01')).toEqual([])
+  })
+})
+
+describe('lowering the number', () => {
+  const NOW = new Date(2026, 8, 30, 9, 0)
+  const post = (id: string, date: string, time: string, status: ServerPost['status'] = 'scheduled') =>
+    ({ id, key: `k-${id}`, campaignId: 'c1', status, postAt: `${date}T${time}:00`, batch: { id: 'b', date, time, size: 9 } }) as ServerPost
+  const job = (id: string, date: string, time: string, status: Job['status'] = 'queued') =>
+    ({ id, campaignId: 'c1', status, batch: { id: 'b', date, time, size: 9 } }) as Job
+
+  it('finds the days over it', () => {
+    const b = bank({ perDay: 2, filled: { '2026-09-30': 2, '2026-10-01': 5, '2026-10-02': 3 } })
+    expect(overfull(b, NOW)).toEqual(['2026-10-01', '2026-10-02'])
+    expect(overfull({ ...b, perDay: 0 }, NOW)).toEqual(['2026-09-30', '2026-10-01', '2026-10-02'])
+  })
+
+  it('takes out the extra, leaving the rest spread through the day', () => {
+    const times = ['11:00', '12:00', '13:00', '14:00', '15:00', '16:00', '17:00', '18:00', '19:00', '20:00']
+    const videos = dayVideos(times.map((t, i) => post(`p${i}`, '2026-10-01', t)), [], 'c1', NOW)
+    const plan = trimPlan(bank({ perDay: 2, filled: { '2026-10-01': 10 } }), videos, NOW)
+    expect(plan.remove).toHaveLength(8)
+    const kept = videos.filter((v) => !plan.remove.includes(v)).map((v) => v.time)
+    expect(kept).toEqual(['11:00', '16:00'])
+    expect(plan.filled['2026-10-01']).toBe(2)
+  })
+
+  it('never takes out one already posted, or one this phone is making', () => {
+    const videos = dayVideos(
+      [post('a', '2026-09-30', '08:00', 'posted'), post('b', '2026-09-30', '12:00'), post('c', '2026-09-30', '18:00')],
+      [job('j1', '2026-09-30', '20:00', 'working'), job('j2', '2026-09-30', '21:00')],
+      'c1',
+      NOW,
+    )
+    const plan = trimPlan(bank({ perDay: 0, filled: { '2026-09-30': 5 } }), videos, NOW)
+    expect(plan.remove.map((v) => v.id).sort()).toEqual(['b', 'c', 'j2'])
+    // The posted one and the one being made stay, and still count.
+    expect(plan.filled['2026-09-30']).toBe(2)
+  })
+
+  it('counts a video once when it is both a job here and a post on the server', () => {
+    const videos = dayVideos([post('p', '2026-10-01', '12:00')], [{ ...job('k-p', '2026-10-01', '12:00'), status: 'done' } as Job], 'c1', NOW)
+    expect(videos).toHaveLength(1)
+    expect(videos[0].kind).toBe('post')
+  })
+
+  it('leaves days gone by and other campaigns alone', () => {
+    const videos = dayVideos([post('old', '2026-09-29', '12:00'), { ...post('x', '2026-10-01', '12:00'), campaignId: 'c2' }], [], 'c1', NOW)
+    expect(videos).toEqual([])
+  })
+
+  it('after the engine stops partway, counts the days as they really are', () => {
+    const videos = dayVideos([post('a', '2026-09-30', '12:00'), post('b', '2026-10-01', '12:00')], [], 'c1', NOW)
+    const counted = countedDays(videos, NOW)
+    expect(counted['2026-09-30']).toBe(1)
+    expect(counted['2026-10-01']).toBe(1)
+    expect(counted['2026-10-06']).toBe(0)
   })
 })
