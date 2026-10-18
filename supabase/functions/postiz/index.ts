@@ -44,6 +44,8 @@
 //                  would come out of Postiz; with confirm (the account ids he saw) -> { stopped, removing, profile }:
 //                  its posts stopped, those accounts unticked, then deleted from Postiz in the background (and on
 //                  each tick) once its posts are out of Postiz - the result lands in settings.ended
+//   views          { profile }                  -> { accounts: { [accountId]: AccountViews } }  how each account's
+//                  videos are doing (views.ts), read from Postiz one account per tick, about once a day each
 //   tick           { secret }                   (the scheduler; no token)
 //   channels       { cutterCampaignId }         (the planner's server; no token - see bridgeAllowed)
 //                  -> { profiles: [{ id, inUse, accounts }] }  which Postiz channels a campaign holds
@@ -74,6 +76,7 @@ import { attachMove, summarise, type AttachMove } from './attach.ts'
 import { cleanMode, pickRecaption, recaptionMode } from './recaption.ts'
 import { cleanLimits, firstDayWithRoom, heldNote, releasable, split, usedOn, type Limits, type PostAccount } from './limits.ts'
 import { PENDING_STATUSES, channelReport, endPlan, isPending, splitStop, type EndPost, type Integration, type PendingPost } from './channels.ts'
+import { VIEWS_WINDOW_DAYS, dueAt, notRead, parseCache, readViews, remember, type ViewsCache } from './views.ts'
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!
 const SERVICE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
@@ -2242,10 +2245,71 @@ async function tick(): Promise<void> {
   await checkPosted(now)
   await remindReposts(now)
   await remind(now)
+  await refreshViews(now).catch((error) => console.error('reading views failed', error))
 
   // "Posts to approve" held back while he was told a moment ago.
   const { data: pending } = await db.from('cutter_profiles').select('id').eq('push_pending', true).limit(20)
   for (const row of pending ?? []) await sendWaiting(row.id)
+}
+
+// --- Views, for Analytics (views.ts) ---------------------------------------------
+
+const viewsKey = (profileId: string) => `views:${profileId}`
+
+async function loadViews(profileId: string): Promise<ViewsCache> {
+  const { data } = await db.from('cutter_config').select('value').eq('key', viewsKey(profileId)).maybeSingle()
+  return parseCache(data?.value)
+}
+
+async function saveViews(profileId: string, cache: ViewsCache): Promise<void> {
+  await db.from('cutter_config').upsert({ key: viewsKey(profileId), value: JSON.stringify(cache) }, { onConflict: 'key' })
+}
+
+/** The tick's share of Analytics: the one account whose views are most due,
+ *  read from Postiz. One question a tick, about once a day per account, so
+ *  reading views never takes what posting needs from Postiz's hourly
+ *  allowance. Only accounts a campaign posts to are read. */
+async function refreshViews(now: number): Promise<void> {
+  const [{ data: profiles }, { data: saved }] = await Promise.all([
+    db.from('cutter_profiles').select('id, accounts, settings'),
+    db.from('cutter_config').select('key, value').like('key', 'views:%'),
+  ])
+  const caches = new Map((saved ?? []).map((row: { key: string; value: string }) => [row.key, parseCache(row.value)]))
+  let pick: { profileId: string; account: Account; cache: ViewsCache; due: number } | null = null
+  for (const row of (profiles ?? []) as Pick<Profile, 'id' | 'accounts' | 'settings'>[]) {
+    const inUse = new Set(Object.values(row.settings?.campaigns ?? {}).flatMap((c) => c.accounts ?? []))
+    const cache = caches.get(viewsKey(row.id)) ?? { accounts: {} }
+    for (const account of row.accounts ?? []) {
+      if (account.disabled || !inUse.has(account.id)) continue
+      const due = dueAt(cache.accounts[account.id])
+      if (due <= now && (!pick || due < pick.due)) pick = { profileId: row.id, account, cache, due }
+    }
+  }
+  if (!pick) return
+  const { profileId, account, cache } = pick
+  try {
+    const { postiz: key } = await keysFor(profileId)
+    const metrics = await postiz<unknown>(key, 'GET', `/analytics/${encodeURIComponent(account.id)}?date=${VIEWS_WINDOW_DAYS}`)
+    const { count } = await db
+      .from('cutter_posts')
+      .select('id', { count: 'exact', head: true })
+      .eq('profile_id', profileId)
+      .eq('status', 'posted')
+      .gte('post_at', new Date(now - VIEWS_WINDOW_DAYS * 24 * 60 * MINUTE).toISOString())
+      .contains('accounts', [{ id: account.id }])
+    cache.accounts[account.id] = remember(cache.accounts[account.id], readViews(account.platform, metrics, count ?? 0), new Date(now))
+  } catch (error) {
+    // Too many questions this hour: left as it was, for a later tick.
+    if (error instanceof Problem && error.status === 429) return
+    cache.accounts[account.id] = notRead(cache.accounts[account.id], error instanceof Error ? error.message : String(error), new Date(now))
+  }
+  await saveViews(profileId, cache)
+}
+
+/** What the Analytics tab shows: this login's accounts' views as last read. */
+async function views(profile: Profile): Promise<Response> {
+  const cache = await loadViews(profile.id)
+  return reply({ accounts: cache.accounts })
 }
 
 /** Asks Postiz how the posts that were due went: posted (with links), or
@@ -2496,6 +2560,8 @@ Deno.serve(async (req) => {
         return await stopPicked(profile, body)
       case 'end-campaign':
         return await endCampaign(profile, body)
+      case 'views':
+        return await views(profile)
       default:
         return reply({ error: 'Unknown action.' }, 400)
     }

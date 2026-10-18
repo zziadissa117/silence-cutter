@@ -29,7 +29,9 @@ import { MusicBankView } from './MusicBankView'
 import { VideoBankView } from './VideoBankView'
 import { loadMusicBank, songFile } from './musicBank'
 import { BatchView } from './BatchView'
-import { oneAtATime, takenBy, topUp, type BatchVideo } from './batchRun'
+import { oneAtATime, overfull, takenBy, topUp, trimDown, type BatchVideo } from './batchRun'
+import { AnalyticsView, answerSuggestion, saveTarget, useCampaignRows } from './AnalyticsView'
+import type { ViewsByAccount } from './analytics'
 import { filesOf, type BankFile } from './batch'
 import { CampaignsView } from './CampaignsView'
 import { CloudError, currentSession, signOut, syncNow, type Session, type SyncState } from './cloud'
@@ -106,6 +108,8 @@ import {
   disconnect as disconnectPosting,
   isBeingRemade,
   lastPosts,
+  lastViews,
+  listViews,
   attachAccounts,
   attachSummary,
   listPosts,
@@ -2147,10 +2151,13 @@ export function CampaignApp() {
 
   const addBatchRef = useRef(addBatch)
   addBatchRef.current = addBatch
+  /** Runs every batch's top-up now - after its number changed from the
+   *  Analytics tab, say. Set by the effect below. */
+  const runBatchesRef = useRef<() => void>(() => {})
   // Batches that keep going (batchRun.ts): whenever the app is open - opened,
-  // back on screen, or every half hour - each running batch makes the days it
-  // is missing. The Batch tab does its own campaign while it is open, so this
-  // waits until it is closed.
+  // back on screen, or every half hour - each running batch keeps up with its
+  // number: days over it lose the extra, days missing are made. The Batch tab
+  // does its own campaign while it is open, so this waits until it is closed.
   useEffect(() => {
     const profile = posting?.profile
     if (!profile || !campaigns || tab === 'batch') return
@@ -2163,8 +2170,11 @@ export function CampaignApp() {
         // Read inside the lock, so it is never a copy from before another
         // top-up of it saved.
         await oneAtATime(owner.id, async () => {
-          const bank = await loadBatchBank(owner.id)
+          let bank = await loadBatchBank(owner.id)
           if (!alive || !bank?.running) return null
+          if (overfull(bank).length > 0) {
+            ;({ bank } = await trimDown({ bank, campaignId: owner.id, jobs: jobsRef.current, removeJob, save: saveBatchBank }))
+          }
           const angle = owner.angles.find((a) => a.id === bank.angleId) ?? owner.angles[0]
           return topUp({
             bank,
@@ -2179,6 +2189,7 @@ export function CampaignApp() {
       }
     }
     void run()
+    runBatchesRef.current = () => void run()
     const onShow = () => {
       if (document.visibilityState === 'visible') void run()
     }
@@ -2186,10 +2197,57 @@ export function CampaignApp() {
     const timer = window.setInterval(() => void run(), 30 * 60_000)
     return () => {
       alive = false
+      runBatchesRef.current = () => {}
       document.removeEventListener('visibilitychange', onShow)
       window.clearInterval(timer)
     }
-  }, [posting?.profile, campaigns, tab])
+  }, [posting?.profile, campaigns, tab]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Analytics: each account's views as the server last read them (views.ts),
+  // fetched when the app opens, comes back on screen, and every half hour.
+  const [accountViews, setAccountViews] = useState<ViewsByAccount>(() => lastViews())
+  const [viewsLoading, setViewsLoading] = useState(false)
+  /** Bumped to read the batches again: after a change from Analytics, and
+   *  whenever Analytics opens (the Batch tab changes them too). */
+  const [bankVersion, setBankVersion] = useState(0)
+  useEffect(() => {
+    if (!posting?.profile) return
+    let alive = true
+    const load = () => {
+      setViewsLoading(true)
+      void listViews()
+        .then((got) => {
+          if (alive) setAccountViews(got)
+        })
+        .catch(() => {})
+        .finally(() => {
+          if (alive) setViewsLoading(false)
+        })
+    }
+    load()
+    const onShow = () => {
+      if (document.visibilityState === 'visible') load()
+    }
+    document.addEventListener('visibilitychange', onShow)
+    const timer = window.setInterval(load, 30 * 60_000)
+    return () => {
+      alive = false
+      document.removeEventListener('visibilitychange', onShow)
+      window.clearInterval(timer)
+    }
+  }, [posting?.profile])
+  useEffect(() => {
+    if (tab === 'analytics') setBankVersion((v) => v + 1)
+  }, [tab])
+  const analyticsRows = useCampaignRows(campaigns, posting?.profile ?? null, accountViews, bankVersion)
+  /** Yes (the new number) or Not now (null) to a suggestion: the batch
+   *  follows a yes at once. */
+  const answerRate = (campaignId: string, to: number | null) =>
+    void answerSuggestion(campaignId, to).then(() => {
+      setBankVersion((v) => v + 1)
+      if (to !== null) runBatchesRef.current()
+    })
+  const setViewTarget = (campaignId: string, target: number | null) => void saveTarget(campaignId, target).then(() => setBankVersion((v) => v + 1))
 
   /** Recordings he joined before adding: one video, put together first,
    *  then heard and sorted like any other he drops in. */
@@ -3154,6 +3212,15 @@ export function CampaignApp() {
         <VideoBankView />
         <MusicBankView />
       </>
+    ) : tab === 'analytics' ? (
+      <AnalyticsView
+        rows={analyticsRows}
+        profile={posting?.profile ?? null}
+        views={accountViews}
+        loading={viewsLoading}
+        onAnswer={answerRate}
+        onTarget={setViewTarget}
+      />
     ) : tab === 'batch' ? (
       <BatchView
         campaigns={campaigns}
@@ -3224,7 +3291,7 @@ export function CampaignApp() {
         <UpdateBanner safeToReload={jobs.every((j) => j.status === 'held' || j.status === 'failed')} />
         {screen}
       </main>
-      {inFlow ? null : <TabBar tab={tab} onTab={setTab} />}
+      {inFlow ? null : <TabBar tab={tab} onTab={setTab} dots={{ analytics: analyticsRows.some((r) => r.suggestion) }} />}
     </>
   )
 }

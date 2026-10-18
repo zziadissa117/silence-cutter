@@ -38,6 +38,16 @@ export class FakeError extends Error {
 export async function fakePostiz(db: Db, key: string, method: string, path: string, body: unknown): Promise<unknown> {
   const owner = key
   if (method === 'GET' && path === '/integrations') return ACCOUNTS
+  // Views for a test account: a steady few hundred a video.
+  const analytics = path.match(/^\/analytics\/([\w-]+)\?/)
+  if (method === 'GET' && analytics) {
+    const today = new Date().toISOString().slice(0, 10)
+    return [
+      { label: 'Views', percentageChange: 0, data: [{ total: '6400', date: today }] },
+      { label: 'Videos', percentageChange: 0, data: [{ total: '20', date: today }] },
+      { label: 'Followers', percentageChange: 0, data: [{ total: '120', date: today }] },
+    ]
+  }
 
   if (method === 'POST' && path === '/upload-from-url') {
     const url = (body as { url?: string })?.url

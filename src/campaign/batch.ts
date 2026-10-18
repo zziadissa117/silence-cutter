@@ -41,6 +41,9 @@ export interface BatchBank {
   filled?: Record<string, number>
   /** Why the last top-up couldn't be made, until one is. */
   runProblem?: string
+  /** Views a video at which Analytics suggests more a day (analytics.ts);
+   *  none: it goes by the trend only. */
+  viewTarget?: number
   /** How often each item has gone into a video: files by id, headlines by
    *  their words. */
   used: Record<string, number>

@@ -29,6 +29,16 @@ export const VideosIcon = () => (
   </Icon>
 )
 
+/** Rising bars: how the videos are doing. */
+export const AnalyticsIcon = () => (
+  <Icon>
+    <path d="M4.5 19.5h15" />
+    <rect x="5.75" y="12.5" width="3" height="5" rx="1" />
+    <rect x="10.5" y="8.75" width="3" height="8.75" rx="1" />
+    <rect x="15.25" y="5" width="3" height="12.5" rx="1" />
+  </Icon>
+)
+
 /** Crossing arrows: a batch, mixed from the bank. */
 export const BatchIcon = () => (
   <Icon>

@@ -31,11 +31,11 @@ import {
   type BatchBank,
   type BatchSlot,
 } from './batch'
-import { makeOnEngine, saveEngineSeries, sendFootage } from './engine'
+import { engineJob, makeOnEngine, saveEngineSeries, sendFootage, stopEngineJob } from './engine'
 import { DEFAULT_CORNER } from './greenScreenRender'
 import type { Job } from './jobs'
 import { NO_POSTING, type Campaign } from './look'
-import { BATCH_MAX_PER_DAY, batchTimesOn, stackTimesOn, stoppable, takenTimes, type CampaignPlace, type ServerPost } from './posting'
+import { BATCH_MAX_PER_DAY, batchTimesOn, listPosts, stackTimesOn, stoppable, stopPostsNow, takenTimes, type CampaignPlace, type ServerPost } from './posting'
 import { loadBankFile, type JobBatch } from './store'
 
 /** How many days are kept made ahead: a week of posts waiting, so a few days
@@ -365,4 +365,46 @@ export function countedDays(videos: readonly DayVideo[], now = new Date()): Reco
   for (let d = 0; d < AHEAD_DAYS; d++) filled[addDays(today, d)] = 0
   for (const v of videos) if (v.date >= today) filled[v.date] = (filled[v.date] ?? 0) + 1
   return filled
+}
+
+/** Takes the extra videos back out of the days ahead after the number was
+ *  lowered (trimPlan): jobs not started are dropped (`removeJob`), posts not
+ *  out yet are stopped, the way Posts stops them. On the engine, a batch it
+ *  is still making for those days is stopped first - it would put them back
+ *  - and the days count what it has really sent. Saves the bank's days and
+ *  returns it, with how many couldn't be taken out and why, and the posts as
+ *  the server had them. */
+export async function trimDown({
+  bank,
+  campaignId,
+  jobs,
+  removeJob,
+  save,
+  latest = () => bank,
+}: {
+  bank: BatchBank
+  campaignId: string
+  jobs: readonly Job[]
+  removeJob: (id: string) => void
+  save: (bank: BatchBank) => Promise<void>
+  latest?: () => BatchBank
+}): Promise<{ bank: BatchBank; failed: number; reason?: string; posts: ServerPost[] }> {
+  let stoppedEngine = false
+  if (bank.layout === 'engine' && bank.engineJob) {
+    const job = await engineJob(bank.engineJob).catch(() => null)
+    if (job && (job.status === 'waiting' || job.status === 'making')) {
+      await stopEngineJob(bank.engineJob)
+      stoppedEngine = true
+    }
+  }
+  const posts = await listPosts()
+  const videos = dayVideos(posts, jobs, campaignId)
+  const plan = trimPlan(stoppedEngine ? { ...bank, filled: countedDays(videos) } : bank, videos)
+  for (const v of plan.remove) if (v.kind === 'job') removeJob(v.id)
+  const outcome = await stopPostsNow(plan.remove.flatMap((v) => (v.post ? [v.post] : [])))
+  const filled = { ...plan.filled }
+  for (const { post } of outcome.failed) if (post.batch) filled[post.batch.date] = (filled[post.batch.date] ?? 0) + 1
+  const next = { ...latest(), filled }
+  await save(next)
+  return { bank: next, failed: outcome.failed.length, reason: outcome.failed[0]?.reason, posts }
 }

@@ -214,6 +214,19 @@ Lowering the number (or 0, a pause) works at once too: `overfull` finds the days
 started are dropped, posts not out are stopped (`stopPostsNow`), posted or being-made ones stay.
 On the engine, a batch still being made is stopped first and the days recounted (`countedDays`).
 
+## Analytics (`analytics.ts`, `AnalyticsView.tsx`, server `postiz/views.ts`)
+
+The tick reads one account's views from Postiz (`GET /analytics/:id?date=7`) - the stalest of
+the accounts a campaign posts to, each about once a day - so Postiz's hourly allowance stays
+for posting. `readViews` brings each platform to views per video lately (TikTok: last 20
+videos' views over their count; others: the week's views over the Cutter's posts there that
+week); one reading a day is kept 60 days, in `cutter_config` `views:<profile>`. The `views`
+action hands them to the phone (`posting.listViews`, cached for offline). The phone averages a
+campaign's accounts (`campaignViews`), compares with a week before (`weekChange`), and for a
+running batch suggests a small step (`suggestRate`: up a fifth or at `BatchBank.viewTarget` ->
+more; down almost a third -> fewer; quiet 3 days after an answer). Yes saves the bank's
+`perDay` and runs the app's batch runner (`runBatchesRef`), which trims or tops up at once.
+
 ## The engine (`engine/`, on Railway)
 
 ```

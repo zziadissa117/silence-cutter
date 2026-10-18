@@ -4,19 +4,21 @@
 
 import type { ReactNode } from 'react'
 
-import { BatchIcon, CampaignsIcon, PicturesIcon, SettingsIcon, VideosIcon } from './icons'
+import { AnalyticsIcon, BatchIcon, CampaignsIcon, PicturesIcon, SettingsIcon, VideosIcon } from './icons'
 
-export type Tab = 'videos' | 'batch' | 'campaigns' | 'pictures' | 'settings'
+export type Tab = 'videos' | 'batch' | 'analytics' | 'campaigns' | 'pictures' | 'settings'
 
 const TABS: { tab: Tab; label: string; icon: ReactNode }[] = [
   { tab: 'videos', label: 'Videos', icon: <VideosIcon /> },
   { tab: 'batch', label: 'Batch', icon: <BatchIcon /> },
+  { tab: 'analytics', label: 'Analytics', icon: <AnalyticsIcon /> },
   { tab: 'campaigns', label: 'Campaigns', icon: <CampaignsIcon /> },
   { tab: 'pictures', label: 'Bank', icon: <PicturesIcon /> },
   { tab: 'settings', label: 'Settings', icon: <SettingsIcon /> },
 ]
 
-export function TabBar({ tab, onTab }: { tab: Tab; onTab: (tab: Tab) => void }) {
+/** `dots`: tabs with something waiting for him - a suggestion to answer. */
+export function TabBar({ tab, onTab, dots = {} }: { tab: Tab; onTab: (tab: Tab) => void; dots?: Partial<Record<Tab, boolean>> }) {
   return (
     <nav className="tabbar" aria-label="Campaign videos">
       {TABS.map((t) => (
@@ -30,7 +32,10 @@ export function TabBar({ tab, onTab }: { tab: Tab; onTab: (tab: Tab) => void }) 
             window.scrollTo({ top: 0 })
           }}
         >
-          {t.icon}
+          <span className="tab-icon">
+            {t.icon}
+            {dots[t.tab] ? <span className="tab-dot" aria-label="Something to answer" /> : null}
+          </span>
           <span>{t.label}</span>
         </button>
       ))}

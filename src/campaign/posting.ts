@@ -8,6 +8,7 @@
 // it posts at are each person's own, kept in their profile on the server.
 // The phone keeps only which profile is its own, and whether it sends.
 
+import type { ViewsByAccount } from './analytics'
 import { DEFAULT_WINDOW, cleanWindow, dayWindow, gapFor, inDay, windowTimes, type PostingWindow } from '../../supabase/functions/postiz/window.ts'
 import { timesFor, timesOn } from '../../supabase/functions/postiz/slots.ts'
 import { PUBLISHABLE_KEY, currentSession } from './cloud'
@@ -413,6 +414,28 @@ export async function listPosts(): Promise<ServerPost[]> {
     // Just won't be there offline.
   }
   return posts
+}
+
+const VIEWS_KEY = 'cutter.views'
+
+/** Each account's views as the server last read them (analytics.ts), and the
+ *  last copy seen, for offline. */
+export function lastViews(): ViewsByAccount {
+  try {
+    return JSON.parse(localStorage.getItem(VIEWS_KEY) ?? '{}') as ViewsByAccount
+  } catch {
+    return {}
+  }
+}
+
+export async function listViews(): Promise<ViewsByAccount> {
+  const { accounts } = await call<{ accounts: ViewsByAccount }>('views', { profile: profileId() })
+  try {
+    localStorage.setItem(VIEWS_KEY, JSON.stringify(accounts ?? {}))
+  } catch {
+    // Just won't be there offline.
+  }
+  return accounts ?? {}
 }
 
 export type PostAction = 'edit' | 'approve' | 'ready' | 'reject' | 'unschedule' | 'retry' | 'retry-accounts'

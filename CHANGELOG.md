@@ -3,6 +3,33 @@
 Newest first. Every change says what it does, how to use it, and how it works
 underneath. Kept up to date with each commit.
 
+## Analytics tab: views per video, the trend, and "ready for more a day?" - one tap
+Needs deploying: run ./deploy-server.sh (the server reads the views), then ./deploy.sh.
+**What:** a new **Analytics** tab (between Batch and Campaigns):
+- **Each campaign:** its views per video (its accounts averaged) and how that moved on last week, then each account
+  with its views per video, followers, trend and when it was last read.
+- **Suggestions you answer with one tap:** when a running batch's videos are doing well - views per video up a fifth
+  on last week, or at the number you set - a card says "Inflow: ready for 4 a day?" with **Yes, 4 a day** and
+  **Not now**. Yes changes Videos a day and the week ahead follows at once (like the + on the Batch tab). If views
+  fall by almost a third it suggests one fewer (unless you're still at your number). Steps are small - one a day,
+  two once past five - never past 25, and after you answer it leaves that campaign alone for 3 days so the new rate
+  can show. A blue dot on the tab means a suggestion is waiting.
+- **Your number (optional), per campaign:** "Suggest more a day at [1000] views a video". Empty: it goes by the
+  trend only. Both count: up a fifth OR at your number.
+**Where the views come from:** Postiz reads them from the platforms. TikTok: the total views of your last 20 videos,
+over how many (so views per recent video). Instagram, YouTube: views over the last 7 days, over the videos the Cutter
+posted there. The server reads one account every few minutes, each about once a day, so it never uses up Postiz's
+hourly allowance that posting needs; with ~20 accounts the first numbers fill in over the first hour or two after the
+deploy. Postiz only has views from when an account was connected; brand-new accounts may show nothing for a few days.
+**How:** server `postiz/views.ts` (`readViews` per platform, `remember` one reading a day for 60 days, `notRead`
+retries in 6 h, `dueAt`), `index.ts` `refreshViews` in the tick (the stalest account a campaign posts to, one
+`GET /analytics/:id?date=7` a tick; a 429 is left for the next tick) and the `views` action (login-checked), cache in
+`cutter_config` `views:<profile>`. Phone: `analytics.ts` (`weekChange`, `campaignViews`, `suggestRate`, `stepFrom`,
+answers per campaign), `AnalyticsView.tsx` (`useCampaignRows`, `answerSuggestion`, `saveTarget`), `posting.listViews`,
+`BatchBank.viewTarget`, `TabBar` dots. Lowering moved to `batchRun.trimDown`, so the app's own batch runner now
+lowers days too (a "fewer a day" yes applies at once, whatever tab is open). Tests: `views.test.ts`,
+`analytics.test.ts`, `analyticsView.test.tsx`.
+
 ## Headline: Snapchat style
 **What:** a third headline style, next to White box and Outline: **Snapchat** - white words on a see-through black
 band right across the video, the way a Snapchat caption looks. Pick it in the angle's Headline -> Style; Where and

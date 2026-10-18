@@ -37,7 +37,6 @@ import {
   batchTimesOn,
   lastPosts,
   listPosts,
-  stopPostsNow,
   ownDayTimes,
   placeFor,
   timeLabel,
@@ -49,8 +48,6 @@ import {
 import { deleteBankFile, loadBankFile, loadBatchBank, saveBankFile, saveBatchBank } from './store'
 import {
   AHEAD_DAYS,
-  countedDays,
-  dayVideos,
   leftToMake,
   missingFor,
   oneAtATime,
@@ -59,7 +56,7 @@ import {
   settled,
   takenBy,
   topUp,
-  trimPlan,
+  trimDown,
   type BatchVideo,
 } from './batchRun'
 import { FormulaPreview } from './FormulaPreview'
@@ -460,23 +457,20 @@ export function BatchView({
     setTopping(true)
     setSaving('Taking the extra videos out of the days ahead…')
     void oneAtATime(campaign.id, async () => {
-      // The engine still making videos for those days would put them back:
-      // it stops, and the days count what it has really sent.
-      const stopEngine = from.layout === 'engine' && engineBusy && from.engineJob
-      if (stopEngine) await stopEngineJob(from.engineJob!)
-      const fresh = await listPosts()
-      setPosts(fresh)
-      const videos = dayVideos(fresh, jobs, campaign.id)
-      const plan = trimPlan(stopEngine ? { ...from, filled: countedDays(videos) } : from, videos)
-      for (const v of plan.remove) if (v.kind === 'job') onRemove(v.id)
-      const outcome = await stopPostsNow(plan.remove.flatMap((v) => (v.post ? [v.post] : [])))
-      const filled = { ...plan.filled }
-      for (const { post } of outcome.failed) if (post.batch) filled[post.batch.date] = (filled[post.batch.date] ?? 0) + 1
-      const next = { ...(bankRef.current ?? from), filled }
-      setBank(next)
-      bankRef.current = next
-      await saveBatchBank(next)
-      if (outcome.failed.length > 0) setProblem(`${outcome.failed.length} couldn't be taken out: ${outcome.failed[0].reason}`)
+      const done = await trimDown({
+        bank: from,
+        campaignId: campaign.id,
+        jobs,
+        removeJob: onRemove,
+        save: async (next) => {
+          setBank(next)
+          bankRef.current = next
+          await saveBatchBank(next)
+        },
+        latest: () => bankRef.current ?? from,
+      })
+      setPosts(done.posts)
+      if (done.failed > 0) setProblem(`${done.failed} couldn't be taken out: ${done.reason}`)
       void listPosts().then(setPosts).catch(() => {})
     })
       .catch((error: unknown) => setProblem(error instanceof Error ? error.message : String(error)))
