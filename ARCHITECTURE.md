@@ -214,6 +214,13 @@ Lowering the number (or 0, a pause) works at once too: `overfull` finds the days
 `trimPlan` picks the extra to take out, leaving the rest spread through the day - jobs not
 started are dropped, posts not out are stopped (`stopPostsNow`), posted or being-made ones stay.
 On the engine, a batch still being made is stopped first and the days recounted (`countedDays`).
+No video twice: `made` holds this round's combinations (pruned to what is still in the bank);
+a clip that leaves the bank after going into videos (taken out, a step removed, or `spend`) is
+kept in `usedClips` by `clipKey` (fingerprint, else name|size), and adding it again is refused.
+Words on a batch video other than the hook - step titles and the Claude + X amount - are always
+`ONLY_HOOK_ELSE` (outline). `clipParts.writeWhole` fills each clip's sound up to its last frame's
+end, so clips joined one after another leave no hole in the soundtrack (the music ran through
+with a gap - a pop - at every change of clip).
 Times: the day is `window.ts` DAY (11 AM - 6 PM). A full day keeps a quarter of it free
 (`posting.batchGap`) so its times move from day to day; times added to his own, or to a day
 already holding some (`stackTimesOn`, given only the number still needed and today's `usable`

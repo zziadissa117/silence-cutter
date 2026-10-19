@@ -63,6 +63,11 @@ export interface BatchBank {
   /** Every combination made this round, so none is made twice before all
    *  have been. */
   made?: string[]
+  /** The clips (reactions, product showcases, steps' clips) that left the
+   *  bank after videos were made from them - taken out, or cleared once
+   *  every video was made - by what is in them (clipKey). The same file is
+   *  never taken in again, so no video is ever made twice. */
+  usedClips?: string[]
   /** The last day a batch has been made for. */
   madeThrough?: string
   /** No longer used (batches stacked on top of each other, before a batch
@@ -104,6 +109,11 @@ export interface BatchStep {
   name: string
   files: BankFile[]
 }
+
+/** The look of every word on a batch video but its headline hook: the step
+ *  names and the Claude + X amount are always outlined - he wants Snapchat
+ *  only on a headline hook, on its own. */
+export const ONLY_HOOK_ELSE = 'outline' as const
 
 /** The words a step puts over its clip in every video: its name exactly as
  *  he typed it - "DRAW SOMETHING" - unless it still has the name it was
@@ -539,6 +549,20 @@ export function combos(bank: MixBank & Pick<BatchBank, 'made'>): { total: number
   return { total, left: total - made }
 }
 
+/** How a clip is known when it comes back: by what is in it, or - for
+ *  files kept before fingerprints existed - by its name and size. */
+export function clipKey(file: Pick<BankFile, 'fp' | 'name' | 'size'>): string {
+  return file.fp ?? `${file.name}|${file.size}`
+}
+
+/** The bank, remembering those of `files` that went into videos as used,
+ *  so they are never taken in again (usedClips). */
+export function rememberUsed(bank: BatchBank, files: readonly BankFile[]): BatchBank {
+  const keys = files.filter((f) => (bank.used[f.id] ?? 0) > 0).map(clipKey)
+  if (keys.length === 0) return bank
+  return { ...bank, usedClips: [...new Set([...(bank.usedClips ?? []), ...keys])] }
+}
+
 /** Once every different video has been made: the reactions and product
  *  showcases go - he films new ones - and the headlines, music and the
  *  steps' names stay. The files are only deleted once the videos made from
@@ -548,7 +572,7 @@ export function spend(bank: BatchBank, through: string): { bank: BatchBank; reti
   const stepFiles = (bank.steps ?? []).flatMap((step) => step.files)
   return {
     bank: {
-      ...bank,
+      ...rememberUsed(bank, [...bank.reactions, ...bank.products, ...stepFiles]),
       reactions: [],
       products: [],
       ...(bank.steps ? { steps: bank.steps.map((step) => ({ ...step, files: [] })) } : {}),

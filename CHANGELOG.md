@@ -3,6 +3,24 @@
 Newest first. Every change says what it does, how to use it, and how it works
 underneath. Kept up to date with each commit.
 
+## Batch: no pop at clip changes; Outline on the product demo and Claude + X; used clips never come back
+Only ./deploy.sh is needed.
+**The pop at every clip change:** each clip's sound was cut to exactly its length, but its last frame runs a little
+longer (up to 1/30 of a second), and the next clip started after the frame - so the soundtrack had a tiny hole at every
+change, where the music dropped out and came back: the pop. The sound now runs right up to the end of each clip's
+picture, so the music plays straight through. Same fix for Join and for clips before/after a talking video.
+**Text styles:** the step names (the product demo) and the Claude + X amount are always in the Outline style now.
+Snapchat (and the white box) only ever goes on the hook headline, on its own. The Claude + X preview in Batch shows it
+outlined too.
+**No duplicates, ever:** every top-up of a campaign's batch already shares one list of what was made, so a used mix is
+never made again. But a clip taken out after videos were made from it - or cleared out once everything was made - could
+be added back and make the same videos again. Now those clips are remembered by what's in them, and adding one again is
+refused: "old-reaction.mov was already in videos you made, so it wasn't added again - film new ones to make more."
+Songs and headlines can come back (with new clips they make new videos).
+**How:** `clipParts.writeWhole` fills the sound up to the picture's end (`clipJoins.test.ts`); `batch.ONLY_HOOK_ELSE`
+for step titles and `layoutFormula` in `montageRender`; `BatchBank.usedClips`, `clipKey`, `rememberUsed` (on take-out,
+step removal and `spend`), checked when adding. Tests in `batch.test.ts`, `batchView.test.tsx`.
+
 ## Batch: you're told when the last videos are made
 Needs deploying: run ./deploy-server.sh (and ./deploy.sh).
 **What:** when a batch makes the last different videos your clips can make, its usual "N videos ready to approve"

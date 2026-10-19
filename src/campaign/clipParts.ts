@@ -200,5 +200,15 @@ export async function writeWhole(
       await onSound(planes, timestamp)
     }),
   ])
+  // The last frame usually runs a little past the cut (up to a frame), past
+  // where the sound stops: the sound is filled up to it, so the next clip's
+  // sound follows on with no hole. In a batch the music is the sound, and it
+  // dropped out for that moment at every change of clip - a pop each time.
+  const short = Math.round((videoEnd - audioEnd) * rate)
+  if (short > 0) {
+    const timestamp = audioClock(audioEnd, short / rate)
+    audioEnd = timestamp + short / rate
+    await onSound(Array.from({ length: channels }, () => new Float32Array(short)), timestamp)
+  }
   return Math.max(videoEnd, audioEnd)
 }

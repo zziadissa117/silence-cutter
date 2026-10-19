@@ -18,6 +18,8 @@ import {
   formulaLine,
   headlinesFrom,
   MAX_COMBOS,
+  ONLY_HOOK_ELSE,
+  rememberUsed,
   stepTitle,
   BATCH_LOOKS,
   looksOf,
@@ -289,6 +291,8 @@ export function BatchView({
     setNotice(null)
     const added: BankFile[] = []
     const skipped: string[] = []
+    // Clips already in videos made before, since taken out (usedClips).
+    const usedBefore: string[] = []
     const mine = new Set<string>()
     try {
       for (const [i, file] of files.entries()) {
@@ -305,6 +309,11 @@ export function BatchView({
           skipped.push(file.name)
           continue
         }
+        const used = new Set(bankRef.current?.usedClips ?? [])
+        if (kind !== 'music' && (used.has(fp) || used.has(`${file.name}|${file.size}`))) {
+          usedBefore.push(file.name)
+          continue
+        }
         adding.current.add(fp)
         mine.add(fp)
         setSaving(`Keeping ${files.length > 1 ? `${i + 1} of ${files.length}` : file.name} on this phone…`)
@@ -317,7 +326,11 @@ export function BatchView({
       setProblem(`Not all of them could be kept: ${error instanceof Error ? error.message : String(error)}`)
     } finally {
       setSaving(null)
-      setNotice(skippedNotice(skipped, stepId ? 'in this step' : `in the ${kind === 'music' ? 'music' : kind} bank`))
+      const reused =
+        usedBefore.length === 0
+          ? null
+          : `${usedBefore.length === 1 ? usedBefore[0] : `${usedBefore.length} of them`} ${usedBefore.length === 1 ? 'was' : 'were'} already in videos you made, so ${usedBefore.length === 1 ? "it wasn't" : "they weren't"} added again - film new ones to make more.`
+      setNotice([skippedNotice(skipped, stepId ? 'in this step' : `in the ${kind === 'music' ? 'music' : kind} bank`), reused].filter(Boolean).join(' ') || null)
       if (kind !== 'music') pickSaved()
       const current = bankRef.current
       if (current && added.length > 0) {
@@ -371,22 +384,26 @@ export function BatchView({
     }
   }
 
+  // A clip taken out after videos were made from it is remembered, so it
+  // can't come back in and make the same videos again (rememberUsed).
   const takeOut = (kind: Kind, file: BankFile) => {
     if (!bank || !window.confirm(`Take ${file.name} out of the bank?`)) return
     void deleteBankFile(file.id).catch(() => {})
-    keep({ ...bank, [kind]: bank[kind].filter((f) => f.id !== file.id) })
+    const next = { ...bank, [kind]: bank[kind].filter((f) => f.id !== file.id) }
+    keep(kind === 'music' ? next : rememberUsed(next, [file]))
   }
   const takeOutOfStep = (stepId: string, file: BankFile) => {
     if (!bank || !window.confirm(`Take ${file.name} out of the bank?`)) return
     void deleteBankFile(file.id).catch(() => {})
-    keep({ ...bank, steps: (bank.steps ?? []).map((s) => (s.id === stepId ? { ...s, files: s.files.filter((f) => f.id !== file.id) } : s)) })
+    keep(rememberUsed({ ...bank, steps: (bank.steps ?? []).map((s) => (s.id === stepId ? { ...s, files: s.files.filter((f) => f.id !== file.id) } : s)) }, [file]))
   }
   /** The order saved: a step taken out goes with its clips. */
   const saveOrder = (steps: BatchStep[]) => {
     if (!bank) return
     const kept = new Set(steps.map((s) => s.id))
-    for (const gone of (bank.steps ?? []).filter((s) => !kept.has(s.id))) for (const f of gone.files) void deleteBankFile(f.id).catch(() => {})
-    keep({ ...bank, steps })
+    const gone = (bank.steps ?? []).filter((s) => !kept.has(s.id)).flatMap((s) => s.files)
+    for (const f of gone) void deleteBankFile(f.id).catch(() => {})
+    keep(rememberUsed({ ...bank, steps }, gone))
   }
 
   // The days the batch is still missing, up to a week ahead.
@@ -839,7 +856,7 @@ export function BatchView({
                 </div>
                 <span className="hint">Each video gets its own - like {formulaLine(formula, 'a')}, {formulaLine(formula, 'b')}, {formulaLine(formula, 'c')}.</span>
               </div>
-              <FormulaPreview left={formula.left} right={formula.right} line={formulaLine(formula, 'preview')} look={angle.headline} load={loadBankFile} />
+              <FormulaPreview left={formula.left} right={formula.right} line={formulaLine(formula, 'preview')} look={{ ...angle.headline, style: ONLY_HOOK_ELSE }} load={loadBankFile} />
             </div>
           ) : null}
           {headlinesOn ? (
@@ -1140,7 +1157,7 @@ function HookLooks({
         {looks.length > 1
           ? `The videos take turns in these shares${headlineLooks > 1 ? ', the same headlines in each look' : ''}.`
           : 'Tap more than one and the videos take turns between them.'}
-        {stepped && headlineLooks > 0 ? " The step names follow each video's look." : ''}
+        {stepped || looks.some((l) => l.look === 'formula') ? ' Step names and Claude + X are always in Outline - Snapchat is only for the hook.' : ''}
       </p>
     </>
   )

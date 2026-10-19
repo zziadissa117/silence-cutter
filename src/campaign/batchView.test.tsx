@@ -391,3 +391,20 @@ describe("the batch's hooks: headline looks and Claude + X, in shares", () => {
     for (const v of snap) expect(bank.headlines).toContain(v.headline)
   })
 })
+
+describe('a clip already in videos made before', () => {
+  it('is not taken back in, and he is told why', async () => {
+    const { fingerprint } = await import('./fingerprint')
+    const file = new File([new Uint8Array(4096).fill(7)], 'old-reaction.mov', { type: 'video/quicktime' })
+    storedBank = { ...bank, usedClips: [await fingerprint(file)] }
+    await show({})
+    const input = host.querySelector('input[aria-label="Add reactions"]') as HTMLInputElement
+    Object.defineProperty(input, 'files', { value: [file] })
+    await act(async () => input.dispatchEvent(new Event('change', { bubbles: true })))
+    // Reading what is in the file takes a moment.
+    await act(async () => new Promise((resolve) => setTimeout(resolve, 200)))
+    expect(host.textContent).toContain('old-reaction.mov was already in videos you made')
+    const { saveBankFile } = await import('./store')
+    expect(saveBankFile).not.toHaveBeenCalled()
+  })
+})

@@ -24,6 +24,7 @@ import { createOutputSink } from '../media/outputSink'
 import { isSilenceCutSupported } from '../media/silenceCut'
 import { openClip, writeWhole, type Clip } from './clipParts'
 import { framingAt, planMotion, randomFrom, reactionZoom, zoomPlace } from './effects'
+import { ONLY_HOOK_ELSE } from './batch'
 import { drawFormula, formulaPush, layoutFormula } from './formulaOverlay'
 import { headlineFontReady } from './headlineFont'
 import type { VideoLook } from './look'
@@ -171,8 +172,9 @@ export async function renderMontage(
     if (!ctx) throw new SilenceCutError("This browser couldn't prepare a canvas to draw the headline on.")
     await headlineFontReady()
     const headline = !formula && headlineText.trim() ? layoutHeadline(ctx, width, height, { ...look.headline, text: headlineText }) : null
-    // Each step's name over its clip, laid out once, in the headline's look.
-    const titleLayouts = clips.map((_, i) => (titles[i]?.trim() ? layoutHeadline(ctx, width, height, { ...look.headline, text: titles[i]! }) : null))
+    // Each step's name over its clip, laid out once - always in the outline
+    // look: Snapchat (and the white box) is for the hook alone.
+    const titleLayouts = clips.map((_, i) => (titles[i]?.trim() ? layoutHeadline(ctx, width, height, { ...look.headline, style: ONLY_HOOK_ELSE, text: titles[i]! }) : null))
     // The formula's logos, decoded once for every frame.
     const decode = async (blob: Blob | null) => {
       if (!blob) return null
@@ -185,7 +187,7 @@ export async function renderMontage(
     logos = formula ? { left: await decode(formula.left), right: await decode(formula.right) } : null
     const formulaLayout =
       formula && logos
-        ? layoutFormula(ctx, width, height, { left: logos.left, right: logos.right }, formula.line, look.headline)
+        ? layoutFormula(ctx, width, height, { left: logos.left, right: logos.right }, formula.line, { ...look.headline, style: ONLY_HOOK_ELSE })
         : null
 
     const videoSource = new VideoSampleSource({ codec: 'avc', quality: videoQuality(width, height, fps), onEncodedPacket: onEncodedPacketMatchingColour })

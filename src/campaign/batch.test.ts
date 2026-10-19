@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 
 import {
+  clipKey,
   combos,
   dayTimes,
   stepTitle,
@@ -11,6 +12,7 @@ import {
   headlinesFrom,
   looksOf,
   pickBatch,
+  rememberUsed,
   spend,
   spreadPick,
   styleFor,
@@ -390,5 +392,27 @@ describe('random times picked from a window', () => {
     expect(a[0] < '13:00' && a[1] >= '13:00' && a[1] < '15:00' && a[2] >= '15:00').toBe(true)
     const days = ['10', '11', '12', '13', '14', '15'].map((d) => spreadPick(twelve, 1, `c|2026-10-${d}`)[0])
     expect(new Set(days).size).toBeGreaterThan(2)
+  })
+})
+
+describe('no video made twice, even after the clips left the bank', () => {
+  const clip = (id: string, fp?: string): BankFile => ({ id, name: `${id}.mov`, type: 'video/quicktime', size: 7, ...(fp ? { fp } : {}) })
+
+  it('remembers a clip taken out after videos were made from it - and not one never used', () => {
+    const b = { ...emptyBank('c', 'a'), used: { r1: 3 } }
+    expect(rememberUsed(b, [clip('r1', 'fp-r1')]).usedClips).toEqual(['fp-r1'])
+    expect(rememberUsed(b, [clip('r2', 'fp-r2')])).toBe(b)
+  })
+
+  it('knows an old clip with no fingerprint by its name and size', () => {
+    expect(clipKey(clip('r1'))).toBe('r1.mov|7')
+    expect(clipKey(clip('r1', 'abc'))).toBe('abc')
+  })
+
+  it('remembers every clip of a bank that made all its videos', () => {
+    const b: BatchBank = { ...emptyBank('c', 'a'), reactions: [clip('r1', 'a1')], products: [clip('p1', 'b1')], headlines: ['h'], used: { r1: 1, p1: 1 }, usedClips: ['old'] }
+    const { bank } = spend(b, '2026-10-30')
+    expect(bank.usedClips).toEqual(['old', 'a1', 'b1'])
+    expect(bank.reactions).toEqual([])
   })
 })
