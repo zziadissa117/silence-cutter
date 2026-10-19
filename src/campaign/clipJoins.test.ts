@@ -59,4 +59,23 @@ describe('clips written one after another', () => {
     // ...and runs right up to the end of the picture.
     expect(Math.abs(sound.at(-1)!.end - at)).toBeLessThan(1 / RATE + 1e-9)
   })
+
+  it("never reads a clip's own sound when the video's sound is laid over it whole, and ends with its picture", async () => {
+    clipFrames = Array.from({ length: 2 * FPS }, (_, i) => i / FPS)
+    const audio = { getSampleRate: vi.fn() }
+    const clip = { video: {}, audio, width: 1080, height: 1920, first: 0, duration: 2 } as unknown as Clip
+    const end = await writeWhole(clip, 1, {
+      window: { start: 0.2, end: 0.75 },
+      rate: RATE,
+      channels: 2,
+      videoClock: forwardOnly(),
+      audioClock: contiguousAudio(),
+      maxRecoveries: 0,
+      onFrame: async () => {},
+    })
+    expect(audio.getSampleRate).not.toHaveBeenCalled()
+    // From 0.2 s to the end of the last frame starting before 0.75 s (0.733 s).
+    expect(end).toBeCloseTo(1 + (22 / FPS + 1 / FPS - 0.2), 6)
+  })
 })
+

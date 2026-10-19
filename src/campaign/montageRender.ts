@@ -103,6 +103,33 @@ export function soloMusicGain(trackLufs: number): number {
 
 /** `channels` at `gain`, in place, under the voice's limiter so a song
  *  turned up keeps its peaks under full scale. */
+/** The sound of a batch video: the music alone, laid over the finished
+ *  video as one unbroken track from its first moment to its last - nothing
+ *  to do with where the clips change (cut per clip, it dropped out at every
+ *  change: a pop). Each call writes it on up to `end` seconds. It is written
+ *  as the picture goes, never after it: the file is written as it is made,
+ *  and held back to the end it would keep every frame in memory first. */
+export function musicTrack(bed: Pick<MusicBed, 'mixInto'> | null, add: (sample: AudioSample) => Promise<void>): (end: number) => Promise<void> {
+  let at = 0
+  return async (end) => {
+    const until = Math.round(end * RATE)
+    while (at < until) {
+      const length = Math.min(RATE / 10, until - at)
+      const data = new Float32Array(length * CHANNELS)
+      const out = Array.from({ length: CHANNELS }, (_, c) => data.subarray(c * length, (c + 1) * length))
+      bed?.mixInto(out, at)
+      for (const plane of out) for (let k = 0; k < plane.length; k++) plane[k] = Math.max(-1, Math.min(1, plane[k]))
+      const sample = new AudioSample({ data, format: 'f32-planar', numberOfChannels: CHANNELS, sampleRate: RATE, timestamp: at / RATE })
+      try {
+        await add(sample)
+      } finally {
+        sample.close()
+      }
+      at += length
+    }
+  }
+}
+
 export function liftMusic(channels: Float32Array[], gain: number, sampleRate: number): void {
   for (const c of channels) for (let i = 0; i < c.length; i++) c[i] *= gain
   new Limiter(sampleRate, channels.length).process(channels)
@@ -199,7 +226,7 @@ export async function renderMontage(
     // Zoom effects: each clip is a stretch, so a punch can land at every cut.
     const motion = planMotion(look.effects, parts.map((p) => Math.max(0.1, p.end - p.start)), seed || 'montage')
     const videoClock = forwardOnly()
-    const audioClock = contiguousAudio()
+    const soundTo = musicTrack(bed, (sample) => audioSource.add(sample))
     const seconds: number[] = []
     let at = 0
     for (const [i, clip] of clips.entries()) {
@@ -211,7 +238,7 @@ export async function renderMontage(
         rate: RATE,
         channels: CHANNELS,
         videoClock,
-        audioClock,
+        audioClock: contiguousAudio(),
         maxRecoveries: MAX_RECOVERIES,
         onFrame: async (sample, timestamp) => {
           onProgress?.(Math.min(0.99, timestamp / total))
@@ -237,21 +264,14 @@ export async function renderMontage(
           const frame = new VideoSample(canvas, { timestamp, duration: sample.duration })
           await videoSource.add(frame)
           frame.close()
-        },
-        // The clip's own sound only keeps time: what goes in is the music.
-        onSound: async (planes, timestamp) => {
-          const length = planes[0].length
-          const data = new Float32Array(length * CHANNELS)
-          const out = [data.subarray(0, length), data.subarray(length)]
-          bed?.mixInto(out, Math.round(timestamp * RATE))
-          for (const plane of out) for (let k = 0; k < plane.length; k++) plane[k] = Math.max(-1, Math.min(1, plane[k]))
-          const sample = new AudioSample({ data, format: 'f32-planar', numberOfChannels: CHANNELS, sampleRate: RATE, timestamp })
-          await audioSource.add(sample)
-          sample.close()
+          // The music keeps up with the picture, in one piece.
+          await soundTo(timestamp + sample.duration)
         },
       })
       seconds.push(at - start)
     }
+    // To the very end of the last frame.
+    await soundTo(at)
 
     await output.finalize()
     const blob = await sink.finish()

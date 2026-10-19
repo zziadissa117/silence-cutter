@@ -138,7 +138,9 @@ export async function writeWhole(
     audioClock: (timestamp: number, duration: number) => number
     maxRecoveries: number
     onFrame: (sample: VideoSample, timestamp: number) => Promise<void>
-    onSound: (planes: Float32Array[], timestamp: number) => Promise<void>
+    /** The clip's own sound; absent when the video's sound is laid over
+     *  it whole (a batch's music), so the clip's is never read. */
+    onSound?: (planes: Float32Array[], timestamp: number) => Promise<void>
     /** Only this part of the clip (a batch step's few seconds); all of it
      *  when absent. */
     window?: Range
@@ -192,14 +194,17 @@ export async function writeWhole(
         await frames.dispose().catch(() => {})
       }
     })(),
-    eachSound(clip, [whole], rate, channels, async (planes) => {
-      const length = planes[0].length
-      const timestamp = audioClock(at + written / rate, length / rate)
-      written += length
-      audioEnd = timestamp + length / rate
-      await onSound(planes, timestamp)
-    }),
+    onSound
+      ? eachSound(clip, [whole], rate, channels, async (planes) => {
+          const length = planes[0].length
+          const timestamp = audioClock(at + written / rate, length / rate)
+          written += length
+          audioEnd = timestamp + length / rate
+          await onSound(planes, timestamp)
+        })
+      : null,
   ])
+  if (!onSound) return videoEnd
   // The last frame usually runs a little past the cut (up to a frame), past
   // where the sound stops: the sound is filled up to it, so the next clip's
   // sound follows on with no hole. In a batch the music is the sound, and it

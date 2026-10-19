@@ -3,6 +3,17 @@
 Newest first. Every change says what it does, how to use it, and how it works
 underneath. Kept up to date with each commit.
 
+## Batch: the music is one unbroken track over the whole video
+Only ./deploy.sh is needed.
+**What:** the music under a batch video was still written piece by piece, following each clip - so it was tied to the
+cuts. Now it is laid over the finished video as one continuous track, from the first moment to the very last frame,
+with nothing to do with where the clips change: no cut, dip or pop in the music at any cut. The clips' own sound isn't
+even read any more (it was never heard). It is laid down as the picture goes rather than after it, because the file is
+written as it's made - holding the music to the end would keep every frame in the phone's memory first.
+**How:** `montageRender.musicTrack` writes the music from one running position up to each frame's end, then to the end
+of the last frame; `writeWhole` takes no `onSound` for it and skips the clip's sound. Tests in `montage.test.ts`,
+`clipJoins.test.ts`.
+
 ## Batch: no pop at clip changes; Outline on the product demo and Claude + X; used clips never come back
 Only ./deploy.sh is needed.
 **The pop at every clip change:** each clip's sound was cut to exactly its length, but its last frame runs a little

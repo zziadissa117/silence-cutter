@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { liftMusic, soloMusicGain, verticalSize } from './montageRender'
+import { liftMusic, musicTrack, soloMusicGain, verticalSize } from './montageRender'
 
 describe('music on a video with no talking', () => {
   it('brings a loud master down to about -14 LUFS', () => {
@@ -35,5 +35,38 @@ describe('the frame of a video with no talking', () => {
     expect(verticalSize(1080, 1920)).toEqual({ width: 1080, height: 1920 })
     expect(verticalSize(2160, 3840)).toEqual({ width: 2160, height: 3840 })
     expect(verticalSize(2160, 3840, 1080)).toEqual({ width: 1080, height: 1920 })
+  })
+})
+
+describe('the music on a batch video', () => {
+  it('is one unbroken track to the very end, whatever the cuts', async () => {
+    const rate = 48000
+    const read: number[] = []
+    const written: { start: number; frames: number; value: number }[] = []
+    // A "song" that is just its own position, so a jump or a hole shows.
+    const bed = {
+      mixInto(planes: Float32Array[], first: number) {
+        read.push(first)
+        for (const plane of planes) for (let i = 0; i < plane.length; i++) plane[i] += ((first + i) % 1000) / 1000
+      },
+    }
+    const soundTo = musicTrack(bed, async (sample) => {
+      const plane = new Float32Array(sample.numberOfFrames)
+      sample.copyTo(plane, { planeIndex: 0, format: 'f32-planar' })
+      written.push({ start: Math.round(sample.timestamp * rate), frames: sample.numberOfFrames, value: plane[0] })
+    })
+    // Frames of three clips of uneven lengths, then the very end.
+    for (const end of [0.033, 0.5, 0.517, 1.01, 1.043, 1.75, 1.783]) await soundTo(end)
+    await soundTo(1.8)
+    let next = 0
+    for (const piece of written) {
+      expect(piece.start).toBe(next)
+      expect(piece.value).toBeCloseTo((piece.start % 1000) / 1000, 5)
+      next += piece.frames
+    }
+    expect(next).toBe(Math.round(1.8 * rate))
+    // Asked again for less: nothing written twice.
+    await soundTo(1.2)
+    expect(written.reduce((n, p) => n + p.frames, 0)).toBe(Math.round(1.8 * rate))
   })
 })
