@@ -580,6 +580,18 @@ export function dayTimes(times: string[], perDay: number): string[] {
   return [...picked].sort((a, b) => a - b).map((i) => all[i])
 }
 
+/** `count` of `times`, one from each of `count` equal stretches of them -
+ *  for random times picked from a window, which must not all start at its
+ *  first minute (dayTimes always takes the first: right for his own times,
+ *  not for these). With a `seed` (the campaign and day), a different one of
+ *  each stretch every day; without, its middle one. */
+export function spreadPick(times: string[], count: number, seed?: string): string[] {
+  const all = cleanTimes(times)
+  if (count >= all.length) return all
+  const random = seed ? seeded(seed) : () => 0.5
+  return Array.from({ length: Math.max(0, count) }, (_, i) => all[Math.min(all.length - 1, Math.floor(((i + random()) * all.length) / count))])
+}
+
 export function addDays(date: string, days: number): string {
   const [y, m, d] = date.split('-').map(Number)
   return new Date(Date.UTC(y, m - 1, d + days)).toISOString().slice(0, 10)

@@ -213,6 +213,11 @@ Lowering the number (or 0, a pause) works at once too: `overfull` finds the days
 `trimPlan` picks the extra to take out, leaving the rest spread through the day - jobs not
 started are dropped, posts not out are stopped (`stopPostsNow`), posted or being-made ones stay.
 On the engine, a batch still being made is stopped first and the days recounted (`countedDays`).
+Times: the day is `window.ts` DAY (11 AM - 6 PM). A full day keeps a quarter of it free
+(`posting.batchGap`) so its times move from day to day; times added to his own, or to a day
+already holding some (`stackTimesOn`, given only the number still needed and today's `usable`
+ones, so it keeps 20 minutes clear when there is room), are one from each stretch of the free
+candidates (`batch.spreadPick`, seeded by campaign and day) - never the first free minutes.
 
 Hooks in shares: `BatchBank.looks` - `{ look, parts }` for White box / Outline / Snapchat
 headlines and Claude + X (`BatchLook`), picked in the Batch tab's Hook section (`HookLooks`,

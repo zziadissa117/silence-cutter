@@ -77,10 +77,16 @@ export function cleanWindow(value: unknown): PostingWindow | null {
   return { from, to, perDay }
 }
 
+/** The minutes a window's times are drawn over: up to JITTER_ROOM before
+ *  its end. */
+export function spanOf(window: PostingWindow): number {
+  return minutesOf(window.to) - JITTER_ROOM - minutesOf(window.from)
+}
+
 /** How many times the window really fits: fewer than asked when it is too
  *  short to keep them half an hour apart. */
 export function fits(window: PostingWindow, gap = WINDOW_GAP_MINUTES): number {
-  const span = minutesOf(window.to) - JITTER_ROOM - minutesOf(window.from)
+  const span = spanOf(window)
   return Math.max(1, Math.min(window.perDay, Math.floor(span / gap) + 1))
 }
 
@@ -90,7 +96,7 @@ export function fits(window: PostingWindow, gap = WINDOW_GAP_MINUTES): number {
  *  holds fewer. */
 export function gapFor(window: PostingWindow, count: number, least = 10): number {
   if (count <= 1) return WINDOW_GAP_MINUTES
-  const span = minutesOf(window.to) - JITTER_ROOM - minutesOf(window.from)
+  const span = spanOf(window)
   return Math.max(least, Math.min(WINDOW_GAP_MINUTES, Math.floor(span / (count - 1))))
 }
 

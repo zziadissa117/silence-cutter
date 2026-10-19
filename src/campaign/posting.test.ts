@@ -162,6 +162,38 @@ describe('batchTimesOn', () => {
   })
 })
 
+describe('batch times that move from day to day', () => {
+  const minutes = (t: string) => Number(t.slice(0, 2)) * 60 + Number(t.slice(3, 5))
+  const days = Array.from({ length: 10 }, (_, i) => `2026-10-${String(i + 10).padStart(2, '0')}`)
+
+  it('puts a time added to his own in the open part of the day, not right after the first', () => {
+    const place = { accounts: [], times: ['11:00', '18:00'] }
+    const extras = days.map((d) => batchTimesOn(place, 'c', d, 3).find((t) => t !== '11:00' && t !== '18:00')!)
+    for (const t of extras) expect(minutes(t)).toBeGreaterThanOrEqual(minutes('11:30'))
+    // Somewhere different on different days - not always just after 11.
+    expect(new Set(extras).size).toBeGreaterThan(5)
+    expect(extras.filter((t) => minutes(t) < minutes('12:00')).length).toBeLessThan(5)
+  })
+
+  it('does not sit on the same grid every day when the day is full', () => {
+    const place = { accounts: [], times: [], window: { from: '11:00', to: '18:00', perDay: 3 } }
+    const a = batchTimesOn(place, 'c', days[0], 24)
+    const b = batchTimesOn(place, 'c', days[1], 24)
+    expect(a).toHaveLength(24)
+    for (let i = 1; i < a.length; i++) expect(minutes(a[i]) - minutes(a[i - 1])).toBeGreaterThanOrEqual(10)
+    // Most of the day's times differ by more than a couple of minutes.
+    expect(a.filter((t, i) => Math.abs(minutes(t) - minutes(b[i])) > 2).length).toBeGreaterThan(12)
+    const gaps = a.slice(1).map((t, i) => minutes(t) - minutes(a[i]))
+    expect(Math.max(...gaps) - Math.min(...gaps)).toBeGreaterThan(5)
+  })
+
+  it('spreads more videos over a day that has some already, instead of the first free minutes', () => {
+    const times = stackTimesOn({ accounts: [], times: [] }, 'c', days[0], 2, ['11:00', '17:40'])
+    expect(times).toHaveLength(2)
+    expect(minutes(times[1]) - minutes(times[0])).toBeGreaterThan(60)
+  })
+})
+
 describe('a batch stacked on one running', () => {
   const minutes = (t: string) => Number(t.slice(0, 2)) * 60 + Number(t.slice(3, 5))
   const place = { accounts: [], times: [] }

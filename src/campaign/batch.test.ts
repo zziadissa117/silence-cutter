@@ -12,6 +12,7 @@ import {
   looksOf,
   pickBatch,
   spend,
+  spreadPick,
   styleFor,
   stylesOf,
   usesSteps,
@@ -372,5 +373,22 @@ describe('hooks in shares, Claude + X among them', () => {
     const f = { min: 500, max: 1000 }
     expect(formulaLine(f, 'v1', 650)).toMatch(/^\$650/)
     expect(formulaLine(f, 'v1', 650).replace(/^\$[\d,]+/, '')).toBe(formulaLine(f, 'v1').replace(/^\$[\d,]+/, ''))
+  })
+})
+
+describe('random times picked from a window', () => {
+  const twelve = ['11:00', '11:30', '12:00', '12:30', '13:00', '13:30', '14:00', '14:30', '15:00', '15:30', '16:00', '16:30']
+
+  it('takes the middle of the day for one, never just the first', () => {
+    expect(spreadPick(twelve, 1)).toEqual(['14:00'])
+    expect(spreadPick(twelve, 3)).toEqual(['12:00', '14:00', '16:00'])
+  })
+
+  it('takes one from each stretch, a different one each day', () => {
+    const a = spreadPick(twelve, 3, 'c|2026-10-12')
+    expect(a).toHaveLength(3)
+    expect(a[0] < '13:00' && a[1] >= '13:00' && a[1] < '15:00' && a[2] >= '15:00').toBe(true)
+    const days = ['10', '11', '12', '13', '14', '15'].map((d) => spreadPick(twelve, 1, `c|2026-10-${d}`)[0])
+    expect(new Set(days).size).toBeGreaterThan(2)
   })
 })

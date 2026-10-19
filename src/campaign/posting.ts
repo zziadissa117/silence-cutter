@@ -9,11 +9,11 @@
 // The phone keeps only which profile is its own, and whether it sends.
 
 import type { ViewsByAccount } from './analytics'
-import { DEFAULT_WINDOW, cleanWindow, dayWindow, gapFor, inDay, windowTimes, type PostingWindow } from '../../supabase/functions/postiz/window.ts'
+import { DEFAULT_WINDOW, cleanWindow, dayWindow, gapFor, inDay, spanOf, windowTimes, type PostingWindow } from '../../supabase/functions/postiz/window.ts'
 import { timesFor, timesOn } from '../../supabase/functions/postiz/slots.ts'
 import { PUBLISHABLE_KEY, currentSession } from './cloud'
 import type { Campaign, CampaignPosting } from './look'
-import { dayTimes } from './batch'
+import { dayTimes, spreadPick } from './batch'
 
 const FUNCTION_URL = 'https://uykuoibqdxmpbbrsmyad.supabase.co/functions/v1/postiz'
 const LOCAL_KEY = 'cutter.posting'
@@ -296,7 +296,7 @@ export const BATCH_MAX_PER_DAY = 25
 export function batchTimesOn(place: CampaignPlace, campaignId: string, date: string, perDay: number): string[] {
   const window = windowOf(place)
   const count = Math.min(perDay, BATCH_MAX_PER_DAY)
-  const gap = gapFor(window, count)
+  const gap = batchGap(window, count)
   const own = ownDayTimes(place)
   if (own.length === 0) return windowTimes({ ...window, perDay: count }, campaignId, date, gap)
   if (count <= own.length) return dayTimes(own, count)
@@ -308,8 +308,18 @@ export function batchTimesOn(place: CampaignPlace, campaignId: string, date: str
     const clear = (t: string) => own.every((o) => Math.abs(minutes(o) - minutes(t)) >= g)
     extras = windowTimes({ ...window, perDay: BATCH_MAX_PER_DAY * 2 }, `${campaignId}|batch`, date, g).filter(clear)
   }
-  // An even pick of the candidates, so the extras spread over the window.
-  return [...own, ...dayTimes(extras, count - own.length)].sort()
+  // An even pick of the candidates, so the extras spread over the window
+  // instead of bunching up at its start.
+  return [...own, ...spreadPick(extras, count - own.length, `${campaignId}|${date}|extra`)].sort()
+}
+
+/** A batch's spacing: the window's own, but never so close that the times
+ *  fill the whole day - a quarter of it stays free, so they still move from
+ *  day to day (24 a day in 11 AM - 6 PM sat on 11:00, 11:17, 11:34... every
+ *  day). Never under 10 minutes. */
+function batchGap(window: PostingWindow, count: number): number {
+  const gap = gapFor(window, count)
+  return count <= 1 ? gap : Math.max(10, Math.min(gap, Math.floor((spanOf(window) * 0.75) / (count - 1))))
 }
 
 /** How far a stacked batch's times keep from the ones already taken: half
@@ -320,17 +330,25 @@ const STACK_GAP = 20
 /** Times for a batch stacked on top of one already running: `perDay` of
  *  them inside the campaign's window (cut to the middle of the day), each
  *  clear of every time already `taken` that day - so 3 a day and 2 more
- *  make 5, none on top of another. */
-export function stackTimesOn(place: CampaignPlace, campaignId: string, date: string, perDay: number, taken: readonly string[]): string[] {
+ *  make 5, none on top of another - and each one `usable` (today: far
+ *  enough ahead). Closer than STACK_GAP only when that many don't fit. */
+export function stackTimesOn(
+  place: CampaignPlace,
+  campaignId: string,
+  date: string,
+  perDay: number,
+  taken: readonly string[],
+  usable: (time: string) => boolean = () => true,
+): string[] {
   const window = windowOf(place)
   const count = Math.min(perDay, BATCH_MAX_PER_DAY)
   const minutes = (t: string) => Number(t.slice(0, 2)) * 60 + Number(t.slice(3, 5))
   let clear: string[] = []
   for (let gap = STACK_GAP; gap >= 10 && clear.length < count; gap--) {
     const far = (t: string) => taken.every((o) => Math.abs(minutes(o) - minutes(t)) >= gap)
-    clear = windowTimes({ ...window, perDay: BATCH_MAX_PER_DAY * 2 }, `${campaignId}|stack`, date, gap).filter(far)
+    clear = windowTimes({ ...window, perDay: BATCH_MAX_PER_DAY * 2 }, `${campaignId}|stack`, date, gap).filter((t) => far(t) && usable(t))
   }
-  return dayTimes(clear, count).sort()
+  return spreadPick(clear, count, `${campaignId}|${date}|stack`)
 }
 
 /** The times a campaign's posts already hold, by day ("2026-10-14" →

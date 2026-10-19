@@ -3,6 +3,24 @@
 Newest first. Every change says what it does, how to use it, and how it works
 underneath. Kept up to date with each commit.
 
+## Batch times: no more piling up at 11 AM, and full days that change each day
+Only ./deploy.sh is needed.
+**What:** 11 AM is the start of the posting day (11 AM - 6 PM, the middle of the day you asked for), but batch videos
+were stuck to it more than they should have been:
+- When a batch needed more times than the campaign's own (say 3 a day on a campaign set to 11:00 and 6:00), the extra
+  went to the first free time - about 11:30, right after the first. It now goes somewhere in the open part of the day,
+  a different time each day (2:40 PM one day, 4:10 PM the next).
+- Adding videos to a day that already had some did the same; they now spread over what's free.
+- A full day (24 a day) sat on the same grid every day - 11:00, 11:17, 11:34 ... 5:50. A quarter of the day now stays
+  free, so the times and the gaps between them change every day (gaps of 10 to 30-odd minutes). With 24 a day it still
+  starts around 11:00-11:05: 24 videos only fit in 11 to 6 if it starts at the opening.
+- Adding to a day now really keeps 20 minutes clear of the posts already there when there is room (it used to squeeze
+  to 10).
+**How:** `batch.spreadPick` (one per stretch of the candidates, seeded by campaign and day) replaces the even pick that
+always took the first candidate, in `batchTimesOn` extras, `stackTimesOn` and `runSlots`; `posting.batchGap` keeps a
+quarter of the window as slack; `stackTimesOn` takes the number still needed and a `usable` filter instead of 25 then
+filtering. `window.spanOf` (server behaviour unchanged). Tests in `posting.test.ts`, `batch.test.ts`.
+
 ## Batch: hooks in shares you choose, Claude + X mixed in with the headlines
 Only ./deploy.sh is needed.
 **What:** the Batch tab's Hook section now has four buttons: **White box / Outline / Snapchat / Claude + X**. Tap any

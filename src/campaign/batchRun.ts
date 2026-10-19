@@ -18,7 +18,6 @@ import {
   LEAD_MINUTES,
   addDays,
   combos,
-  dayTimes,
   formulaLine,
   formulaText,
   headlinesToMix,
@@ -39,7 +38,7 @@ import { engineJob, makeOnEngine, saveEngineSeries, sendFootage, stopEngineJob }
 import { DEFAULT_CORNER } from './greenScreenRender'
 import type { Job } from './jobs'
 import { NO_POSTING, type Campaign, type HeadlineStyle } from './look'
-import { BATCH_MAX_PER_DAY, batchTimesOn, listPosts, stackTimesOn, stoppable, stopPostsNow, takenTimes, type CampaignPlace, type ServerPost } from './posting'
+import { batchTimesOn, listPosts, stackTimesOn, stoppable, stopPostsNow, takenTimes, type CampaignPlace, type ServerPost } from './posting'
 import { loadBankFile, type JobBatch } from './store'
 
 /** How many days are kept made ahead: a week of posts waiting, so a few days
@@ -102,13 +101,10 @@ export function runSlots({
     const have = filledOn(bank, date)
     const need = bank.perDay - have
     if (need <= 0) continue
-    const usable = (times: string[]) => times.filter((t) => date !== today || minutes(t) >= soonest)
-    const times = have === 0 ? usable(batchTimesOn(place, campaignId, date, bank.perDay)).slice(0, need) : []
-    if (times.length < need) {
-      // Every free time first, then an even pick of the ones still ahead.
-      const free = usable(stackTimesOn(place, campaignId, date, BATCH_MAX_PER_DAY, [...taken(date), ...times]))
-      times.push(...dayTimes(free, need - times.length))
-    }
+    const ahead = (t: string) => date !== today || minutes(t) >= soonest
+    const times = have === 0 ? batchTimesOn(place, campaignId, date, bank.perDay).filter(ahead).slice(0, need) : []
+    // The rest clear of the times the day holds, spread over what is left of it.
+    if (times.length < need) times.push(...stackTimesOn(place, campaignId, date, need - times.length, [...taken(date), ...times], ahead))
     for (const time of times.sort()) slots.push({ date, time })
   }
   return slots
