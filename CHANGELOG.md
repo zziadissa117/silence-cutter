@@ -3,6 +3,24 @@
 Newest first. Every change says what it does, how to use it, and how it works
 underneath. Kept up to date with each commit.
 
+## Batch: hooks in shares you choose, Claude + X mixed in with the headlines
+Only ./deploy.sh is needed.
+**What:** the Batch tab's Hook section now has four buttons: **White box / Outline / Snapchat / Claude + X**. Tap any
+of them to turn them on together (one always stays on). With more than one, each gets a row with **− 25% +**: they
+start even, and + gives that hook more of the videos (Snapchat at 50% and the other two at 25% means half the videos
+are Snapchat). Claude + X can now be one of them: those videos show the two logos and an amount, the others a headline
+in their look - same batch, same reactions and products. The Headlines list shows while a headline look is on, the
+logos and amount while Claude + X is on.
+A Claude + X video counts as different for each amount in its range ($500 to $1,000 is 11 amounts), the way each
+headline does, so no two videos are the same. The variations box at the bottom says so: "21 hooks (5 headlines in 2
+looks + 11 Claude + X amounts)". A batch that is Claude + X alone works exactly as before.
+If one hook runs out of different videos before the others, it stops until you add new footage, and the others carry
+on. With only 2 reactions the shares can drift a little, because the same reaction never plays twice in a row.
+**How:** `BatchBank.looks` (`LookShare`: look + parts), read through `looksOf` (old `hook`/`headlineStyles` too);
+`looksToMix` builds the hook dimension (headlines x headline looks + `formulaAmounts`); `pickBatch` takes the look
+furthest behind its share, then the best combination in it; `BatchPick.look/amount`; `planVideos` gives Claude + X picks
+`formulaLine(…, amount)`. `BatchView.HookLooks`. Tests in `batch.test.ts`, `batchRun.test.ts`, `batchView.test.tsx`.
+
 ## Batch: several headline looks at once, and the number of variations at the bottom
 Only ./deploy.sh is needed.
 **What:** under a batch's Headlines, White box / Outline / Snapchat can now be on together - tap one to add it, tap it

@@ -19,8 +19,10 @@ import {
   headlinesFrom,
   MAX_COMBOS,
   stepTitle,
-  stylesOf,
-  hookOf,
+  BATCH_LOOKS,
+  looksOf,
+  type BatchLook,
+  type LookShare,
   todayHere,
   usesSteps,
   type BankFile,
@@ -32,7 +34,7 @@ import { StepOrder } from './StepOrder'
 import { filmingOf } from './filming'
 import { fingerprint, skippedNotice } from './fingerprint'
 import { formatTime, labelOf, type Job } from './jobs'
-import { HEADLINE_STYLES, type Angle, type Campaign, type HeadlineStyle } from './look'
+import type { Angle, Campaign } from './look'
 import { copySong, useMusicBank } from './musicBank'
 import {
   BATCH_MAX_PER_DAY,
@@ -344,7 +346,7 @@ export function BatchView({
       const kept: BankFile = { id, name: file.name, type: file.type, size: file.size }
       const latest = bankRef.current ?? current
       const before = latest.formula ?? DEFAULT_FORMULA
-      keep({ ...latest, hook: 'formula', formula: { ...before, [side]: kept } })
+      keep({ ...latest, formula: { ...before, [side]: kept } })
       if (side === 'left') rememberLeft(kept)
     } catch (error) {
       setProblem(`${file.name} couldn't be kept: ${error instanceof Error ? error.message : String(error)}`)
@@ -392,7 +394,23 @@ export function BatchView({
   const green = bank?.layout === 'greenscreen'
   const onEngine = bank?.layout === 'engine'
   const corner = bank?.corner ?? DEFAULT_CORNER
-  const formulaHook = bank && !green ? hookOf(bank) === 'formula' : false
+  // The hooks picked, with their shares - none picked: headlines in the
+  // angle's look.
+  const shownLooks: LookShare[] = !bank ? [] : looksOf(bank).length > 0 ? looksOf(bank) : [{ look: angle.headline.style, parts: 1 }]
+  const formulaOn = !green && !onEngine && shownLooks.some((l) => l.look === 'formula')
+  const headlinesOn = green || onEngine || shownLooks.some((l) => l.look !== 'formula')
+  const saveLooks = (looks: LookShare[]) => {
+    if (!bank) return
+    const formulaNow = looks.some((l) => l.look === 'formula')
+    keep({
+      ...bank,
+      looks,
+      hook: undefined,
+      headlineStyles: undefined,
+      headlineStyle: undefined,
+      ...(formulaNow && !bank.formula ? { formula: { ...DEFAULT_FORMULA, left: rememberedLeft() } } : {}),
+    })
+  }
   const formula: BatchFormula = bank?.formula ?? DEFAULT_FORMULA
   // The engine makes many videos from each take, so it never runs out.
   const { total: different, left } = bank && !onEngine ? leftToMake(bank) : { total: Infinity, left: Infinity }
@@ -769,25 +787,14 @@ export function BatchView({
           {green || onEngine ? null : (
           <div className="group">
             <div className="group-title">Hook</div>
-            <div className="seg full" role="radiogroup" aria-label="Hook">
-              <button type="button" role="radio" aria-checked={!formulaHook} className={!formulaHook ? 'active' : ''} onClick={() => keep({ ...bank, hook: 'headline' })}>
-                Headlines
-              </button>
-              <button
-                type="button"
-                role="radio"
-                aria-checked={formulaHook}
-                className={formulaHook ? 'active' : ''}
-                onClick={() => keep({ ...bank, hook: 'formula', formula: bank.formula ?? { ...DEFAULT_FORMULA, left: rememberedLeft() } })}
-              >
-                Claude + X
-              </button>
-            </div>
+            <HookLooks looks={shownLooks} withFormula stepped={stepped} onChange={saveLooks} />
           </div>
           )}
-          {formulaHook ? (
+          {formulaOn ? (
             <div className="group">
-              <p className="hint bank-hint tip">Two logos with a plus between them over every reaction, then a different amount a day on each video. No headline.</p>
+              <p className="hint bank-hint tip">
+                Two logos with a plus between them over the reaction, then a different amount a day on each Claude + X video. No headline on those.
+              </p>
               <div className="formula-logos">
                 {(['left', 'right'] as const).map((side) => (
                   <label key={side} className="btn small formula-pick">
@@ -834,7 +841,8 @@ export function BatchView({
               </div>
               <FormulaPreview left={formula.left} right={formula.right} line={formulaLine(formula, 'preview')} look={angle.headline} load={loadBankFile} />
             </div>
-          ) : (
+          ) : null}
+          {headlinesOn ? (
           <div className="group">
             <div className="bank-head">
               <span className="group-title">
@@ -861,22 +869,16 @@ export function BatchView({
                 keep({ ...bank, headlines })
               }}
             />
-            {onEngine ? null : (
-              <>
-                <HeadlineLooks
-                  picked={stylesOf(bank).length > 0 ? stylesOf(bank) : [angle.headline.style]}
-                  onPick={(headlineStyles) => keep({ ...bank, headlineStyles, headlineStyle: undefined })}
-                />
-                <p className="hint bank-hint">
-                  {stylesOf(bank).length > 1
-                    ? `The videos take turns: the same headlines in each look, ${stylesOf(bank).length === 2 ? 'half' : 'a third'} each.`
-                    : 'Tap more than one and the videos take turns between them, the same headlines in each.'}
-                  {stepped ? ' The step names use the same look.' : ''}
-                </p>
-              </>
-            )}
+            {green ? (
+              <HookLooks
+                looks={shownLooks.some((l) => l.look !== 'formula') ? shownLooks.filter((l) => l.look !== 'formula') : [{ look: angle.headline.style, parts: 1 }]}
+                withFormula={false}
+                stepped={false}
+                onChange={saveLooks}
+              />
+            ) : null}
           </div>
-          )}
+          ) : null}
           {green
             ? null
             : onEngine
@@ -1079,29 +1081,67 @@ export function BatchView({
   )
 }
 
-/** The looks a batch's headlines are written in: tap to add one or take it
- *  out - one always stays. With more, the videos take turns between them. */
-function HeadlineLooks({ picked, onPick }: { picked: HeadlineStyle[]; onPick: (styles: HeadlineStyle[]) => void }) {
+const LOOK_LABEL: Record<BatchLook, string> = { box: 'White box', outline: 'Outline', snap: 'Snapchat', formula: 'Claude + X' }
+
+/** The hooks a batch's videos take turns between: tap to add one or take it
+ *  out - one always stays. With more than one, each gets a share, even until
+ *  he taps + or − on one. */
+function HookLooks({
+  looks,
+  withFormula,
+  stepped,
+  onChange,
+}: {
+  looks: LookShare[]
+  withFormula: boolean
+  stepped: boolean
+  onChange: (looks: LookShare[]) => void
+}) {
+  const choices = BATCH_LOOKS.filter((look) => withFormula || look !== 'formula')
+  const partsOf = (look: BatchLook) => looks.find((l) => l.look === look)?.parts
+  const all = looks.reduce((n, l) => n + l.parts, 0)
+  const change = (look: BatchLook, parts: number | null) => {
+    const next = choices.flatMap((c) => {
+      const kept = c === look ? parts : (partsOf(c) ?? null)
+      return kept === null ? [] : [{ look: c, parts: kept }]
+    })
+    if (next.length > 0) onChange(next)
+  }
+  const headlineLooks = looks.filter((l) => l.look !== 'formula').length
   return (
-    <div className="seg full headline-look" role="group" aria-label="Headline styles">
-      {HEADLINE_STYLES.map(({ value, label }) => {
-        const on = picked.includes(value)
-        return (
-          <button
-            key={value}
-            type="button"
-            role="checkbox"
-            aria-checked={on}
-            className={on ? 'active' : ''}
-            onClick={() => {
-              const next = HEADLINE_STYLES.map((s) => s.value).filter((v) => (v === value ? !on : picked.includes(v)))
-              if (next.length > 0) onPick(next)
-            }}
-          >
-            {label}
-          </button>
-        )
-      })}
-    </div>
+    <>
+      <div className="seg full headline-look" role="group" aria-label="Hook looks">
+        {choices.map((look) => {
+          const on = partsOf(look) !== undefined
+          return (
+            <button key={look} type="button" role="checkbox" aria-checked={on} className={on ? 'active' : ''} onClick={() => change(look, on ? null : 1)}>
+              {LOOK_LABEL[look]}
+            </button>
+          )
+        })}
+      </div>
+      {looks.length > 1 ? (
+        <ul className="look-shares">
+          {looks.map(({ look, parts }) => (
+            <li key={look} className="look-share">
+              <span className="look-share-name">{LOOK_LABEL[look]}</span>
+              <button type="button" className="btn small icon-btn" aria-label={`Less ${LOOK_LABEL[look]}`} disabled={parts <= 1} onClick={() => change(look, parts - 1)}>
+                −
+              </button>
+              <span className="look-share-pct">{Math.round((parts / all) * 100)}%</span>
+              <button type="button" className="btn small icon-btn" aria-label={`More ${LOOK_LABEL[look]}`} disabled={parts >= 9} onClick={() => change(look, parts + 1)}>
+                +
+              </button>
+            </li>
+          ))}
+        </ul>
+      ) : null}
+      <p className="hint bank-hint">
+        {looks.length > 1
+          ? `The videos take turns in these shares${headlineLooks > 1 ? ', the same headlines in each look' : ''}.`
+          : 'Tap more than one and the videos take turns between them.'}
+        {stepped && headlineLooks > 0 ? " The step names follow each video's look." : ''}
+      </p>
+    </>
   )
 }

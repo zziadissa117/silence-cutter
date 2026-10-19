@@ -1,6 +1,23 @@
 import { describe, expect, it } from 'vitest'
 
-import { combos, dayTimes, stepTitle, emptyBank, filesOf, headlinesFrom, pickBatch, spend, styleFor, stylesOf, usesSteps, type BankFile, type BatchBank } from './batch'
+import {
+  combos,
+  dayTimes,
+  stepTitle,
+  emptyBank,
+  filesOf,
+  formulaAmounts,
+  formulaLine,
+  headlinesFrom,
+  looksOf,
+  pickBatch,
+  spend,
+  styleFor,
+  stylesOf,
+  usesSteps,
+  type BankFile,
+  type BatchBank,
+} from './batch'
 
 const files = (prefix: string, n: number): BankFile[] =>
   Array.from({ length: n }, (_, i) => ({ id: `${prefix}${i + 1}`, name: `${prefix}${i + 1}.mov`, type: 'video/quicktime', size: 1 }))
@@ -253,10 +270,10 @@ describe('headlines in several looks', () => {
 
   it('takes turns evenly: 15 videos are 5 of each, all with the same words', () => {
     const { picks } = pickBatch(looks(), 15, seeded(3))
-    expect(count(picks.map((p) => p.style ?? null))).toEqual({ outline: 5, snap: 5, box: 5 })
+    expect(count(picks.map((p) => p.look ?? null))).toEqual({ outline: 5, snap: 5, box: 5 })
     expect(new Set(picks.map((p) => p.headline))).toEqual(new Set(['wait for it']))
     // Each reaction in each look once.
-    expect(new Set(picks.map((p) => `${p.reaction}|${p.style}`)).size).toBe(15)
+    expect(new Set(picks.map((p) => `${p.reaction}|${p.look}`)).size).toBe(15)
   })
 
   it('counts each look as different videos', () => {
@@ -267,7 +284,7 @@ describe('headlines in several looks', () => {
   it('with one look, mixes and remembers exactly as before', () => {
     const one = looks({ headlineStyles: ['snap'] })
     const { picks, made } = pickBatch(one, 2, seeded(3))
-    expect(picks.every((p) => p.style === undefined)).toBe(true)
+    expect(picks.every((p) => p.look === undefined)).toBe(true)
     expect(made.every((key) => key.split('|').length === 4)).toBe(true)
   })
 
@@ -287,5 +304,73 @@ describe('headlines in several looks', () => {
     expect(['outline', 'box']).toContain(styleFor('snap', ['outline', 'box'], 'job1'))
     expect(styleFor(undefined, ['outline', 'box'], 'job1')).toBe(styleFor(undefined, ['outline', 'box'], 'job1'))
     expect(styleFor('snap', [], 'job1')).toBeUndefined()
+  })
+})
+
+describe('hooks in shares, Claude + X among them', () => {
+  const mixed = (fields: Partial<BatchBank> = {}): BatchBank => ({
+    ...emptyBank('openart', 'a1'),
+    reactions: files('r', 10),
+    products: files('p', 1),
+    headlines: ['wait for it'],
+    ...fields,
+  })
+
+  it('gives each look its share: 2 parts and 1 are two thirds and a third', () => {
+    const { picks } = pickBatch(mixed({ looks: [{ look: 'snap', parts: 2 }, { look: 'box', parts: 1 }] }), 9, seeded(5))
+    const n = count(picks.map((p) => p.look ?? null))
+    expect(Math.abs(n.snap - 6)).toBeLessThanOrEqual(1)
+    expect(n.snap + n.box).toBe(9)
+  })
+
+  it('takes Claude + X in turn, each amount its own video, never one twice', () => {
+    const bank = mixed({
+      reactions: files('r', 4),
+      headlines: ['one', 'two'],
+      looks: [{ look: 'box', parts: 1 }, { look: 'formula', parts: 1 }],
+      formula: { left: null, right: null, min: 500, max: 600 },
+    })
+    // 4 reactions x (2 headlines + 3 amounts).
+    expect(combos(bank).total).toBe(20)
+    const { picks, made } = pickBatch(bank, 8, seeded(2))
+    const formula = picks.filter((p) => p.look === 'formula')
+    expect(formula.length).toBe(4)
+    for (const p of formula) {
+      expect([500, 550, 600]).toContain(p.amount)
+      expect(p.headline).toBe('')
+    }
+    for (const p of picks.filter((p) => p.look === 'box')) expect(['one', 'two']).toContain(p.headline)
+    expect(new Set(made).size).toBe(8)
+  })
+
+  it('reads the banks saved before: Claude + X alone, or the headline looks then', () => {
+    expect(looksOf({ hook: 'formula', headlineStyles: ['snap'] })).toEqual([{ look: 'formula', parts: 1 }])
+    expect(looksOf({ headlineStyles: ['box', 'snap'] })).toEqual([
+      { look: 'box', parts: 1 },
+      { look: 'snap', parts: 1 },
+    ])
+    expect(looksOf({ hook: 'formula', looks: [{ look: 'snap', parts: 2 }] })).toEqual([{ look: 'snap', parts: 2 }])
+    expect(stylesOf({ looks: [{ look: 'snap', parts: 2 }, { look: 'formula', parts: 1 }] })).toEqual(['snap'])
+  })
+
+  it('keeps a Claude + X batch on its own exactly as it was', () => {
+    const alone = mixed({ reactions: files('r', 3), headlines: [''], hook: 'formula', formula: { left: null, right: null, min: 500, max: 1000 } })
+    expect(combos(alone).total).toBe(3)
+    expect(pickBatch(alone, 2, seeded(1)).picks.every((p) => p.look === undefined && p.amount === undefined)).toBe(true)
+  })
+
+  it('goes through every amount in the range, at most 100 of them', () => {
+    expect(formulaAmounts({ min: 500, max: 1000 })).toEqual([500, 550, 600, 650, 700, 750, 800, 850, 900, 950, 1000])
+    const wide = formulaAmounts({ min: 0, max: 100_000 })
+    expect(wide).toHaveLength(100)
+    expect(wide[0]).toBe(0)
+    expect(wide.at(-1)).toBe(100_000)
+    expect(wide.every((a) => a % 50 === 0)).toBe(true)
+  })
+
+  it('says the amount it was mixed with, keeping its own ending', () => {
+    const f = { min: 500, max: 1000 }
+    expect(formulaLine(f, 'v1', 650)).toMatch(/^\$650/)
+    expect(formulaLine(f, 'v1', 650).replace(/^\$[\d,]+/, '')).toBe(formulaLine(f, 'v1').replace(/^\$[\d,]+/, ''))
   })
 })

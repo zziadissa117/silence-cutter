@@ -8,7 +8,7 @@ vi.mock('./engine', () => ({
 vi.mock('./store', () => ({ loadBankFile: vi.fn(async () => null) }))
 
 import { emptyBank, type BankFile, type BatchBank } from './batch'
-import { AHEAD_DAYS, countedDays, dayVideos, filledOn, leftToMake, overfull, planVideos, runSlots, takenBy, topUp, trimPlan, variationParts } from './batchRun'
+import { AHEAD_DAYS, countedDays, dayVideos, filledOn, leftToMake, missingFor, overfull, planVideos, runSlots, takenBy, topUp, trimPlan, variationParts } from './batchRun'
 import { makeOnEngine } from './engine'
 import type { Job } from './jobs'
 import type { CampaignPlace, ServerPost } from './posting'
@@ -249,7 +249,7 @@ describe('headlines in several looks, planned', () => {
 describe('how many variations', () => {
   it('says what multiplies into the number', () => {
     const b = bank({ headlineStyles: ['outline', 'snap', 'box'], music: files('m', 2) })
-    expect(variationParts(b)).toEqual(['2 reactions', '2 product showcases', '2 headlines', '2 songs', '3 headline looks'])
+    expect(variationParts(b)).toEqual(['2 reactions', '2 product showcases', '2 songs', '2 headlines', '3 headline looks'])
     expect(leftToMake(b).total).toBe(2 * 2 * 2 * 2 * 3)
   })
 
@@ -264,5 +264,33 @@ describe('how many variations', () => {
   it('has no headlines for the Claude + X hook', () => {
     expect(variationParts(bank({ hook: 'formula', headlineStyles: ['snap', 'box'] }))).toEqual(['2 reactions', '2 product showcases'])
     expect(leftToMake(bank({ hook: 'formula', headlineStyles: ['snap', 'box'] })).total).toBe(4)
+  })
+})
+
+describe('Claude + X taking turns with headlines, planned', () => {
+  const logos = { left: files('l', 1)[0], right: files('o', 1)[0], min: 500, max: 600 }
+  const mixed = (fields: Partial<BatchBank> = {}) =>
+    bank({ looks: [{ look: 'snap', parts: 1 }, { look: 'box', parts: 1 }, { look: 'formula', parts: 1 }], formula: logos, ...fields })
+
+  it('makes some videos with the logos and an amount, the rest with a headline in its look', () => {
+    const b = mixed()
+    const plan = planVideos(b, runSlots({ bank: b, place, campaignId: 'c1', now: NOON }).slice(0, 6), { now: NOON })
+    const formula = plan.videos.filter((v) => v.formula)
+    expect(formula.length).toBe(2)
+    for (const v of formula) {
+      expect(v.formula!.line).toMatch(/^\$(500|550|600)/)
+      expect(v.headlineStyle).toBeUndefined()
+    }
+    expect(plan.videos.filter((v) => !v.formula).map((v) => v.headlineStyle).sort()).toEqual(['box', 'box', 'snap', 'snap'])
+  })
+
+  it('counts its amounts as hooks next to the headlines', () => {
+    expect(variationParts(mixed())).toEqual(['2 reactions', '2 product showcases', '7 hooks (2 headlines in 2 looks + 3 Claude + X amounts)'])
+    expect(leftToMake(mixed()).total).toBe(2 * 2 * 7)
+    expect(variationParts(mixed({ looks: [{ look: 'snap', parts: 1 }, { look: 'formula', parts: 1 }] }))).toContain('5 hooks (2 headlines + 3 Claude + X amounts)')
+  })
+
+  it('needs headlines and both logos', () => {
+    expect(missingFor(mixed({ headlines: [], formula: { ...logos, right: null } }))).toEqual(['a headline', 'both logos'])
   })
 })

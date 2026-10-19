@@ -318,25 +318,76 @@ describe('changing the number while it runs', () => {
   })
 })
 
-describe("the batch's headline looks", () => {
+describe("the batch's hooks: headline looks and Claude + X, in shares", () => {
   const look = (label: string) =>
-    [...host.querySelectorAll('[aria-label="Headline styles"] [role="checkbox"]')].find((b) => b.textContent === label) as HTMLButtonElement
+    [...host.querySelectorAll('[aria-label="Hook looks"] [role="checkbox"]')].find((b) => b.textContent === label) as HTMLButtonElement
+  const share = (label: string) => [...host.querySelectorAll('.look-share')].find((li) => li.querySelector('.look-share-name')?.textContent === label)
+  const press = (label: string) => act(async () => (host.querySelector(`[aria-label="${label}"]`) as HTMLButtonElement).click())
+  const logo = (id: string, name: string) => ({ id, name, type: 'image/png', size: 1000 })
 
   it("starts as the angle's; tapping more makes the videos take turns, and one always stays", async () => {
     await show({})
     expect(look('White box').getAttribute('aria-checked')).toBe('true')
+    expect(host.querySelector('.look-shares')).toBeNull()
     await act(async () => look('Snapchat').click())
-    expect((await savedBank()).headlineStyles).toEqual(['box', 'snap'])
+    expect((await savedBank()).looks).toEqual([
+      { look: 'box', parts: 1 },
+      { look: 'snap', parts: 1 },
+    ])
     await act(async () => look('Outline').click())
-    expect((await savedBank()).headlineStyles).toEqual(['box', 'outline', 'snap'])
-    expect(host.textContent).toContain('the same headlines in each look, a third each')
+    expect(host.textContent).toContain('The videos take turns in these shares, the same headlines in each look.')
     // The 27 different videos in each of the 3 looks.
     expect(host.querySelector('.batch-variations .label')?.textContent).toBe('81 variations')
     expect(host.querySelector('.batch-variations')?.textContent).toContain('× 3 headline looks')
     await act(async () => look('White box').click())
     await act(async () => look('Outline').click())
-    expect((await savedBank()).headlineStyles).toEqual(['snap'])
+    expect((await savedBank()).looks).toEqual([{ look: 'snap', parts: 1 }])
     await act(async () => look('Snapchat').click())
     expect(look('Snapchat').getAttribute('aria-checked')).toBe('true')
+  })
+
+  it('gives one more of the videos with +, shown as a share', async () => {
+    storedBank = { ...bank, looks: [{ look: 'box', parts: 1 }, { look: 'outline', parts: 1 }, { look: 'snap', parts: 1 }] }
+    await show({})
+    expect(share('Snapchat')?.querySelector('.look-share-pct')?.textContent).toBe('33%')
+    await press('More Snapchat')
+    expect(share('Snapchat')?.querySelector('.look-share-pct')?.textContent).toBe('50%')
+    expect(share('Outline')?.querySelector('.look-share-pct')?.textContent).toBe('25%')
+    expect((await savedBank()).looks).toEqual([
+      { look: 'box', parts: 1 },
+      { look: 'outline', parts: 1 },
+      { look: 'snap', parts: 2 },
+    ])
+    await press('Less Snapchat')
+    expect((await savedBank()).looks?.find((l) => l.look === 'snap')?.parts).toBe(1)
+  })
+
+  it('takes Claude + X in among the headlines: both are asked for, and the videos come in their shares', async () => {
+    await show({})
+    await act(async () => look('Claude + X').click())
+    // The headlines stay, and the logos are asked for too.
+    expect(host.querySelector('[aria-label="Headlines, one a line"]')).not.toBeNull()
+    expect(host.querySelector('[aria-label="Left logo"]')).not.toBeNull()
+    expect(host.textContent).toContain('Add both logos first.')
+
+    storedBank = {
+      ...bank,
+      looks: [
+        { look: 'snap', parts: 2 },
+        { look: 'formula', parts: 1 },
+      ],
+      formula: { left: logo('l', 'claude.png'), right: logo('r', 'openart-logo.png'), min: 500, max: 1000 },
+    }
+    act(() => root.unmount())
+    root = createRoot(host)
+    const { onMake } = await show({})
+    await act(async () => makeButton().click())
+    const videos = onMake.mock.calls[0][2] as { headline: string; headlineStyle?: string; formula?: { line: string } }[]
+    const formula = videos.filter((v) => v.formula)
+    const snap = videos.filter((v) => v.headlineStyle === 'snap')
+    expect(formula.length + snap.length).toBe(videos.length)
+    expect(Math.abs(snap.length - 2 * formula.length)).toBeLessThanOrEqual(2)
+    for (const v of formula) expect(v.headline).toBe(`Claude + Openart = ${v.formula!.line}`)
+    for (const v of snap) expect(bank.headlines).toContain(v.headline)
   })
 })

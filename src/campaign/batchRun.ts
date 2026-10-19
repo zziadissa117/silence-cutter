@@ -14,6 +14,7 @@
 // his friend's phone never tops up the same campaign.
 
 import {
+  DEFAULT_FORMULA,
   LEAD_MINUTES,
   addDays,
   combos,
@@ -25,7 +26,9 @@ import {
   mixFrom,
   pickBatch,
   spend,
-  stylesToMix,
+  looksToMix,
+  formulaAmounts,
+  hasFormula,
   todayHere,
   usesSteps,
   type BankFile,
@@ -116,13 +119,15 @@ export function runSlots({
 export function missingFor(bank: BatchBank): string[] {
   const green = bank.layout === 'greenscreen'
   const onEngine = bank.layout === 'engine'
-  const formula = !green && hookOf(bank) === 'formula'
+  const formulaOnly = !green && hookOf(bank) === 'formula'
+  const formula = !green && !onEngine && hasFormula(bank)
   return [
     bank.reactions.length === 0 ? 'a reaction' : '',
     ...(usesSteps(bank)
       ? bank.steps!.filter((s) => s.files.length === 0).map((s) => `a clip for ${s.name}`)
       : [bank.products.length === 0 ? (green ? 'a background video' : 'a product showcase') : '']),
-    green || onEngine ? '' : formula ? (!bank.formula?.left || !bank.formula?.right ? 'both logos' : '') : bank.headlines.length === 0 ? 'a headline' : '',
+    green || onEngine || formulaOnly || bank.headlines.length > 0 ? '' : 'a headline',
+    formula && (!bank.formula?.left || !bank.formula?.right) ? 'both logos' : '',
   ].filter(Boolean)
 }
 
@@ -139,16 +144,28 @@ export function leftToMake(bank: BatchBank): { total: number; left: number } {
 export function variationParts(bank: BatchBank): string[] {
   const green = bank.layout === 'greenscreen'
   const headlines = green || hookOf(bank) !== 'formula' ? bank.headlines : []
-  const looks = stylesToMix(mixFrom(bank, headlines)).length
+  const looks = looksToMix(mixFrom(bank, headlines))
+  const styles = looks.filter((l) => l.look !== 'formula').length
+  const amounts = looks.some((l) => l.look === 'formula') ? formulaAmounts(bank.formula ?? DEFAULT_FORMULA).length : 0
   const n = (count: number, one: string) => `${count} ${one}${count === 1 ? '' : 's'}`
+  // Claude + X taking turns: its amounts are hooks next to the headlines.
+  const hooks = amounts
+    ? [
+        `${n(styles * headlines.length + amounts, 'hook')} (${[
+          styles ? `${n(headlines.length, 'headline')}${styles > 1 ? ` in ${styles} looks` : ''}` : '',
+          `${n(amounts, 'Claude + X amount')}`,
+        ]
+          .filter(Boolean)
+          .join(' + ')})`,
+      ]
+    : [...(headlines.length > 0 ? [n(headlines.length, 'headline')] : []), ...(styles > 1 ? [n(styles, 'headline look')] : [])]
   return [
     n(bank.reactions.length, 'reaction'),
     ...(usesSteps(bank)
       ? bank.steps!.map((step) => `${n(step.files.length, 'clip')} for ${step.name}`)
       : [n(bank.products.length, green ? 'background video' : 'product showcase')]),
-    ...(headlines.length > 0 ? [n(headlines.length, 'headline')] : []),
     ...(!green && bank.music.length > 1 ? [n(bank.music.length, 'song')] : []),
-    ...(looks > 1 ? [n(looks, 'headline look')] : []),
+    ...hooks,
   ]
 }
 
@@ -175,7 +192,8 @@ export function planVideos(
 ): { videos: BatchVideo[]; slots: BatchSlot[]; bank: BatchBank; retire: string[] } {
   if (bank.layout === 'engine') return { videos: [], slots, bank: fill(bank, slots, now), retire: [] }
   const green = bank.layout === 'greenscreen'
-  const formula = !green && hookOf(bank) === 'formula' ? bank.formula : undefined
+  const formulaOnly = !green && hookOf(bank) === 'formula'
+  const formula = !green && hasFormula(bank) ? (bank.formula ?? DEFAULT_FORMULA) : undefined
   const corner = bank.corner ?? DEFAULT_CORNER
   const mixable = mixFrom(bank, green ? bank.headlines : headlinesToMix(bank))
   const { left } = combos(mixable)
@@ -186,17 +204,19 @@ export function planVideos(
   const byId = (list: BankFile[], fileId: string | null) => list.find((f) => f.id === fileId) ?? null
   const videos: BatchVideo[] = picks.map((pick, i) => {
     const steps = pick.steps && bank.steps ? pick.steps.map((fileId, s) => ({ file: byId(bank.steps![s].files, fileId)!, name: bank.steps![s].name })) : undefined
-    const line = formula ? formulaLine(formula, `${id}-${i}`) : ''
+    // Claude + X: every video, or those it takes turns on - at their amount.
+    const onFormula = formula && (formulaOnly || pick.look === 'formula') ? formula : undefined
+    const line = onFormula ? formulaLine(onFormula, `${id}-${i}`, pick.amount) : ''
     return {
       reaction: byId(bank.reactions, pick.reaction)!,
       product: steps ? steps[0].file : byId(bank.products, pick.product)!,
       ...(steps ? { steps } : {}),
       music: green ? null : byId(bank.music, pick.music),
       ...(green ? { greenScreen: corner } : {}),
-      ...(formula
-        ? { headline: formulaText(formula, line), formula: { left: formula.left, right: formula.right, line } }
+      ...(onFormula
+        ? { headline: formulaText(onFormula, line), formula: { left: onFormula.left, right: onFormula.right, line } }
         : { headline: pick.headline }),
-      ...(pick.style ? { headlineStyle: pick.style } : {}),
+      ...(pick.look && pick.look !== 'formula' ? { headlineStyle: pick.look } : {}),
       batch: { id, date: taking[i].date, time: taking[i].time, size: taking.length },
     }
   })

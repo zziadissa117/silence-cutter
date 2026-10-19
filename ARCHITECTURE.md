@@ -214,14 +214,21 @@ Lowering the number (or 0, a pause) works at once too: `overfull` finds the days
 started are dropped, posts not out are stopped (`stopPostsNow`), posted or being-made ones stay.
 On the engine, a batch still being made is stopped first and the days recounted (`countedDays`).
 
-Headline looks: `BatchBank.headlineStyles` (Batch tab, one or more; the old single
-`headlineStyle` reads as one). With two or more, `pickBatch` treats the look as one more
-dimension (`stylesToMix`, keys `s:<style>`, `|<style>` on the combo key) - so every headline
-comes in every look, evenly, and the different videos multiply; with one, keys and counts are
-unchanged. Each `BatchVideo` carries its `headlineStyle` into `montage.bank`; at render
-`batch.styleFor` keeps it while still picked, else takes one picked now (so a change reaches
-every video not made yet), and `withHeadlineStyle` swaps it into the angle. The bottom of the
-Batch tab shows the number of variations and `variationParts` (what multiplies into it).
+Hooks in shares: `BatchBank.looks` - `{ look, parts }` for White box / Outline / Snapchat
+headlines and Claude + X (`BatchLook`), picked in the Batch tab's Hook section (`HookLooks`,
+− / + per look as a %). Older banks read through `looksOf` (`hook: 'formula'` alone, or
+`headlineStyles` even). With two or more (`looksToMix`: not on the engine, no Claude + X in
+green screen, headline looks only with headlines), the mix's hook dimension is every headline
+in every headline look plus Claude + X at each amount of its range (`formulaAmounts`, at most
+100) - each amount a different video, as each headline is; combo keys end `|<look>`, used counts
+`s:<look>`. `pickBatch` first takes the look furthest behind its share this round (`behind`:
+`(made + 1) / parts`), then the least-used unmade combination in it; a look with nothing left
+sits out until the next round, and the same reaction is still never twice in a row. One look
+(or Claude + X alone) keeps the keys and counts it always had. `planVideos` gives a Claude + X
+pick the logos and `formulaLine(…, amount)`, a headline pick its `headlineStyle`
+(-> `montage.bank`); at render `batch.styleFor` keeps it while still picked, else takes one
+picked now, and `withHeadlineStyle` swaps it into the angle. The bottom of the Batch tab shows
+the number of variations and `variationParts` (what multiplies into it).
 
 ## Formats (`formats.ts`, `FormatsView.tsx`)
 

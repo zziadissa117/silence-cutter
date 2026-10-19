@@ -46,12 +46,14 @@ export interface BatchBank {
   /** Views a video at which Analytics suggests more a day (analytics.ts);
    *  none: it goes by the trend only. */
   viewTarget?: number
-  /** The headline looks for the batch's videos (and its step names), picked
-   *  by its headlines, in place of the angle's: with more than one, the
-   *  videos take turns, the same headlines in each look (stylesToMix). None:
-   *  the angle's. */
+  /** The hooks his videos take turns between, each with its share: headlines
+   *  in the three looks (the step names follow) and Claude + X (looksOf,
+   *  looksToMix). None: headlines in the angle's look. */
+  looks?: LookShare[]
+  /** The headline looks picked before Claude + X and shares could be; read
+   *  by looksOf. */
   headlineStyles?: HeadlineStyle[]
-  /** The one look picked before several could be; read as headlineStyles. */
+  /** The one look picked before several could be; read by looksOf. */
   headlineStyle?: HeadlineStyle
   /** How often each item has gone into a video: files by id, headlines by
    *  their words. */
@@ -73,8 +75,9 @@ export interface BatchBank {
    *  made, so they were cleared out for new footage: how many videos that
    *  was, and the day the last of them posts. */
   spent?: { videos: number; through: string }
-  /** The hook over each reaction: one of the headlines (absent), or the
-   *  "Claude + X = $ a day" formula. */
+  /** The hook over each reaction before looks could be mixed: one of the
+   *  headlines (absent), or the "Claude + X = $ a day" formula. Read by
+   *  looksOf; a bank saved since keeps `looks`. */
   hook?: BatchHook
   formula?: BatchFormula
   /** How each video is put together: the reaction then the product (absent),
@@ -145,15 +148,18 @@ export const DEFAULT_FORMULA: BatchFormula = { left: null, right: null, min: 500
 /** What each batch video's hook is: one of his headlines, or the formula. */
 export type BatchHook = 'headline' | 'formula'
 
-/** The hook the bank's videos take - headlines unless he switched. */
-export function hookOf(bank: Pick<BatchBank, 'hook'>): BatchHook {
-  return bank.hook === 'formula' ? 'formula' : 'headline'
+/** The hook every one of the bank's videos takes: Claude + X when it is the
+ *  only look picked, else headlines (Claude + X taking turns with them is
+ *  one of the looks, looksToMix). */
+export function hookOf(bank: LookFields): BatchHook {
+  const looks = looksOf(bank)
+  return looks.length === 1 && looks[0].look === 'formula' ? 'formula' : 'headline'
 }
 
 /** The headlines the mixing goes through: his own, or - for the formula,
  *  where the hook is drawn rather than written - one blank stand-in, so
  *  reactions, products and tracks still go round evenly. */
-export function headlinesToMix(bank: Pick<BatchBank, 'hook' | 'headlines'>): string[] {
+export function headlinesToMix(bank: LookFields & Pick<BatchBank, 'headlines'>): string[] {
   return hookOf(bank) === 'formula' ? [''] : bank.headlines
 }
 
@@ -179,14 +185,28 @@ function seeded(seed: string): () => number {
 /** "$650 a day", "$800/day", "$1,000 per day": a round amount in the range,
  *  in steps of $50, with the ending varied. The same seed - a video's own
  *  id - always gives the same line, so a remake says the same thing. */
-export function formulaLine(formula: Pick<BatchFormula, 'min' | 'max'>, seed: string): string {
+export function formulaLine(formula: Pick<BatchFormula, 'min' | 'max'>, seed: string, given?: number): string {
   const step = 50
   const low = Math.ceil(Math.max(0, Math.min(formula.min, formula.max)) / step) * step
   const high = Math.max(low, Math.floor(Math.max(formula.min, formula.max) / step) * step)
   const random = seeded(seed)
-  const amount = low + Math.floor(random() * ((high - low) / step + 1)) * step
+  const drawn = low + Math.floor(random() * ((high - low) / step + 1)) * step
+  const amount = given ?? drawn
   const ending = ENDINGS[Math.floor(random() * ENDINGS.length)]
   return `$${amount.toLocaleString('en-US')}${ending.startsWith('/') ? '' : ' '}${ending}`
+}
+
+/** The amounts Claude + X goes through when it takes turns with headlines:
+ *  each one in the range, in steps of $50 (at most 100 of them, spread
+ *  over the range) - each amount a different video, the way each headline
+ *  is. */
+export function formulaAmounts(formula: Pick<BatchFormula, 'min' | 'max'>): number[] {
+  const step = 50
+  const low = Math.ceil(Math.max(0, Math.min(formula.min, formula.max)) / step) * step
+  const high = Math.max(low, Math.floor(Math.max(formula.min, formula.max) / step) * step)
+  const n = (high - low) / step + 1
+  const take = Math.min(n, 100)
+  return Array.from({ length: take }, (_, i) => low + Math.round((i * (n - 1)) / Math.max(1, take - 1)) * step)
 }
 
 /** "Claude", from "claude-logo.png". */
@@ -213,21 +233,58 @@ export interface BatchPick {
   steps?: string[]
   headline: string
   music: string | null
-  /** The headline look, when the bank takes turns between several. */
-  style?: HeadlineStyle
+  /** The hook's look, when the bank takes turns between several: a headline
+   *  look, or Claude + X. */
+  look?: BatchLook
+  /** Claude + X taking turns: the amount this video says. */
+  amount?: number
 }
 
-/** The headline looks he picked for the batch, in order; none: the angle's. */
-export function stylesOf(bank: Pick<BatchBank, 'headlineStyles' | 'headlineStyle'>): HeadlineStyle[] {
-  return bank.headlineStyles?.length ? bank.headlineStyles : bank.headlineStyle ? [bank.headlineStyle] : []
+/** A hook a batch's videos can take: a headline in one of the three looks,
+ *  or the Claude + X formula. */
+export type BatchLook = HeadlineStyle | 'formula'
+
+/** A look he picked and its share of the videos: its parts out of all the
+ *  picked looks' parts - 2, 1 and 1 are a half and a quarter each. */
+export interface LookShare {
+  look: BatchLook
+  parts: number
 }
 
-/** The looks the mixing takes turns between: only with two or more picked,
- *  and only where a headline is written on this phone - so a bank with one
- *  look keeps the combinations it always had. */
-export function stylesToMix(bank: Pick<BatchBank, 'headlineStyles' | 'headlineStyle' | 'layout' | 'headlines'>): HeadlineStyle[] {
-  const styles = stylesOf(bank)
-  return styles.length > 1 && bank.layout !== 'engine' && bank.headlines.some((h) => h.trim()) ? styles : []
+/** The order the looks are shown and kept in. */
+export const BATCH_LOOKS: readonly BatchLook[] = ['box', 'outline', 'snap', 'formula']
+
+type LookFields = Pick<BatchBank, 'looks' | 'hook' | 'headlineStyles' | 'headlineStyle'>
+
+/** The looks he picked, with their shares. None: a headline in the angle's
+ *  look. Banks from before read as they were: the Claude + X hook alone, or
+ *  the headline looks picked then, even. */
+export function looksOf(bank: LookFields): LookShare[] {
+  if (bank.looks?.length) return bank.looks
+  if (bank.hook === 'formula') return [{ look: 'formula', parts: 1 }]
+  const styles = bank.headlineStyles?.length ? bank.headlineStyles : bank.headlineStyle ? [bank.headlineStyle] : []
+  return styles.map((look) => ({ look, parts: 1 }))
+}
+
+/** The headline looks picked, without Claude + X; none: the angle's. */
+export function stylesOf(bank: LookFields): HeadlineStyle[] {
+  return looksOf(bank).flatMap(({ look }) => (look === 'formula' ? [] : [look]))
+}
+
+/** Claude + X is one of the hooks he picked. */
+export function hasFormula(bank: LookFields): boolean {
+  return looksOf(bank).some(({ look }) => look === 'formula')
+}
+
+/** The looks the mixing takes turns between: only two or more, never on the
+ *  engine, Claude + X never in green screen, and headline looks only with a
+ *  headline written - so a bank with one look keeps the combinations it
+ *  always had. */
+export function looksToMix(bank: LookFields & Pick<BatchBank, 'layout' | 'headlines'>): LookShare[] {
+  if (bank.layout === 'engine') return []
+  const written = bank.headlines.some((h) => h.trim())
+  const looks = looksOf(bank).filter(({ look }) => (look === 'formula' ? bank.layout !== 'greenscreen' : written))
+  return looks.length > 1 ? looks : []
 }
 
 /** The look a batch video is made in: the one it was mixed with while he
@@ -271,42 +328,66 @@ export const MAX_COMBOS = 20_000
 const REMEMBERED = 5_000
 
 /** What a bank's videos are mixed from: the reactions, the product - one
- *  list, or one per step - the headlines and the tracks (none: one empty). */
-type MixBank = Pick<BatchBank, 'reactions' | 'products' | 'headlines' | 'music' | 'layout' | 'steps' | 'headlineStyles' | 'headlineStyle'>
+ *  list, or one per step - the hooks and the tracks (none: one empty). */
+type MixBank = Pick<BatchBank, 'reactions' | 'products' | 'headlines' | 'music' | 'layout' | 'steps' | 'formula'> & LookFields
 
-/** A headline look as the mixing counts it. */
-const styleKey = (style: HeadlineStyle) => `s:${style}`
+/** A look as the mixing counts it. */
+const lookKey = (look: BatchLook) => `s:${look}`
+
+/** One hook a video can take: one of his headlines (in a look, when they
+ *  take turns), or Claude + X at one amount - each amount its own video, the
+ *  way each headline is. */
+interface Hook {
+  text: string
+  key: string
+  look: BatchLook | null
+  amount?: number
+}
 
 function dimensions(bank: MixBank): {
   reactions: string[]
   products: string[][]
-  headlines: { text: string; key: string }[]
+  hooks: Hook[]
   tracks: (string | null)[]
-  styles: (HeadlineStyle | null)[]
+  /** Each look taking turns, and its parts. */
+  parts: Map<BatchLook, number>
 } {
-  const styles = stylesToMix(bank)
+  const looks = looksToMix(bank)
+  const headlines = (look: HeadlineStyle | null): Hook[] => bank.headlines.map((h) => ({ text: h, key: headlineKey(h), look }))
   return {
     reactions: bank.reactions.map((r) => r.id),
     products: usesSteps(bank) ? bank.steps!.map((step) => step.files.map((f) => f.id)) : [bank.products.map((p) => p.id)],
-    headlines: bank.headlines.map((h) => ({ text: h, key: headlineKey(h) })),
+    hooks:
+      looks.length === 0
+        ? headlines(null)
+        : looks.flatMap(({ look }) =>
+            look === 'formula'
+              ? formulaAmounts(bank.formula ?? DEFAULT_FORMULA).map((amount) => ({ text: '', key: `a:${amount}`, look, amount }))
+              : headlines(look),
+          ),
     tracks: bank.music.length > 0 ? bank.music.map((m) => m.id) : [null],
-    styles: styles.length > 0 ? styles : [null],
+    parts: new Map(looks.map(({ look, parts }) => [look, Math.max(1, parts)])),
   }
 }
 
 /** One video's combination, as it is remembered. The product part is the
  *  clip's id - or every step's, joined - and the look is only there when it
  *  takes turns, so a bank without steps or looks keeps the keys it always had. */
-const comboKey = (r: string, product: readonly string[], h: string, m: string | null, s: HeadlineStyle | null = null) =>
-  `${r}|${product.join('+')}|${h}|${m ?? ''}${s ? `|${s}` : ''}`
+const comboKey = (r: string, product: readonly string[], h: string, m: string | null, look: BatchLook | null = null) =>
+  `${r}|${product.join('+')}|${h}|${m ?? ''}${look ? `|${look}` : ''}`
+
+/** The look a remembered combination was made in, if any. */
+const lookOfKey = (key: string): string => key.slice(key.lastIndexOf('|') + 1)
 
 /** Every combination's key - the made ones still in the bank. */
-function liveKeys({ reactions, products, headlines, tracks, styles }: ReturnType<typeof dimensions>): Set<string> {
+function liveKeys({ reactions, products, hooks, tracks }: ReturnType<typeof dimensions>): Set<string> {
   const live = new Set<string>()
-  for (const r of reactions)
-    for (const p of everyChoice(products)) for (const h of headlines) for (const m of tracks) for (const st of styles) live.add(comboKey(r, p, h.key, m, st))
+  for (const r of reactions) for (const p of everyChoice(products)) for (const h of hooks) for (const m of tracks) live.add(comboKey(r, p, h.key, m, h.look))
   return live
 }
+
+const totalOf = ({ reactions, products, hooks, tracks }: ReturnType<typeof dimensions>) =>
+  reactions.length * products.reduce((n, l) => n * l.length, 1) * hooks.length * tracks.length
 
 /** Every choice of one item from each list, in order. */
 function* everyChoice(lists: readonly (readonly string[])[]): Generator<string[]> {
@@ -323,12 +404,14 @@ function* everyChoice(lists: readonly (readonly string[])[]): Generator<string[]
 /** `count` videos' worth of picks, and what has been used after them.
  *
  *  Every combination of reaction, product (one clip per step, in steps),
- *  headline, track and look (when it takes turns) is made once before any is made again: each video is
- *  the unmade combination whose items have been used least, ties broken at
+ *  hook and track is made once before any is made again: each video is the
+ *  unmade combination whose items have been used least, ties broken at
  *  random - so the order is different every time and each reaction, clip,
  *  headline and track still comes round evenly. Only when every combination
  *  has been made does the round start again. The same reaction is never used
- *  twice in a row while there is another. */
+ *  twice in a row while there is another. With looks taking turns, each video
+ *  first takes the look furthest behind its share, then the best combination
+ *  in it; a look with nothing left this round sits out until the next. */
 export function pickBatch(
   bank: MixBank & Pick<BatchBank, 'used' | 'lastPair' | 'made'>,
   count: number,
@@ -339,8 +422,8 @@ export function pickBatch(
   const picks: BatchPick[] = []
   const made = new Set(bank.made ?? [])
   const dims = dimensions(bank)
-  const { reactions, products, headlines, tracks, styles } = dims
-  const total = reactions.length * products.reduce((n, l) => n * l.length, 1) * headlines.length * tracks.length * styles.length
+  const { reactions, products, hooks, tracks, parts } = dims
+  const total = totalOf(dims)
   if (total === 0) return { picks, used, lastPair, made: [...made] }
   const listed = total <= MAX_COMBOS
   // Combinations made before, with items since taken out of the bank, no
@@ -349,39 +432,60 @@ export function pickBatch(
     const live = liveKeys(dims)
     for (const key of made) if (!live.has(key)) made.delete(key)
   }
-  const usedStyle = (st: HeadlineStyle | null) => (st ? (used[styleKey(st)] ?? 0) : 0)
   const usedOf = (key: string | null) => (key ? (used[key] ?? 0) : 0)
+  // Each look's videos this round (all along, for a bank too big to list).
+  const inRound = new Map<string, number>()
+  const countRound = () => {
+    inRound.clear()
+    for (const key of made) inRound.set(lookOfKey(key), (inRound.get(lookOfKey(key)) ?? 0) + 1)
+  }
+  if (listed) countRound()
+  const doneOf = (look: BatchLook) => (listed ? (inRound.get(look) ?? 0) : usedOf(lookKey(look)))
+  /** Of `looks`, the one furthest behind its share; ties at random. */
+  const behind = (looks: BatchLook[]): BatchLook => {
+    const due = (look: BatchLook) => (doneOf(look) + 1) / parts.get(look)!
+    const low = Math.min(...looks.map(due))
+    const ties = looks.filter((look) => due(look) === low)
+    return ties[Math.min(ties.length - 1, Math.floor(rand() * ties.length))]
+  }
 
   for (let i = 0; i < count; i++) {
-    if (listed && made.size >= total) made.clear()
+    if (listed && made.size >= total) {
+      made.clear()
+      countRound()
+    }
     const lastReaction = lastPair?.split('|')[0]
-    type Choice = { r: string; p: string[]; h: (typeof headlines)[number]; m: string | null; st: HeadlineStyle | null }
+    type Choice = { r: string; p: string[]; h: Hook; m: string | null }
     let best: Choice[] = []
     if (listed) {
-      let bestScore = Infinity
+      // The least-used unmade combinations of each look.
+      const byLook = new Map<BatchLook | null, { score: number; list: Choice[] }>()
       const consider = (avoidLast: boolean) => {
         for (const r of reactions) {
           if (avoidLast && reactions.length > 1 && r === lastReaction) continue
           for (const p of everyChoice(products)) {
             const productScore = p.reduce((n, id) => n + usedOf(id), 0)
-            for (const h of headlines)
-              for (const m of tracks)
-                for (const st of styles) {
-                  if (made.has(comboKey(r, p, h.key, m, st))) continue
-                  const score = usedOf(r) + productScore + usedOf(h.key) + usedOf(m) + usedStyle(st)
-                  if (score < bestScore) {
-                    bestScore = score
-                    best = [{ r, p, h, m, st }]
-                  } else if (score === bestScore) best.push({ r, p, h, m, st })
-                }
+            for (const h of hooks)
+              for (const m of tracks) {
+                if (made.has(comboKey(r, p, h.key, m, h.look))) continue
+                const score = usedOf(r) + productScore + usedOf(h.key) + usedOf(m)
+                const at = byLook.get(h.look)
+                if (!at || score < at.score) byLook.set(h.look, { score, list: [{ r, p, h, m }] })
+                else if (score === at.score) at.list.push({ r, p, h, m })
+              }
           }
         }
       }
       consider(true)
       // Only combinations with the last reaction are left unmade.
-      if (best.length === 0) consider(false)
+      if (byLook.size === 0) consider(false)
+      const look = parts.size > 0 ? behind([...byLook.keys()] as BatchLook[]) : null
+      best = byLook.get(look)?.list ?? []
     } else {
-      // Too many to list: each part on its own, least used first.
+      // Too many to list: the look furthest behind, then each part on its
+      // own, least used first.
+      const look = parts.size > 0 ? behind([...parts.keys()]) : null
+      const lookHooks = hooks.filter((h) => h.look === look)
       const least = (keys: string[], avoid?: string) => {
         const pool = keys.filter((k) => k !== avoid).length > 0 ? keys.filter((k) => k !== avoid) : keys
         const low = Math.min(...pool.map((k) => used[k] ?? 0))
@@ -389,24 +493,25 @@ export function pickBatch(
         return ties[Math.min(ties.length - 1, Math.floor(rand() * ties.length))]
       }
       const draw = (): Choice => {
-        const hKey = least(headlines.map((h) => h.key))
+        const hKey = least(lookHooks.map((h) => h.key))
         return {
           r: least(reactions, lastReaction),
           p: products.map((list) => least(list)),
-          h: headlines.find((h) => h.key === hKey)!,
+          h: lookHooks.find((h) => h.key === hKey)!,
           m: tracks[0] === null ? null : least(tracks as string[]),
-          st: styles[0] === null ? null : (least(styles.map((st) => styleKey(st!))).slice(2) as HeadlineStyle),
         }
       }
       // The least-used of each part, drawn again (ties fall differently)
       // while it would make one already made.
       let choice = draw()
-      for (let tries = 0; tries < 20 && made.has(comboKey(choice.r, choice.p, choice.h.key, choice.m, choice.st)); tries++) choice = draw()
+      for (let tries = 0; tries < 20 && made.has(comboKey(choice.r, choice.p, choice.h.key, choice.m, choice.h.look)); tries++) choice = draw()
       best = [choice]
     }
     const choice = best[Math.min(best.length - 1, Math.floor(rand() * best.length))]
-    for (const key of [choice.r, ...choice.p, choice.h.key, choice.m, choice.st && styleKey(choice.st)]) if (key) used[key] = (used[key] ?? 0) + 1
-    made.add(comboKey(choice.r, choice.p, choice.h.key, choice.m, choice.st))
+    const { look, amount } = choice.h
+    for (const key of [choice.r, ...choice.p, choice.h.key, choice.m, look && lookKey(look)]) if (key) used[key] = (used[key] ?? 0) + 1
+    made.add(comboKey(choice.r, choice.p, choice.h.key, choice.m, look))
+    if (look) inRound.set(look, (inRound.get(look) ?? 0) + 1)
     lastPair = `${choice.r}|${choice.p.join('+')}`
     picks.push({
       reaction: choice.r,
@@ -414,7 +519,8 @@ export function pickBatch(
       ...(usesSteps(bank) ? { steps: choice.p } : {}),
       headline: choice.h.text,
       music: choice.m,
-      ...(choice.st ? { style: choice.st } : {}),
+      ...(look ? { look } : {}),
+      ...(amount !== undefined ? { amount } : {}),
     })
   }
   const kept = [...made]
@@ -425,8 +531,7 @@ export function pickBatch(
  *  still to be made. Infinity for a bank too big to count. */
 export function combos(bank: MixBank & Pick<BatchBank, 'made'>): { total: number; left: number } {
   const dims = dimensions(bank)
-  const { reactions, products, headlines, tracks, styles } = dims
-  const total = reactions.length * products.reduce((n, l) => n * l.length, 1) * headlines.length * tracks.length * styles.length
+  const total = totalOf(dims)
   if (total === 0) return { total: 0, left: 0 }
   if (total > MAX_COMBOS) return { total: Infinity, left: Infinity }
   const live = liveKeys(dims)
