@@ -353,6 +353,6 @@ describe('starting the batch over', () => {
     expect(Object.values(done.bank.filled ?? {}).every((n) => n === 0)).toBe(true)
     expect(saved).toHaveLength(1)
     // So Start makes the week again.
-    expect(runSlots({ bank: { ...done.bank, running: true }, place, campaignId: 'c1' }).length).toBeGreaterThanOrEqual(3 * (AHEAD_DAYS - 1))
+    expect(runSlots({ bank: done.bank, place, campaignId: 'c1' }).length).toBeGreaterThanOrEqual(3 * (AHEAD_DAYS - 1))
   })
 })
