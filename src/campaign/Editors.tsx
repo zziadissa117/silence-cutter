@@ -585,7 +585,8 @@ export function AngleEditor({
           <div className="group">
             <div className="group-title">Pictures on words</div>
             <div className="hint tip">
-              A picture that comes up when you say something - her photo when you say "Sydney Sweeney".
+              A picture that comes up when you say something - her photo when you say "Sydney Sweeney". Give two pictures the same words
+              and they come up side by side.
             </div>
             <input
               ref={picturePicker}

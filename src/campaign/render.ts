@@ -60,7 +60,7 @@ import { ColourCheck } from './colourCheck'
 import { cutEdges, fadeAtCuts, nearCut } from './cutFades'
 import { headlineFontReady } from './headlineFont'
 import { framedSize, landscapeMode, makeBlurBackdrop, planFrame } from './framing916'
-import { drawHeadline, drawLogo, drawPoppedLogo, layoutHeadline, layoutLogo } from './overlay'
+import { TOGETHER_SEC, cameUpTogether, drawHeadline, drawLogo, drawPoppedLogo, layoutHeadline, layoutLogo, sideBySide } from './overlay'
 import { dbToGain, mixInto, musicProblem, prepareMusic, prepareSound, type PlacedSound, type PreparedSound } from './sounds'
 import { MomentPlacer, inWindow } from './timeline'
 import { MusicBed, musicGain, trackLoudness, type MusicLevel } from './music'
@@ -627,28 +627,39 @@ export async function renderCampaignCut(
                 }
                 sample.close()
                 // Pictures under the headline and logo: those two always read.
-                for (const p of pictures) {
-                  if (!inWindow(timestamp, p.placer.times, p.picture.seconds)) continue
-                  if (look.effects.logoPop) {
-                    const since = timestamp - Math.max(...p.placer.times.filter((at) => at <= timestamp))
-                    drawPoppedLogo(ctx, p.image, p.layout, logoPop(since, p.picture.seconds - since))
-                  } else drawLogo(ctx, p.image, p.layout)
+                // Ones that came up together - one word bringing up two - sit
+                // side by side instead of on top of each other.
+                const up = pictures.flatMap((p) =>
+                  inWindow(timestamp, p.placer.times, p.picture.seconds)
+                    ? [{ item: p, start: Math.max(...p.placer.times.filter((at) => at <= timestamp)) }]
+                    : [],
+                )
+                const startOf = new Map(up.map((u) => [u.item, u.start]))
+                for (const group of cameUpTogether(up)) {
+                  const placed = sideBySide(group.map((p) => p.layout), width, height)
+                  group.forEach((p, k) => {
+                    const since = timestamp - startOf.get(p)!
+                    if (look.effects.logoPop) drawPoppedLogo(ctx, p.image, placed[k], logoPop(since, p.picture.seconds - since))
+                    else drawLogo(ctx, p.image, placed[k])
+                  })
                 }
                 // The bank's pictures share one spot: the newest one mentioned
-                // replaces whatever was there.
-                let latest: { entry: (typeof bank)[number]; at: number } | null = null
+                // replaces whatever was there - and ones mentioned with it, by
+                // the same word, share the spot side by side.
+                const live: { entry: (typeof bank)[number]; at: number }[] = []
                 for (const entry of bank) {
-                  for (const at of entry.placer.times) {
-                    if (at <= timestamp && timestamp < at + look.bankPlacement.seconds && (!latest || at > latest.at)) {
-                      latest = { entry, at }
-                    }
-                  }
+                  const at = Math.max(-Infinity, ...entry.placer.times.filter((a) => a <= timestamp && timestamp < a + look.bankPlacement.seconds))
+                  if (Number.isFinite(at)) live.push({ entry, at })
                 }
-                if (latest) {
-                  const since = timestamp - latest.at
-                  if (look.effects.logoPop) {
-                    drawPoppedLogo(ctx, latest.entry.image, latest.entry.layout, logoPop(since, look.bankPlacement.seconds - since))
-                  } else drawLogo(ctx, latest.entry.image, latest.entry.layout)
+                const newest = Math.max(-Infinity, ...live.map((l) => l.at))
+                const shown = live.filter((l) => newest - l.at < TOGETHER_SEC).sort((a, b) => a.at - b.at)
+                if (shown.length > 0) {
+                  const placed = sideBySide(shown.map((l) => l.entry.layout), width, height)
+                  shown.forEach((l, k) => {
+                    const since = timestamp - l.at
+                    if (look.effects.logoPop) drawPoppedLogo(ctx, l.entry.image, placed[k], logoPop(since, look.bankPlacement.seconds - since))
+                    else drawLogo(ctx, l.entry.image, placed[k])
+                  })
                 }
                 // A pop-up video over him and the pictures, under the
                 // headline, logo and captions. Muted: its sound is never read.

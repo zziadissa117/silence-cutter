@@ -3411,7 +3411,6 @@ export function CampaignApp() {
       <AnalyticsView
         rows={analyticsRows}
         profile={posting?.profile ?? null}
-        views={accountViews}
         loading={viewsLoading}
         onAnswer={answerRate}
         onTarget={setViewTarget}

@@ -78,7 +78,7 @@ afterEach(() => {
 
 function Screen({ onAnswer, onTarget }: { onAnswer: (id: string, to: number | null) => void; onTarget: (id: string, t: number | null) => void }) {
   const rows = useCampaignRows([campaign], profile, views, 0)
-  return <AnalyticsView rows={rows} profile={profile} views={views} loading={false} onAnswer={onAnswer} onTarget={onTarget} />
+  return <AnalyticsView rows={rows} profile={profile} loading={false} onAnswer={onAnswer} onTarget={onTarget} />
 }
 
 async function show() {
@@ -90,31 +90,37 @@ async function show() {
 }
 
 describe('the Analytics tab', () => {
-  it("shows each campaign's views a video, its trend, and each account", async () => {
+  it("shows a batch campaign's views a video and its trend - and nothing account by account", async () => {
     await show()
     expect(host.textContent).toContain('Inflow')
+    expect(host.textContent).toContain('3 a day')
     expect(host.textContent).toContain('1.3K')
     expect(host.textContent).toContain('▲ 39% on last week')
-    expect(host.textContent).toContain('@inflow.pay · TikTok')
-    expect(host.textContent).toContain('3.2K followers')
-    // Instagram not read yet.
-    expect(host.textContent).toContain('Not read yet')
-    expect(host.textContent).toContain('Views for 1 of 2 accounts so far.')
+    expect(host.textContent).not.toContain('@inflow.pay')
+    expect(host.textContent).not.toContain('followers')
   })
 
   it('suggests more a day when views are up, and Yes says the new number', async () => {
     const { onAnswer } = await show()
-    expect(host.textContent).toContain('Inflow: ready for 4 a day?')
+    expect(host.textContent).toContain('Ready for 4 a day?')
     const yes = [...host.querySelectorAll('button')].find((b) => b.textContent === 'Yes, 4 a day') as HTMLButtonElement
     await act(async () => yes.click())
     expect(onAnswer).toHaveBeenCalledWith('inflow', 4)
   })
 
-  it('suggests nothing for a campaign with no batch running', async () => {
+  it('leaves out a campaign with no batch - his own accounts', async () => {
     storedBank = bank({ running: false })
     await show()
-    expect(host.textContent).not.toContain('ready for')
-    expect(host.textContent).toContain('No batch running')
+    expect(host.textContent).not.toContain('Inflow')
+    expect(host.textContent).toContain('Your batch campaigns show up here')
+  })
+
+  it('keeps a batch that was stopped, without suggesting anything', async () => {
+    storedBank = bank({ running: false, madeThrough: '2026-10-20' })
+    await show()
+    expect(host.textContent).toContain('Inflow')
+    expect(host.textContent).toContain('Stopped')
+    expect(host.textContent).not.toContain('Ready for')
   })
 
   it('keeps the number he wants before more a day', async () => {

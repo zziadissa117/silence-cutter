@@ -226,10 +226,17 @@ export function layoutLogo(
   width: number,
   height: number,
   image: { width: number; height: number },
-  logo: { position: LogoPosition; widthPct: number },
+  logo: { position: LogoPosition; widthPct: number; center?: { x: number; y: number } },
 ): LogoLayout {
   const w = Math.round(Math.min(width, height * (9 / 16)) * (logo.widthPct / 100))
   const h = Math.round(w * (image.height / image.width))
+  // Dragged to a spot of his own (a picture in the cuts editor): its middle
+  // there, kept inside the frame.
+  if (logo.center) {
+    const x = Math.min(Math.max(0, logo.center.x * width - w / 2), Math.max(0, width - w))
+    const y = Math.min(Math.max(0, logo.center.y * height - h / 2), Math.max(0, height - h))
+    return { x, y, width: w, height: h }
+  }
   const left = width * TIKTOK_ZONES.side
   // Right-hand corners stop short of TikTok's button column.
   const right = width * (1 - TIKTOK_ZONES.right) - w
@@ -249,6 +256,52 @@ export function layoutLogo(
     default:
       return { x: (width - w) / 2, y: height * 0.42 - h / 2, width: w, height: h }
   }
+}
+
+/** Pictures that came up within this long of each other came up together -
+ *  one word, or two said in a breath - and share a row. */
+export const TOGETHER_SEC = 0.35
+
+/** The pictures up now, in groups that came up together (by when each came
+ *  up), first come first. */
+export function cameUpTogether<T>(items: readonly { item: T; start: number }[], within = TOGETHER_SEC): T[][] {
+  const sorted = [...items].sort((a, b) => a.start - b.start)
+  const groups: { start: number; items: T[] }[] = []
+  for (const { item, start } of sorted) {
+    const last = groups[groups.length - 1]
+    if (last && start - last.start < within) last.items.push(item)
+    else groups.push({ start, items: [item] })
+  }
+  return groups.map((g) => g.items)
+}
+
+/** Pictures that came up together, side by side in one row instead of on
+ *  top of each other: the same height (the shortest's), each keeping its
+ *  shape, a small gap between, the row no wider than the frame's safe width
+ *  (shrunk to fit when it would be), centred where they would have been. One
+ *  picture keeps its own place. */
+export function sideBySide(layouts: readonly LogoLayout[], width: number, height: number): LogoLayout[] {
+  if (layouts.length < 2) return layouts.map((l) => ({ ...l }))
+  const gap = width * 0.02
+  const gaps = gap * (layouts.length - 1)
+  const tallest = Math.min(...layouts.map((l) => l.height))
+  let widths = layouts.map((l) => (l.width * tallest) / l.height)
+  const room = width * (1 - 2 * TIKTOK_ZONES.side)
+  const natural = widths.reduce((a, b) => a + b, 0)
+  const scale = natural + gaps > room ? Math.max(0.05, (room - gaps) / natural) : 1
+  widths = widths.map((w) => w * scale)
+  const h = tallest * scale
+  const row = widths.reduce((a, b) => a + b, 0) + gaps
+  const cx = layouts.reduce((sum, l) => sum + l.x + l.width / 2, 0) / layouts.length
+  const cy = layouts.reduce((sum, l) => sum + l.y + l.height / 2, 0) / layouts.length
+  const x0 = Math.min(Math.max(width * TIKTOK_ZONES.side, cx - row / 2), width * (1 - TIKTOK_ZONES.side) - row)
+  const y = Math.min(Math.max(height * TIKTOK_ZONES.top, cy - h / 2), height * (1 - TIKTOK_ZONES.bottom) - h)
+  let x = x0
+  return widths.map((w) => {
+    const placed = { x, y, width: w, height: h }
+    x += w + gap
+    return placed
+  })
 }
 
 /** A box with its own radius at each corner: top-left, top-right,

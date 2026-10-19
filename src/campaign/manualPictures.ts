@@ -5,6 +5,7 @@
 
 import type { PictureCue } from './look'
 import type { LogoPosition } from './look'
+import { cameUpTogether, layoutLogo, sideBySide } from './overlay'
 
 export interface ManualPicture {
   id: string
@@ -18,7 +19,15 @@ export interface ManualPicture {
   position: LogoPosition
   /** Width, as a percentage of the video's width. */
   widthPct: number
+  /** Where he dragged it: its middle, as fractions of the frame. In place of
+   *  `position`; absent until he moves it. */
+  center?: { x: number; y: number }
 }
+
+/** How long a picture can stay up, and the step + and - take. */
+export const PICTURE_SECONDS = { min: 0.5, max: 20, step: 0.5 } as const
+/** How small and big a picture can be made, % of the width. */
+export const PICTURE_WIDTH = { min: 8, max: 100 } as const
 
 export const SIZES: { label: string; widthPct: number }[] = [
   { label: 'Small', widthPct: 25 },
@@ -52,7 +61,7 @@ export function manualCues(
       missing.push(m)
       continue
     }
-    cues.push({ id: m.id, image, words: [], seconds: m.seconds, position: m.position, widthPct: m.widthPct })
+    cues.push({ id: m.id, image, words: [], seconds: m.seconds, position: m.position, widthPct: m.widthPct, ...(m.center ? { center: m.center } : {}) })
     at.set(m.id, m.at)
   }
   return { cues, at, missing }
@@ -81,4 +90,36 @@ export function previewStyle(position: LogoPosition, widthPct: number): Record<s
 /** A short unique id for a picture on a video. */
 export function newPictureId(): string {
   return `mp-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`
+}
+
+/** Where each picture sits in the preview, as fractions of the frame: the
+ *  render's own layout (overlay.ts), so what he sees is what he gets - side
+ *  by side for pictures that come up together. `aspect` is each picture's
+ *  width over height (square until it has loaded); `frame` the video's. */
+export function previewBoxes(
+  pictures: readonly (Pick<ManualPicture, 'id' | 'at' | 'position' | 'widthPct' | 'center'> & { aspect?: number })[],
+  frame: number,
+): Record<string, { left: number; top: number; width: number; height: number }> {
+  const W = 1000
+  const H = W / (frame > 0 ? frame : 9 / 16)
+  const laid = pictures.map((p) => ({
+    id: p.id,
+    at: p.at,
+    layout: layoutLogo(W, H, { width: (p.aspect && p.aspect > 0 ? p.aspect : 1) * 100, height: 100 }, p),
+  }))
+  const out: Record<string, { left: number; top: number; width: number; height: number }> = {}
+  for (const group of cameUpTogether(laid.map((l) => ({ item: l, start: l.at })))) {
+    const placed = sideBySide(group.map((g) => g.layout), W, H)
+    group.forEach((g, k) => {
+      const b = placed[k]
+      out[g.id] = { left: b.x / W, top: b.y / H, width: b.width / W, height: b.height / H }
+    })
+  }
+  return out
+}
+
+/** A picture's middle, as fractions of the frame - where he dragged it, or
+ *  where its spot puts it. */
+export function centerOf(box: { left: number; top: number; width: number; height: number }): { x: number; y: number } {
+  return { x: box.left + box.width / 2, y: box.top + box.height / 2 }
 }

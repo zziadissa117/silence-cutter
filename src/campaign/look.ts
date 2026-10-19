@@ -63,6 +63,9 @@ export interface PictureCue {
   position: LogoPosition
   /** Width, as a percentage of the video's width. */
   widthPct: number
+  /** Dragged to a spot of his own (a picture put on by hand): its middle, as
+   *  fractions of the frame. In place of `position`. */
+  center?: { x: number; y: number }
 }
 
 /** A video from the bank as a look needs it: what brings it up, and its

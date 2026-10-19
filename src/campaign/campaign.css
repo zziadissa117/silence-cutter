@@ -787,7 +787,7 @@ input[type='color']::-webkit-color-swatch { border: 0.5px solid var(--edge); bor
 .tabbar { padding-left: 4px; padding-right: 4px; }
 .tab-icon { position: relative; display: inline-flex; }
 .tab-dot { position: absolute; top: -1px; right: -4px; width: 8px; height: 8px; border-radius: 50%; background: var(--accent); box-shadow: 0 0 0 2px var(--bar-bg, var(--ink)); }
-.analytics-suggestion { display: block; margin-bottom: 12px; }
+.analytics-suggestion { margin: 10px 0 4px; padding: 10px 12px; border-radius: 12px; background: color-mix(in srgb, var(--accent) 12%, transparent); }
 .analytics-suggestion .actions-row { margin-top: 10px; }
 .analytics-head { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }
 .analytics-big { display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px 10px; margin: 6px 0 4px; }
@@ -795,10 +795,6 @@ input[type='color']::-webkit-color-swatch { border: 0.5px solid var(--edge); bor
 .trend { font-size: 14px; color: var(--muted); font-variant-numeric: tabular-nums; }
 .trend.up { color: var(--ok); }
 .trend.down { color: var(--warn); }
-.analytics-accounts { list-style: none; margin: 8px 0 0; padding: 0; }
-.analytics-account { display: flex; flex-direction: column; gap: 4px; padding: 10px 0; border-top: 0.5px solid var(--rule); }
-.analytics-account-name { font-size: 15px; font-weight: 600; overflow-wrap: anywhere; }
-.analytics-account-numbers { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 12px; font-size: 15px; font-variant-numeric: tabular-nums; }
 .analytics-target { margin-top: 12px; }
 .analytics-target-row { display: flex; align-items: center; gap: 10px; }
 .analytics-target-row input { width: 7.5em; min-height: 40px; font-size: 16px; }
@@ -812,3 +808,18 @@ input[type='color']::-webkit-color-swatch { border: 0.5px solid var(--edge); bor
 .format-ready { padding: 4px 0; }
 .format-video { display: block; width: 100%; max-height: 70vh; margin: 8px 0 4px; border-radius: 12px; background: #000; }
 .format-schedule .btn { flex: 1 1 10rem; }
+
+/* A picture on a video, edited in the cuts editor (CutsEditor) */
+.cuts-pic-preview { position: absolute; object-fit: fill; pointer-events: auto; cursor: pointer; }
+.cuts-pic-preview.editing { pointer-events: auto; z-index: 3; outline: 2px dashed var(--accent); outline-offset: 3px; touch-action: none; cursor: grab; -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }
+.pic-edit { display: flex; flex-direction: column; gap: 10px; margin: 4px 0 12px; padding: 12px; border: 1px solid var(--accent); border-radius: 14px; background: var(--surface); }
+.pic-edit-head { display: flex; align-items: center; gap: 10px; }
+.pic-edit-head img { width: 40px; height: 40px; object-fit: contain; border-radius: 6px; background: color-mix(in srgb, var(--text) 6%, transparent); }
+.pic-edit-head .pic-row-title { flex: 1; }
+.pic-edit-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.pic-seconds { min-width: 4.2em; font-size: 18px; }
+.btn.danger { color: var(--warn); }
+.pic-chips { display: flex; gap: 8px; overflow-x: auto; padding: 2px 0 10px; }
+.pic-chip { display: flex; align-items: center; gap: 6px; flex: none; padding: 4px 10px 4px 4px; border: 1px solid var(--edge); border-radius: 999px; background: var(--surface); color: inherit; font: inherit; font-size: 13px; font-variant-numeric: tabular-nums; cursor: pointer; }
+.pic-chip.on { border-color: var(--accent); }
+.pic-chip img { width: 28px; height: 28px; object-fit: contain; border-radius: 50%; background: color-mix(in srgb, var(--text) 6%, transparent); }

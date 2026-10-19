@@ -229,7 +229,18 @@ times, today only with room an hour ahead) and queues each with `meta.batch` and
 `meta.scheduled`; the server's `approvalFor` makes such a post `direct`, so `takeBatchSlot` puts
 it at its day and time and it is scheduled without waiting in Posts.
 
+## Pictures that come up together, and pictures put on by hand
+
+`render.ts` groups the pictures up at a frame by when each came up (`overlay.cameUpTogether`,
+within 0.35 s) and lays each group out with `sideBySide` (one row, same height, inside the safe
+width); the bank's pictures do the same with the newest mention. A picture put on by hand
+(`ManualPicture`) can carry `center` (dragged in the cuts editor) which `layoutLogo` uses in place
+of its spot. The cuts editor previews with `previewBoxes` - the render's own layout - and edits
+the selected picture in `.pic-edit` (delete, seconds, size, start here, drag/pinch on the video).
+
 ## Analytics (`analytics.ts`, `AnalyticsView.tsx`, server `postiz/views.ts`)
+
+Only campaigns with a batch bank (running or made before) are shown - his CPM campaigns.
 
 The tick reads one account's views from Postiz (`GET /analytics/:id?date=7`) - the stalest of
 the accounts a campaign posts to, each about once a day - so Postiz's hourly allowance stays

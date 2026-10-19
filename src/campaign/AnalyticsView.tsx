@@ -1,7 +1,8 @@
-// The Analytics tab: how each campaign's videos are doing - views per video,
-// and how that moved on last week - account by account, and when a running
-// batch is doing well (or falling away) a suggestion to change its videos a
-// day, which he answers with one tap. The numbers are read from Postiz by the
+// The Analytics tab: only the campaigns he runs batches for (the CPM ones -
+// Lovable, OpenArt), how their videos are doing - views per video and how
+// that moved on last week - and, when a batch is doing well (or falling
+// away), a suggestion to change its videos a day, answered with one tap.
+// Everything else was noise to him. The numbers are read from Postiz by the
 // server, about once a day per account (analytics.ts, views.ts).
 
 import { useEffect, useMemo, useState } from 'react'
@@ -12,21 +13,20 @@ import {
   rememberAnswer,
   shortNumber,
   suggestRate,
-  weekChange,
   type CampaignViews,
   type Suggestion,
   type ViewsByAccount,
 } from './analytics'
 import type { BatchBank } from './batch'
 import type { Campaign } from './look'
-import { accountLabel, placeFor, type Profile } from './posting'
+import { placeFor, type Profile } from './posting'
 import { loadBatchBank, saveBatchBank } from './store'
 
 export interface CampaignRow {
   campaign: Campaign
   accountIds: string[]
   stats: CampaignViews
-  bank: BatchBank | null
+  bank: BatchBank
   suggestion: Suggestion | null
 }
 
@@ -52,13 +52,13 @@ export function useCampaignRows(campaigns: readonly Campaign[] | null, profile: 
   }, [ids, version])
   return useMemo(
     () =>
-      posting.map(({ campaign, accountIds }) => {
-        const stats = campaignViews(accountIds, views)
+      posting.flatMap(({ campaign, accountIds }) => {
         const bank = banks.get(campaign.id) ?? null
-        const suggestion = bank
-          ? suggestRate({ perDay: bank.perDay, running: Boolean(bank.running), stats, target: bank.viewTarget, answeredAt: answeredAt(campaign.id) })
-          : null
-        return { campaign, accountIds, stats, bank, suggestion }
+        // Only campaigns with a batch: the rest are his own accounts.
+        if (!bank || !(bank.running || bank.madeThrough)) return []
+        const stats = campaignViews(accountIds, views)
+        const suggestion = suggestRate({ perDay: bank.perDay, running: Boolean(bank.running), stats, target: bank.viewTarget, answeredAt: answeredAt(campaign.id) })
+        return [{ campaign, accountIds, stats, bank, suggestion }]
       }),
     [posting, banks, views, version], // eslint-disable-line react-hooks/exhaustive-deps
   )
@@ -75,26 +75,15 @@ function Trend({ change }: { change: number | null }) {
   )
 }
 
-function ago(iso: string | undefined): string {
-  if (!iso) return ''
-  const hours = (Date.now() - Date.parse(iso)) / 3_600_000
-  if (!Number.isFinite(hours)) return ''
-  if (hours < 1) return 'just now'
-  if (hours < 24) return `${Math.round(hours)} h ago`
-  return `${Math.round(hours / 24)} d ago`
-}
-
 export function AnalyticsView({
   rows,
   profile,
-  views,
   loading,
   onAnswer,
   onTarget,
 }: {
   rows: CampaignRow[]
   profile: Profile | null
-  views: ViewsByAccount
   loading: boolean
   /** He said yes (the new number) or not now (null) to a suggestion. */
   onAnswer: (campaignId: string, to: number | null) => void
@@ -111,8 +100,7 @@ export function AnalyticsView({
       </section>
     )
   }
-  const suggested = rows.filter((r) => r.suggestion)
-  const anyRead = Object.keys(views).length > 0
+  const anyRead = rows.some((r) => r.stats.read > 0)
 
   return (
     <section className="screen analytics">
@@ -120,85 +108,42 @@ export function AnalyticsView({
         <h1>Analytics</h1>
       </div>
 
-      {suggested.map(({ campaign, suggestion }) => (
-        <div key={campaign.id} className="callout analytics-suggestion">
-          <div>
-            <div className="label">
-              {campaign.name}: {suggestion!.to > suggestion!.from ? 'ready for' : 'try'} {suggestion!.to} a day?
-            </div>
-            <div className="hint">
-              {suggestion!.why} Now {suggestion!.from} a day.
-            </div>
-            <div className="actions-row">
-              <button type="button" className="btn small primary" onClick={() => onAnswer(campaign.id, suggestion!.to)}>
-                Yes, {suggestion!.to} a day
-              </button>
-              <button type="button" className="btn small" onClick={() => onAnswer(campaign.id, null)}>
-                Not now
-              </button>
-            </div>
-          </div>
-        </div>
-      ))}
-
-      {rows.length === 0 ? <p className="empty">No campaign posts anywhere yet. Pick its accounts first: Campaigns, open the campaign, then Posting.</p> : null}
-      {rows.length > 0 && !anyRead ? (
-        <p className="hint new-post-to">
-          {loading ? 'Getting your views…' : 'Views are being read from Postiz, one account every few minutes - the first numbers show up within the hour.'}
-        </p>
+      {rows.length === 0 ? (
+        <p className="empty">Your batch campaigns show up here - like Lovable and OpenArt - once their batch is running.</p>
+      ) : !anyRead ? (
+        <p className="hint new-post-to">{loading ? 'Getting your views…' : 'Reading your views from Postiz - the first numbers show up within the hour.'}</p>
       ) : null}
 
-      {rows.map(({ campaign, accountIds, stats, bank }) => (
+      {rows.map(({ campaign, stats, bank, suggestion }) => (
         <div key={campaign.id} className="group analytics-campaign">
           <div className="analytics-head">
             <span className="group-title">{campaign.name}</span>
-            <span className="hint">{bank?.running ? (bank.perDay === 0 ? 'Paused' : `${bank.perDay} a day`) : 'No batch running'}</span>
+            <span className="hint">{bank.running ? (bank.perDay === 0 ? 'Paused' : `${bank.perDay} a day`) : 'Stopped'}</span>
           </div>
           <div className="analytics-big">
             <span className="big-number">{shortNumber(stats.perVideo)}</span>
             <span className="hint">views a video</span>
             <Trend change={stats.change} />
           </div>
-          {stats.read < stats.total && anyRead ? (
-            <p className="hint">
-              Views for {stats.read} of {stats.total} accounts so far.
-            </p>
+          {suggestion ? (
+            <div className="analytics-suggestion">
+              <div className="label">
+                {suggestion.to > suggestion.from ? 'Ready for' : 'Try'} {suggestion.to} a day?
+              </div>
+              <div className="hint">{suggestion.why}</div>
+              <div className="actions-row">
+                <button type="button" className="btn small primary" onClick={() => onAnswer(campaign.id, suggestion.to)}>
+                  Yes, {suggestion.to} a day
+                </button>
+                <button type="button" className="btn small" onClick={() => onAnswer(campaign.id, null)}>
+                  Not now
+                </button>
+              </div>
+            </div>
           ) : null}
-          <ul className="analytics-accounts">
-            {accountIds.map((id) => {
-              const account = profile.accounts.find((a) => a.id === id)
-              const v = views[id]
-              return (
-                <li key={id} className="analytics-account">
-                  <div className="analytics-account-name">{account ? accountLabel(account) : 'An account no longer in Postiz'}</div>
-                  {v?.error && v.perVideo === null ? (
-                    <span className="hint warn-text">Postiz can't read views here yet.</span>
-                  ) : v ? (
-                    <div className="analytics-account-numbers">
-                      <span>
-                        <strong>{shortNumber(v.perVideo)}</strong> a video
-                      </span>
-                      {v.followers !== null ? <span className="hint">{shortNumber(v.followers)} followers</span> : null}
-                      <Trend change={weekChange(v.history)} />
-                      <span className="hint">{ago(v.at)}</span>
-                    </div>
-                  ) : (
-                    <span className="hint">Not read yet</span>
-                  )}
-                </li>
-              )
-            })}
-          </ul>
-          {bank ? <TargetField value={bank.viewTarget ?? null} onSave={(target) => onTarget(campaign.id, target)} /> : null}
+          <TargetField value={bank.viewTarget ?? null} onSave={(target) => onTarget(campaign.id, target)} />
         </div>
       ))}
-
-      {rows.length > 0 ? (
-        <p className="hint new-post-to">
-          Read from Postiz about once a day per account. TikTok counts your last 20 videos; Instagram and YouTube the last 7 days. A
-          suggestion comes when views per video are up a fifth on last week, or at your number - or down by almost a third.
-        </p>
-      ) : null}
     </section>
   )
 }

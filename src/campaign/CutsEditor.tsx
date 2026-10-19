@@ -51,11 +51,11 @@ import {
 import { ChevronLeft, PauseIcon, PlayIcon } from './icons'
 import type { BankPicture } from './look'
 import {
-  DURATIONS,
-  POSITIONS,
-  SIZES,
+  PICTURE_SECONDS,
+  PICTURE_WIDTH,
+  centerOf,
   newPictureId,
-  previewStyle,
+  previewBoxes,
   type ManualPicture,
 } from './manualPictures'
 
@@ -349,6 +349,17 @@ export function CutsEditor({
   const [picking, setPicking] = useState(false)
   const [selectedPic, setSelectedPic] = useState<string | null>(null)
   const [picNote, setPicNote] = useState<string | null>(null)
+  /** Each picture's width over height, once its image has loaded - for the
+   *  preview to lay it out as the render will. */
+  const [picAspect, setPicAspect] = useState<Record<string, number>>({})
+  /** The fingers on the picture being moved or pinched, and where it was
+   *  when they came down. */
+  const gesture = useRef<{
+    id: string
+    pointers: Map<number, { x: number; y: number }>
+    from: { center: { x: number; y: number }; widthPct: number; mid: { x: number; y: number }; spread: number }
+  } | null>(null)
+  const frameBox = useRef<HTMLDivElement>(null)
   // Pictures picked from the phone in this visit, kept until he is done.
   const newFiles = useRef(new Map<string, Blob>())
   // Object URLs for showing pictures: the bank's and the video's own.
@@ -609,7 +620,67 @@ export function CutsEditor({
     followTime(o.at)
     seek(o.at)
   }
-  const showing = overlays.find((o) => t >= o.at && t < o.at + o.seconds)
+  // The pictures up at the playhead - and the one being edited, wherever
+  // the playhead is - laid out as the render will lay them out.
+  const shown = overlays.filter((o) => (t >= o.at && t < o.at + o.seconds) || o.id === selectedPic)
+  const boxes = previewBoxes(
+    shown.map((o) => ({ ...o, aspect: picAspect[o.id] })),
+    aspect,
+  )
+  const selectedPicture = overlays.find((o) => o.id === selectedPic) ?? null
+
+  /** Two fingers' middle and spread, in the frame's pixels. */
+  const fingers = (points: Map<number, { x: number; y: number }>) => {
+    const list = [...points.values()]
+    const mid = { x: list.reduce((s, p) => s + p.x, 0) / list.length, y: list.reduce((s, p) => s + p.y, 0) / list.length }
+    const spread = list.length > 1 ? Math.hypot(list[0].x - list[1].x, list[0].y - list[1].y) : 0
+    return { mid, spread }
+  }
+  /** A finger down on a picture: one moves it, two pinch it bigger or smaller. */
+  const onPicDown = (o: ManualPicture, e: ReactPointerEvent) => {
+    e.stopPropagation()
+    if (o.id !== selectedPic) {
+      setSelectedPic(o.id)
+      return
+    }
+    ;(e.currentTarget as HTMLElement).setPointerCapture?.(e.pointerId)
+    const points = gesture.current?.id === o.id ? gesture.current.pointers : new Map<number, { x: number; y: number }>()
+    points.set(e.pointerId, { x: e.clientX, y: e.clientY })
+    const box = boxes[o.id]
+    const { mid, spread } = fingers(points)
+    gesture.current = { id: o.id, pointers: points, from: { center: o.center ?? (box ? centerOf(box) : { x: 0.5, y: 0.42 }), widthPct: o.widthPct, mid, spread } }
+  }
+  const onPicMove = (e: ReactPointerEvent) => {
+    const g = gesture.current
+    const frameEl = frameBox.current
+    if (!g || !g.pointers.has(e.pointerId) || !frameEl) return
+    e.stopPropagation()
+    g.pointers.set(e.pointerId, { x: e.clientX, y: e.clientY })
+    const rect = frameEl.getBoundingClientRect()
+    const { mid, spread } = fingers(g.pointers)
+    const center = {
+      x: Math.min(1, Math.max(0, g.from.center.x + (mid.x - g.from.mid.x) / rect.width)),
+      y: Math.min(1, Math.max(0, g.from.center.y + (mid.y - g.from.mid.y) / rect.height)),
+    }
+    const widthPct =
+      g.pointers.size > 1 && g.from.spread > 0
+        ? Math.round(Math.min(PICTURE_WIDTH.max, Math.max(PICTURE_WIDTH.min, (g.from.widthPct * spread) / g.from.spread)))
+        : g.from.widthPct
+    setOverlays((list) => list.map((x) => (x.id === g.id ? { ...x, center, widthPct } : x)))
+  }
+  const onPicUp = (e: ReactPointerEvent) => {
+    const g = gesture.current
+    if (!g) return
+    e.stopPropagation()
+    g.pointers.delete(e.pointerId)
+    if (g.pointers.size === 0) gesture.current = null
+    else {
+      // One finger left after a pinch: it moves on from here.
+      const picture = overlays.find((x) => x.id === g.id)
+      const { mid, spread } = fingers(g.pointers)
+      if (picture) g.from = { center: picture.center ?? g.from.center, widthPct: picture.widthPct, mid, spread }
+    }
+  }
 
   /** Plays just this stretch, with sound, a moment either side - the way to
    *  hear whether a cut sound was a word. */
@@ -836,7 +907,7 @@ export function CutsEditor({
             )}
           </div>
         </div>
-        <div className="review-frame" style={{ aspectRatio: String(aspect) }} onClick={play}>
+        <div className="review-frame" ref={frameBox} style={{ aspectRatio: String(aspect) }} onClick={play}>
           {url ? (
             <video
               ref={video}
@@ -859,9 +930,35 @@ export function CutsEditor({
               {missing ? "This video isn't on the phone any more, so there's nothing to cut." : 'Opening the video…'}
             </div>
           )}
-          {showing && urls[showing.id] ? (
-            <img className="cuts-pic-preview" alt="" src={urls[showing.id]} style={previewStyle(showing.position, showing.widthPct)} />
-          ) : null}
+          {shown.map((o) =>
+            urls[o.id] && boxes[o.id] ? (
+              <img
+                key={o.id}
+                className={`cuts-pic-preview${o.id === selectedPic ? ' editing' : ''}`}
+                alt=""
+                src={urls[o.id]}
+                draggable={false}
+                style={{
+                  left: `${boxes[o.id].left * 100}%`,
+                  top: `${boxes[o.id].top * 100}%`,
+                  width: `${boxes[o.id].width * 100}%`,
+                  height: `${boxes[o.id].height * 100}%`,
+                }}
+                onLoad={(e) => {
+                  const img = e.currentTarget
+                  if (img.naturalWidth && img.naturalHeight) {
+                    const ratio = img.naturalWidth / img.naturalHeight
+                    setPicAspect((a) => (a[o.id] === ratio ? a : { ...a, [o.id]: ratio }))
+                  }
+                }}
+                onClick={(e) => e.stopPropagation()}
+                onPointerDown={(e) => onPicDown(o, e)}
+                onPointerMove={onPicMove}
+                onPointerUp={onPicUp}
+                onPointerCancel={onPicUp}
+              />
+            ) : null,
+          )}
           {paintOver ? <canvas ref={overCanvas} aria-hidden /> : null}
           {inPart < 0 ? <span className="cuts-out">Cut out</span> : null}
           {url ? (
@@ -948,6 +1045,88 @@ export function CutsEditor({
         </button>
       </div>
 
+      {selectedPicture ? (
+        <div className="pic-edit" aria-label="The picture you picked">
+          <div className="pic-edit-head">
+            {urls[selectedPicture.id] ? <img alt="" src={urls[selectedPicture.id]} /> : <span className="pic-missing">?</span>}
+            <span className="pic-row-title">Picture at {formatPrecise(selectedPicture.at)}</span>
+            <button type="button" className="linkbtn" onClick={() => setSelectedPic(null)}>
+              Done
+            </button>
+          </div>
+          <div className="pic-edit-row">
+            <span className="label">On screen for</span>
+            <div className="stepper">
+              <button
+                type="button"
+                className="btn small icon-btn"
+                aria-label="Shorter"
+                disabled={selectedPicture.seconds <= PICTURE_SECONDS.min}
+                onClick={() => updatePicture(selectedPicture.id, { seconds: Math.max(PICTURE_SECONDS.min, selectedPicture.seconds - PICTURE_SECONDS.step) })}
+              >
+                −
+              </button>
+              <span className="stepper-value pic-seconds" aria-label="Seconds on screen">
+                {selectedPicture.seconds.toFixed(1)} s
+              </span>
+              <button
+                type="button"
+                className="btn small icon-btn"
+                aria-label="Longer"
+                disabled={selectedPicture.seconds >= PICTURE_SECONDS.max}
+                onClick={() => updatePicture(selectedPicture.id, { seconds: Math.min(PICTURE_SECONDS.max, selectedPicture.seconds + PICTURE_SECONDS.step) })}
+              >
+                +
+              </button>
+            </div>
+          </div>
+          <label className="slider">
+            <span>Size</span>
+            <input
+              type="range"
+              min={PICTURE_WIDTH.min}
+              max={PICTURE_WIDTH.max}
+              step={1}
+              value={selectedPicture.widthPct}
+              aria-label="How big the picture is"
+              onChange={(e) => updatePicture(selectedPicture.id, { widthPct: Number(e.target.value) })}
+            />
+            <output>{selectedPicture.widthPct}%</output>
+          </label>
+          <p className="hint">Drag it on the video to move it, pinch it to make it bigger or smaller.</p>
+          <div className="actions-row">
+            <button
+              type="button"
+              className="btn small"
+              disabled={Math.abs(selectedPicture.at - t) < 0.05}
+              onClick={() => {
+                if (partAt(keepRef.current, tRef.current) < 0) return setPicNote(onCutPart)
+                updatePicture(selectedPicture.id, { at: Math.round(tRef.current * 100) / 100 })
+              }}
+            >
+              Start it here
+            </button>
+            {selectedPicture.center ? (
+              <button type="button" className="btn small" onClick={() => updatePicture(selectedPicture.id, { center: undefined })}>
+                Put back
+              </button>
+            ) : null}
+            <button type="button" className="btn small danger" onClick={() => removePicture(selectedPicture.id)}>
+              Delete picture
+            </button>
+          </div>
+        </div>
+      ) : null}
+      {overlays.length > 0 ? (
+        <div className="pic-chips" aria-label="Pictures on this video">
+          {overlays.map((o) => (
+            <button key={o.id} type="button" className={`pic-chip${selectedPic === o.id ? ' on' : ''}`} onClick={() => goToPicture(o)}>
+              {urls[o.id] ? <img alt="" src={urls[o.id]} /> : <span className="pic-missing">?</span>}
+              <span>{formatPrecise(o.at)}</span>
+            </button>
+          ))}
+        </div>
+      ) : null}
       {picNote ? (
         <p className="hint warn-text" ref={notePanel}>
           {picNote}
@@ -999,53 +1178,6 @@ export function CutsEditor({
         {checks.length > 0 ? <span><i className="swatch check" /> check this</span> : null}
       </div>
       <p className="hint cuts-hint tip">Scroll to move through the video and pinch to zoom. Tap a part, then drag its edges to trim it.</p>
-      {overlays.length > 0 ? (
-        <div className="pic-list">
-          <div className="group-title">
-            Pictures on this video <span className="bank-count">{overlays.length}</span>
-          </div>
-          {overlays.map((o) => (
-            <div key={o.id} className={`pic-row${selectedPic === o.id ? ' on' : ''}`}>
-              <button type="button" className="pic-row-main" onClick={() => goToPicture(o)}>
-                {urls[o.id] ? <img alt="" src={urls[o.id]} /> : <span className="pic-missing">?</span>}
-                <span>
-                  <span className="pic-row-title">At {formatPrecise(o.at)}</span>
-                  <span className="hint" style={{ display: 'block' }}>
-                    {o.source.kind === 'bank' ? 'From the bank' : o.source.name}
-                  </span>
-                </span>
-              </button>
-              <div className="pic-row-controls">
-                <select aria-label="How long" value={o.seconds} onChange={(e) => updatePicture(o.id, { seconds: Number(e.target.value) })}>
-                  {DURATIONS.map((d) => (
-                    <option key={d} value={d}>
-                      {d}s
-                    </option>
-                  ))}
-                </select>
-                <select aria-label="Where" value={o.position} onChange={(e) => updatePicture(o.id, { position: e.target.value as ManualPicture['position'] })}>
-                  {POSITIONS.map((p) => (
-                    <option key={p.id} value={p.id}>
-                      {p.label}
-                    </option>
-                  ))}
-                </select>
-                <select aria-label="How big" value={SIZES.find((s) => s.widthPct === o.widthPct)?.widthPct ?? o.widthPct} onChange={(e) => updatePicture(o.id, { widthPct: Number(e.target.value) })}>
-                  {SIZES.map((s) => (
-                    <option key={s.widthPct} value={s.widthPct}>
-                      {s.label}
-                    </option>
-                  ))}
-                  {SIZES.some((s) => s.widthPct === o.widthPct) ? null : <option value={o.widthPct}>{o.widthPct}%</option>}
-                </select>
-                <button type="button" className="btn small" onClick={() => removePicture(o.id)}>
-                  Remove
-                </button>
-              </div>
-            </div>
-          ))}
-        </div>
-      ) : null}
       {noiseNote ? <p className="hint warn-text">{noiseNote}</p> : null}
       {checks.length > 0 ? (
         <div className="cuts-checks">

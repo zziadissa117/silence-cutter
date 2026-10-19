@@ -3,6 +3,30 @@
 Newest first. Every change says what it does, how to use it, and how it works
 underneath. Kept up to date with each commit.
 
+## Pictures side by side; pictures fully editable in the editor; Analytics only for batches
+Only ./deploy.sh is needed.
+**Pictures side by side:** pictures that come up together - one word bringing up two (give two pictures the same words
+in the angle's Pictures, or two bank pictures share a word), or two put on by hand at the same moment - now sit side by
+side in one row, the same height, inside the frame, instead of on top of each other. Before, the bank showed only the
+newest, and two angle pictures overlapped.
+**Pictures in the editor (cuts/captions page):** the controls were there but at the very bottom, under every caption
+phrase - so a picture put on by mistake looked impossible to remove. Now tapping a picture (on the video, the timeline,
+or the new row of picture chips under the buttons) opens it right under the video:
+- **Delete picture**.
+- **On screen for** − / + (half a second at a time, 0.5 to 20 s).
+- **Size** slider (8% to 100% of the width), or pinch it on the video.
+- **Drag it on the video** anywhere you like (**Put back** returns it to its usual spot).
+- **Start it here**: moves it to where the playhead is.
+What the video shows while you edit is exactly where it lands in the finished video.
+**Analytics:** only your batch campaigns now (Lovable, OpenArt - any campaign with a batch); your other accounts are
+gone from it, and so is the account-by-account list. Each card: videos a day, views a video, the trend on last week,
+and the "Ready for N a day?" suggestion right in the card.
+**How:** `overlay.cameUpTogether` (within 0.35 s), `sideBySide`, `layoutLogo` `center`; `render.ts` draws angle and
+bank pictures in groups. `ManualPicture.center`, `PICTURE_SECONDS`, `PICTURE_WIDTH`, `previewBoxes` (the render's own
+layout, for the preview); `CutsEditor` panel `.pic-edit`, chips, pointer drag/pinch on the selected picture.
+`AnalyticsView`/`useCampaignRows` keep campaigns with a batch only. Tests: `overlay.test.ts`, `cutsPictures.test.tsx`,
+`analyticsView.test.tsx`.
+
 ## Captions: every sentence keeps its first and last word, and shows them long enough to read
 **What:** captions were losing words at the edges of sentences. Each sentence is its own kept stretch (the pause
 between is cut), and the speech model times edge words a little off:
