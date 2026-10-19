@@ -4,7 +4,7 @@
 // takes one clip per step and plays the moment something happens in it
 // (stepPiece.ts). Names and order are all he sets - never seconds.
 
-import { useState } from 'react'
+import { useLayoutEffect, useRef, useState } from 'react'
 
 import type { BatchStep } from './batch'
 
@@ -65,14 +65,7 @@ export function StepOrder({
         {drafts.map((d, i) => (
           <li key={d.id} className="step-row">
             <span className="step-n">{i + 1}</span>
-            <input
-              type="text"
-              className="find step-name"
-              aria-label={`Step ${i + 1} name`}
-              value={d.name}
-              maxLength={40}
-              onChange={(e) => change(d.id, { name: e.target.value })}
-            />
+            <StepName label={`Step ${i + 1} name`} value={d.name} onChange={(name) => change(d.id, { name })} />
             <span className="step-tools">
               <button type="button" className="btn small icon-btn" aria-label={`Move ${d.name} up`} disabled={i === 0} onClick={() => move(i, -1)}>
                 ↑
@@ -116,5 +109,35 @@ export function StepOrder({
         </button>
       </div>
     </div>
+  )
+}
+
+/** A step's name, as many words as he wants: it grows to show them all (a
+ *  long one takes the whole row), and on the video a long one gets smaller
+ *  to fit (overlay.ts MAX_BLOCK). One line of words - Enter is done, a new
+ *  line typed or pasted is a space. */
+function StepName({ label, value, onChange }: { label: string; value: string; onChange: (name: string) => void }) {
+  const box = useRef<HTMLTextAreaElement>(null)
+  useLayoutEffect(() => {
+    const el = box.current
+    if (!el) return
+    el.style.height = 'auto'
+    el.style.height = `${el.scrollHeight + 2}px`
+  }, [value])
+  return (
+    <textarea
+      ref={box}
+      rows={1}
+      className={`step-name${value.length > 16 ? ' long' : ''}`}
+      aria-label={label}
+      value={value}
+      onChange={(e) => onChange(e.target.value.replace(/\s*\n\s*/g, ' '))}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter') {
+          e.preventDefault()
+          e.currentTarget.blur()
+        }
+      }}
+    />
   )
 }

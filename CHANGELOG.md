@@ -3,6 +3,15 @@
 Newest first. Every change says what it does, how to use it, and how it works
 underneath. Kept up to date with each commit.
 
+## Set order: step names as long as you want
+Only ./deploy.sh is needed.
+**What:** a step's name (the words written over its clip) was cut off at 40 characters. Now there is no limit: type as
+many words as you want. The box grows to show them all (a long name takes the whole row, with its buttons under it).
+On the video, a name too long to fit gets smaller so every word stays on screen - it never covers more than about half
+the screen. Enter just closes the box; a line break typed or pasted becomes a space. Normal headlines are unchanged.
+**How:** `StepOrder.StepName` (a growing textarea, no maxLength); `overlay.layoutHeadline` shrinks any block taller
+than `MAX_BLOCK` (45% of the frame). Tests in `stepOrder.test.tsx`, `overlay.test.ts`.
+
 ## Batch: the music is one unbroken track over the whole video
 Only ./deploy.sh is needed.
 **What:** the music under a batch video was still written piece by piece, following each clip - so it was tied to the

@@ -176,6 +176,26 @@ describe('a headline too wide for the frame', () => {
   })
 })
 
+describe('a headline with many words (a long step name)', () => {
+  it('gets smaller to stay on screen, every word kept', () => {
+    const ctx = {
+      font: '',
+      measureText(this: { font: string }, s: string) {
+        const px = Number(/(\d+)px/.exec(this.font)?.[1] ?? 10)
+        return { width: s.length * px * 0.6, fontBoundingBoxAscent: px * 0.9, fontBoundingBoxDescent: px * 0.25 }
+      },
+    } as unknown as Parameters<typeof layoutHeadline>[0]
+    const text = 'NOW DRAW SOMETHING ON THE CANVAS AND WATCH THE APP TURN IT INTO A REAL WORKING WEBSITE IN UNDER A MINUTE WITHOUT WRITING ONE LINE OF CODE YOURSELF'
+    const short = layoutHeadline(ctx, 1080, 1920, { text: 'DRAW SOMETHING', position: 'top', size: 'large', style: 'outline' })!
+    const long = layoutHeadline(ctx, 1080, 1920, { text, position: 'top', size: 'large', style: 'outline' })!
+    expect(long.fontPx).toBeLessThan(short.fontPx)
+    expect(long.lines.length * long.lineHeight).toBeLessThanOrEqual(1920 * 0.45)
+    expect(long.lines.map((l) => l.text).join(' ')).toBe(text)
+    // A usual one is untouched.
+    expect(short.fontPx).toBe(layoutHeadline(ctx, 1080, 1920, { text: 'DRAW', position: 'top', size: 'large', style: 'outline' })!.fontPx)
+  })
+})
+
 describe('pictures that come up together', () => {
   const W = 1080
   const H = 1920

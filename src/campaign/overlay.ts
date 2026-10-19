@@ -49,6 +49,11 @@ const SIZE_FACTOR: Record<HeadlineSize, number> = { small: 0.052, medium: 0.066,
 /** Where the middle of the headline block sits, as a fraction of height. */
 const HEADLINE_Y: Record<HeadlinePosition, number> = { top: 0.2, middle: 0.44, bottom: 0.68 }
 
+/** The most of the frame's height a headline may cover: a long one (a step's
+ *  name can be as many words as he likes) gets smaller rather than run down
+ *  the screen. A usual headline is far below it. */
+const MAX_BLOCK = 0.45
+
 export interface HeadlineLayout {
   /** Each line's width as drawn, and how far to move it so what is drawn -
    *  not what was measured - sits in the middle (see inkOf). */
@@ -137,9 +142,17 @@ export function layoutHeadline(
     if (widest <= laid.maxWidth) break
     laid = lay(Math.max(8, Math.floor((laid.fontPx * laid.maxWidth) / widest)))
   }
+  const lineFactor = boxed ? BOX.lineHeight : snap ? SNAP.lineHeight : OUTLINE.lineHeight
+  // However many words: too tall and it all gets smaller - by the square
+  // root, as a smaller font also fits more words on each line.
+  for (let tries = 0; tries < 8; tries++) {
+    const tall = laid.lines.length * laid.fontPx * lineFactor
+    if (tall <= height * MAX_BLOCK || laid.fontPx <= 8) break
+    laid = lay(Math.max(8, Math.floor(laid.fontPx * Math.min(0.95, Math.sqrt((height * MAX_BLOCK) / tall)))))
+  }
   const { font, fontPx, lines } = laid
   ctx.font = font
-  const lineHeight = fontPx * (boxed ? BOX.lineHeight : snap ? SNAP.lineHeight : OUTLINE.lineHeight)
+  const lineHeight = fontPx * lineFactor
   const blockHeight = lineHeight * lines.length
   // Snapchat's band reaches a little above the words: it stays below TikTok's tabs too.
   const above = snap ? fontPx * SNAP.padY : 0
