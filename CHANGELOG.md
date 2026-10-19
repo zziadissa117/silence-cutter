@@ -3,6 +3,17 @@
 Newest first. Every change says what it does, how to use it, and how it works
 underneath. Kept up to date with each commit.
 
+## Each posted video's views, for the planner's views tracker
+Needs deploying: run ./deploy-server.sh (the database field is already added).
+**What:** the server now reads each posted video's views from Postiz, per account, a day, three days and a week after
+it went out, and keeps them on the post (`cutter_posts.views`, by account name). The planner reads them for its new
+views tracker: each campaign can have a minimum views per video, and a video counts once any one account it went to
+reaches it. One video is read per tick, so posting never runs short of Postiz's hourly allowance.
+**How:** `postiz/postViews.ts` (`postViewsDue`, `postViewCount`, `accountNameFor`, + tests); `refreshPostViews` in the
+tick (GET `/analytics/post/:postId`; a 429 waits for a later tick; an answer it can't read keeps a sample in
+`cutter_config` `postviews:unread`); fake Postiz answers it in test mode. Migration
+`20261019120000_cutter_posts_views.sql` (shown to and OK'd by the owner, applied 2026-10-19).
+
 ## Fix: the tab bar sliding with the scroll (the zoom)
 Only ./deploy.sh is needed.
 **What was wrong:** on an iPhone, tapping a text box whose writing is smaller than 16 px zooms the whole screen in - and

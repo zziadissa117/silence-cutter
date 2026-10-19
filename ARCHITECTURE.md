@@ -277,7 +277,10 @@ the selected picture in `.pic-edit` (delete, seconds, size, start here, drag/pin
 
 Only campaigns with a batch bank (running or made before) are shown - his CPM campaigns.
 
-The tick reads one account's views from Postiz (`GET /analytics/:id?date=7`) - the stalest of
+Per video (`postViews.ts`): the tick also reads one posted video's views a tick, per account
+(`GET /analytics/post/:postId`), a day, three days and a week after it went out, into
+`cutter_posts.views` (by account name) and `views_at`; the planner's `cutter-posted` returns them for its
+views tracker (`campaigns.min_views`). The tick reads one account's views from Postiz (`GET /analytics/:id?date=7`) - the stalest of
 the accounts a campaign posts to, each about once a day - so Postiz's hourly allowance stays
 for posting. `readViews` brings each platform to views per video lately (TikTok: last 20
 videos' views over their count; others: the week's views over the Cutter's posts there that

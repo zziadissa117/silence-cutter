@@ -78,6 +78,7 @@ import { cleanMode, pickRecaption, recaptionMode } from './recaption.ts'
 import { cleanLimits, firstDayWithRoom, heldNote, releasable, split, usedOn, type Limits, type PostAccount } from './limits.ts'
 import { PENDING_STATUSES, channelReport, endPlan, isPending, splitStop, type EndPost, type Integration, type PendingPost } from './channels.ts'
 import { VIEWS_WINDOW_DAYS, dueAt, notRead, parseCache, readViews, remember, type ViewsCache } from './views.ts'
+import { POST_VIEW_AGES_H, POST_VIEW_MAX_DAYS, accountNameFor, postViewCount, postViewsDue } from './postViews.ts'
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!
 const SERVICE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
@@ -384,6 +385,9 @@ interface Post {
   media: Media | null
   postiz_ids: { postId: string; integration: string }[] | null
   release_urls: Record<string, string> | null
+  /** Views by account name, read a few times after it went out (postViews.ts). */
+  views: Record<string, number> | null
+  views_at: string | null
   creating_at: string | null
   error: string | null
   attempts: number
@@ -2247,6 +2251,7 @@ async function tick(): Promise<void> {
   await remindReposts(now)
   await remind(now)
   await refreshViews(now).catch((error) => console.error('reading views failed', error))
+  await refreshPostViews(now).catch((error) => console.error('reading post views failed', error))
 
   // "Posts to approve" held back while he was told a moment ago.
   const { data: pending } = await db.from('cutter_profiles').select('id').eq('push_pending', true).limit(20)
@@ -2305,6 +2310,45 @@ async function refreshViews(now: number): Promise<void> {
     cache.accounts[account.id] = notRead(cache.accounts[account.id], error instanceof Error ? error.message : String(error), new Date(now))
   }
   await saveViews(profileId, cache)
+}
+
+/** One posted video's views, per account, when it is due a reading - a day,
+ *  three days and a week after it went out (postViews.ts). One video a tick,
+ *  so the hourly allowance posting needs is never used up; a 429 leaves it
+ *  for a later tick. An answer that can't be read keeps a short sample in
+ *  cutter_config (`postviews:unread`), to see what Postiz sent. */
+async function refreshPostViews(now: number): Promise<void> {
+  const { data } = await db
+    .from('cutter_posts')
+    .select('id, profile_id, post_at, views, views_at, accounts, postiz_ids')
+    .eq('status', 'posted')
+    .not('postiz_ids', 'is', null)
+    .gte('post_at', new Date(now - POST_VIEW_MAX_DAYS * 24 * 60 * MINUTE).toISOString())
+    .lte('post_at', new Date(now - POST_VIEW_AGES_H[0] * 60 * MINUTE).toISOString())
+    .order('views_at', { ascending: true, nullsFirst: true })
+    .limit(50)
+  const post = ((data ?? []) as Pick<Post, 'id' | 'profile_id' | 'post_at' | 'views' | 'views_at' | 'accounts' | 'postiz_ids'>[]).find(
+    (p) => p.post_at !== null && postViewsDue(p.post_at, p.views_at, now),
+  )
+  if (!post) return
+  const { postiz: key } = await keysFor(post.profile_id)
+  const views: Record<string, number> = { ...post.views }
+  let unread: unknown
+  for (const ref of post.postiz_ids ?? []) {
+    try {
+      const answer = await postiz<unknown>(key, 'GET', `/analytics/post/${encodeURIComponent(ref.postId)}?date=30`)
+      const count = postViewCount(answer)
+      if (count === null) unread = answer
+      else views[accountNameFor(post.accounts, ref.integration)] = count
+    } catch (error) {
+      if (error instanceof Problem && error.status === 429) return
+      // The platform gives none for it (yet): read again at the next age.
+    }
+  }
+  if (unread !== undefined) {
+    await db.from('cutter_config').upsert({ key: 'postviews:unread', value: JSON.stringify(unread ?? null).slice(0, 2000) }, { onConflict: 'key' })
+  }
+  await update(post.id, { views, views_at: new Date(now).toISOString() })
 }
 
 /** What the Analytics tab shows: this login's accounts' views as last read. */
