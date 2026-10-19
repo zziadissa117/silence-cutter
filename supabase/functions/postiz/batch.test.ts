@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { approvalFor, batchChoices, batchInfo, batchSpan } from './batch.ts'
+import { approvalFor, batchChoices, batchInfo, batchReady, batchSpan } from './batch.ts'
 
 describe('a batch video', () => {
   it('is only taken as one with a real id, day, time and size', () => {
@@ -58,5 +58,25 @@ describe('who says a video can go', () => {
   it('lets one made by hand, or approved with its music, go', () => {
     expect(approvalFor('me', { ...plain, hand: true })).toBe('direct')
     expect(approvalFor('me', { ...plain, approveNow: true })).toBe('direct')
+  })
+})
+
+describe('the notification when a batch is up', () => {
+  it('says how many to approve, how many a day and over which days', () => {
+    const note = batchReady('Lovable', ['2026-10-20', '2026-10-20', '2026-10-21', '2026-10-21'], false)
+    expect(note.title).toBe('Lovable: 4 videos ready to approve')
+    expect(note.body).toBe('2 a day, Tue, Oct 20 to Wed, Oct 21. Approve them in Posts.')
+  })
+
+  it('says when they are the last ones, and to film new clips', () => {
+    const note = batchReady('Lovable', ['2026-10-26', '2026-10-27'], true)
+    expect(note.title).toBe('Lovable: the last 2 videos - film new clips')
+    expect(note.body).toContain('These post Mon, Oct 26 to Tue, Oct 27, then the batch stops')
+  })
+
+  it('keeps the mark from the phone that they are the last', () => {
+    expect(batchInfo({ id: 'b1', date: '2026-10-26', time: '12:00', size: 2, last: true })?.last).toBe(true)
+    expect(batchInfo({ id: 'b1', date: '2026-10-26', time: '12:00', size: 2 })).not.toHaveProperty('last')
+    expect(batchInfo({ id: 'b1', date: '2026-10-26', time: '12:00', size: 2, last: 'yes' })).not.toHaveProperty('last')
   })
 })

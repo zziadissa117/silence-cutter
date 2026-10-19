@@ -3,6 +3,15 @@
 Newest first. Every change says what it does, how to use it, and how it works
 underneath. Kept up to date with each commit.
 
+## Batch: you're told when the last videos are made
+Needs deploying: run ./deploy-server.sh (and ./deploy.sh).
+**What:** when a batch makes the last different videos your clips can make, its usual "N videos ready to approve"
+notification becomes "Lovable: the last 3 videos - film new clips", saying the days they post and that the batch stops
+after them. The Batch tab still shows "Time to film new ones" once they're made.
+**How:** `batchRun.planVideos` marks the videos of the plan that spends the bank `batch.last`; the server keeps it
+(`batchInfo`) and `notifyBatch` words the notification with `batch.batchReady`. Tests in `postiz/batch.test.ts`,
+`batchRun.test.ts`.
+
 ## Batch times: no more piling up at 11 AM, and full days that change each day
 Only ./deploy.sh is needed.
 **What:** 11 AM is the start of the posting day (11 AM - 6 PM, the middle of the day you asked for), but batch videos

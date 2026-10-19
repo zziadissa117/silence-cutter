@@ -69,7 +69,7 @@ import { RECHECK_SCHEMA, RECHECK_SYSTEM, acceptFix, costCents } from './recheck.
 import { accountName, failedRefs, notPostedNote } from './failed.ts'
 import { carryOver, cleanCaptions, cleanRepost, repostDueAt, textFor, variationNote, type AccountText } from './repost.ts'
 import { FAKE_CLAUDE, FakeError, fakeCaption, fakePostiz, isFakePostiz } from './fake.ts'
-import { approvalFor, batchChoices, batchInfo, batchSpan, type BatchInfo } from './batch.ts'
+import { approvalFor, batchChoices, batchInfo, batchReady, type BatchInfo } from './batch.ts'
 import { handFields } from './hand.ts'
 import { dayTimeFor, lastTimeToday, nextSlot, normalTimes, pickTime, spreadDay, spreadEnd, timesFor, type OtherPost, type Spread, addDays, localDate, localTime, zoned } from './slots.ts'
 import { cleanWindow, inDay, type PostingWindow } from './window.ts'
@@ -1247,12 +1247,8 @@ async function notifyBatch(profileId: string, batchId: string, stragglers = fals
   const waiting = rows.filter((r) => r.status === 'waiting')
   await db.from('cutter_posts').update({ batch_told: true }).eq('profile_id', profileId).eq('batch->>id', batchId)
   if (waiting.length === 0) return
-  const perDay = Math.max(...Object.values(waiting.reduce<Record<string, number>>((n, r) => ({ ...n, [r.batch!.date]: (n[r.batch!.date] ?? 0) + 1 }), {})))
-  await notify(profileId, {
-    title: `${rows[0].campaign_name}: ${waiting.length} video${waiting.length === 1 ? '' : 's'} ready to approve`,
-    body: `${perDay} a day, ${batchSpan(waiting.map((r) => r.batch!.date))}. Approve them in Posts.`,
-    tag: `batch-${batchId}`,
-  })
+  const last = rows.some((r) => r.batch?.last === true)
+  await notify(profileId, { ...batchReady(rows[0].campaign_name, waiting.map((r) => r.batch!.date), last), tag: `batch-${batchId}` })
 }
 
 /** The next free time of the campaign's own - or a place in today's spread

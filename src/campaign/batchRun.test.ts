@@ -294,3 +294,17 @@ describe('Claude + X taking turns with headlines, planned', () => {
     expect(missingFor(mixed({ headlines: [], formula: { ...logos, right: null } }))).toEqual(['a headline', 'both logos'])
   })
 })
+
+describe('the last different videos', () => {
+  it('are marked as the last, so he is told to film new clips', () => {
+    // 2 reactions x 2 products x 2 headlines: 8 different videos.
+    const b = bank()
+    const slots = runSlots({ bank: b, place, campaignId: 'c1', now: NOON })
+    const first = planVideos(b, slots.slice(0, 5), { now: NOON })
+    expect(first.videos.every((v) => v.batch.last === undefined)).toBe(true)
+    const rest = planVideos(first.bank, slots.slice(5), { now: NOON })
+    expect(rest.videos).toHaveLength(3)
+    expect(rest.videos.every((v) => v.batch.last === true)).toBe(true)
+    expect(rest.bank.running).toBe(false)
+  })
+})

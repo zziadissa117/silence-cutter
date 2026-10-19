@@ -197,6 +197,8 @@ export function planVideos(
   if (taking.length === 0) return { videos: [], slots: [], bank, retire: [] }
 
   const { picks, used, lastPair, made } = pickBatch(mixable, taking.length, rand)
+  // That is every different video left: the footage goes after these.
+  const ending = Number.isFinite(left) && taking.length >= left
   const byId = (list: BankFile[], fileId: string | null) => list.find((f) => f.id === fileId) ?? null
   const videos: BatchVideo[] = picks.map((pick, i) => {
     const steps = pick.steps && bank.steps ? pick.steps.map((fileId, s) => ({ file: byId(bank.steps![s].files, fileId)!, name: bank.steps![s].name })) : undefined
@@ -213,12 +215,12 @@ export function planVideos(
         ? { headline: formulaText(onFormula, line), formula: { left: onFormula.left, right: onFormula.right, line } }
         : { headline: pick.headline }),
       ...(pick.look && pick.look !== 'formula' ? { headlineStyle: pick.look } : {}),
-      batch: { id, date: taking[i].date, time: taking[i].time, size: taking.length },
+      batch: { id, date: taking[i].date, time: taking[i].time, size: taking.length, ...(ending ? { last: true as const } : {}) },
     }
   })
   let next = fill({ ...bank, used, lastPair, made }, taking, now)
   let retire: string[] = []
-  if (Number.isFinite(left) && taking.length >= left) {
+  if (ending) {
     // That was every different video: the footage goes, for new filming.
     ;({ bank: next, retired: retire } = spend(next, next.madeThrough ?? todayHere(now)))
     next = { ...next, running: false }

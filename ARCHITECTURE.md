@@ -202,7 +202,8 @@ from today through `AHEAD_DAYS` (7) up to his number - an empty day takes `batch
 already holding some takes `stackTimesOn` clear of its times - counting what it put on each
 day in `BatchBank.filled` (days made before that count as `lastPerDay`). `planVideos` mixes
 them (`pickBatch`), never past the different videos left; the last of them spends the bank
-and stops the run. `topUp` saves the bank, then queues the videos (`CampaignApp.addBatch`) or
+and stops the run (those videos carry `batch.last`, so the server's one notification for them says they
+are the last - `postiz/batch.batchReady`). `topUp` saves the bank, then queues the videos (`CampaignApp.addBatch`) or
 hands the days to the engine; a failure is kept in `runProblem` and tried again. Who tops up:
 the Batch tab for its own campaign while open (`WhenDue`, a moment after the last change),
 otherwise `CampaignApp` for every running campaign when the app opens, comes back on screen,

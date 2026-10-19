@@ -209,6 +209,9 @@ export interface JobBatch {
   date: string
   time: string
   size: number
+  /** The last different videos the bank could make (batchRun.planVideos):
+   *  the server's notification tells him to film new clips. */
+  last?: true
 }
 
 /** A clips-and-music video's other files, by name and type: the clips after

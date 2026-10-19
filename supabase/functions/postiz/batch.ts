@@ -17,6 +17,9 @@ export interface BatchInfo {
   time: string
   /** How many videos that making made. */
   size: number
+  /** The last different videos his clips could make: the batch stops after
+   *  them until he films new ones. */
+  last?: boolean
 }
 
 /** The batch a video says it belongs to, or null when what came is not one. */
@@ -28,7 +31,7 @@ export function batchInfo(value: unknown): BatchInfo | null {
   const time = typeof v.time === 'string' && normalTimes([v.time]).length === 1 ? v.time.trim() : null
   const size = Number(v.size)
   if (!id || !date || !time || !Number.isInteger(size) || size < 1 || size > 500) return null
-  return { id, date, time, size }
+  return { id, date, time, size, ...(v.last === true ? { last: true } : {}) }
 }
 
 /** Where a batch video goes: its own time first, then the day's other
@@ -54,6 +57,22 @@ export function batchSpan(dates: string[]): string {
   const sorted = [...new Set(dates)].sort()
   if (sorted.length === 0) return ''
   return sorted.length === 1 ? day(sorted[0]) : `${day(sorted[0])} to ${day(sorted[sorted.length - 1])}`
+}
+
+/** A batch's one notification once its videos are up: how many to approve,
+ *  over which days - and, when they are the last different videos his clips
+ *  can make, that the batch stops after them and wants new clips. */
+export function batchReady(campaign: string, dates: string[], last: boolean): { title: string; body: string } {
+  const count = dates.length
+  const videos = `${count} video${count === 1 ? '' : 's'}`
+  if (last) {
+    return {
+      title: `${campaign}: the last ${videos} - film new clips`,
+      body: `Every different video your clips can make is done. These post ${batchSpan(dates)}, then the batch stops - approve them in Posts, and add new reactions and product showcases in Batch to keep it going.`,
+    }
+  }
+  const perDay = Math.max(...Object.values(dates.reduce<Record<string, number>>((n, d) => ({ ...n, [d]: (n[d] ?? 0) + 1 }), {})))
+  return { title: `${campaign}: ${videos} ready to approve`, body: `${perDay} a day, ${batchSpan(dates)}. Approve them in Posts.` }
 }
 
 /** Who says a video arriving can go. By hand, or made again with "approve":
