@@ -25,6 +25,7 @@ import {
   mixFrom,
   pickBatch,
   spend,
+  stylesToMix,
   todayHere,
   usesSteps,
   type BankFile,
@@ -34,7 +35,7 @@ import {
 import { engineJob, makeOnEngine, saveEngineSeries, sendFootage, stopEngineJob } from './engine'
 import { DEFAULT_CORNER } from './greenScreenRender'
 import type { Job } from './jobs'
-import { NO_POSTING, type Campaign } from './look'
+import { NO_POSTING, type Campaign, type HeadlineStyle } from './look'
 import { BATCH_MAX_PER_DAY, batchTimesOn, listPosts, stackTimesOn, stoppable, stopPostsNow, takenTimes, type CampaignPlace, type ServerPost } from './posting'
 import { loadBankFile, type JobBatch } from './store'
 
@@ -56,6 +57,9 @@ export interface BatchVideo {
   /** The product showcase in steps: one clip each, in order, with the
    *  step's name (its words over the clip, batch.stepTitle). */
   steps?: { file: BankFile; name?: string }[]
+  /** The headline look it was mixed with, when the batch takes turns
+   *  between several (batch.styleFor has the last word when it is made). */
+  headlineStyle?: HeadlineStyle
   batch: JobBatch
 }
 
@@ -129,6 +133,25 @@ export function leftToMake(bank: BatchBank): { total: number; left: number } {
   return combos(mixFrom(bank, green ? bank.headlines : headlinesToMix(bank)))
 }
 
+/** What the bank's different videos multiply out of, the way leftToMake
+ *  counts them: "3 reactions × 4 product showcases × 5 headlines × 3
+ *  headline looks". Songs and looks only when there is more than one. */
+export function variationParts(bank: BatchBank): string[] {
+  const green = bank.layout === 'greenscreen'
+  const headlines = green || hookOf(bank) !== 'formula' ? bank.headlines : []
+  const looks = stylesToMix(mixFrom(bank, headlines)).length
+  const n = (count: number, one: string) => `${count} ${one}${count === 1 ? '' : 's'}`
+  return [
+    n(bank.reactions.length, 'reaction'),
+    ...(usesSteps(bank)
+      ? bank.steps!.map((step) => `${n(step.files.length, 'clip')} for ${step.name}`)
+      : [n(bank.products.length, green ? 'background video' : 'product showcase')]),
+    ...(headlines.length > 0 ? [n(headlines.length, 'headline')] : []),
+    ...(!green && bank.music.length > 1 ? [n(bank.music.length, 'song')] : []),
+    ...(looks > 1 ? [n(looks, 'headline look')] : []),
+  ]
+}
+
 /** Counts `slots` into the bank's days, forgetting days gone by. Days made
  *  before days were counted keep their count from `lastPerDay`, left as it
  *  was. */
@@ -173,6 +196,7 @@ export function planVideos(
       ...(formula
         ? { headline: formulaText(formula, line), formula: { left: formula.left, right: formula.right, line } }
         : { headline: pick.headline }),
+      ...(pick.style ? { headlineStyle: pick.style } : {}),
       batch: { id, date: taking[i].date, time: taking[i].time, size: taking.length },
     }
   })

@@ -132,7 +132,7 @@ describe('the Start button', () => {
     expect(host.textContent).toContain('Makes the next 7 days now, then keeps going on its own')
     expect(host.textContent).not.toContain('Days')
     // 3 reactions x 3 products x 3 headlines, at 3 a day.
-    expect(host.textContent).toContain('27 of 27 different videos left - 9 days at 3 a day.')
+    expect(host.querySelector('.batch-variations')?.textContent).toBe('27 variations3 reactions × 3 product showcases × 3 headlinesNone made yet - 9 days at 3 a day.')
   })
 
   it('stops when he says', async () => {
@@ -318,13 +318,25 @@ describe('changing the number while it runs', () => {
   })
 })
 
-describe("the batch's headline look", () => {
-  it('starts as the angle\'s and is changed to Snapchat in one tap', async () => {
+describe("the batch's headline looks", () => {
+  const look = (label: string) =>
+    [...host.querySelectorAll('[aria-label="Headline styles"] [role="checkbox"]')].find((b) => b.textContent === label) as HTMLButtonElement
+
+  it("starts as the angle's; tapping more makes the videos take turns, and one always stays", async () => {
     await show({})
-    const look = (label: string) => host.querySelector(`[aria-label="Headline style"] [role="radio"]:nth-child(${['White box', 'Outline', 'Snapchat'].indexOf(label) + 1})`) as HTMLButtonElement
     expect(look('White box').getAttribute('aria-checked')).toBe('true')
     await act(async () => look('Snapchat').click())
-    expect((await savedBank()).headlineStyle).toBe('snap')
+    expect((await savedBank()).headlineStyles).toEqual(['box', 'snap'])
+    await act(async () => look('Outline').click())
+    expect((await savedBank()).headlineStyles).toEqual(['box', 'outline', 'snap'])
+    expect(host.textContent).toContain('the same headlines in each look, a third each')
+    // The 27 different videos in each of the 3 looks.
+    expect(host.querySelector('.batch-variations .label')?.textContent).toBe('81 variations')
+    expect(host.querySelector('.batch-variations')?.textContent).toContain('× 3 headline looks')
+    await act(async () => look('White box').click())
+    await act(async () => look('Outline').click())
+    expect((await savedBank()).headlineStyles).toEqual(['snap'])
+    await act(async () => look('Snapchat').click())
     expect(look('Snapchat').getAttribute('aria-checked')).toBe('true')
   })
 })

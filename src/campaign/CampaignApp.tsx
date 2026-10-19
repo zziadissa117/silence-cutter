@@ -34,7 +34,7 @@ import { AnalyticsView, answerSuggestion, saveTarget, useCampaignRows } from './
 import { FormatsView, type FormatClips } from './FormatsView'
 import { daysLine, spreadOver } from './formats'
 import type { ViewsByAccount } from './analytics'
-import { filesOf, stepTitle, type BankFile } from './batch'
+import { filesOf, stepTitle, styleFor, stylesOf, type BankFile } from './batch'
 import { CampaignsView } from './CampaignsView'
 import { CloudError, currentSession, signOut, syncNow, type Session, type SyncState } from './cloud'
 import { AngleEditor, CampaignEditor } from './Editors'
@@ -1364,9 +1364,11 @@ export function CampaignApp() {
           return
         }
         patch({ label: labelOf(jobCampaign, ownAngle) })
-        // The headline look picked for this video, or for its batch (as it
-        // is now), in place of the angle's.
-        const batchStyle = next.batch ? (await loadBatchBank(next.campaignId).catch(() => null))?.headlineStyle : undefined
+        // The headline look picked for this video, or for its batch (the one
+        // it was mixed with, while he still has it picked), in place of the
+        // angle's.
+        const batchBank = next.batch ? await loadBatchBank(next.campaignId).catch(() => null) : null
+        const batchStyle = batchBank ? styleFor(next.montage?.bank?.headlineStyle, stylesOf(batchBank), next.id) : undefined
         const jobAngle = withHeadlineStyle(ownAngle, next.day?.headlineStyle ?? batchStyle)
         // The kept copy of the video stays until it is made, so a failure
         // can always be tried again - even after a restart. What is made is
@@ -1406,7 +1408,7 @@ export function CampaignApp() {
           const stepped = next.montage.bank?.steps
           const titles = stepped
             ? await (async () => {
-                const known = stepped.some((s) => s.name === undefined) ? await loadBatchBank(next.campaignId).catch(() => null) : null
+                const known = stepped.some((s) => s.name === undefined) ? (batchBank ?? (await loadBatchBank(next.campaignId).catch(() => null))) : null
                 const nameOf = (s: (typeof stepped)[number]) => s.name ?? known?.steps?.find((k) => k.files.some((f) => f.id === s.file.id))?.name
                 return [null, ...stepped.map((s) => stepTitle(nameOf(s)) || null)]
               })()
@@ -2316,6 +2318,7 @@ export function CampaignApp() {
           ...(v.formula ? { formula: v.formula } : {}),
           ...(v.greenScreen ? { greenScreen: v.greenScreen } : {}),
           ...(v.steps ? { steps: v.steps } : {}),
+          ...(v.headlineStyle ? { headlineStyle: v.headlineStyle } : {}),
         },
         clips: [],
         music: 'bank',

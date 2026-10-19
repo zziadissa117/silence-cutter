@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { combos, dayTimes, stepTitle, emptyBank, filesOf, headlinesFrom, pickBatch, spend, usesSteps, type BankFile, type BatchBank } from './batch'
+import { combos, dayTimes, stepTitle, emptyBank, filesOf, headlinesFrom, pickBatch, spend, styleFor, stylesOf, usesSteps, type BankFile, type BatchBank } from './batch'
 
 const files = (prefix: string, n: number): BankFile[] =>
   Array.from({ length: n }, (_, i) => ({ id: `${prefix}${i + 1}`, name: `${prefix}${i + 1}.mov`, type: 'video/quicktime', size: 1 }))
@@ -238,5 +238,54 @@ describe("a step's words over its clip", () => {
     expect(stepTitle('step 10')).toBe('')
     expect(stepTitle('')).toBe('')
     expect(stepTitle(undefined)).toBe('')
+  })
+})
+
+describe('headlines in several looks', () => {
+  const looks = (fields: Partial<BatchBank> = {}): BatchBank => ({
+    ...emptyBank('polsia', 'polsia-a1'),
+    reactions: files('r', 5),
+    products: files('p', 1),
+    headlines: ['wait for it'],
+    headlineStyles: ['outline', 'snap', 'box'],
+    ...fields,
+  })
+
+  it('takes turns evenly: 15 videos are 5 of each, all with the same words', () => {
+    const { picks } = pickBatch(looks(), 15, seeded(3))
+    expect(count(picks.map((p) => p.style ?? null))).toEqual({ outline: 5, snap: 5, box: 5 })
+    expect(new Set(picks.map((p) => p.headline))).toEqual(new Set(['wait for it']))
+    // Each reaction in each look once.
+    expect(new Set(picks.map((p) => `${p.reaction}|${p.style}`)).size).toBe(15)
+  })
+
+  it('counts each look as different videos', () => {
+    expect(combos(looks()).total).toBe(15)
+    expect(combos(looks({ headlineStyles: ['snap'] })).total).toBe(5)
+  })
+
+  it('with one look, mixes and remembers exactly as before', () => {
+    const one = looks({ headlineStyles: ['snap'] })
+    const { picks, made } = pickBatch(one, 2, seeded(3))
+    expect(picks.every((p) => p.style === undefined)).toBe(true)
+    expect(made.every((key) => key.split('|').length === 4)).toBe(true)
+  })
+
+  it('never takes turns where no headline is written', () => {
+    expect(combos(looks({ headlines: [''] })).total).toBe(5)
+    expect(combos(looks({ layout: 'engine' })).total).toBe(5)
+  })
+
+  it('reads the one look picked before several could be', () => {
+    expect(stylesOf({ headlineStyle: 'snap' })).toEqual(['snap'])
+    expect(stylesOf({ headlineStyles: ['box', 'snap'], headlineStyle: 'outline' })).toEqual(['box', 'snap'])
+    expect(stylesOf({})).toEqual([])
+  })
+
+  it("makes a video in the look it was mixed with, or one he still has picked, or the angle's", () => {
+    expect(styleFor('snap', ['outline', 'snap'], 'job1')).toBe('snap')
+    expect(['outline', 'box']).toContain(styleFor('snap', ['outline', 'box'], 'job1'))
+    expect(styleFor(undefined, ['outline', 'box'], 'job1')).toBe(styleFor(undefined, ['outline', 'box'], 'job1'))
+    expect(styleFor('snap', [], 'job1')).toBeUndefined()
   })
 })

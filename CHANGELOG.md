@@ -3,6 +3,20 @@
 Newest first. Every change says what it does, how to use it, and how it works
 underneath. Kept up to date with each commit.
 
+## Batch: several headline looks at once, and the number of variations at the bottom
+Only ./deploy.sh is needed.
+**What:** under a batch's Headlines, White box / Outline / Snapchat can now be on together - tap one to add it, tap it
+again to take it out (one always stays). With more than one, the videos take turns: the same headlines in each look,
+evenly - with all three, a third of the videos in each (15 videos: 5 Outline, 5 Snapchat, 5 White box). Every headline
+comes in every look, so each look counts as more different videos. Step names follow each video's look.
+At the very bottom of the Batch tab: **"360 variations"** with what multiplies into it ("4 reactions × 3 product
+showcases × 5 headlines × 2 songs × 3 headline looks") and how many are still to make, with the days that lasts. It
+replaces the "X of Y different videos left" line, and shows even when Videos a day is 0.
+**How:** `BatchBank.headlineStyles` (`stylesOf` reads the earlier single `headlineStyle`); `pickBatch`/`combos` add the
+look as a dimension only with two or more (`stylesToMix`) so one-look banks keep their keys; `BatchVideo.headlineStyle`
+-> `montage.bank.headlineStyle`; at render `styleFor` keeps it while still picked, else one picked now (a change reaches
+videos not made yet). `batchRun.variationParts`. Tests in `batch.test.ts`, `batchRun.test.ts`, `batchView.test.tsx`.
+
 ## Headline style (Snapchat, Outline, White box) picked right where the headline is written
 Only ./deploy.sh is needed.
 **What:** the Snapchat look was only in Campaigns -> the angle -> Headline -> Style, so it was easy to miss. Now the

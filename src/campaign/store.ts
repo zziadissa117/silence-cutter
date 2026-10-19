@@ -232,6 +232,8 @@ export interface MontageParts {
      *  planned before may carry the old typed minSec/maxSec; nothing reads
      *  them. */
     steps?: { file: BankFile; name?: string }[]
+    /** The headline look it was mixed with, when the batch takes turns. */
+    headlineStyle?: HeadlineStyle
   }
   clips: { name: string; type: string }[]
   /** The track under it: "" for its angle's, "none", another angle's as

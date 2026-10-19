@@ -214,6 +214,15 @@ Lowering the number (or 0, a pause) works at once too: `overfull` finds the days
 started are dropped, posts not out are stopped (`stopPostsNow`), posted or being-made ones stay.
 On the engine, a batch still being made is stopped first and the days recounted (`countedDays`).
 
+Headline looks: `BatchBank.headlineStyles` (Batch tab, one or more; the old single
+`headlineStyle` reads as one). With two or more, `pickBatch` treats the look as one more
+dimension (`stylesToMix`, keys `s:<style>`, `|<style>` on the combo key) - so every headline
+comes in every look, evenly, and the different videos multiply; with one, keys and counts are
+unchanged. Each `BatchVideo` carries its `headlineStyle` into `montage.bank`; at render
+`batch.styleFor` keeps it while still picked, else takes one picked now (so a change reaches
+every video not made yet), and `withHeadlineStyle` swaps it into the angle. The bottom of the
+Batch tab shows the number of variations and `variationParts` (what multiplies into it).
+
 ## Formats (`formats.ts`, `FormatsView.tsx`)
 
 A format is an angle with `isFormat`: its look and the clips joined onto every take (clips.ts,

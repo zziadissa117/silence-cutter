@@ -566,6 +566,10 @@ input.stepper-value::-webkit-inner-spin-button, input.stepper-value::-webkit-out
 .btn.primary.batch-make { min-height: 52px; }
 .batch-progress, .batch-failed { display: flex; flex-direction: column; gap: 8px; }
 .batch-spent { border-color: var(--now); }
+/* How many different videos the bank makes, and what multiplies into it. */
+.batch-variations { display: flex; flex-direction: column; gap: 4px; padding: 12px 14px; background: var(--surface); border: 1px solid var(--edge); border-radius: 12px; }
+.batch-variations .label { font-size: 17px; }
+.headline-look { margin-top: 8px; }
 
 /* The sign-in page, shown alone until there is a session (LoginGate). */
 .login-gate { max-width: 420px; margin: 0 auto; padding: 56px 20px; }

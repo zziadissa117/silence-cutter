@@ -17,7 +17,9 @@ import {
   DEFAULT_FORMULA,
   formulaLine,
   headlinesFrom,
+  MAX_COMBOS,
   stepTitle,
+  stylesOf,
   hookOf,
   todayHere,
   usesSteps,
@@ -30,8 +32,7 @@ import { StepOrder } from './StepOrder'
 import { filmingOf } from './filming'
 import { fingerprint, skippedNotice } from './fingerprint'
 import { formatTime, labelOf, type Job } from './jobs'
-import { HeadlineLook } from './JobRow'
-import type { Angle, Campaign } from './look'
+import { HEADLINE_STYLES, type Angle, type Campaign, type HeadlineStyle } from './look'
 import { copySong, useMusicBank } from './musicBank'
 import {
   BATCH_MAX_PER_DAY,
@@ -59,6 +60,7 @@ import {
   takenBy,
   topUp,
   trimDown,
+  variationParts,
   type BatchVideo,
 } from './batchRun'
 import { FormulaPreview } from './FormulaPreview'
@@ -861,8 +863,16 @@ export function BatchView({
             />
             {onEngine ? null : (
               <>
-                <HeadlineLook value={bank.headlineStyle ?? angle.headline.style} onPick={(headlineStyle) => keep({ ...bank, headlineStyle })} />
-                {stepped ? <p className="hint bank-hint">The step names use the same look.</p> : null}
+                <HeadlineLooks
+                  picked={stylesOf(bank).length > 0 ? stylesOf(bank) : [angle.headline.style]}
+                  onPick={(headlineStyles) => keep({ ...bank, headlineStyles, headlineStyle: undefined })}
+                />
+                <p className="hint bank-hint">
+                  {stylesOf(bank).length > 1
+                    ? `The videos take turns: the same headlines in each look, ${stylesOf(bank).length === 2 ? 'half' : 'a third'} each.`
+                    : 'Tap more than one and the videos take turns between them, the same headlines in each.'}
+                  {stepped ? ' The step names use the same look.' : ''}
+                </p>
               </>
             )}
           </div>
@@ -1001,12 +1011,6 @@ export function BatchView({
               ) : null}
             </div>
           ) : null}
-          {different > 0 && Number.isFinite(different) && perDay > 0 ? (
-            <p className={`hint new-post-to batch-left${daysLeft <= AHEAD_DAYS ? ' warn-text' : ''}`}>
-              {left} of {different} different videos left - {daysLeft} day{daysLeft === 1 ? '' : 's'} at {perDay} a day.
-              {daysLeft <= AHEAD_DAYS ? ' After them, film new reactions and product showcases.' : ''}
-            </p>
-          ) : null}
           <p className="hint new-post-to">
             {missing.length > 0
               ? `Add ${missing.join(', ')} first.`
@@ -1053,6 +1057,21 @@ export function BatchView({
               </ul>
             </div>
           ) : null}
+          {!onEngine && different > 0 ? (
+            <div className="batch-variations">
+              <div className="label">
+                {Number.isFinite(different) ? `${different.toLocaleString('en-US')} variation${different === 1 ? '' : 's'}` : `Over ${MAX_COMBOS.toLocaleString('en-US')} variations`}
+              </div>
+              <div className="hint">{variationParts(bank).join(' × ')}</div>
+              {Number.isFinite(left) ? (
+                <div className={`hint batch-left${perDay > 0 && daysLeft <= AHEAD_DAYS ? ' warn-text' : ''}`}>
+                  {left === different ? 'None made yet' : `${left.toLocaleString('en-US')} still to make`}
+                  {perDay > 0 ? ` - ${daysLeft} day${daysLeft === 1 ? '' : 's'} at ${perDay} a day.` : '.'}
+                  {perDay > 0 && daysLeft <= AHEAD_DAYS ? ' After them, film new reactions and product showcases.' : ''}
+                </div>
+              ) : null}
+            </div>
+          ) : null}
           <p className="hint new-post-to">For {labelOf(campaign, angle)}</p>
         </>
       ) : null}
@@ -1060,3 +1079,29 @@ export function BatchView({
   )
 }
 
+/** The looks a batch's headlines are written in: tap to add one or take it
+ *  out - one always stays. With more, the videos take turns between them. */
+function HeadlineLooks({ picked, onPick }: { picked: HeadlineStyle[]; onPick: (styles: HeadlineStyle[]) => void }) {
+  return (
+    <div className="seg full headline-look" role="group" aria-label="Headline styles">
+      {HEADLINE_STYLES.map(({ value, label }) => {
+        const on = picked.includes(value)
+        return (
+          <button
+            key={value}
+            type="button"
+            role="checkbox"
+            aria-checked={on}
+            className={on ? 'active' : ''}
+            onClick={() => {
+              const next = HEADLINE_STYLES.map((s) => s.value).filter((v) => (v === value ? !on : picked.includes(v)))
+              if (next.length > 0) onPick(next)
+            }}
+          >
+            {label}
+          </button>
+        )
+      })}
+    </div>
+  )
+}

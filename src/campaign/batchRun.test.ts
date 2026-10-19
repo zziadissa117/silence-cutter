@@ -8,7 +8,7 @@ vi.mock('./engine', () => ({
 vi.mock('./store', () => ({ loadBankFile: vi.fn(async () => null) }))
 
 import { emptyBank, type BankFile, type BatchBank } from './batch'
-import { AHEAD_DAYS, countedDays, dayVideos, filledOn, overfull, planVideos, runSlots, takenBy, topUp, trimPlan } from './batchRun'
+import { AHEAD_DAYS, countedDays, dayVideos, filledOn, leftToMake, overfull, planVideos, runSlots, takenBy, topUp, trimPlan, variationParts } from './batchRun'
 import { makeOnEngine } from './engine'
 import type { Job } from './jobs'
 import type { CampaignPlace, ServerPost } from './posting'
@@ -229,5 +229,40 @@ describe("each step's name goes with its video", () => {
     const b = bank({ steps })
     const plan = planVideos(b, runSlots({ bank: b, place, campaignId: 'c1', now: NOON }).slice(0, 3), { now: NOON })
     for (const v of plan.videos) expect(v.steps?.map((s) => s.name)).toEqual(['DRAW SOMETHING', 'Step 2'])
+  })
+})
+
+describe('headlines in several looks, planned', () => {
+  it('gives each video the look it was mixed with', () => {
+    const b = bank({ headlineStyles: ['snap', 'box'] })
+    const plan = planVideos(b, runSlots({ bank: b, place, campaignId: 'c1', now: NOON }).slice(0, 4), { now: NOON })
+    expect(plan.videos.map((v) => v.headlineStyle).sort()).toEqual(['box', 'box', 'snap', 'snap'])
+  })
+
+  it('leaves the look to the angle when one is picked', () => {
+    const b = bank({ headlineStyles: ['snap'] })
+    const plan = planVideos(b, runSlots({ bank: b, place, campaignId: 'c1', now: NOON }).slice(0, 2), { now: NOON })
+    expect(plan.videos.every((v) => v.headlineStyle === undefined)).toBe(true)
+  })
+})
+
+describe('how many variations', () => {
+  it('says what multiplies into the number', () => {
+    const b = bank({ headlineStyles: ['outline', 'snap', 'box'], music: files('m', 2) })
+    expect(variationParts(b)).toEqual(['2 reactions', '2 product showcases', '2 headlines', '2 songs', '3 headline looks'])
+    expect(leftToMake(b).total).toBe(2 * 2 * 2 * 2 * 3)
+  })
+
+  it('names each step, and leaves out one song or one look', () => {
+    const steps = [
+      { id: 's1', name: 'DRAW SOMETHING', files: files('d', 3) },
+      { id: 's2', name: 'The app', files: files('a', 1) },
+    ]
+    expect(variationParts(bank({ steps, music: files('m', 1) }))).toEqual(['2 reactions', '3 clips for DRAW SOMETHING', '1 clip for The app', '2 headlines'])
+  })
+
+  it('has no headlines for the Claude + X hook', () => {
+    expect(variationParts(bank({ hook: 'formula', headlineStyles: ['snap', 'box'] }))).toEqual(['2 reactions', '2 product showcases'])
+    expect(leftToMake(bank({ hook: 'formula', headlineStyles: ['snap', 'box'] })).total).toBe(4)
   })
 })
