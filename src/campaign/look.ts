@@ -24,6 +24,19 @@ export type HeadlinePosition = 'top' | 'middle' | 'bottom'
 /** TikTok's white boxes, TikTok's outlined letters, or Snapchat's caption:
  *  white words on a see-through black band across the whole frame. */
 export type HeadlineStyle = 'box' | 'outline' | 'snap'
+
+/** The headline looks he picks from, wherever he writes a headline. */
+export const HEADLINE_STYLES: { value: HeadlineStyle; label: string }[] = [
+  { value: 'box', label: 'White box' },
+  { value: 'outline', label: 'Outline' },
+  { value: 'snap', label: 'Snapchat' },
+]
+
+/** The angle with the headline look picked for one video or one batch in
+ *  place of its own; the angle as it is when none was picked. */
+export function withHeadlineStyle(angle: Angle, style: HeadlineStyle | undefined): Angle {
+  return style && style !== angle.headline.style ? { ...angle, headline: { ...angle.headline, style } } : angle
+}
 export type HeadlineSize = 'small' | 'medium' | 'large'
 export type LogoPosition = 'top' | 'top-left' | 'top-right' | 'middle' | 'bottom-left' | 'bottom-right'
 

@@ -60,7 +60,7 @@ afterEach(() => {
   host.remove()
 })
 
-const campaign = { id: 'inflow', name: 'Inflow', angles: [{ id: 'a1', name: 'Main' }] } as unknown as Campaign
+const campaign = { id: 'inflow', name: 'Inflow', angles: [{ id: 'a1', name: 'Main', headline: { style: 'box' } }] } as unknown as Campaign
 
 function posting(place: Partial<CampaignPlace>): LocalPosting {
   return {
@@ -315,5 +315,16 @@ describe('changing the number while it runs', () => {
     // Typing 2 then 5 made one top-up, for 25 a day.
     const videos = onMake.mock.calls[0][2] as { batch: { date: string } }[]
     expect(videos.filter((v) => v.batch.date === iso(6)).length).toBe(23)
+  })
+})
+
+describe("the batch's headline look", () => {
+  it('starts as the angle\'s and is changed to Snapchat in one tap', async () => {
+    await show({})
+    const look = (label: string) => host.querySelector(`[aria-label="Headline style"] [role="radio"]:nth-child(${['White box', 'Outline', 'Snapchat'].indexOf(label) + 1})`) as HTMLButtonElement
+    expect(look('White box').getAttribute('aria-checked')).toBe('true')
+    await act(async () => look('Snapchat').click())
+    expect((await savedBank()).headlineStyle).toBe('snap')
+    expect(look('Snapchat').getAttribute('aria-checked')).toBe('true')
   })
 })

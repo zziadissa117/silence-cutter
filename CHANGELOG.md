@@ -3,6 +3,20 @@
 Newest first. Every change says what it does, how to use it, and how it works
 underneath. Kept up to date with each commit.
 
+## Headline style (Snapchat, Outline, White box) picked right where the headline is written
+Only ./deploy.sh is needed.
+**What:** the Snapchat look was only in Campaigns -> the angle -> Headline -> Style, so it was easy to miss. Now the
+three looks (White box / Outline / Snapchat) sit right under the headline in two more places:
+- **Videos tab:** open a video waiting to be approved; under its Headline box, tap the look for that one video. It
+  starts on the angle's look.
+- **Batch tab:** under the Headlines list, tap the look for every video of the batch. The step names (Set order) use
+  the same look. It is read when each video is made, so it reaches every batch video not made yet; videos already made
+  keep their look.
+**How:** `look.HEADLINE_STYLES` (shared with the angle editor) and `withHeadlineStyle(angle, style)`; per video
+`day.headlineStyle` (`CampaignApp.setHeadlineStyle`), per batch `BatchBank.headlineStyle`; the render loop swaps the
+angle's headline style for whichever is set (the video's first) before any make. Picker: `JobRow.HeadlineLook`. Tests in
+`headlineLook.test.tsx`, `batchView.test.tsx`.
+
 ## Batch: each step's name written over its clip, as a headline
 Only ./deploy.sh is needed.
 **What:** in a batch with steps (Set order), every video now shows each step's name over that step's clip, in the same

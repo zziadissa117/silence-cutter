@@ -9,6 +9,8 @@
 // itself. What was made is kept, so the next batch carries on where this
 // one left off.
 
+import type { HeadlineStyle } from './look'
+
 /** A file in the bank, kept on this phone only - his own footage. */
 export interface BankFile {
   id: string
@@ -44,6 +46,10 @@ export interface BatchBank {
   /** Views a video at which Analytics suggests more a day (analytics.ts);
    *  none: it goes by the trend only. */
   viewTarget?: number
+  /** The headline look for the batch's videos (and its step names), picked
+   *  by its headlines, in place of the angle's. Read when each video is
+   *  made, so a change reaches every video not made yet. */
+  headlineStyle?: HeadlineStyle
   /** How often each item has gone into a video: files by id, headlines by
    *  their words. */
   used: Record<string, number>

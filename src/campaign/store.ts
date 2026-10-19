@@ -23,6 +23,7 @@ import {
   type Campaign,
   type CampaignPosting,
   type CampaignV1,
+  type HeadlineStyle,
   type PictureCue,
 } from './look'
 import { filesOf, type BankFile, type BatchBank } from './batch'
@@ -84,6 +85,9 @@ interface StoredJob {
     skipPictures?: string[]
     /** Pictures he put on this video himself, in the cuts editor. */
     overlays?: ManualPicture[]
+    /** This video's headline look - White box, Outline or Snapchat; absent =
+     *  its angle's. */
+    headlineStyle?: HeadlineStyle
     /** Where this video's captions sit; absent = the Settings default. */
     captionPosition?: CaptionPosition
     /** How big this video's captions are; absent = the Settings default. */

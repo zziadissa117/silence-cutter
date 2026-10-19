@@ -30,6 +30,7 @@ import { StepOrder } from './StepOrder'
 import { filmingOf } from './filming'
 import { fingerprint, skippedNotice } from './fingerprint'
 import { formatTime, labelOf, type Job } from './jobs'
+import { HeadlineLook } from './JobRow'
 import type { Angle, Campaign } from './look'
 import { copySong, useMusicBank } from './musicBank'
 import {
@@ -858,6 +859,12 @@ export function BatchView({
                 keep({ ...bank, headlines })
               }}
             />
+            {onEngine ? null : (
+              <>
+                <HeadlineLook value={bank.headlineStyle ?? angle.headline.style} onPick={(headlineStyle) => keep({ ...bank, headlineStyle })} />
+                {stepped ? <p className="hint bank-hint">The step names use the same look.</p> : null}
+              </>
+            )}
           </div>
           )}
           {green

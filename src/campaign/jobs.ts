@@ -3,7 +3,7 @@
 
 import type { PopPosition } from './popVideo'
 import type { Range, SilenceSettings } from '../media/silenceMath'
-import type { Angle, Campaign } from './look'
+import type { Angle, Campaign, HeadlineStyle } from './look'
 import type { CampaignResult } from './pipeline'
 import type { CaptionPosition, CaptionSize, CaptionStyle, CaptionWord } from './captions'
 import type { CampaignPlan } from './plan'
@@ -50,6 +50,8 @@ export type Job = {
     /** Picture ids left out of this video alone. */
     skipPictures?: string[]
     overlays?: ManualPicture[]
+    /** This video's headline look; absent = its angle's. */
+    headlineStyle?: HeadlineStyle
     /** Where this video's captions sit; absent = the Settings default. */
     captionPosition?: CaptionPosition
     /** How big this video's captions are; absent = the Settings default. */

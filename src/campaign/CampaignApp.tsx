@@ -97,6 +97,8 @@ import {
   type BankPicture,
   type Campaign,
   type CampaignPosting,
+  type HeadlineStyle,
+  withHeadlineStyle,
 } from './look'
 import { forgetSend, queueSend, sending, startSending, watchSending } from './outbox'
 import { headlineFor, listen, make, makeCampaignVideo, makeGreenScreen, makeMontage, makeReaction, plainCut, type CampaignResult, type PopSettings } from './pipeline'
@@ -1352,8 +1354,8 @@ export function CampaignApp() {
         }
 
         const jobCampaign = campaignsRef.current.find((c) => c.id === next.campaignId)
-        const jobAngle = jobCampaign?.angles.find((a) => a.id === next.angleId)
-        if (!jobCampaign || !jobAngle) {
+        const ownAngle = jobCampaign?.angles.find((a) => a.id === next.angleId)
+        if (!jobCampaign || !ownAngle) {
           patch({
             status: 'failed',
             error: `The ${jobCampaign ? 'angle' : 'campaign'} this video was added for has been deleted.`,
@@ -1361,7 +1363,11 @@ export function CampaignApp() {
           await forgetJob(next.id)
           return
         }
-        patch({ label: labelOf(jobCampaign, jobAngle) })
+        patch({ label: labelOf(jobCampaign, ownAngle) })
+        // The headline look picked for this video, or for its batch (as it
+        // is now), in place of the angle's.
+        const batchStyle = next.batch ? (await loadBatchBank(next.campaignId).catch(() => null))?.headlineStyle : undefined
+        const jobAngle = withHeadlineStyle(ownAngle, next.day?.headlineStyle ?? batchStyle)
         // The kept copy of the video stays until it is made, so a failure
         // can always be tried again - even after a restart. What is made is
         // 1080p, well under the size of a 4K original.
@@ -2815,6 +2821,7 @@ export function CampaignApp() {
                 onCheck={captionsOn && talkingIn(job) ? () => startCheck([job.id]) : undefined}
                 onCuts={talkingIn(job) ? () => (captionsOn ? setReviewing([job.id]) : setCutting({ id: job.id })) : undefined}
                 onMusic={(choice) => setMusic(job.id, choice)}
+                onHeadlineStyle={(style) => setHeadlineStyle(job.id, style)}
                 onNoEffects={(off) => setNoEffects(job.id, off)}
                 pictures={picturesFor(job)}
                 onSkipPicture={(pictureId, skip) => setSkipPicture(job.id, pictureId, skip)}
@@ -2934,6 +2941,14 @@ export function CampaignApp() {
   }, [openJob?.id])
 
   /** The track picked for one video, or its angle's again for "". */
+  const setHeadlineStyle = (id: string, style: HeadlineStyle) => {
+    const job = jobs.find((j) => j.id === id)
+    if (!job?.day) return
+    const day = { ...job.day, headlineStyle: style }
+    setJobs((js) => js.map((j) => (j.id === id ? { ...j, day } : j)))
+    void recordDay(id, day, { campaignId: job.campaignId, angleId: job.angleId, headlineText: job.headlineText })
+  }
+
   const setMusic = (id: string, choice: string) => {
     const job = jobs.find((j) => j.id === id)
     if (!job?.day) return

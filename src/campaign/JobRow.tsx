@@ -14,7 +14,7 @@ import type { PictureChoice } from './skipPictures'
 import { anyEffect, defaultEffects } from './defaultEffects'
 import { NO_EFFECTS } from './effects'
 import { canShareFiles, formatTime, outputName, share, type Job } from './jobs'
-import { LIMITS, type Campaign } from './look'
+import { HEADLINE_STYLES, LIMITS, type Campaign, type HeadlineStyle } from './look'
 import { songFile, useMusicBank } from './musicBank'
 import { PlayButton } from './TrackPlayer'
 
@@ -49,6 +49,7 @@ export function JobRow({
   onChoose,
   onHeadline,
   onHeadlineDone,
+  onHeadlineStyle,
   onRetry,
   onRemove,
   onPost,
@@ -79,6 +80,8 @@ export function JobRow({
   onChoose: (campaignId: string, angleId: string) => void
   onHeadline: (text: string) => void
   onHeadlineDone: () => void
+  /** Picks this video's headline look: White box, Outline or Snapchat. */
+  onHeadlineStyle?: (style: HeadlineStyle) => void
   onRetry: () => void
   onRemove: () => void
   /** Sends a finished video to Postiz by hand, when it didn't go itself. */
@@ -246,6 +249,7 @@ export function JobRow({
               onChoose={onChoose}
               onHeadline={onHeadline}
               onHeadlineDone={onHeadlineDone}
+              onHeadlineStyle={onHeadlineStyle}
               onCuts={onCuts}
               onMusic={onMusic}
               onNoEffects={onNoEffects}
@@ -401,6 +405,7 @@ function SortedDetails({
   onChoose,
   onHeadline,
   onHeadlineDone,
+  onHeadlineStyle,
   onCuts,
   onMusic,
   onNoEffects,
@@ -416,6 +421,7 @@ function SortedDetails({
   onChoose: (campaignId: string, angleId: string) => void
   onHeadline: (text: string) => void
   onHeadlineDone: () => void
+  onHeadlineStyle?: (style: HeadlineStyle) => void
   onCuts?: () => void
   onMusic: (choice: string) => void
   onNoEffects: (off: boolean) => void
@@ -480,6 +486,7 @@ function SortedDetails({
         />
         {angle?.headline.fromFirstLine ? <span className="hint">From your first line.</span> : null}
       </label>
+      {onHeadlineStyle ? <HeadlineLook value={job.day?.headlineStyle ?? angle?.headline.style ?? 'box'} onPick={onHeadlineStyle} /> : null}
       <label className="field">
         <span className="label">Music</span>
         <div className="music-pick">
@@ -564,5 +571,18 @@ function SortedDetails({
         <div className="facts">No talking over the product, so it is kept whole.</div>
       ) : null}
     </>
+  )
+}
+
+/** White box / Outline / Snapchat, right where the headline is written. */
+export function HeadlineLook({ value, onPick }: { value: HeadlineStyle; onPick: (style: HeadlineStyle) => void }) {
+  return (
+    <div className="seg full headline-look" role="radiogroup" aria-label="Headline style">
+      {HEADLINE_STYLES.map((s) => (
+        <button key={s.value} type="button" role="radio" aria-checked={s.value === value} className={s.value === value ? 'active' : ''} onClick={() => onPick(s.value)}>
+          {s.label}
+        </button>
+      ))}
+    </div>
   )
 }

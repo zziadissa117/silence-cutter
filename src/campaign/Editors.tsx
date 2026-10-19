@@ -27,6 +27,7 @@ import {
   type OutlineWidth,
   type LogoPosition,
   type PictureCue,
+  HEADLINE_STYLES,
 } from './look'
 import { ClipRow } from './ClipRow'
 import { CLIP_PLACES, type AngleClips, type ClipInfo } from './clips'
@@ -41,11 +42,7 @@ const POSITIONS: { value: HeadlinePosition; label: string }[] = [
   { value: 'middle', label: 'Middle' },
   { value: 'bottom', label: 'Bottom' },
 ]
-const STYLES: { value: HeadlineStyle; label: string }[] = [
-  { value: 'box', label: 'White box' },
-  { value: 'outline', label: 'Outline' },
-  { value: 'snap', label: 'Snapchat' },
-]
+const STYLES: { value: HeadlineStyle; label: string }[] = HEADLINE_STYLES
 const OUTLINE_WIDTHS: { value: OutlineWidth; label: string }[] = [
   { value: 'thin', label: 'Thin' },
   { value: 'normal', label: 'Normal' },
