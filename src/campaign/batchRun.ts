@@ -28,7 +28,9 @@ import {
   looksToMix,
   formulaAmounts,
   hasFormula,
+  mixPrefixes,
   todayHere,
+  unmake,
   usesSteps,
   type BankFile,
   type BatchBank,
@@ -397,6 +399,66 @@ export function trimPlan(
     filled[date] = count - going.length
   }
   return { remove, filled }
+}
+
+/** Starting the batch over (after he changed how its videos look): every
+ *  video of it not out yet comes out - jobs not started dropped, posts not
+ *  out stopped, the way Posts stops them - and their mixes can be made again,
+ *  with whatever he has set now. A mix that matches a video posted or still
+ *  going out is never made again. The days are counted again from what is
+ *  left and the batch stops, his clips, headlines and songs kept, for him to
+ *  tap Start. */
+export async function startOver({
+  bank,
+  campaignId,
+  jobs,
+  removeJob,
+  save,
+  latest = () => bank,
+}: {
+  bank: BatchBank
+  campaignId: string
+  jobs: readonly Job[]
+  removeJob: (id: string) => void
+  save: (bank: BatchBank) => Promise<void>
+  latest?: () => BatchBank
+}): Promise<{ bank: BatchBank; taken: number; failed: number; reason?: string; posts: ServerPost[] }> {
+  if (bank.layout === 'engine' && bank.engineJob) {
+    const job = await engineJob(bank.engineJob).catch(() => null)
+    if (job && (job.status === 'waiting' || job.status === 'making')) await stopEngineJob(bank.engineJob)
+  }
+  const posts = await listPosts()
+  const videos = dayVideos(posts, jobs, campaignId)
+  const going = videos.filter((v) => v.removable)
+  for (const v of going) if (v.kind === 'job') removeJob(v.id)
+  const outcome = await stopPostsNow(going.flatMap((v) => (v.post ? [v.post] : [])))
+  const stuck = new Set(outcome.failed.map((f) => f.post.id))
+  const gone = going.filter((v) => !(v.post && stuck.has(v.post.id)))
+  const goneIds = new Set(gone.map((v) => v.id))
+  const current = latest()
+  const prefixes = (fileName: string | null, headline: string | null) => (fileName ? mixPrefixes(current, fileName, headline ?? '') : [])
+  const ofVideo = (v: DayVideo) => {
+    const job = v.kind === 'job' ? jobs.find((j) => j.id === v.id) : undefined
+    return v.post ? prefixes(v.post.fileName, v.post.headline) : job ? prefixes(job.name, job.headlineText) : []
+  }
+  // Out there still: posted, going out, or couldn't be stopped.
+  const kept = [
+    ...posts
+      .filter((p) => p.campaignId === campaignId && p.batch && p.status !== 'rejected' && p.status !== 'failed' && !goneIds.has(p.id))
+      .flatMap((p) => prefixes(p.fileName, p.headline)),
+    ...videos.filter((v) => !goneIds.has(v.id) && v.kind === 'job').flatMap(ofVideo),
+  ]
+  const next: BatchBank = {
+    ...current,
+    made: unmake(current.made ?? [], gone.flatMap(ofVideo), kept),
+    filled: countedDays(videos.filter((v) => !goneIds.has(v.id))),
+    madeThrough: undefined,
+    lastPerDay: undefined,
+    running: false,
+    runProblem: undefined,
+  }
+  await save(next)
+  return { bank: next, taken: gone.length, failed: outcome.failed.length, reason: outcome.failed[0]?.reason, posts }
 }
 
 /** The days from today on as they really are: how many of the batch's

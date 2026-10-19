@@ -3,6 +3,18 @@
 Newest first. Every change says what it does, how to use it, and how it works
 underneath. Kept up to date with each commit.
 
+## Batch: Start over
+Only ./deploy.sh is needed.
+**What:** a **Start over** link in the Batch tab (next to Stop, once a batch has videos not out yet). It asks first,
+then takes out every video of the batch that hasn't gone out - videos still waiting to be made, and posts scheduled
+but not posted (stopped in Postiz too, the way Posts stops them). Those mixes can be made again, with whatever you've
+set now (the fixed sound, Outline steps...). A mix matching a video already posted is never made again. Your clips,
+headlines, songs and settings stay; the batch stops, and Start makes the week again. Use it instead of deleting the
+batch: deleting clips would block them from coming back (they made videos), and the week would still count as full.
+**How:** `batchRun.startOver` (dayVideos, stopPostsNow, `countedDays` for what is left); `batch.mixPrefixes` reads a
+video's mix back from its file name and headline, `batch.unmake` frees the taken-out ones but never one matching a
+posted or still-going-out video. Tests in `batch.test.ts`, `batchRun.test.ts`, `batchView.test.tsx`.
+
 ## Set order: step names as long as you want
 Only ./deploy.sh is needed.
 **What:** a step's name (the words written over its clip) was cut off at 40 characters. Now there is no limit: type as

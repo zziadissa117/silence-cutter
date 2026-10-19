@@ -408,3 +408,39 @@ describe('a clip already in videos made before', () => {
     expect(saveBankFile).not.toHaveBeenCalled()
   })
 })
+
+describe('starting the batch over', () => {
+  it("takes out its videos that haven't gone out, after asking, and waits for Start", async () => {
+    const at = (offset: number, hhmm: string) => {
+      const d = new Date()
+      d.setDate(d.getDate() + offset)
+      d.setHours(Number(hhmm.slice(0, 2)), Number(hhmm.slice(3, 5)), 0, 0)
+      return d
+    }
+    const post = (id: string, offset: number) => ({
+      id,
+      key: id,
+      campaignId: 'inflow',
+      status: 'scheduled',
+      fileName: 'r1 + p1.mp4',
+      headline: 'one',
+      postAt: at(offset, '12:00').toISOString(),
+      batch: { id: 'b1', date: iso(offset), time: '12:00', size: 2 },
+    })
+    localStorage.setItem('cutter.posts', JSON.stringify([post('a', 1), post('b', 2)]))
+    storedBank = { ...bank, running: true, made: ['r1|p1|h:one|', 'r2|p2|h:two|'], filled: { [iso(1)]: 3, [iso(2)]: 3 } }
+    const confirm = vi.spyOn(window, 'confirm').mockReturnValue(true)
+    await show({})
+    const button = [...host.querySelectorAll('button')].find((b) => b.textContent === 'Start over') as HTMLButtonElement
+    expect(button).toBeTruthy()
+    await act(async () => button.click())
+    await act(async () => new Promise((resolve) => setTimeout(resolve, 50)))
+    expect(confirm.mock.calls[0][0]).toContain('Take out the 2 videos')
+    const saved = await savedBank()
+    expect(saved.running).toBe(false)
+    expect(saved.made).toEqual(['r2|p2|h:two|'])
+    expect(host.textContent).toContain('Took out 2 videos. Tap Start to make them again.')
+    expect(makeButton().textContent).toBe('Start · 3 a day')
+    confirm.mockRestore()
+  })
+})

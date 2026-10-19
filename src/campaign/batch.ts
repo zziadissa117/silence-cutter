@@ -549,6 +549,31 @@ export function combos(bank: MixBank & Pick<BatchBank, 'made'>): { total: number
   return { total, left: total - made }
 }
 
+/** The start of a made combination's key - reaction, product (or steps)
+ *  and hook - for a video known only by its name and its headline: the file
+ *  name lists its clips ("IMG_0249 + IMG_0330 + ….mp4", CampaignApp.addBatch)
+ *  and the headline is its hook, or the Claude + X line with its amount.
+ *  Every reading that fits, as clip names can repeat. */
+export function mixPrefixes(bank: Pick<BatchBank, 'reactions' | 'products' | 'steps' | 'layout'>, fileName: string, headline: string): string[] {
+  const names = fileName.replace(/\.[^./]+$/, '').split(' + ')
+  const named = (list: readonly BankFile[], name: string | undefined) => list.filter((f) => f.name.replace(/\.[^./]+$/, '') === name).map((f) => f.id)
+  const reactions = named(bank.reactions, names[0])
+  const products = usesSteps(bank) ? bank.steps!.map((step, k) => named(step.files, names[k + 1])) : [named(bank.products, names[1])]
+  const amount = /=\s*\$([\d,]+)/.exec(headline)?.[1]?.replace(/,/g, '')
+  const hooks = [headlineKey(headline), ...(amount ? [`a:${amount}`, 'h:'] : [])]
+  const out: string[] = []
+  for (const r of reactions) for (const p of everyChoice(products)) for (const h of hooks) out.push(`${r}|${p.join('+')}|${h}|`)
+  return out
+}
+
+/** The made list with the videos taken out (`gone`, by mixPrefixes) made
+ *  again possible - but never one that matches a video still out there
+ *  (`kept`): posted, or going out. */
+export function unmake(made: readonly string[], gone: readonly string[], kept: readonly string[]): string[] {
+  const hit = (key: string, prefixes: readonly string[]) => prefixes.some((p) => key.startsWith(p))
+  return made.filter((key) => !hit(key, gone) || hit(key, kept))
+}
+
 /** How a clip is known when it comes back: by what is in it, or - for
  *  files kept before fingerprints existed - by its name and size. */
 export function clipKey(file: Pick<BankFile, 'fp' | 'name' | 'size'>): string {

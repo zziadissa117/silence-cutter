@@ -6,12 +6,17 @@ vi.mock('./engine', () => ({
   makeOnEngine: vi.fn(async () => ({ id: 'job-1' })),
 }))
 vi.mock('./store', () => ({ loadBankFile: vi.fn(async () => null) }))
+vi.mock('./posting', async (original) => ({
+  ...(await original<Record<string, unknown>>()),
+  listPosts: vi.fn(async () => []),
+  stopPostsNow: vi.fn(async (posts: unknown[]) => ({ stopped: posts.length, unposting: 0, failed: [] })),
+}))
 
 import { emptyBank, type BankFile, type BatchBank } from './batch'
-import { AHEAD_DAYS, countedDays, dayVideos, filledOn, leftToMake, missingFor, overfull, planVideos, runSlots, takenBy, topUp, trimPlan, variationParts } from './batchRun'
+import { AHEAD_DAYS, countedDays, dayVideos, filledOn, leftToMake, missingFor, overfull, planVideos, runSlots, startOver, takenBy, topUp, trimPlan, variationParts } from './batchRun'
 import { makeOnEngine } from './engine'
 import type { Job } from './jobs'
-import type { CampaignPlace, ServerPost } from './posting'
+import { listPosts, stopPostsNow, type CampaignPlace, type ServerPost } from './posting'
 
 const files = (prefix: string, n: number): BankFile[] =>
   Array.from({ length: n }, (_, i) => ({ id: `${prefix}${i + 1}`, name: `${prefix}${i + 1}.mp4`, type: 'video/mp4', size: 1 }))
@@ -306,5 +311,48 @@ describe('the last different videos', () => {
     expect(rest.videos).toHaveLength(3)
     expect(rest.videos.every((v) => v.batch.last === true)).toBe(true)
     expect(rest.bank.running).toBe(false)
+  })
+})
+
+describe('starting the batch over', () => {
+  it("takes out what hasn't gone out, lets those be made again, and never one that went out", async () => {
+    const today = new Date()
+    const day = (offset: number) => {
+      const d = new Date(today)
+      d.setDate(d.getDate() + offset)
+      return d.toLocaleDateString('en-CA')
+    }
+    const post = (id: string, status: string, offset: number, fileName: string, headline: string) =>
+      ({
+        id,
+        key: id,
+        campaignId: 'c1',
+        status,
+        fileName,
+        headline,
+        postAt: new Date(Date.now() + (offset + 1) * 86400000).toISOString(),
+        batch: { id: 'b1', date: day(offset), time: '12:00', size: 3 },
+      }) as unknown as ServerPost
+    const posts = [
+      post('p1', 'scheduled', 1, 'r1 + p1.mp4', 'h1'),
+      post('p2', 'scheduled', 2, 'r2 + p2.mp4', 'h2'),
+      // Gone out already, an earlier day.
+      post('old', 'posted', -3, 'r1 + p2.mp4', 'h1'),
+    ]
+    vi.mocked(listPosts).mockResolvedValueOnce(posts)
+    const made = ['r1|p1|h:h1|', 'r2|p2|h:h2|', 'r1|p2|h:h1|', 'r2|p1|h:h1|']
+    const b = bank({ made, filled: { [day(1)]: 3, [day(2)]: 3 }, madeThrough: day(6) })
+    const saved: BatchBank[] = []
+    const done = await startOver({ bank: b, campaignId: 'c1', jobs: [], removeJob: () => {}, save: async (next) => void saved.push(next) })
+    expect(done.taken).toBe(2)
+    expect(vi.mocked(stopPostsNow).mock.calls.at(-1)![0].map((p) => p.id).sort()).toEqual(['p1', 'p2'])
+    // The two taken out can be made again; the posted one and one never touched stay made.
+    expect(done.bank.made).toEqual(['r1|p2|h:h1|', 'r2|p1|h:h1|'])
+    expect(done.bank.running).toBe(false)
+    expect(done.bank.madeThrough).toBeUndefined()
+    expect(Object.values(done.bank.filled ?? {}).every((n) => n === 0)).toBe(true)
+    expect(saved).toHaveLength(1)
+    // So Start makes the week again.
+    expect(runSlots({ bank: { ...done.bank, running: true }, place, campaignId: 'c1' }).length).toBeGreaterThanOrEqual(3 * (AHEAD_DAYS - 1))
   })
 })

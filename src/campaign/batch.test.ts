@@ -11,12 +11,14 @@ import {
   formulaLine,
   headlinesFrom,
   looksOf,
+  mixPrefixes,
   pickBatch,
   rememberUsed,
   spend,
   spreadPick,
   styleFor,
   stylesOf,
+  unmake,
   usesSteps,
   type BankFile,
   type BatchBank,
@@ -414,5 +416,43 @@ describe('no video made twice, even after the clips left the bank', () => {
     const { bank } = spend(b, '2026-10-30')
     expect(bank.usedClips).toEqual(['old', 'a1', 'b1'])
     expect(bank.reactions).toEqual([])
+  })
+})
+
+describe('starting a batch over: which mixes can be made again', () => {
+  const named = (id: string, name: string): BankFile => ({ id, name: `${name}.MOV`, type: 'video/quicktime', size: 1 })
+  const stepped: BatchBank = {
+    ...emptyBank('c', 'a'),
+    reactions: [named('r1', 'IMG_0249'), named('r2', 'IMG_0259')],
+    products: [],
+    steps: [
+      { id: 's1', name: 'DRAW', files: [named('d1', 'IMG_0330'), named('d2', 'IMG_0327')] },
+      { id: 's2', name: 'APP', files: [named('a1', 'IMG_0338'), named('a2', 'IMG_0334')] },
+    ],
+    headlines: ['wait for it'],
+  }
+
+  it("reads a video's clips and hook from its name and headline", () => {
+    expect(mixPrefixes(stepped, 'IMG_0249 + IMG_0330 + IMG_0338.mp4', 'wait for it')).toEqual(['r1|d1+a1|h:wait for it|'])
+    // Claude + X: its amount, whether it took turns (a:) or was the only hook (h:).
+    expect(mixPrefixes(stepped, 'IMG_0259 + IMG_0327 + IMG_0334.mp4', 'IMG 0373 + IMG 0374 = $1,000 daily')).toEqual([
+      'r2|d2+a2|h:img 0373 + img 0374 = $1,000 daily|',
+      'r2|d2+a2|a:1000|',
+      'r2|d2+a2|h:|',
+    ])
+    expect(mixPrefixes(stepped, 'IMG_9999 + IMG_0330 + IMG_0338.mp4', 'wait for it')).toEqual([])
+  })
+
+  it('lets the taken-out ones be made again, never one matching a posted video', () => {
+    const made = ['r1|d1+a1|h:wait for it|m1|snap', 'r1|d1+a1|h:wait for it|m1|box', 'r2|d2+a2|a:800|m1|formula', 'r2|d1+a1|h:wait for it|m1|snap']
+    const gone = [...mixPrefixes(stepped, 'IMG_0249 + IMG_0330 + IMG_0338.mp4', 'wait for it'), ...mixPrefixes(stepped, 'IMG_0259 + IMG_0327 + IMG_0334.mp4', 'IMG 0373 + IMG 0374 = $800 daily')]
+    const posted = mixPrefixes(stepped, 'IMG_0259 + IMG_0330 + IMG_0338.mp4', 'wait for it')
+    expect(unmake(made, gone, posted)).toEqual(['r2|d1+a1|h:wait for it|m1|snap'])
+    // The same clips and words went out: kept as made, whatever was taken out.
+    expect(unmake(made, gone, mixPrefixes(stepped, 'IMG_0249 + IMG_0330 + IMG_0338.mp4', 'wait for it'))).toEqual([
+      'r1|d1+a1|h:wait for it|m1|snap',
+      'r1|d1+a1|h:wait for it|m1|box',
+      'r2|d1+a1|h:wait for it|m1|snap',
+    ])
   })
 })

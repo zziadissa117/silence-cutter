@@ -55,12 +55,14 @@ import {
 import { deleteBankFile, loadBankFile, loadBatchBank, saveBankFile, saveBatchBank } from './store'
 import {
   AHEAD_DAYS,
+  dayVideos,
   leftToMake,
   missingFor,
   oneAtATime,
   overfull,
   runSlots,
   settled,
+  startOver,
   takenBy,
   topUp,
   trimDown,
@@ -509,6 +511,42 @@ export function BatchView({
         latest: () => bankRef.current ?? from,
       })
       setPosts(done.posts)
+      if (done.failed > 0) setProblem(`${done.failed} couldn't be taken out: ${done.reason}`)
+      void listPosts().then(setPosts).catch(() => {})
+    })
+      .catch((error: unknown) => setProblem(error instanceof Error ? error.message : String(error)))
+      .finally(() => {
+        setSaving(null)
+        setTopping(false)
+      })
+  }
+
+  // The batch's videos not out yet, that Start over would take out.
+  const outAhead = bank ? dayVideos(posts, jobs, campaign.id).filter((v) => v.removable).length : 0
+  /** Start over: every video of the batch not out yet comes out and can be
+   *  made again with what he has set now (batchRun.startOver); then Start. */
+  const runStartOver = () => {
+    if (!bank) return
+    const confirmText = `Take out the ${outAhead} video${outAhead === 1 ? '' : 's'} of this batch that haven't gone out yet, to make them again with your latest settings? Your clips, headlines and songs stay - tap Start after to make them.`
+    if (!window.confirm(confirmText)) return
+    setTopping(true)
+    setProblem(null)
+    setSaving('Taking the batch\'s videos out…')
+    void oneAtATime(campaign.id, async () => {
+      const done = await startOver({
+        bank,
+        campaignId: campaign.id,
+        jobs,
+        removeJob: onRemove,
+        save: async (next) => {
+          setBank(next)
+          bankRef.current = next
+          await saveBatchBank(next)
+        },
+        latest: () => bankRef.current ?? bank,
+      })
+      setPosts(done.posts)
+      setNotice(`Took out ${done.taken} video${done.taken === 1 ? '' : 's'}. Tap Start to make them again.`)
       if (done.failed > 0) setProblem(`${done.failed} couldn't be taken out: ${done.reason}`)
       void listPosts().then(setPosts).catch(() => {})
     })
@@ -979,6 +1017,14 @@ export function BatchView({
                 {' '}
                 <button type="button" className="linkbtn" onClick={stop}>
                   Stop
+                </button>
+              </>
+            ) : null}
+            {outAhead > 0 ? (
+              <>
+                {' '}
+                <button type="button" className="linkbtn" disabled={busyMaking || saving !== null} onClick={runStartOver}>
+                  Start over
                 </button>
               </>
             ) : null}

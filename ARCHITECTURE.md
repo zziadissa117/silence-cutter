@@ -214,6 +214,10 @@ Lowering the number (or 0, a pause) works at once too: `overfull` finds the days
 `trimPlan` picks the extra to take out, leaving the rest spread through the day - jobs not
 started are dropped, posts not out are stopped (`stopPostsNow`), posted or being-made ones stay.
 On the engine, a batch still being made is stopped first and the days recounted (`countedDays`).
+Start over (`batchRun.startOver`): every batch video not out yet comes out (jobs dropped, posts
+stopped), their combinations leave `made` - read back from each video's file name and headline
+(`batch.mixPrefixes`), never one matching a posted or still-going-out video (`unmake`) - the days
+are recounted from what is left, and the batch stops for Start.
 No video twice: `made` holds this round's combinations (pruned to what is still in the bank);
 a clip that leaves the bank after going into videos (taken out, a step removed, or `spend`) is
 kept in `usedClips` by `clipKey` (fingerprint, else name|size), and adding it again is refused.
