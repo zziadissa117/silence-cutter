@@ -3,6 +3,18 @@
 Newest first. Every change says what it does, how to use it, and how it works
 underneath. Kept up to date with each commit.
 
+## Claude + X captions: no more "IMG 0373 + IMG 0374"
+Only ./deploy.sh is needed.
+**What:** the Claude + X logos' names came from their file names, and phone photos are called IMG_0373 - so the words
+given to Claude for the caption were "IMG 0373 + IMG 0374 = $800 daily", and it wrote captions like "two random
+screenshots on my camera roll turned into an app". Now a file name that says nothing (IMG_…, Screenshot…, PXL_…) is never
+used: the caption gets just the amount, and under the logo buttons a small "The left logo is" box (e.g. Claude) shows -
+only for a logo whose file name doesn't say what it is. Type it once and the captions say "Claude + Lovable = $800 a day".
+Videos already scheduled keep their captions (Start over remakes them).
+**How:** `batch.logoName` ignores camera/phone names (`SAYS_NOTHING`); `formulaText` says only the amount until both
+logos are named; BatchView `leftName`/`rightName` fields; `mixPrefixes` reads the amount from either form. Tests in
+`batch.test.ts`, `batchView.test.tsx`.
+
 ## Batch: Start over
 Only ./deploy.sh is needed.
 **What:** a **Start over** link in the Batch tab (next to Stop, once a batch has videos not out yet). It asks first,

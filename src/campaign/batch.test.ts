@@ -9,7 +9,9 @@ import {
   filesOf,
   formulaAmounts,
   formulaLine,
+  formulaText,
   headlinesFrom,
+  logoName,
   looksOf,
   mixPrefixes,
   pickBatch,
@@ -441,6 +443,7 @@ describe('starting a batch over: which mixes can be made again', () => {
       'r2|d2+a2|h:|',
     ])
     expect(mixPrefixes(stepped, 'IMG_9999 + IMG_0330 + IMG_0338.mp4', 'wait for it')).toEqual([])
+    expect(mixPrefixes(stepped, 'IMG_0259 + IMG_0327 + IMG_0334.mp4', '$650 a day')).toContain('r2|d2+a2|a:650|')
   })
 
   it('lets the taken-out ones be made again, never one matching a posted video', () => {
@@ -454,5 +457,22 @@ describe('starting a batch over: which mixes can be made again', () => {
       'r1|d1+a1|h:wait for it|m1|box',
       'r2|d1+a1|h:wait for it|m1|snap',
     ])
+  })
+})
+
+describe("the Claude + X hook in words (for the caption)", () => {
+  const logo = (name: string): BankFile => ({ id: name, name, type: 'image/png', size: 1 })
+
+  it('names a logo from its file only when the name says what it is', () => {
+    expect(logoName(logo('claude-logo.png'))).toBe('Claude')
+    expect(logoName(logo('Tata.png'))).toBe('Tata')
+    for (const name of ['IMG_0373.png', 'Screenshot 2026-10-12 at 9.41.03.png', 'PXL_20261012_123456.jpg', '0373.png']) expect(logoName(logo(name))).toBe('')
+    expect(logoName(logo('IMG_0373.png'), 'Claude')).toBe('Claude')
+  })
+
+  it('says only the amount while a logo is unnamed - never "IMG 0373"', () => {
+    const formula = { left: logo('IMG_0373.png'), right: logo('IMG_0374.png'), min: 500, max: 1000 }
+    expect(formulaText(formula, '$800 a day')).toBe('$800 a day')
+    expect(formulaText({ ...formula, leftName: 'Claude', rightName: 'Lovable' }, '$800 a day')).toBe('Claude + Lovable = $800 a day')
   })
 })

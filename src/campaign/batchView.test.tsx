@@ -201,6 +201,21 @@ describe('the "Claude + X" hook', () => {
   })
 })
 
+describe("the Claude + X logos' names", () => {
+  const logo = (id: string, name: string) => ({ id, name, type: 'image/png', size: 1000 })
+
+  it('asks what a logo is only when its file name says nothing, for the captions', async () => {
+    storedBank = { ...bank, hook: 'formula', formula: { left: logo('l', 'IMG_0373.png'), right: logo('r', 'lovable-logo.png'), min: 500, max: 1000 } }
+    await show({})
+    expect(host.querySelector('[aria-label="Right logo name"]')).toBeNull()
+    const left = host.querySelector('[aria-label="Left logo name"]') as HTMLInputElement
+    expect(left).not.toBeNull()
+    left.value = 'Claude'
+    await act(async () => left.dispatchEvent(new FocusEvent('focusout', { bubbles: true })))
+    expect((await savedBank()).formula?.leftName).toBe('Claude')
+  })
+})
+
 describe('a batch that keeps going', () => {
   const minutes = (t: string) => Number(t.slice(0, 2)) * 60 + Number(t.slice(3, 5))
   const post = (offset: number, hhmm: string) => {

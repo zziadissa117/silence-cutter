@@ -17,6 +17,7 @@ import {
   DEFAULT_FORMULA,
   formulaLine,
   headlinesFrom,
+  logoName,
   MAX_COMBOS,
   ONLY_HOOK_ELSE,
   rememberUsed,
@@ -868,6 +869,29 @@ export function BatchView({
                   </label>
                 ))}
               </div>
+              {(['left', 'right'] as const).map((side) => {
+                const file = formula[side]
+                const given = side === 'left' ? formula.leftName : formula.rightName
+                // Asked only when the file's name doesn't say what it is.
+                if (!file || (logoName(file) && !given)) return null
+                return (
+                  <label key={`${side}-${file.id}`} className="field">
+                    <span className="label">{side === 'left' ? 'The left logo is' : 'The right logo is'}</span>
+                    <input
+                      type="text"
+                      className="find"
+                      placeholder={side === 'left' ? 'e.g. Claude' : 'e.g. Lovable'}
+                      defaultValue={given ?? ''}
+                      aria-label={side === 'left' ? 'Left logo name' : 'Right logo name'}
+                      onBlur={(e) => {
+                        const name = e.target.value.trim() || undefined
+                        if (name !== given) keep({ ...bank, formula: { ...formula, [side === 'left' ? 'leftName' : 'rightName']: name } })
+                      }}
+                    />
+                    <span className="hint">{`"${file.name}" doesn't say - the captions use this.`}</span>
+                  </label>
+                )
+              })}
               <div className="field">
                 <span className="label">Amount a day</span>
                 <div className="formula-range">

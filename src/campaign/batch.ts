@@ -219,20 +219,29 @@ export function formulaAmounts(formula: Pick<BatchFormula, 'min' | 'max'>): numb
   return Array.from({ length: take }, (_, i) => low + Math.round((i * (n - 1)) / Math.max(1, take - 1)) * step)
 }
 
-/** "Claude", from "claude-logo.png". */
+/** A name the camera or the phone gave a file - "IMG 0373", "Screenshot
+ *  2026 10 12 at 9.41.03", "PXL 20261012" - which says nothing of what is in
+ *  it. */
+const SAYS_NOTHING = /^(img|image|dsc|pxl|photo|screenshot|screen shot|whatsapp image)?(?:[\d\s.:]|\bat\b)*$/i
+
+/** "Claude", from "claude-logo.png" - or the name he gave it. Nothing from
+ *  "IMG_0373.png": Claude wrote captions about "two screenshots on my camera
+ *  roll" from that. */
 export function logoName(file: Pick<BankFile, 'name'> | null, given?: string): string {
   if (given?.trim()) return given.trim()
   if (!file) return ''
   const base = file.name.replace(/\.[^./]+$/, '').replace(/[-_]+/g, ' ').replace(/\blogo\b/gi, '').trim()
-  return base ? base.charAt(0).toUpperCase() + base.slice(1) : ''
+  if (SAYS_NOTHING.test(base)) return ''
+  return base.charAt(0).toUpperCase() + base.slice(1)
 }
 
 /** What the hook says in words, for the caption Claude writes and the
- *  notification: "Claude + OpenArt = $650 a day". */
+ *  notification: "Claude + OpenArt = $650 a day" - or just the amount while
+ *  a logo's name isn't known. */
 export function formulaText(formula: BatchFormula, line: string): string {
-  const left = logoName(formula.left, formula.leftName) || 'Claude'
-  const right = logoName(formula.right, formula.rightName) || 'it'
-  return `${left} + ${right} = ${line}`
+  const left = logoName(formula.left, formula.leftName)
+  const right = logoName(formula.right, formula.rightName)
+  return left && right ? `${left} + ${right} = ${line}` : line
 }
 
 export interface BatchPick {
@@ -559,7 +568,8 @@ export function mixPrefixes(bank: Pick<BatchBank, 'reactions' | 'products' | 'st
   const named = (list: readonly BankFile[], name: string | undefined) => list.filter((f) => f.name.replace(/\.[^./]+$/, '') === name).map((f) => f.id)
   const reactions = named(bank.reactions, names[0])
   const products = usesSteps(bank) ? bank.steps!.map((step, k) => named(step.files, names[k + 1])) : [named(bank.products, names[1])]
-  const amount = /=\s*\$([\d,]+)/.exec(headline)?.[1]?.replace(/,/g, '')
+  // "Claude + Lovable = $800 a day", or "$800 a day" while the logos are unnamed.
+  const amount = /(?:^|=)\s*\$([\d,]+)/.exec(headline.trim())?.[1]?.replace(/,/g, '')
   const hooks = [headlineKey(headline), ...(amount ? [`a:${amount}`, 'h:'] : [])]
   const out: string[] = []
   for (const r of reactions) for (const p of everyChoice(products)) for (const h of hooks) out.push(`${r}|${p.join('+')}|${h}|`)
