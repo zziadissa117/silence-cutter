@@ -227,7 +227,7 @@ export interface MontageParts {
      *  it (stepPiece.ts). `product` is then the first step's clip. Videos
      *  planned before may carry the old typed minSec/maxSec; nothing reads
      *  them. */
-    steps?: { file: BankFile }[]
+    steps?: { file: BankFile; name?: string }[]
   }
   clips: { name: string; type: string }[]
   /** The track under it: "" for its angle's, "none", another angle's as

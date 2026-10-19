@@ -425,6 +425,8 @@ export async function makeMontage(
     windows?: boolean[]
     /** The first clip is a batch reaction: it always pushes in slowly. */
     reactionFirst?: boolean
+    /** Per clip: words over it in the headline's look (a step's name). */
+    titles?: (string | null)[]
   } = {},
 ): Promise<CampaignResult> {
   const rendered = await renderMontage(
@@ -437,6 +439,7 @@ export async function makeMontage(
       formula: extra.formula ?? null,
       windows: extra.windows,
       reactionFirst: extra.reactionFirst,
+      titles: extra.titles,
     },
     onRenderProgress,
   )

@@ -58,7 +58,8 @@ export function StepOrder({
       <div className="group-title">Product showcase order · {campaignName}</div>
       <p className="hint">
         The steps every video shows after the reaction, always in this order. Each step gets its own clips below; every video takes
-        one clip per step and plays the moment something happens in it - a short clip plays whole.
+        one clip per step and plays the moment something happens in it - a short clip plays whole. Each step's name is written over
+        its clip as a headline, exactly as you type it (e.g. DRAW SOMETHING); leave "Step 1" for no words.
       </p>
       <ol className="step-list">
         {drafts.map((d, i) => (

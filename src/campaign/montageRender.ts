@@ -68,6 +68,10 @@ export interface MontageRenderInput {
   /** The first clip is his reaction (a batch): it slowly pushes in for its
    *  whole length, whatever the angle's effects (effects.reactionZoom). */
   reactionFirst?: boolean
+  /** Per clip, in order: words over all of it in the headline's look - a
+   *  batch's product step, its name (batch.stepTitle); null or absent for
+   *  none. */
+  titles?: (string | null)[]
 }
 
 export interface MontageRenderResult {
@@ -104,7 +108,7 @@ export function liftMusic(channels: Float32Array[], gain: number, sampleRate: nu
 }
 
 export async function renderMontage(
-  { clips: files, look, headlineText, music, seed = '', formula = null, windows = [], reactionFirst = false }: MontageRenderInput,
+  { clips: files, look, headlineText, music, seed = '', formula = null, windows = [], reactionFirst = false, titles = [] }: MontageRenderInput,
   onProgress?: (fraction: number) => void,
 ): Promise<MontageRenderResult> {
   if (files.length === 0) throw new SilenceCutError('Add at least one clip.')
@@ -167,6 +171,8 @@ export async function renderMontage(
     if (!ctx) throw new SilenceCutError("This browser couldn't prepare a canvas to draw the headline on.")
     await headlineFontReady()
     const headline = !formula && headlineText.trim() ? layoutHeadline(ctx, width, height, { ...look.headline, text: headlineText }) : null
+    // Each step's name over its clip, laid out once, in the headline's look.
+    const titleLayouts = clips.map((_, i) => (titles[i]?.trim() ? layoutHeadline(ctx, width, height, { ...look.headline, text: titles[i]! }) : null))
     // The formula's logos, decoded once for every frame.
     const decode = async (blob: Blob | null) => {
       if (!blob) return null
@@ -223,6 +229,8 @@ export async function renderMontage(
           const spot = zoomPlace(place, framing, width, height)
           sample.draw(ctx, spot.x, spot.y, spot.width, spot.height)
           if (i === 0 && headline) drawHeadline(ctx, headline)
+          const title = titleLayouts[i]
+          if (title) drawHeadline(ctx, title)
           if (i === 0 && formulaLayout && logos) drawFormula(ctx, formulaLayout, logos)
           const frame = new VideoSample(canvas, { timestamp, duration: sample.duration })
           await videoSource.add(frame)

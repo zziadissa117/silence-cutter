@@ -3,6 +3,17 @@
 Newest first. Every change says what it does, how to use it, and how it works
 underneath. Kept up to date with each commit.
 
+## Batch: each step's name written over its clip, as a headline
+Only ./deploy.sh is needed.
+**What:** in a batch with steps (Set order), every video now shows each step's name over that step's clip, in the same
+headline text as the reaction's (TikTok font, the angle's headline look): a step named "DRAW SOMETHING" puts "DRAW
+SOMETHING" over its part of every video, exactly as typed. A step still called "Step 1", "Step 2"... shows no words -
+rename it to have some. Videos already planned get it too (their step names are looked up from the campaign's steps).
+The Batch tab says under each step what will be written.
+**How:** `batch.stepTitle`; `BatchVideo.steps[].name` (set by `batchRun.planVideos`), `MontageParts.bank.steps[].name`;
+`makeMontage`/`renderMontage` `titles` per clip, laid out with `layoutHeadline` in `look.headline` and drawn for the
+whole clip. Tests in `batch.test.ts`, `batchRun.test.ts`.
+
 ## Pictures side by side; pictures fully editable in the editor; Analytics only for batches
 Only ./deploy.sh is needed.
 **Pictures side by side:** pictures that come up together - one word bringing up two (give two pictures the same words

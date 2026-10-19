@@ -219,3 +219,15 @@ describe('lowering the number', () => {
     expect(counted['2026-10-06']).toBe(0)
   })
 })
+
+describe("each step's name goes with its video", () => {
+  it('is kept on every video, for the words over its clip', () => {
+    const steps = [
+      { id: 's1', name: 'DRAW SOMETHING', files: files('d', 2) },
+      { id: 's2', name: 'Step 2', files: files('a', 2) },
+    ]
+    const b = bank({ steps })
+    const plan = planVideos(b, runSlots({ bank: b, place, campaignId: 'c1', now: NOON }).slice(0, 3), { now: NOON })
+    for (const v of plan.videos) expect(v.steps?.map((s) => s.name)).toEqual(['DRAW SOMETHING', 'Step 2'])
+  })
+})

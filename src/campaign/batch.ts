@@ -93,6 +93,14 @@ export interface BatchStep {
   files: BankFile[]
 }
 
+/** The words a step puts over its clip in every video: its name exactly as
+ *  he typed it - "DRAW SOMETHING" - unless it still has the name it was
+ *  given ("Step 2"), which says nothing to a viewer. */
+export function stepTitle(name: string | undefined): string {
+  const typed = (name ?? '').trim()
+  return /^step \d+$/i.test(typed) ? '' : typed
+}
+
 /** The product showcase is in steps: the layout plays the reaction then the
  *  product, and he has set an order for the campaign. */
 export function usesSteps(bank: Pick<BatchBank, 'layout' | 'steps'>): boolean {

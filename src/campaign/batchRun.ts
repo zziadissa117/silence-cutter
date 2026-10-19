@@ -53,8 +53,9 @@ export interface BatchVideo {
   formula?: { left: BankFile | null; right: BankFile | null; line: string }
   /** Green screen: the product behind him, him cut out in this corner. */
   greenScreen?: { side: 'left' | 'right'; sizePct: number }
-  /** The product showcase in steps: one clip each, in order. */
-  steps?: { file: BankFile }[]
+  /** The product showcase in steps: one clip each, in order, with the
+   *  step's name (its words over the clip, batch.stepTitle). */
+  steps?: { file: BankFile; name?: string }[]
   batch: JobBatch
 }
 
@@ -161,7 +162,7 @@ export function planVideos(
   const { picks, used, lastPair, made } = pickBatch(mixable, taking.length, rand)
   const byId = (list: BankFile[], fileId: string | null) => list.find((f) => f.id === fileId) ?? null
   const videos: BatchVideo[] = picks.map((pick, i) => {
-    const steps = pick.steps && bank.steps ? pick.steps.map((fileId, s) => ({ file: byId(bank.steps![s].files, fileId)! })) : undefined
+    const steps = pick.steps && bank.steps ? pick.steps.map((fileId, s) => ({ file: byId(bank.steps![s].files, fileId)!, name: bank.steps![s].name })) : undefined
     const line = formula ? formulaLine(formula, `${id}-${i}`) : ''
     return {
       reaction: byId(bank.reactions, pick.reaction)!,

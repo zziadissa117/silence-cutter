@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { combos, dayTimes, emptyBank, filesOf, headlinesFrom, pickBatch, spend, usesSteps, type BankFile, type BatchBank } from './batch'
+import { combos, dayTimes, stepTitle, emptyBank, filesOf, headlinesFrom, pickBatch, spend, usesSteps, type BankFile, type BatchBank } from './batch'
 
 const files = (prefix: string, n: number): BankFile[] =>
   Array.from({ length: n }, (_, i) => ({ id: `${prefix}${i + 1}`, name: `${prefix}${i + 1}.mov`, type: 'video/quicktime', size: 1 }))
@@ -225,5 +225,18 @@ describe('a product showcase in steps (Set order)', () => {
   it('knows every file a video needs', () => {
     const f = files('x', 3)
     expect(filesOf({ reaction: f[0], product: f[1], steps: [{ file: f[1] }, { file: f[2] }] })).toEqual(['x1', 'x2', 'x2', 'x3'])
+  })
+})
+
+describe("a step's words over its clip", () => {
+  it('is its name exactly as he typed it', () => {
+    expect(stepTitle('DRAW SOMETHING')).toBe('DRAW SOMETHING')
+    expect(stepTitle('  the app ')).toBe('the app')
+  })
+  it('is nothing while it still has the name it was given', () => {
+    expect(stepTitle('Step 2')).toBe('')
+    expect(stepTitle('step 10')).toBe('')
+    expect(stepTitle('')).toBe('')
+    expect(stepTitle(undefined)).toBe('')
   })
 })

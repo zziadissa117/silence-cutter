@@ -17,6 +17,7 @@ import {
   DEFAULT_FORMULA,
   formulaLine,
   headlinesFrom,
+  stepTitle,
   hookOf,
   todayHere,
   usesSteps,
@@ -506,7 +507,10 @@ export function BatchView({
           + Add
         </VideoPicker>
       </div>
-      <p className="hint bank-hint">One of these in every video: the moment something happens in it, or all of it when it&rsquo;s short.</p>
+      <p className="hint bank-hint">
+        One of these in every video: the moment something happens in it, or all of it when it&rsquo;s short
+        {stepTitle(step.name) ? `, with "${stepTitle(step.name)}" written over it` : ''}.
+      </p>
       {step.files.length > 0 ? (
         <ul className="bank-list">
           {step.files.map((file) => (

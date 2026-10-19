@@ -34,7 +34,7 @@ import { AnalyticsView, answerSuggestion, saveTarget, useCampaignRows } from './
 import { FormatsView, type FormatClips } from './FormatsView'
 import { daysLine, spreadOver } from './formats'
 import type { ViewsByAccount } from './analytics'
-import { filesOf, type BankFile } from './batch'
+import { filesOf, stepTitle, type BankFile } from './batch'
 import { CampaignsView } from './CampaignsView'
 import { CloudError, currentSession, signOut, syncNow, type Session, type SyncState } from './cloud'
 import { AngleEditor, CampaignEditor } from './Editors'
@@ -1395,6 +1395,16 @@ export function CampaignApp() {
           const rest = await montageClips(next)
           const track = await montageMusic(next)
           setPhase('cutting', 0)
+          // Each step's name over its clip. Videos planned before the name was
+          // kept with them take it from the campaign's steps as they are now.
+          const stepped = next.montage.bank?.steps
+          const titles = stepped
+            ? await (async () => {
+                const known = stepped.some((s) => s.name === undefined) ? await loadBatchBank(next.campaignId).catch(() => null) : null
+                const nameOf = (s: (typeof stepped)[number]) => s.name ?? known?.steps?.find((k) => k.files.some((f) => f.id === s.file.id))?.name
+                return [null, ...stepped.map((s) => stepTitle(nameOf(s)) || null)]
+              })()
+            : undefined
           const hook = next.montage.bank?.formula
           const formula = hook
             ? {
@@ -1412,6 +1422,7 @@ export function CampaignApp() {
               // product step plays the moment something happens in it.
               reactionFirst: Boolean(next.montage.bank),
               windows: next.montage.bank?.steps ? [false, ...next.montage.bank.steps.map(() => true)] : undefined,
+              titles,
             }),
           )
         } else if (next.reaction) {
