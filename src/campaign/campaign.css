@@ -183,6 +183,12 @@ main.tabbed { padding-bottom: calc(env(safe-area-inset-bottom) + 96px); }
 /* No rubber-band past the top or bottom: the page bouncing under the bar
    read as the bar moving. */
 html, body { overscroll-behavior-y: none; }
+/* An iPhone zooms the page in when a box with writing under 16 px is tapped,
+   and the bar then slides with the scroll until the zoom goes (Claude + X's
+   amount boxes were 13 px). Every box is at least 16 px unless a rule of its
+   own makes it bigger - :where() keeps this from beating any of them. With
+   maximum-scale=1 in campaign.html as well. */
+:where(input:not([type=range], [type=checkbox], [type=radio], [type=file], [type=color]), textarea, select) { font-size: 16px; }
 .tabbar {
   position: fixed; left: 0; right: 0; bottom: 0; z-index: 10;
   display: flex; justify-content: center;
@@ -656,7 +662,7 @@ input.bank-name { background: transparent; border: 0; border-bottom: 1px solid c
 .formula-pick { position: relative; overflow: hidden; flex: 1 1 140px; text-align: center; }
 .formula-pick input[type='file'] { position: absolute; inset: 0; opacity: 0; cursor: pointer; }
 .formula-range { display: flex; align-items: center; gap: 6px; }
-.formula-range input { width: 6.5em; }
+.formula-range input { width: 6.5em; font: inherit; font-size: 16px; }
 .formula-preview { display: block; width: 180px; aspect-ratio: 9 / 16; border-radius: 12px; border: 1px solid var(--rule, #222); margin-top: 4px; }
 
 /* Scheduled: a blue clock whose minute hand ticks round, in twelve steps. */

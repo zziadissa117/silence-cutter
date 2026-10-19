@@ -3,6 +3,20 @@
 Newest first. Every change says what it does, how to use it, and how it works
 underneath. Kept up to date with each commit.
 
+## Fix: the tab bar sliding with the scroll (the zoom)
+Only ./deploy.sh is needed.
+**What was wrong:** on an iPhone, tapping a text box whose writing is smaller than 16 px zooms the whole screen in - and
+while it's zoomed, a bar fixed to the bottom slides with the scroll instead of staying put, until the zoom goes. The
+Claude + X "Amount a day" boxes were 13 px, so it came and went depending on what was last tapped - "sometimes".
+**Fix:** the page no longer zooms in when a box is tapped (maximum-scale=1 on the campaign page), every text box is at
+least 16 px, and the two amount boxes have proper 16 px writing. If the screen ever zooms anyway, the phone now sends a
+short report saying which box it was (cutter_errors, phase "zoom"), so a next cause is found, not guessed.
+**If it still slides after ./deploy.sh and closing/reopening:** delete the Cutter icon and add it again from Safari
+(Share, Add to Home Screen) - an icon added before the Oct fix can keep the old see-through status bar that sets off
+iOS 26's own bug (WebKit 301108). Nothing is lost: videos and settings live in the site, not the icon.
+**How:** `campaign.html` viewport, `campaign.css` (`:where(...)` 16 px, `.formula-range input`), `zoomWatch.ts`
+(+ test). Checked in a phone-sized Chromium that no text box on any tab is under 16 px; not on an iPhone.
+
 ## Claude + X captions: no more "IMG 0373 + IMG 0374"
 Only ./deploy.sh is needed.
 **What:** the Claude + X logos' names came from their file names, and phone photos are called IMG_0373 - so the words
