@@ -142,6 +142,18 @@ const LAST_WORDS_SEC = 1.0
 const EARLY_RUN_SEC = 0.6
 /** How much of such a word must be in the stretch to count as heard there. */
 const EARLY_RUN_IN_SEC = 0.05
+/** A sentence's first word timed a little early - short ones ("And", "I",
+ *  "So") often end just before their stretch by the model's clock - is
+ *  still its first word when it ends this close to the stretch and the
+ *  sentence before has ended. Without this every sentence lost its first
+ *  word on some takes ("the captions cut off at the start of every
+ *  sentence", 2026-10-19). */
+const EARLY_END_SEC = 0.25
+/** The least time each of a sentence's last words is up. Squeezed into the
+ *  stretch's final 0.1 s, a last word heard late flashed for two or three
+ *  frames and read as cut off ("...and finish of every sentence"); a
+ *  quarter of a second is about a word's own length when he talks. */
+const READ_SEC = 0.25
 /** Never pulled back like that: an "um" or a stumble was cut on purpose. */
 const CUT_ON_PURPOSE = new Set(['um', 'uh', 'er', 'erm', 'ah', 'hmm', 'mm'])
 
@@ -151,14 +163,18 @@ const CUT_ON_PURPOSE = new Set(['um', 'uh', 'er', 'erm', 'ah', 'hmm', 'mm'])
  *  is drawn. */
 export function captionWords(words: WordChunk[], keep: Range[], { rough = false }: { rough?: boolean } = {}): CaptionWord[] {
   const bare = (w: WordChunk | undefined) => (w ? cleanWord(w.text).toLowerCase() : '')
+  const endsSentence = (w: WordChunk | undefined) => Boolean(w && /[.?!…]["”')]*$/.test(w.text.trim()))
   const captions: CaptionWord[] = []
-  const late = rough ? ROUGH_LATE_SEC : LATE_SEC
   const last = keep.reduce<Range | undefined>((a, r) => (!a || r.end > a.end ? r : a), undefined)
   const rescued = new Map<Range, number>()
   words.forEach((w, i) => {
     const text = w.text.trim()
     if (!cleanWord(text)) return
-    if (keep.some((r) => w.start + EARLY_SEC >= r.start && w.start + EARLY_SEC < r.end)) {
+    // Early by up to EARLY_SEC still counts as in; a word starting in the last
+    // moment of a stretch is in it too (the shifted check used to push those
+    // past the end, where nothing caught them, and the sentence lost its
+    // last word).
+    if (keep.some((r) => w.start + EARLY_SEC >= r.start && w.start < r.end)) {
       captions.push({ text, start: w.start, end: w.end })
       return
     }
@@ -168,6 +184,20 @@ export function captionWords(words: WordChunk[], keep: Range[], { rough = false 
       captions.push({ text, start: into.start, end: Math.max(w.end, into.start + MIN_SHOW_SEC) })
       return
     }
+    // A sentence's first word that ends just before its stretch: kept when it
+    // can't be the last word of the sentence before - that one has ended, or
+    // is too far back - and it is not a stumble.
+    const next = keep.find((r) => w.start < r.start && r.start - w.start <= EARLY_RUN_SEC && w.end >= r.start - EARLY_END_SEC)
+    const previousRange = keep.filter((r) => r.end <= w.start).reduce<Range | undefined>((a, r) => (!a || r.end > a.end ? r : a), undefined)
+    const belongsBefore = previousRange && w.start - previousRange.end <= LATE_SEC && !endsSentence(words[i - 1])
+    if (next && !belongsBefore && !repeated && !CUT_ON_PURPOSE.has(bare(w))) {
+      captions.push({ text, start: next.start, end: Math.max(w.end, next.start + MIN_SHOW_SEC) })
+      return
+    }
+    // A last word heard late: half a second when it carries on a sentence
+    // that hasn't ended yet - the letter model's timing runs that late on
+    // the last word before a pause too - otherwise the tighter window.
+    const late = rough || !endsSentence(words[i - 1]) ? ROUGH_LATE_SEC : LATE_SEC
     const before =
       keep.find((r) => w.start >= r.end && w.start <= r.end + late) ??
       (last && w.start >= last.end && w.start <= last.end + LAST_WORDS_SEC ? last : undefined)
@@ -194,6 +224,29 @@ export function captionWords(words: WordChunk[], keep: Range[], { rough = false 
     const earliest = captions[i - 1].start + MIN_SHOW_SEC
     if (captions[i].start < earliest) {
       captions[i] = { ...captions[i], start: earliest, end: Math.max(captions[i].end, earliest + MIN_SHOW_SEC) }
+    }
+  }
+  // Each stretch's last words up long enough to read: walked back from where
+  // the stretch is cut, each starts at least READ_SEC before the next - or
+  // the stretch's end - while there is room, the earlier ones moving up a
+  // little to make it. They are words the model times late anyway.
+  // A word the in-order pass nudged to or past the cut still belongs to
+  // this stretch - up to where the next one starts.
+  const ordered = [...keep].sort((a, b) => a.start - b.start)
+  for (const [r, range] of ordered.entries()) {
+    const until = ordered[r + 1]?.start ?? Infinity
+    const inside = captions.map((_, k) => k).filter((k) => captions[k].start >= range.start && captions[k].start < until)
+    if (inside.length === 0) continue
+    const room = range.end - range.start
+    const read = Math.min(READ_SEC, room / inside.length)
+    let nextStart = range.end
+    for (let j = inside.length - 1; j >= 0; j--) {
+      const k = inside[j]
+      const latest = nextStart - read
+      if (captions[k].start <= latest) break
+      const start = Math.max(range.start, latest)
+      captions[k] = { ...captions[k], start, end: Math.max(start + read * 0.999, Math.min(captions[k].end, nextStart)) }
+      nextStart = start
     }
   }
   // The video ends where the last kept stretch does: a word starting after

@@ -3,6 +3,24 @@
 Newest first. Every change says what it does, how to use it, and how it works
 underneath. Kept up to date with each commit.
 
+## Captions: every sentence keeps its first and last word, and shows them long enough to read
+**What:** captions were losing words at the edges of sentences. Each sentence is its own kept stretch (the pause
+between is cut), and the speech model times edge words a little off:
+- A word **starting in the last 0.1 s** of a stretch was dropped outright - the "a bit early" allowance shifted it
+  past the end, where no other rule caught it. In a simulation of 600 sentences with the model's real timing error,
+  53 lost their last word this way. Now 0.
+- A sentence's last word heard up to half a second after the cut is kept when it carries the sentence on (the word
+  before it didn't end one) - before, only the rougher timings got that much room.
+- A sentence's first word timed just before its stretch (short ones: "And", "I", "So") is kept when it ends within a
+  quarter-second of it and the sentence before has ended.
+- The last words of a sentence were squeezed into its final 0.1 s, two or three frames. Each now gets at least a
+  quarter-second (the earlier words move up a touch to make room); in the simulation, last words on screen for under
+  0.2 s went from 30 to 2.
+**How:** `captionWords` (captions.ts): in-stretch test no longer shifted at the end, `EARLY_END_SEC` for first words,
+the half-second late window when the sentence hasn't ended, and a per-stretch `READ_SEC` tail fit after the in-order
+pass. Tests: the old "drop a late last word" expectation now keeps it; new cases for an early first word and readable
+last words.
+
 ## Formats tab: drop in your takes, get them made, send them to the brand, schedule the week
 Needs deploying: run ./deploy-server.sh (scheduled videos skip approval), then ./deploy.sh.
 **What:** a new **Formats** tab (next to Videos).

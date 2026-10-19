@@ -127,7 +127,8 @@ describe('captionWords', () => {
       { start: 3, end: 4.5 },
       { start: 6.1, end: 7 },
     ]
-    expect(captionWords(words, keep).map((w) => w.text)).toEqual(['it', 'And'])
+    // The sentence hasn't ended at "it", so "works." is its last word either way.
+    expect(captionWords(words, keep).map((w) => w.text)).toEqual(['it', 'works.', 'And'])
     const rough = captionWords(words, keep, { rough: true })
     expect(rough.map((w) => w.text)).toEqual(['it', 'works.', 'And'])
     expect(rough[1].start).toBeLessThan(4.5)
@@ -175,6 +176,43 @@ describe('captionWords', () => {
       { start: 2.5, end: 3.5 },
     ]
     expect(captionWords(words, keep).map((w) => w.text)).toEqual(['I', 'think'])
+  })
+
+  it("keeps a sentence's first word the model timed just before its stretch", () => {
+    const words = [
+      { text: ' it.', start: 1.5, end: 1.8 },
+      { text: ' And', start: 2.55, end: 2.7 },
+      { text: ' then', start: 2.9, end: 3.1 },
+    ]
+    const keep = [
+      { start: 0, end: 1.9 },
+      { start: 2.8, end: 4 },
+    ]
+    const captions = captionWords(words, keep)
+    expect(captions.map((w) => w.text)).toEqual(['it.', 'And', 'then'])
+    expect(captions[1].start).toBe(2.8)
+  })
+
+  it("gives each of a sentence's last words a quarter of a second, never a flash", () => {
+    const words = [
+      { text: ' this', start: 1.0, end: 1.2 },
+      { text: ' is', start: 1.9, end: 1.98 },
+      { text: ' it.', start: 2.1, end: 2.4 },
+      { text: ' Next', start: 4, end: 4.3 },
+    ]
+    const keep = [
+      { start: 0.5, end: 2.0 },
+      { start: 3.9, end: 5 },
+    ]
+    const captions = captionWords(words, keep)
+    expect(captions.map((w) => w.text)).toEqual(['this', 'is', 'it.', 'Next'])
+    expect(2.0 - captions[2].start).toBeGreaterThanOrEqual(0.25 - 1e-9)
+    expect(captions[2].start - captions[1].start).toBeGreaterThanOrEqual(0.25 - 1e-9)
+    // On screen, each is up for that long before the next sentence comes in.
+    const starts = captions.map((w) => w.start)
+    const frames = (k: number) => Array.from({ length: 150 }, (_, f) => f / 30).filter((t) => captionAt(starts, captions, t) === k).length
+    expect(frames(1)).toBeGreaterThanOrEqual(7)
+    expect(frames(2)).toBeGreaterThanOrEqual(7)
   })
 
   it('gives every word long enough to be seen', () => {
