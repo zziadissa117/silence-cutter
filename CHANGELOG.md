@@ -3,6 +3,23 @@
 Newest first. Every change says what it does, how to use it, and how it works
 underneath. Kept up to date with each commit.
 
+## A hook that lags at the start now says so too (not only one that freezes)
+Only ./deploy.sh is needed; then close the Cutter and open it again. Nothing changes in the videos themselves.
+**What was wrong:** the report that a batch video's start held or skipped frames (`cutter_errors`, phase "start") only
+spoke up for a first picture held 70 ms or a gap of 3 frames or more. The laggy hooks were frames coming every other
+one, each shown twice - gaps of 2 frames - so a lagging start passed as fine. And the green screen layout had no
+check at all. On build 22:20 the phone made 21 batch videos (from the reactions that lagged worst before), none
+reported, so none froze - but whether any lagged, that report couldn't tell.
+**Fix:** the start is now counted as it is watched: of the video's first 45 frames, how many show the same picture as
+the one before, beyond what the clip's own rate explains (a 24 a second clip repeats one in five; a 30 one none).
+Two or more extra and it reports, with the clip's own frame times. Green screen videos report the same about his
+cut-out ("IMG_0021.mov (green screen): ..."). Checked on files made with ffmpeg: quiet for ordinary 30, 29.97, 24 and
+60 a second clips, a trimmed clip and a clip cut between key frames; it speaks up for a clip whose every-other start
+lasts past the second the Cutter skips (18 of 45 frames repeated), which the old check passed.
+**How:** `montageRender.openingProblem(opening, frame)` (repeats on the steady frames, `OPENING`), the clip's own frame
+length from its packets (`clipParts.usualFrame`, hidden lead-in frames not counted); `greenScreenRender` notes when
+each cut-out frame first comes on screen; `makeGreenScreen` passes the reaction's name. Tests in `firstShown.test.ts`.
+
 ## Batch: more videos each day ("start with 4 and add +1 per day")
 Only ./deploy.sh is needed.
 **How to use it:** Batch tab, Posting: **Videos a day** is today's number; **More each day** (0 to +5) adds that

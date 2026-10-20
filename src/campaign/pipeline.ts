@@ -472,9 +472,10 @@ export async function makeGreenScreen(
   headlineText: string,
   corner: Corner,
   onRenderProgress?: (fraction: number) => void,
+  extra: { reactionName?: string } = {},
 ): Promise<CampaignResult> {
   const rendered = await renderGreenScreen(
-    { background, cutout, look: videoLook(campaign, angle, [], null), headlineText, corner },
+    { background, cutout, look: videoLook(campaign, angle, [], null), headlineText, corner, reactionName: extra.reactionName },
     onRenderProgress,
   )
   return {

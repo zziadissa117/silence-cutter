@@ -1414,7 +1414,11 @@ export function CampaignApp() {
             })
           }
           setPhase('cutting', 0)
-          result = await watched(makeGreenScreen(background, cut, jobCampaign, jobAngle, next.headlineText, green, (p) => setPhase('cutting', p)))
+          result = await watched(
+            makeGreenScreen(background, cut, jobCampaign, jobAngle, next.headlineText, green, (p) => setPhase('cutting', p), {
+              reactionName: file instanceof File ? file.name : undefined,
+            }),
+          )
         } else if (next.montage) {
           const rest = await montageClips(next)
           const track = await montageMusic(next)

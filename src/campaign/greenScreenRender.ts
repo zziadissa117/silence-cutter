@@ -25,16 +25,17 @@ import { SilenceCutError } from '../media/errors'
 import { contiguousAudio, forwardOnly } from '../media/forwardOnly'
 import { createOutputSink } from '../media/outputSink'
 import { isSilenceCutSupported } from '../media/silenceCut'
-import { eachSound, openClip, wholeOf, writeWhole, type Clip } from './clipParts'
+import { eachSound, openClip, usualFrame, wholeOf, writeWhole, type Clip } from './clipParts'
 import { onEncodedPacketMatchingColour } from './colourCheck'
 import { CUTOUT_HEIGHT, CUTOUT_WIDTH, greyToAlpha } from './cutout'
 import { headlineFontReady } from './headlineFont'
 import type { VideoLook } from './look'
-import { FPS, framesBy, lowered, soloMusicGain, verticalSize } from './montageRender'
+import { FPS, OPENING, framesBy, lowered, openingProblem, soloMusicGain, verticalSize } from './montageRender'
 import { drawHeadline, layoutHeadline } from './overlay'
 import { makeSize, videoQuality } from './quality'
 import { cover } from './reaction'
 import { Limiter, measureLoudness } from './voice'
+import { report as reportProblem } from '../report'
 
 const RATE = 48000
 const CHANNELS = 2
@@ -122,10 +123,12 @@ export interface GreenScreenInput {
   /** Empty for none. */
   headlineText: string
   corner: Corner
+  /** The reaction's file name, for the report on a start that froze or lagged. */
+  reactionName?: string
 }
 
 export async function renderGreenScreen(
-  { background, cutout, look, headlineText, corner }: GreenScreenInput,
+  { background, cutout, look, headlineText, corner, reactionName }: GreenScreenInput,
   onProgress?: (fraction: number) => void,
 ): Promise<{ blob: Blob; storedAs: string | null; totalSec: number }> {
   if (!(await isSilenceCutSupported())) {
@@ -183,6 +186,9 @@ export async function renderGreenScreen(
     output.addAudioTrack(audioSource)
     await output.start()
 
+    // When each of his frames first came on screen, in its own time and the
+    // video's, for the start: a hook that froze or lagged says so.
+    const opening: { own: number; at: number }[] = []
     // One frame of the video at `timestamp`: the background's frame, him
     // over it, the headline.
     const draw = async (sample: VideoSample, timestamp: number) => {
@@ -191,6 +197,7 @@ export async function renderGreenScreen(
       ctx.fillRect(0, 0, width, height)
       sample.draw(ctx, place.x, place.y, place.width, place.height)
       const frame = await him!.at(timestamp)
+      if (frame && timestamp < OPENING && frame.timestamp !== opening.at(-1)?.own) opening.push({ own: frame.timestamp, at: timestamp })
       if (frame) {
         stackCtx.clearRect(0, 0, stack.width, stack.height)
         frame.draw(stackCtx, 0, 0, CUTOUT_WIDTH, CUTOUT_HEIGHT * 2)
@@ -244,6 +251,8 @@ export async function renderGreenScreen(
       })
       const last = shown as VideoSample | null
       if (last) for (const by = framesBy(at, FPS); made < by; made++) await draw(last, made / FPS)
+      const start = openingProblem(opening, await usualFrame(cut.video, cut.first))
+      if (start) reportProblem({ kind: 'check', phase: 'start', message: `${reactionName ?? 'reaction'} (green screen): ${start}` })
 
       await output.finalize()
       const blob = await sink.finish()

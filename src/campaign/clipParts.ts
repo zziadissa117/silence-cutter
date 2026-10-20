@@ -94,6 +94,25 @@ export async function steadyStart(video: InputVideoTrack, from: number, duration
   return duration - start >= 0.5 ? start : from
 }
 
+/** How long one of a clip's frames usually lasts from `from` on - the middle
+ *  of the spacings of its frames there, read off its packets alone. Hidden
+ *  lead-in frames before `from` don't count, so a trimmed 30 a second clip
+ *  reads as 30. 1/30 when it can't be told. */
+export async function usualFrame(video: InputVideoTrack, from: number): Promise<number> {
+  const times: number[] = []
+  try {
+    for await (const packet of new EncodedPacketSink(video).packets(undefined, undefined, { metadataOnly: true })) {
+      if (packet.timestamp >= from - 1e-6) times.push(packet.timestamp)
+      if (packet.timestamp > from + STEADY_LOOK + 0.5 || times.length > 400) break
+    }
+  } catch {
+    return 1 / 30
+  }
+  const shown = [...new Set(times)].sort((a, b) => a - b)
+  const gaps = shown.slice(1).map((t, k) => t - shown[k])
+  return gaps.length ? [...gaps].sort((a, b) => a - b)[Math.floor(gaps.length / 2)] : 1 / 30
+}
+
 /** Opens a clip, or says in plain words why it can't be used. The caller
  *  disposes `input`. */
 export async function openClip(file: Blob, which: string): Promise<Clip> {

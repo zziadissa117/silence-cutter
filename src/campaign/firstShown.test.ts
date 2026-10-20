@@ -7,7 +7,7 @@ import { readFileSync } from 'node:fs'
 import { ALL_FORMATS, BufferSource, Input } from 'mediabunny'
 import { describe, expect, it } from 'vitest'
 
-import { firstShown, steadyFrom } from './clipParts'
+import { firstShown, steadyFrom, usualFrame } from './clipParts'
 import { openingProblem } from './montageRender'
 
 describe('where a trimmed clip starts', () => {
@@ -18,6 +18,12 @@ describe('where a trimmed clip starts', () => {
     // What the file holds: frames from half a second before the start.
     expect(await track.getFirstTimestamp()).toBeCloseTo(-0.5)
     expect(await firstShown(track)).toBe(0)
+  })
+
+  it("reads how long its own frames last, not its lead-in's", async () => {
+    const bytes = readFileSync(new URL('./fixtures/trimmed.mov', import.meta.url))
+    const input = new Input({ source: new BufferSource(bytes), formats: ALL_FORMATS })
+    expect(await usualFrame((await input.getPrimaryVideoTrack())!, 0)).toBeCloseTo(1 / 30, 4)
   })
 
   it('keeps a start after 0 as it is', async () => {
@@ -50,10 +56,32 @@ describe('steadyFrom (where a clip plays steadily from)', () => {
 })
 
 describe('openingProblem', () => {
+  // A clip's frames as they came into the video: `count` of them, `step` apart.
+  const frames = (step: number, count: number, from = 0) => Array.from({ length: count }, (_, k) => ({ own: from + k * step, at: from + k * step }))
+
   it('says nothing about a steady start', () => {
-    expect(openingProblem(Array.from({ length: 45 }, (_, k) => ({ own: k / 30, at: k / 30 })))).toBeNull()
+    expect(openingProblem(frames(1 / 30, 45))).toBeNull()
   })
   it('says when the first frame was held', () => {
     expect(openingProblem([{ own: 0.5, at: 0.5 }, { own: 0.533, at: 0.533 }])).toMatch(/first frame at 500 ms/)
+  })
+  it('says when the first frames come every other one - each shown twice, laggy', () => {
+    // The laggy hooks: 0.8 s of every other frame, then every one.
+    const laggy = [...frames(2 / 30, 12), ...frames(1 / 30, 21, 0.8)]
+    expect(openingProblem(laggy, 1 / 30)).toMatch(/^12 of its first 45 frames repeat the one before \(0 from its own 30 a second\)/)
+    expect(openingProblem(frames(2 / 30, 23), 1 / 30)).toMatch(/^22 of its first 45 frames repeat/)
+  })
+  it('says when two frames in a row are missing', () => {
+    expect(openingProblem([...frames(1 / 30, 10), ...frames(1 / 30, 33, 0.4)], 1 / 30)).toMatch(/^2 of its first 45 .*longest gap 100 ms/)
+  })
+  it("takes a clip's own rate as it is: a 24 or 60 a second clip, or one a hair under 30", () => {
+    expect(openingProblem(frames(1 / 24, 36), 1 / 24)).toBeNull()
+    expect(openingProblem(frames(1 / 60, 90), 1 / 60)).toBeNull()
+    expect(openingProblem(frames(1001 / 30000, 45), 1001 / 30000)).toBeNull()
+    // ...but a 24 a second one that drops frames too still says so.
+    expect(openingProblem([...frames(1 / 24, 12), ...frames(1 / 24, 20, 0.625)], 1 / 24)).toMatch(/from its own 24 a second/)
+  })
+  it('lets one stray repeat go', () => {
+    expect(openingProblem([...frames(1 / 30, 10), ...frames(1 / 30, 34, 1 / 3 + 1 / 30)], 1 / 30)).toBeNull()
   })
 })

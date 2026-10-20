@@ -18,10 +18,17 @@ He wants plain words, no permission questions (questions are fine), the deploy c
    lead-in frames before 0 (`clipParts.firstShown`, `efb7869`); some videos then froze instead
    (`1352fcf`: `steadyFrom`/`steadyStart` start a clip on its first steady frame; `writeWhole` starts a batch
    clip on its first decoded frame instead of holding it). Reproduced and verified only in Chrome for Testing,
-   not on iPhone Safari. **Check first:** `select * from cutter_errors where phase = 'start' and version >=
+   not on iPhone Safari. **Check first:** `select * from cutter_errors where phase = 'start' and version >
    '2026-10-20 22:20'` - every video whose start still holds or skips frames reports it, with the clip's own
    frame times. The 22:20 reaction reports (phase `reaction`) say "N hidden before the start, steady start"
    for IMG_0248-0264; his rejections line up with the hidden-frame counts (0249/0250/0252/0253/0261-0263 worst).
+   **Found 2026-10-20 23:00 UTC:** build 22:20 made 21 batch videos (batch `b-mvh8zuca`, 22:22-22:29 UTC,
+   montage layout, reactions incl. 0249/0250/0252/0261-0263) and sent no `start` report - so no freeze. But
+   that build's check passed every-other-frame lag (gaps under 100 ms), so lag was unknown. The build after it
+   (version later than 22:20) counts repeated frames in the first 45 instead ("N of its first 45 frames repeat
+   the one before (M from its own R a second)"; 2+ extra reports) and covers green screen ("... (green
+   screen): ..."). Green screen reactions IMG_0021-0039 are untrimmed (0 uneven), so their kept cut-outs
+   (`CUTOUT_VERSION` 1) hold no lead-in; don't bump it for this.
    Videos made before 22:20 are not fixed - "Start over" in the Batch tab remakes the ones not out yet.
 2. **Cutter server on Railway** (`server/`, `server/README.md`): the app itself headless in Chrome for Testing,
    making every batch day and night. Built and tested end to end here (stand-in posting function over CDP),

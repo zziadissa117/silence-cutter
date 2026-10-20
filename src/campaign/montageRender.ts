@@ -22,7 +22,7 @@ import { SilenceCutError } from '../media/errors'
 import { contiguousAudio, forwardOnly } from '../media/forwardOnly'
 import { createOutputSink } from '../media/outputSink'
 import { isSilenceCutSupported } from '../media/silenceCut'
-import { openClip, writeWhole, type Clip } from './clipParts'
+import { openClip, usualFrame, writeWhole, type Clip } from './clipParts'
 import { framingAt, planMotion, randomFrom, reactionZoom, zoomPlace } from './effects'
 import { ONLY_HOOK_ELSE } from './batch'
 import { drawFormula, formulaPush, layoutFormula, type FormulaLayout } from './formulaOverlay'
@@ -64,22 +64,43 @@ export const BATCH_LOWER = 0.04
 
 /** How many frames of a steady `fps` start before `until` seconds - the ones
  *  a clip's frame starting there takes over from. */
+export function framesBy(until: number, fps: number): number {
+  return Math.max(0, Math.ceil(until * fps - 1e-6))
+}
+
+/** How much of the start of a video is watched for a hook that froze or lagged. */
+export const OPENING = 1.5
+
 /** What was wrong with how the first clip's frames came at the start of the
- *  video - held on its first frame, or a gap of several frames - in words,
- *  or null when they came steadily. */
-export function openingProblem(opening: readonly { own: number; at: number }[]): string | null {
+ *  video, in words, or null when they came steadily. `opening` says when each
+ *  of its frames came, in its own time and the video's; `frame` is how long
+ *  one of its own frames lasts (clipParts.usualFrame).
+ *
+ *  Counted as it is watched: of the steady frames up to its last one here,
+ *  how many show the same picture as the one before - a first picture held,
+ *  a gap, or frames that come every other one, each shown twice ("laggy") -
+ *  beyond what its own rate explains (a 24 a second clip repeats one in
+ *  five). One spare is allowed: a clip a hair slower than 30 a second can
+ *  show its first picture twice, which nobody sees. */
+export function openingProblem(opening: readonly { own: number; at: number }[], frame = 1 / FPS): string | null {
   if (opening.length === 0) return 'no frame in its first second and a half'
+  const steady = opening.map((f) => framesBy(f.at, FPS))
+  // Each picture stays until the next one's steady frame; the first is also
+  // on every steady frame before its own.
+  let repeats = steady[0]
+  for (let k = 1; k < steady.length; k++) repeats += Math.max(0, steady[k] - steady[k - 1] - 1)
+  const watched = steady[steady.length - 1] + 1
+  const explained = watched * Math.max(0, 1 - 1 / (frame * FPS))
+  if (repeats <= explained + 1) return null
   const held = opening[0].at
   const gaps = opening.slice(1).map((f, k) => f.at - opening[k].at)
   const worst = gaps.length ? Math.max(...gaps) : 0
-  if (held <= 0.07 && worst <= 0.1) return null
   const ms = (s: number) => `${Math.round(s * 1000)} ms`
-  const own = opening.slice(0, 12).map((f) => Math.round(f.own * 1000)).join(' ')
-  return `first frame at ${ms(held)}, longest gap ${ms(worst)}, ${opening.length} frames in 1.5 s; its own times ${own}`
-}
-
-export function framesBy(until: number, fps: number): number {
-  return Math.max(0, Math.ceil(until * fps - 1e-6))
+  const own = opening.slice(0, 16).map((f) => Math.round(f.own * 1000)).join(' ')
+  return (
+    `${repeats} of its first ${watched} frames repeat the one before (${Math.round(explained)} from its own ${Math.round(1 / frame)} a second), ` +
+    `first frame at ${ms(held)}, longest gap ${ms(worst)}, ${opening.length} frames in 1.5 s; its own times ${own}`
+  )
 }
 
 /** A headline moved BATCH_LOWER down, never into the caption at the bottom. */
@@ -337,7 +358,7 @@ export async function renderMontage(
           audioClock: contiguousAudio(),
           maxRecoveries: MAX_RECOVERIES,
           onFrame: async (sample, timestamp) => {
-            if (i === 0 && timestamp < 1.5) opening.push({ own: sample.timestamp, at: timestamp })
+            if (i === 0 && timestamp < OPENING) opening.push({ own: sample.timestamp, at: timestamp })
             // Every steady frame before this one starts shows the one before
             // it (the very first frame of the video: this one).
             const before = shown ?? { sample, clip: i }
@@ -356,7 +377,7 @@ export async function renderMontage(
     }
     at = Math.max(at, made / FPS)
     await soundTo(at)
-    const start = openingProblem(opening)
+    const start = openingProblem(opening, await usualFrame(clips[0].video, clips[0].first))
     if (start) reportProblem({ kind: 'check', phase: 'start', message: `${files[0] instanceof File ? files[0].name : 'clip 1'}: ${start}` })
 
     await output.finalize()
