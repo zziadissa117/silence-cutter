@@ -48,6 +48,11 @@ and why. These notes are what earlier sessions learned the hard way.
 - The photo picker's Format "Automatic" re-encodes his HEVC to H.264 before the
   page gets it (slow, lossy); "Current" hands over the original (`pickFormat.ts`).
 - A mid-render "decoder gave up" / out-of-memory is common on long or 4K work.
+- A clip trimmed on the iPhone keeps hidden lead-in frames (every other one,
+  from the key frame before the cut) at times before 0. Players skip them;
+  mediabunny's `getFirstTimestamp()` returns the first of them. Start a clip
+  at `clipParts.firstShown` - drawn from the lead-in, 8 of 17 reactions made
+  every batch hook laggy.
 
 ## Posting limits (Instagram's API is the strictest)
 

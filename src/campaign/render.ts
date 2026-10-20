@@ -53,7 +53,7 @@ import { isSilenceCutSupported } from '../media/silenceCut'
 import { totalDuration, type Range } from '../media/silenceMath'
 import type { VideoLook } from './look'
 import { CAPTION_LEAD, captionAt, drawStyledCaption, captionRanges, type CaptionPosition, type CaptionSize, type CaptionStyle, type CaptionWord } from './captions'
-import { decoderGaveUp, eachSound, openClip, pause, visibleAgain, wholeOf, writeWhole, type Clip } from './clipParts'
+import { decoderGaveUp, eachSound, firstShown, openClip, pause, visibleAgain, wholeOf, writeWhole, type Clip } from './clipParts'
 import type { ClipPlace } from './clips'
 import { framingAt, logoPop, placeFrame, planMotion } from './effects'
 import { ColourCheck } from './colourCheck'
@@ -428,7 +428,7 @@ export async function renderCampaignCut(
         popInputs.push(popInput)
         const track = await popInput.getPrimaryVideoTrack()
         if (!track || !(await track.canDecode())) throw new Error("this phone can't play it here")
-        const first = await track.getFirstTimestamp()
+        const first = await firstShown(track)
         const layout = popLayout(width, height, clip, pops!.sizePct, pops!.position)
         const sink = new CanvasSink(track, { width: layout.width, height: layout.height, fit: 'cover', poolSize: 3 })
         popClips.push({ seconds: clip.seconds, layout, placer: new MomentPlacer(clip.moments, keep), open: () => fromStart(sink, first, clip.seconds) })

@@ -35,6 +35,17 @@ export interface Clip {
   duration: number
 }
 
+/** Where a track's picture starts being shown: its first frame, or 0 when
+ *  frames come before that. A clip trimmed on the iPhone keeps the frames
+ *  from the key frame before the cut - every other one - marked never to be
+ *  shown. Every player skips them, but they read as coming first, at a time
+ *  before 0, and drawn from there a reaction opened on up to a second of what
+ *  he had cut, at half the frame rate: "half of the hooks are really laggy",
+ *  every video from the reactions with the most of them, never from the rest. */
+export async function firstShown(track: Pick<InputVideoTrack, 'getFirstTimestamp'>): Promise<number> {
+  return Math.max(0, await track.getFirstTimestamp())
+}
+
 /** Opens a clip, or says in plain words why it can't be used. The caller
  *  disposes `input`. */
 export async function openClip(file: Blob, which: string): Promise<Clip> {
@@ -49,7 +60,7 @@ export async function openClip(file: Blob, which: string): Promise<Clip> {
     const [width, height, first, duration] = await Promise.all([
       video.getDisplayWidth(),
       video.getDisplayHeight(),
-      video.getFirstTimestamp(),
+      firstShown(video),
       input.computeDuration(),
     ])
     if (!(duration > first)) throw new SilenceCutError(`The ${which} clip is empty.`)

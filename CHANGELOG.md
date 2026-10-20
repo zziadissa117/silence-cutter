@@ -3,6 +3,17 @@
 Newest first. Every change says what it does, how to use it, and how it works
 underneath. Kept up to date with each commit.
 
+## Fix: laggy hooks - a trimmed reaction no longer starts in its hidden lead-in
+Only ./deploy.sh is needed. Videos already made stay as they are; new ones from the same reactions are fine.
+**What was wrong:** his reactions are trimmed on the iPhone, and a trimmed clip keeps the frames from the key frame
+before the cut - only every other one - marked never to be shown. Photos and every player skip them; the Cutter read
+the clip as starting at the first of them, so a hook opened on up to 0.8 s of what he had cut away, at half the frame
+rate: laggy, then normal. The reports from his Batch tab showed it: the 8 reactions rejected every time held 20-24 of
+those hidden frames, the ones never rejected 0-7.
+**Fix:** every clip starts where its picture is shown, never before 0 (`clipParts.firstShown`, used by `openClip` -
+every batch and joined clip - and by pop-up videos). Reproduced with a trimmed file (`fixtures/trimmed.mov`, +
+test). The reaction report now also says how many hidden frames a file holds.
+
 ## Laggy hooks: watch every reaction, see which ones he rejects, frames by timestamps only
 Only ./deploy.sh is needed.
 **What was wrong:** of 40 batch videos, every video from 8 reactions (IMG_0250-0253, 0257, 0261-0263) was laggy and

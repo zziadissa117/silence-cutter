@@ -75,6 +75,7 @@ export async function describeClip(name: string, file: Blob): Promise<string> {
       `says ${t.statedMs} ms a frame`,
       t.reordered ? 'stored out of order' : 'stored in order',
       `${t.keyFrames} key`,
+      `${packets.filter((p) => p.timestamp < 0).length} hidden before the start`,
       `${Math.round(seconds * 10) / 10} s`,
       `${Math.round(file.size / 100_000) / 10} MB`,
       readable ? '' : 'NOT readable',
