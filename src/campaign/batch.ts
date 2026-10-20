@@ -97,6 +97,58 @@ export interface BatchBank {
    *  (stepPiece.ts) - the steps always in this order after the reaction.
    *  None: the one list of product showcases, each played whole. */
   steps?: BatchStep[]
+  /** Made on the Cutter server (server/, serverMode.ts), not on this phone:
+   *  the phone sends it its clips and settings, and makes none itself. */
+  where?: 'server'
+  /** When the phone handed it to the server (serverLink.ts): a bank the
+   *  server kept from an earlier hand-over is out of date, not merged. */
+  movedAt?: string
+  /** When he last tapped Start: what stopped the batch before (every video
+   *  made, a problem) is behind it - read by fromPhone. */
+  startedAt?: string
+}
+
+/** What the making of a batch has done so far - what was made, used, put on
+ *  which day, why it stopped. On the server these are the server's own; every
+ *  other field is a setting he changes on the phone. */
+export const PROGRESS_FIELDS = ['used', 'lastPair', 'made', 'usedClips', 'madeThrough', 'filled', 'runProblem', 'spent', 'lastPerDay'] as const
+
+/** The bank the server makes from, after the phone sent its latest: his
+ *  settings from the phone (clips, headlines, looks, the number a day, Start
+ *  and Stop), what was made so far from the server - the phone's copy of
+ *  that is older, and taking it would make videos again. Clips once used stay
+ *  used from either. The first time, or a new hand-over (movedAt), the
+ *  phone's bank whole. The phone reads the server's progress back the same
+ *  way, so both always agree. */
+export function fromPhone(server: BatchBank | null, phone: BatchBank): BatchBank {
+  if (!server || server.movedAt !== phone.movedAt) return phone
+  const next: BatchBank = { ...phone }
+  for (const key of PROGRESS_FIELDS) {
+    if (server[key] === undefined) delete next[key]
+    else (next as unknown as Record<string, unknown>)[key] = server[key]
+  }
+  if (phone.startedAt !== server.startedAt) {
+    // He tapped Start since the server last had it: what stopped it is behind it.
+    for (const key of ['spent', 'runProblem'] as const) {
+      if (phone[key] === undefined) delete next[key]
+      else (next as unknown as Record<string, unknown>)[key] = phone[key]
+    }
+  } else if (server.running === false && server.spent) {
+    // The server stopped it itself, every different video made, and he
+    // hasn't tapped Start since: stopped on the phone too, as it would be there.
+    next.running = false
+  }
+  const usedClips = [...new Set([...(server.usedClips ?? []), ...(phone.usedClips ?? [])])]
+  if (usedClips.length > 0) next.usedClips = usedClips
+  // A clip the server already used up (every video from it made, so it was
+  // cleared out) never comes back from the phone's older copy: those videos
+  // would be made again.
+  const spent = new Set(server.usedClips ?? [])
+  const fresh = (files: BankFile[]) => files.filter((f) => !spent.has(clipKey(f)))
+  next.reactions = fresh(next.reactions)
+  next.products = fresh(next.products)
+  if (next.steps) next.steps = next.steps.map((step) => ({ ...step, files: fresh(step.files) }))
+  return next
 }
 
 /** One step of a campaign's product showcase - "Claude", "The app", "The

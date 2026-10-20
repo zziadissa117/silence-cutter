@@ -35,6 +35,12 @@ and why. These notes are what earlier sessions learned the hard way.
   AAC, and there is no WebKit. Real renders can't be run; test the logic with
   vitest and media plumbing with mediabunny in a `// @vitest-environment node`
   test, or ffmpeg (installed) on files in the scratchpad.
+- Chrome for Testing (Google's build, `storage.googleapis.com/chrome-for-testing-public`,
+  138.0.7204.168 linux64 - the one `server/Dockerfile` uses) does encode H.264 and
+  decode H.264/AAC (not HEVC; no AAC encoder - `@mediabunny/aac-encoder`). Real
+  batch renders run in it here: `server/main.mjs` with `CUTTER_SERVER_TEST_TOKEN`
+  and `CHROME_EXTRA_ARGS=--remote-debugging-port=...`, the Supabase functions
+  answered over CDP `Fetch` (server/README.md, "Running it on a computer").
 - `git checkout tsconfig.tsbuildinfo` after every `tsc -b`/build.
 - Checks before every push: `npx vitest run`, `npx tsc -b`, `npm run lint`,
   `npx vite build`. Add a CHANGELOG entry (newest first) for every change.

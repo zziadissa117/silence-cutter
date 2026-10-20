@@ -42,6 +42,7 @@ import type { Job } from './jobs'
 import { NO_POSTING, type Campaign, type HeadlineStyle } from './look'
 import { batchTimesOn, listPosts, stackTimesOn, stoppable, stopPostsNow, takenTimes, type CampaignPlace, type ServerPost } from './posting'
 import { loadBankFile, type JobBatch } from './store'
+import { SERVER_MODE, serverConnected } from './serverFlag'
 
 /** How many days are kept made ahead: a week of posts waiting, so a few days
  *  without opening the app never leave a day empty. */
@@ -294,6 +295,9 @@ export async function topUp({
   latest?: () => BatchBank
   now?: Date
 }): Promise<BatchBank | null> {
+  // Moved to the Cutter server, or about to be: made there (serverLink.ts,
+  // serverMode.ts), never here too.
+  if (!SERVER_MODE && (bank.where === 'server' || (serverConnected() && bank.layout !== 'engine'))) return null
   if (!bank.running || missingFor(bank).length > 0) return null
   const slots = runSlots({ bank, place, campaignId: campaign.id, taken, now })
   if (slots.length === 0) return null
@@ -459,6 +463,50 @@ export async function startOver({
   }
   await save(next)
   return { bank: next, taken: gone.length, failed: outcome.failed.length, reason: outcome.failed[0]?.reason, posts }
+}
+
+/** A batch changing hands between this phone and the Cutter server
+ *  (serverLink.ts, serverMode.ts): the videos this side has queued and not
+ *  started are dropped - the other side makes them, their mixes freed for it
+ *  - and the days are counted from what is really there: the posts, and the
+ *  videos this side is still making. */
+export function handOver({
+  bank,
+  campaignId,
+  jobs,
+  posts,
+  removeJob,
+  now = new Date(),
+}: {
+  bank: BatchBank
+  campaignId: string
+  jobs: readonly Job[]
+  posts: readonly ServerPost[]
+  removeJob: (id: string) => void
+  now?: Date
+}): BatchBank {
+  const videos = dayVideos(posts, jobs, campaignId, now)
+  const gone = videos.filter((v) => v.kind === 'job' && v.removable)
+  for (const v of gone) removeJob(v.id)
+  const goneIds = new Set(gone.map((v) => v.id))
+  const prefixes = (fileName: string | null, headline: string | null) => (fileName ? mixPrefixes(bank, fileName, headline ?? '') : [])
+  const ofJob = (id: string) => {
+    const job = jobs.find((j) => j.id === id)
+    return job ? prefixes(job.name, job.headlineText) : []
+  }
+  const kept = [
+    ...posts
+      .filter((p) => p.campaignId === campaignId && p.batch && p.status !== 'rejected' && p.status !== 'failed')
+      .flatMap((p) => prefixes(p.fileName, p.headline)),
+    ...videos.filter((v) => v.kind === 'job' && !goneIds.has(v.id)).flatMap((v) => ofJob(v.id)),
+  ]
+  return {
+    ...bank,
+    made: unmake(bank.made ?? [], gone.flatMap((v) => ofJob(v.id)), kept),
+    filled: countedDays(videos.filter((v) => !goneIds.has(v.id)), now),
+    madeThrough: undefined,
+    lastPerDay: undefined,
+  }
 }
 
 /** The days from today on as they really are: how many of the batch's

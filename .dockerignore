@@ -1,0 +1,12 @@
+# The Cutter server's image (server/Dockerfile) needs the app's sources, not
+# these. Not supabase/: the app uses some of its posting code (window, slots).
+.git
+node_modules
+dist
+dev-dist
+engine
+docs
+serverprobe
+serverprobe.html
+*.local
+.netlify

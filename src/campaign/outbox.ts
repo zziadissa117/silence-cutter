@@ -13,6 +13,7 @@
 
 import { PostingError, finishSend, putPart, startSend, type ServerPost } from './posting'
 import { deleteSend, loadSendVideo, loadSends, saveSend, saveSendVideo, updateSend, type SendEntry } from './store'
+import { SERVER_MODE } from './serverFlag'
 
 const DIR = 'posting'
 /** A copy with no post to show for it any more is let go after this. */
@@ -240,6 +241,9 @@ async function sendOne(entry: SendEntry): Promise<void> {
 async function sent(entry: SendEntry, postId: string): Promise<void> {
   await updateSend(entry.key, { state: 'sent', postId, error: undefined })
   progress.set(entry.key, 1)
+  // On the Cutter server nobody watches it there - the phone plays Postiz's
+  // copy - and a week of batch videos kept would fill its small disk.
+  if (SERVER_MODE) await forgetSend(entry.key)
   emit()
 }
 

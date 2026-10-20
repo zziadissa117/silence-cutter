@@ -29,12 +29,12 @@ import { MusicBankView } from './MusicBankView'
 import { VideoBankView } from './VideoBankView'
 import { loadMusicBank, songFile } from './musicBank'
 import { BatchView } from './BatchView'
-import { oneAtATime, overfull, takenBy, topUp, trimDown, type BatchVideo } from './batchRun'
+import { oneAtATime, overfull, settled, startOver, takenBy, topUp, trimDown, type BatchVideo } from './batchRun'
 import { AnalyticsView, answerSuggestion, saveTarget, useCampaignRows } from './AnalyticsView'
 import { FormatsView, type FormatClips } from './FormatsView'
 import { daysLine, spreadOver } from './formats'
 import type { ViewsByAccount } from './analytics'
-import { filesOf, stepTitle, styleFor, stylesOf, type BankFile } from './batch'
+import { filesOf, stepTitle, styleFor, stylesOf, type BankFile, type BatchBank } from './batch'
 import { CampaignsView } from './CampaignsView'
 import { CloudError, currentSession, signOut, syncNow, type Session, type SyncState } from './cloud'
 import { AngleEditor, CampaignEditor } from './Editors'
@@ -203,7 +203,11 @@ import {
   whenChangedLocally,
   type JobClips,
   type JobPhase,
+  BATCH_BANK_SAVED,
 } from './store'
+import { SERVER_MODE } from './serverFlag'
+import { linkBatches, SERVER_URL_EVENT, serverUrl } from './serverLink'
+import { reportMaking, SERVER_BANKS_EVENT, SERVER_COMMAND_EVENT, serverLog, type ServerCommand, type ServerMaking } from './serverMode'
 import { TabBar, type Tab } from './TabBar'
 import { keepScreenOn } from './wakeLock'
 
@@ -805,6 +809,18 @@ export function CampaignApp() {
       window.removeEventListener('online', runSync)
       document.removeEventListener('visibilitychange', onVisible)
     }
+  }, [runSync])
+
+  // On the Cutter server the page stays open for days: what he changes on a
+  // phone - a campaign's look, its posting times and accounts - is read again
+  // every few minutes, as a phone does each time it is opened.
+  useEffect(() => {
+    if (!SERVER_MODE) return
+    const timer = window.setInterval(() => {
+      runSync()
+      if (postingHere()) void refreshProfile().then(() => setPosting(postingHere())).catch(() => {})
+    }, 5 * 60_000)
+    return () => window.clearInterval(timer)
   }, [runSync])
 
   // Posting: finished videos keep going up whenever the page is open; the
@@ -2372,7 +2388,8 @@ export function CampaignApp() {
         // top-up of it saved.
         await oneAtATime(owner.id, async () => {
           let bank = await loadBatchBank(owner.id)
-          if (!alive || !bank?.running) return null
+          // A batch moved to the Cutter server is made there, never here too.
+          if (!alive || !bank?.running || (bank.where === 'server' && !SERVER_MODE)) return null
           if (overfull(bank).length > 0) {
             ;({ bank } = await trimDown({ bank, campaignId: owner.id, jobs: jobsRef.current, removeJob, save: saveBatchBank }))
           }
@@ -2403,6 +2420,86 @@ export function CampaignApp() {
       window.clearInterval(timer)
     }
   }, [posting?.profile, campaigns, tab]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // On the Cutter server (serverMode.ts): a bank from the phone is made at
+  // once; Start over and "back to the phone" are carried out with the jobs
+  // here; and what is being made is reported for the phone to show.
+  useEffect(() => {
+    if (!SERVER_MODE) return
+    const onBanks = () => runBatchesRef.current()
+    const onCommand = (event: Event) => {
+      const { campaignId, command, done } = (event as CustomEvent<ServerCommand>).detail
+      void (async () => {
+        const bank = await loadBatchBank(campaignId)
+        if (bank && command === 'start-over') {
+          // Start and Stop stay the phone's: it stopped the batch itself when
+          // he tapped Start over, and may have started it again since.
+          const save = async (next: BatchBank) => saveBatchBank({ ...next, running: (await loadBatchBank(campaignId))?.running ?? next.running })
+          // After a top-up of it that is running, never instead of it.
+          let done = null
+          for (let tries = 0; done === null && tries < 20; tries++) {
+            await settled(campaignId)
+            const latest = (await loadBatchBank(campaignId)) ?? bank
+            done = await oneAtATime(campaignId, () => startOver({ bank: latest, campaignId, jobs: jobsRef.current, removeJob, save }))
+          }
+        }
+        if (bank && command === 'back-to-phone') {
+          for (const job of jobsRef.current) if (job.campaignId === campaignId && job.batch && job.status === 'queued') removeJob(job.id)
+          await saveBatchBank({ ...bank, running: false })
+        }
+      })()
+        .catch((error) => serverLog(`${command}: ${error instanceof Error ? error.message : String(error)}`))
+        .finally(done)
+    }
+    window.addEventListener(SERVER_BANKS_EVENT, onBanks)
+    window.addEventListener(SERVER_COMMAND_EVENT, onCommand)
+    reportMaking(() => {
+      const making: Record<string, ServerMaking> = {}
+      for (const job of jobsRef.current) {
+        if (!job.batch) continue
+        const one = (making[job.campaignId] ??= { queued: 0, now: null })
+        if (job.status === 'queued') one.queued++
+        else if (job.status !== 'done' && job.status !== 'failed' && job.status !== 'held') one.now = job.name
+      }
+      return making
+    })
+    return () => {
+      window.removeEventListener(SERVER_BANKS_EVENT, onBanks)
+      window.removeEventListener(SERVER_COMMAND_EVENT, onCommand)
+    }
+  }, [removeJob])
+
+  // The Cutter server (serverLink.ts): once its address is in Settings, every
+  // batch is made there - handed over, sent each change he makes, and what it
+  // made read back - whenever the app is open; nothing waits on it.
+  useEffect(() => {
+    const profile = posting?.profile
+    if (SERVER_MODE || !profile || !campaigns) return
+    let alive = true
+    const ids = campaigns.filter((c) => placeFor(profile, c.id).accounts.length > 0).map((c) => c.id)
+    const run = () => {
+      if (!alive || !serverUrl() || document.visibilityState !== 'visible') return
+      void linkBatches({ campaignIds: ids, jobs: () => jobsRef.current, removeJob }).catch(() => {})
+    }
+    let soon = 0
+    const onSaved = () => {
+      window.clearTimeout(soon)
+      soon = window.setTimeout(run, 2000)
+    }
+    run()
+    window.addEventListener(BATCH_BANK_SAVED, onSaved)
+    window.addEventListener(SERVER_URL_EVENT, run)
+    document.addEventListener('visibilitychange', run)
+    const timer = window.setInterval(run, 30_000)
+    return () => {
+      alive = false
+      window.clearTimeout(soon)
+      window.clearInterval(timer)
+      window.removeEventListener(BATCH_BANK_SAVED, onSaved)
+      window.removeEventListener(SERVER_URL_EVENT, run)
+      document.removeEventListener('visibilitychange', run)
+    }
+  }, [posting?.profile, campaigns, removeJob]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Analytics: each account's views as the server last read them (views.ts),
   // fetched when the app opens, comes back on screen, and every half hour.

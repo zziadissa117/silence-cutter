@@ -12,6 +12,7 @@ import { useEffect, useRef, useState } from 'react'
 import { VideoPicker } from '../VideoPicker'
 import { pickArrived, pickSaved } from '../pickWatch'
 import {
+  addDays,
   dayLabel,
   emptyBank,
   DEFAULT_FORMULA,
@@ -83,6 +84,8 @@ import {
   stopEngineJob,
   type EngineJob,
 } from './engine'
+import { serverConnected } from './serverFlag'
+import { bankFiles, lastServerStatus, linkProblem, sendingLine, serverCommand, serverMaking, SERVER_LINK_EVENT, type LinkEvent } from './serverLink'
 
 const LAST_KEY = 'batch.campaign'
 /** A track this big is any song there is. */
@@ -165,6 +168,15 @@ function writeList(key: string, list: string[]): void {
 }
 
 const mb = (bytes: number) => `${Math.max(1, Math.round(bytes / 1e6))} MB`
+
+/** "2 min ago", "at 14:05": when the server last said something. */
+function timeAgo(iso: string, now = Date.now()): string {
+  const minutes = Math.round((now - Date.parse(iso)) / 60_000)
+  if (!Number.isFinite(minutes)) return 'a while ago'
+  if (minutes < 1) return 'just now'
+  if (minutes < 60) return `${minutes} min ago`
+  return `at ${new Date(iso).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`
+}
 
 export function BatchView({
   campaigns,
@@ -266,6 +278,24 @@ export function BatchView({
       cancelled = true
     }
   }, [campaign?.id]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // The Cutter server (serverLink.ts): clips going up, and its bank read
+  // back - what it has made shows here as it happens.
+  const [, setLinkTick] = useState(0)
+  useEffect(() => {
+    const onLink = (event: Event) => {
+      const { campaignId: id, changed } = (event as CustomEvent<LinkEvent>).detail
+      setLinkTick((n) => n + 1)
+      if (!changed || id !== campaign?.id) return
+      void loadBatchBank(id).then((stored) => {
+        if (!stored || stored.campaignId !== bankRef.current?.campaignId) return
+        setBank(stored)
+        bankRef.current = stored
+      })
+    }
+    window.addEventListener(SERVER_LINK_EVENT, onLink)
+    return () => window.removeEventListener(SERVER_LINK_EVENT, onLink)
+  }, [campaign?.id])
 
   // What each reaction file is made of, reported once per file (clipCheck):
   // some reactions made every video from them laggy and others never, and
@@ -479,6 +509,13 @@ export function BatchView({
   const due = bank ? runSlots({ bank, place, campaignId: campaign.id, taken: takenOn }) : []
   const green = bank?.layout === 'greenscreen'
   const onEngine = bank?.layout === 'engine'
+  // Made on the Cutter server (serverLink.ts), or about to be: nothing is made here.
+  const onServer = !onEngine && (bank?.where === 'server' || serverConnected())
+  const sending = sendingLine(campaign.id)
+  const linkTrouble = onServer ? linkProblem(campaign.id) : null
+  const serverNow = onServer ? serverMaking(campaign.id) : null
+  const serverSeen = onServer ? lastServerStatus()?.page?.at : undefined
+  const serverQueued = (serverNow?.queued ?? 0) + (serverNow?.now ? 1 : 0)
   const corner = bank?.corner ?? DEFAULT_CORNER
   // The hooks picked, with their shares - none picked: headlines in the
   // angle's look.
@@ -549,7 +586,7 @@ export function BatchView({
     if (!current || current.running || !canStart) return
     remember(campaign.id)
     setProblem(null)
-    const next = { ...current, running: true, runProblem: undefined, spent: undefined }
+    const next = { ...current, running: true, runProblem: undefined, spent: undefined, startedAt: new Date().toISOString() }
     keep(next)
     runTopUp(next)
   }
@@ -590,12 +627,24 @@ export function BatchView({
 
   // The batch's videos not out yet, that Start over would take out.
   const outAhead = bank ? dayVideos(posts, jobs, campaign.id).filter((v) => v.removable).length : 0
+  // The batch's videos (made, or being made) on the days it fills ahead.
+  const aheadEnd = addDays(todayHere(), AHEAD_DAYS)
+  const aheadCount = bank ? dayVideos(posts, jobs, campaign.id).filter((v) => v.date < aheadEnd).length : 0
   /** Start over: every video of the batch not out yet comes out and can be
    *  made again with what he has set now (batchRun.startOver); then Start. */
   const runStartOver = () => {
     if (!bank) return
     const confirmText = `Take out the ${outAhead} video${outAhead === 1 ? '' : 's'} of this batch that haven't gone out yet, to make them again with your latest settings? Your clips, headlines and songs stay - tap Start after to make them.`
     if (!window.confirm(confirmText)) return
+    if (onServer) {
+      // The server has the batch's videos still to be made: it takes them out.
+      keep({ ...bank, running: false })
+      setProblem(null)
+      void serverCommand(campaign.id, 'start-over')
+        .then(() => setNotice('The server is taking them out. Tap Start to make them again.'))
+        .catch((error: unknown) => setProblem(error instanceof Error ? error.message : String(error)))
+      return
+    }
     setTopping(true)
     setProblem(null)
     setSaving('Taking the batch\'s videos out…')
@@ -627,9 +676,10 @@ export function BatchView({
   // While the tab is open, a running batch keeps up with the number on its
   // own (WhenDue): days over it lose the extra first, then a day gone by or
   // a higher number is made.
-  const over = running && bank ? overfull(bank) : []
+  // On the server, the server does both.
+  const over = running && bank && !onServer ? overfull(bank) : []
   const trimNow = over.length > 0 && saving === null && !topping
-  const dueNow = running && over.length === 0 && due.length > 0 && missing.length === 0 && saving === null && !topping
+  const dueNow = running && !onServer && over.length === 0 && due.length > 0 && missing.length === 0 && saving === null && !topping
   const setPerDay = (n: number) => {
     if (bank && Number.isFinite(n)) keep({ ...bank, perDay: Math.min(BATCH_MAX_PER_DAY, Math.max(0, Math.round(n))) })
   }
@@ -767,7 +817,7 @@ export function BatchView({
           : running
             ? perDay === 0
               ? 'Paused · 0 a day'
-              : `Running · ${perDay} a day`
+              : `Running${onServer ? ' on the server' : ''} · ${perDay} a day`
             : `Start · ${perDay} a day`
   // How long the footage lasts at this many a day.
   const daysLeft = Number.isFinite(left) && perDay > 0 ? Math.ceil(left / perDay) : Infinity
@@ -1108,11 +1158,38 @@ export function BatchView({
           <button type="button" className="btn primary batch-make" disabled={!canStart || busyMaking} onClick={start}>
             {makeLabel}
           </button>
+          {running && perDay > 0 ? (
+            // What "Running · 10 a day" is aiming for: "it says 10 a day, but
+            // in Posts there are only 20 - I don't know how much it wants to make".
+            <p className="hint batch-aim">
+              Next {AHEAD_DAYS} days: {aheadCount} of {perDay * AHEAD_DAYS} videos made
+              {onServer
+                ? serverQueued > 0
+                  ? ` - the server is making ${serverQueued} more, one after another`
+                  : ''
+                : aheadCount < perDay * AHEAD_DAYS
+                  ? ` - it makes the other ${perDay * AHEAD_DAYS - aheadCount} a few at a time`
+                  : ''}
+              .
+            </p>
+          ) : null}
+          {onServer && (bank.where === 'server' || sending || linkTrouble || bankFiles(bank).length > 0) ? (
+            <p className={`hint batch-server${linkTrouble ? ' warn-text' : ''}`}>
+              {sending ??
+                (linkTrouble
+                  ? `Couldn't reach the server: ${linkTrouble} It tries again by itself.`
+                  : serverNow?.now
+                    ? `On the server now: ${serverNow.now}`
+                    : bank.where === 'server'
+                      ? `Made on the server${serverSeen ? ` - last heard from ${timeAgo(serverSeen)}` : ''}.`
+                      : 'Handing this batch to the server…')}
+            </p>
+          ) : null}
           {bank.runProblem && running ? <p className="hint warn-text">The last days couldn't be made: {bank.runProblem} It tries again next time.</p> : null}
           <p className="hint new-post-to batch-span">
             {running
-              ? `${bank.madeThrough ? `Made through ${dayLabel(bank.madeThrough)}. ` : ''}It makes the next days on its own whenever the app is open${onEngine ? '' : ' - until every different video is made'}.`
-              : `Makes the next ${AHEAD_DAYS} days now, then keeps going on its own whenever the app is open${onEngine ? '' : ', until every different video is made'}.`}
+              ? `${bank.madeThrough ? `Made through ${dayLabel(bank.madeThrough)}. ` : ''}It makes the next days on its own ${onServer ? 'on the server, day and night' : 'whenever the app is open'}${onEngine ? '' : ' - until every different video is made'}.`
+              : `Makes the next ${AHEAD_DAYS} days now, then keeps going on its own ${onServer ? 'on the server, day and night' : 'whenever the app is open'}${onEngine ? '' : ', until every different video is made'}.`}
             {running ? (
               <>
                 {' '}
@@ -1184,7 +1261,9 @@ export function BatchView({
                 ? 'No music yet, so the videos will be silent.'
                 : onEngine
                   ? 'Keep the app open while new clips go up to the engine; after that it makes the videos with the app closed. Each waits for your approval in Posts.'
-                  : `Keep the app open with the screen on while they're made - about half a minute each. Each waits for your approval in Posts, and you get one notification when they're all ready.`}
+                  : onServer
+                    ? 'Keep the app open while new clips go up to the server; after that it makes the videos with the app closed. Each waits for your approval in Posts.'
+                    : `Keep the app open with the screen on while they're made - about half a minute each. Each waits for your approval in Posts, and you get one notification when they're all ready.`}
           </p>
 
           {inProgress.length > 0 ? (

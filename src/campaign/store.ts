@@ -32,6 +32,7 @@ import type { MusicLevel } from './music'
 import type { CaptionPosition, CaptionSize, CaptionStyle, CaptionWord } from './captions'
 import type { CampaignPlan } from './plan'
 import type { Guess } from './sort'
+import { SERVER_MODE } from './serverFlag'
 
 export type JobPhase = 'reading' | 'model' | 'listening' | 'cutting' | 'joining' | 'cutout'
 
@@ -172,8 +173,10 @@ export const EDIT_WINDOW_MS = 2 * 60 * 60 * 1000
  *  to give it a campaign. */
 export const UNSENT_KEEP_MS = 7 * 24 * 60 * 60 * 1000
 
-/** How long a made job stays editable. */
+/** How long a made job stays editable. On the Cutter server, not at all:
+ *  Edit again is the phone's, and its disk is small. */
 export function keptFor(row: { unsent?: boolean }): number {
+  if (SERVER_MODE) return 0
   return row.unsent ? UNSENT_KEEP_MS : EDIT_WINDOW_MS
 }
 
@@ -986,6 +989,14 @@ export async function saveBankFile(id: string, file: Blob): Promise<void> {
 
 /** A bank file back, or null when it is gone or not all there. */
 export async function loadBankFile(file: BankFile): Promise<File | null> {
+  // On the Cutter server the clips are on its disk, sent there by the phone
+  // (server/main.mjs), not in this page's storage.
+  if (SERVER_MODE) {
+    const res = await fetch(`/local/files/${encodeURIComponent(file.id)}`).catch(() => null)
+    if (!res?.ok) return null
+    const blob = await res.blob()
+    return blob.size > 0 ? new File([blob], file.name, { type: file.type || blob.type }) : null
+  }
   const pieces = await orTimeout(db.clipParts.where('key').startsWith(bankPrefix(file.id)).sortBy('key'), 20_000, 'Reading a batch file')
   const blob = new Blob(
     pieces.map((p) => p.bytes),
@@ -1124,8 +1135,12 @@ export async function loadBatchBank(campaignId: string): Promise<BatchBank | nul
   }
 }
 
+/** Fired on window with the campaign's id whenever a batch bank is saved. */
+export const BATCH_BANK_SAVED = 'cutter:batch-bank-saved'
+
 export async function saveBatchBank(bank: BatchBank): Promise<void> {
   await setMeta(bankKey(bank.campaignId), JSON.stringify(bank))
+  if (typeof window !== 'undefined') window.dispatchEvent(new CustomEvent(BATCH_BANK_SAVED, { detail: bank.campaignId }))
 }
 
 export async function claimAttempt(id: string): Promise<boolean> {

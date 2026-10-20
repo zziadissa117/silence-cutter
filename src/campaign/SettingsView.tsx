@@ -7,6 +7,8 @@ import type { PresetName } from '../media/silenceMath'
 import type { Session, SyncState } from './cloud'
 import { savedTheme, savedTips, setTheme, setTips, type Theme } from '../theme'
 import { cleanEngineUrl, engineStatus, engineUrl, setEngineUrl } from './engine'
+import { bringBack, connectServer, serverStatus, serverUrl, setServerUrl } from './serverLink'
+import { loadBatchBank } from './store'
 import { DEFAULT_WINDOW } from '../../supabase/functions/postiz/window.ts'
 import { onFixedTimes, switchToRandom, windowLabel, type LocalPosting, type Profile } from './posting'
 import {
@@ -361,7 +363,10 @@ export function SettingsView({
         </div>
       )}
 
-      {posting ? <EngineSetting /> : null}
+      {posting ? <ServerSetting campaignIds={Object.keys(posting.profile.settings.campaigns ?? {})} /> : null}
+      {/* Le plateau's engine: only for a phone that already uses it - the
+          Cutter server above makes the same batches as this phone. */}
+      {posting && engineUrl() ? <EngineSetting /> : null}
 
       <NoiseCutting />
 
@@ -445,6 +450,100 @@ export function SettingsView({
   )
 }
 
+
+/** The Cutter server's address (server/ on Railway): once connected, every
+ *  batch is made there (serverLink.ts). */
+function ServerSetting({ campaignIds }: { campaignIds: string[] }) {
+  const [url, setUrl] = useState(() => serverUrl() ?? '')
+  const [line, setLine] = useState<{ text: string; bad: boolean } | null>(null)
+  const [busy, setBusy] = useState(false)
+  const connected = Boolean(serverUrl())
+  useEffect(() => {
+    if (!serverUrl()) return
+    let alive = true
+    void serverStatus()
+      .then((status) => {
+        if (!alive) return
+        const making = Object.values(status.page?.making ?? {}).reduce((n, m) => n + m.queued + (m.now ? 1 : 0), 0)
+        setLine({
+          text: `Connected · ${status.freeGB ?? '?'} GB free · ${making > 0 ? `making ${making}` : status.chrome === 'running' ? 'waiting for the next days' : 'starting'}`,
+          bad: false,
+        })
+      })
+      .catch((error: unknown) => alive && setLine({ text: error instanceof Error ? error.message : String(error), bad: true }))
+    return () => {
+      alive = false
+    }
+  }, [])
+  const connect = async () => {
+    const clean = cleanEngineUrl(url)
+    if (!clean) {
+      setLine({ text: "That isn't a web address - paste the one Railway gives the server (https://…).", bad: true })
+      return
+    }
+    setBusy(true)
+    setUrl(clean)
+    const before = serverUrl()
+    setServerUrl(clean)
+    try {
+      const done = await connectServer()
+      setLine({ text: `Connected · ${done.freeGB ?? '?'} GB free. Your batches are made there from now on - the clips go up while the app is open.`, bad: false })
+    } catch (error) {
+      setServerUrl(before)
+      setLine({ text: error instanceof Error ? error.message : String(error), bad: true })
+    } finally {
+      setBusy(false)
+    }
+  }
+  const disconnect = async () => {
+    if (!window.confirm('Make the batches on this phone again? The server stops making them; what it already made stays in Posts.')) return
+    setBusy(true)
+    try {
+      for (const id of campaignIds) {
+        if ((await loadBatchBank(id))?.where === 'server') await bringBack(id, { jobs: () => [], removeJob: () => {} })
+      }
+      setServerUrl(null)
+      setUrl('')
+      setLine(null)
+    } catch (error) {
+      setLine({ text: `${error instanceof Error ? error.message : String(error)} Try again with signal.`, bad: true })
+    } finally {
+      setBusy(false)
+    }
+  }
+  return (
+    <>
+      <div className="list-title">Server</div>
+      <div className="setting engine-setting">
+        <div className="setting-text">
+          <input
+            type="url"
+            className="find"
+            inputMode="url"
+            autoCapitalize="off"
+            autoCorrect="off"
+            placeholder="https://your-cutter.up.railway.app"
+            aria-label="Server address"
+            value={url}
+            onChange={(e) => setUrl(e.target.value)}
+          />
+          {line ? <span className={`row-line wrap${line.bad ? ' warn-text' : ''}`}>{line.text}</span> : null}
+          <span className="hint tip" style={{ display: 'block' }}>
+            Makes your batches on a server, day and night, with the phone closed - the same videos as here.
+          </span>
+        </div>
+        <button type="button" className="btn small primary" disabled={busy || !url.trim()} onClick={() => void connect()}>
+          {busy ? 'Checking…' : connected ? 'Check' : 'Connect'}
+        </button>
+      </div>
+      {connected ? (
+        <button type="button" className="linkbtn" disabled={busy} onClick={() => void disconnect()}>
+          Make batches on this phone again
+        </button>
+      ) : null}
+    </>
+  )
+}
 
 /** The engine's address (engine/ on Railway), checked against it with this login. */
 function EngineSetting() {

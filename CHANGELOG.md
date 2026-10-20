@@ -3,6 +3,30 @@
 Newest first. Every change says what it does, how to use it, and how it works
 underneath. Kept up to date with each commit.
 
+## The Cutter server: every batch made on Railway, day and night, with the phone closed
+./deploy.sh for the phone, then the Railway steps in `server/README.md` once (no ./deploy-server.sh: the login
+function already has `whoami`). New dependency, OK'd with the server: `@mediabunny/aac-encoder` 1.58.0 (only the
+server loads it - phones never download it).
+**What it is:** the Cutter itself, running in Chrome on a server. Same mixing, same rendering, same sending, so the
+same videos - only the phone is left out. He asked for "a one-to-one replica ... the only difference I want is for
+it to be outside of my phone": the phone overheated making them, and only made them while it was open (10 a day
+asked, 20 in Posts).
+**How to use it:** Settings, **Server**, paste the Railway address, **Connect**. Then nothing: every batch moves
+there by itself - the clips go up once while the app is open, then every change made in the Batch tab follows. The
+Batch tab says "Running on the server", what it is making now and how many more, and "Next 7 days: X of Y made".
+Start, Stop, the number a day, Start over and the clips all work as before. Settings, **Make batches on this phone
+again** brings them back. The old **Engine** box only shows on a phone that already uses it.
+**How:** `server/main.mjs` (Node, no packages) runs Chrome for Testing headless on `campaign.html?server=1`, checks
+the phone's login with `whoami`, takes clips in 8 MB pieces (HEVC/HDR made H.264 by ffmpeg once), and passes the
+banks to the page through an inbox. The page (`serverMode.ts`) signs in as the phone, in his time zone, writes AAC
+with mediabunny's own encoder (Chrome on Linux has none), and reports what it made. The phone (`serverLink.ts`)
+hands each batch over (`batchRun.handOver`: its queued videos left to the server, the days counted again) and reads
+the server's progress back; `batch.fromPhone` keeps his settings the phone's and what was made the server's, so no
+video is made twice. The server keeps no copy of a video once Postiz has it and lets unused clips go, for Railway's
+5 GB disk. Tested here end to end with the real server program and Chrome: a batch of 4 made, H.264 1080x1920 30 fps
++ AAC, colours matching the clips, sent through a stand-in for the posting function (+ `serverBank.test.ts`,
+`serverLink.test.ts`). Not tested here: Railway itself, and his own 4K clips on it.
+
 ## Fix: laggy hooks - a trimmed reaction no longer starts in its hidden lead-in
 Only ./deploy.sh is needed. Videos already made stay as they are; new ones from the same reactions are fine.
 **What was wrong:** his reactions are trimmed on the iPhone, and a trimmed clip keeps the frames from the key frame

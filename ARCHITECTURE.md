@@ -14,7 +14,10 @@ never go to a server except as the finished file on its way to Postiz. There is
 no ffmpeg and no ffprobe anywhere in the app. The one exception, OK'd by the
 owner: **the engine** (`engine/`, Python + ffmpeg on Railway) - Ilyan's Le
 plateau making big batches on a server. The phone sends it the campaign's bank
-for that (Batch, layout On the engine); see "The engine" below.
+for that (Batch, layout On the engine); see "The engine" below. And **the Cutter
+server** (`server/`, his own Railway): this same app, headless in Chrome, making
+every batch day and night once it is connected - the phone sends it the banks;
+see "The Cutter server" below.
 
 ## Stack
 
@@ -66,6 +69,9 @@ first when something would be lost.
   function and stored in `cutter_profile_secrets`; never on the phone.
 - **Deploy hazard:** `supabase/functions/cutter/index.ts` in the repo must be
   the deployed one. Deploying an older copy reopens signup.
+- **The Cutter server** (`server/`) checks every public call's token with `whoami`, makes videos for one space and
+  one posting profile only, and keeps the token on its own volume (it posts while the phone is closed). Its app
+  page and `/local/*` routes listen on 127.0.0.1 only.
 - **The engine** (`engine/`) checks every call's cutter login token with the
   `cutter` function's `whoami` (a valid token gets its space id, nothing else),
   keeps each space's batches apart, and answers browsers only from
@@ -290,6 +296,28 @@ campaign's accounts (`campaignViews`), compares with a week before (`weekChange`
 running batch suggests a small step (`suggestRate`: up a fifth or at `BatchBank.viewTarget` ->
 more; down almost a third -> fewer; quiet 3 days after an answer). Yes saves the bank's
 `perDay` and runs the app's batch runner (`runBatchesRef`), which trims or tops up at once.
+
+## The Cutter server (`server/`, on Railway)
+
+The Cutter app itself in Chrome for Testing (headless, Linux), driven by `server/main.mjs` (Node, no packages):
+the same top-ups, mixing, rendering and sending as on the phone. Setup and diagram: `server/README.md`.
+
+- Public port (`PORT`): `/health`; everything else needs the phone's Cutter token (Bearer), checked with the
+  `cutter` function's `whoami`, and only that space - and the posting profile that connected first - once
+  connected (`/connect`, `/files`, `/banks/:id`, `/banks/:id/start-over|back-to-phone`, `/status`). Browsers only
+  from `ALLOWED_ORIGIN` (the Netlify app). The token and profile are kept in `/data/session.json` on its volume:
+  it makes videos while the phone is closed.
+- Local port (`APP_PORT`, 127.0.0.1 only): the built app (never its service worker) and `/local/*` for the page:
+  the session, the clips, the inbox, its status and log.
+- The page (`serverMode.ts`, `SERVER_MODE` = `?server=1` on localhost): signs in as the phone, always "visible",
+  registers `@mediabunny/aac-encoder` (a chunk phones never download - `vite.config.ts`), reads clips from the
+  server's disk (`store.loadBankFile`), takes the inbox every 10 s (`batch.fromPhone`), Start over and back to the
+  phone (`CampaignApp`), and reports the banks and what it is making every 30 s. It never pushes campaigns
+  (`cloud.syncNow`), keeps no made video once sent (`store.keptFor`, `outbox.sent`).
+- Phone (`serverLink.ts`, from `CampaignApp` while the app is open): connects once per opening, hands every
+  batch over (clips first, then `batchRun.handOver`, `where: 'server'`, `movedAt`), sends each settings change
+  (`settingsKey`), and reads back the server's progress. `topUp` makes nothing on a phone with a server connected.
+- HEVC/HDR clips are made H.264 by ffmpeg when they arrive; unused clips are let go after two days (`sweepFiles`).
 
 ## The engine (`engine/`, on Railway)
 

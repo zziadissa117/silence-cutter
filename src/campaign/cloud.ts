@@ -30,6 +30,7 @@ import {
   type StoredFile,
   type StoredRow,
 } from './store'
+import { SERVER_MODE } from './serverFlag'
 
 const FUNCTION_URL = 'https://uykuoibqdxmpbbrsmyad.supabase.co/functions/v1/cutter'
 /** The project's publishable key - public by design; the function checks the
@@ -357,7 +358,8 @@ export function syncNow(): Promise<boolean> {
         again = false
         const session = currentSession()
         if (!session) return changed
-        await pushAll(session.token)
+        // The Cutter server only reads the campaigns: what is set is the phones'.
+        if (!SERVER_MODE) await pushAll(session.token)
         changed = (await pullAll(session.token)) || changed
       } while (again)
       return changed

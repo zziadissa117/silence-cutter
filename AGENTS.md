@@ -54,7 +54,9 @@ only, no Supabase); `./deploy-server.sh` ships the `postiz` and `cutter` functio
    `delete`/`drop`; those are run by hand in the SQL editor.
 4. Videos never leave the phone except as the finished MP4 to Postiz, and the
    campaign bank sent to **the engine** (`engine/`, OK'd by the owner) when he
-   makes a batch there. Never upload a raw recording anywhere else.
+   makes a batch there, or to **the Cutter server** (`server/`, his own Railway,
+   asked for by him 2026-10-20) once it is connected. Never upload a raw
+   recording anywhere else.
 5. Local-first: every change lands on the phone at once and syncs in the
    background; nothing waits on the network except first sign-in and posting.
 6. One page runs at a time. Do not auto-update the service worker.
@@ -80,7 +82,11 @@ only, no Supabase); `./deploy-server.sh` ships the `postiz` and `cutter` functio
 - Posting (server): `supabase/functions/postiz/*` (`slots.ts` times, `caption.ts`, `batch.ts`, `hand.ts`, `attach.ts`, `failed.ts` missed accounts,
   `channels.ts` accounts a campaign holds / `endPlan` for ending one - phone side `EndCampaign.tsx`)
 - Duplicate protection: `campaign/fingerprint.ts` (never key a send or a bank file on a random id alone)
-- Login (server): `supabase/functions/cutter/index.ts` (`whoami` is the engine's login check)
+- Login (server): `supabase/functions/cutter/index.ts` (`whoami` is the engine's and the Cutter server's login check)
+- The Cutter server (Railway: this same app headless in Chrome for Testing, making every batch day and night):
+  `server/main.mjs` (Node, no packages), `server/Dockerfile`, `server/railway.json`, setup in `server/README.md`;
+  app side `serverMode.ts` (`?server=1` on its localhost, `serverFlag.ts`), phone side `serverLink.ts` (hand-over,
+  each change, progress back; `batch.fromPhone` says who owns which field, `batchRun.handOver`), Settings "Server"
 - The engine (Railway, Python + ffmpeg, Ilyan's Le plateau): `engine/` (setup in `engine/README.md`); phone side
   `campaign/engine.ts`, Batch layout "On the engine", Settings "Engine". Tests: `cd engine && python3 -m unittest tests.test_engine`
 

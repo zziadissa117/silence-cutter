@@ -22,6 +22,11 @@ export default defineConfig({
         main: fileURLToPath(new URL('./index.html', import.meta.url)),
         campaign: fileURLToPath(new URL('./campaign.html', import.meta.url)),
       },
+      // The AAC encoder only the Cutter server needs (serverMode.ts), in a
+      // file of its own that a phone never fetches or keeps.
+      output: {
+        manualChunks: (id) => (id.includes('@mediabunny/aac-encoder') ? 'server-aac' : undefined),
+      },
     },
   },
   plugins: [
@@ -34,6 +39,7 @@ export default defineConfig({
       registerType: 'prompt',
       workbox: {
         globPatterns: ['**/*.{js,css,html,svg,png,ico,woff2}'],
+        globIgnores: ['**/server-aac-*.js'],
         // Take over as soon as a new version downloads, instead of waiting
         // for every open copy of the old page to close. iOS never closes a
         // bookmarked web app, only freezes it, so waiting meant forever. The
