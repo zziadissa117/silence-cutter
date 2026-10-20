@@ -1,0 +1,57 @@
+# Handoff - state on 2026-10-20 (evening)
+
+Read this with `CLAUDE.md`/`AGENTS.md` and the newest `CHANGELOG.md` entries. Branch
+`claude/cutter-lockdown-and-map`; he ships with `cd ~/Projects/silence-cutter && git pull && ./deploy.sh`.
+He wants plain words, no permission questions (questions are fine), the deploy command first.
+
+## What is live
+
+- His phone runs build **2026-10-20 22:20** = commit `f0a8fc8` (the newest). Check a report's `version` in
+  `cutter_errors` before deciding a fix "didn't work" - twice today the fix simply wasn't deployed yet.
+- In it: the freeze/lag fix for reaction starts (`1352fcf`), "More each day" for batches (`f0a8fc8`), and the
+  Cutter server's phone side (`cbbcd49`, does nothing until a server is connected in Settings).
+- No `supabase/functions` changes pending; the live `cutter` function already has `whoami`.
+
+## Open threads
+
+1. **Reactions laggy / frozen at the start (batch hooks).** History: clips he trims on the iPhone keep hidden
+   lead-in frames before 0 (`clipParts.firstShown`, `efb7869`); some videos then froze instead
+   (`1352fcf`: `steadyFrom`/`steadyStart` start a clip on its first steady frame; `writeWhole` starts a batch
+   clip on its first decoded frame instead of holding it). Reproduced and verified only in Chrome for Testing,
+   not on iPhone Safari. **Check first:** `select * from cutter_errors where phase = 'start' and version >=
+   '2026-10-20 22:20'` - every video whose start still holds or skips frames reports it, with the clip's own
+   frame times. The 22:20 reaction reports (phase `reaction`) say "N hidden before the start, steady start"
+   for IMG_0248-0264; his rejections line up with the hidden-frame counts (0249/0250/0252/0253/0261-0263 worst).
+   Videos made before 22:20 are not fixed - "Start over" in the Batch tab remakes the ones not out yet.
+2. **Cutter server on Railway** (`server/`, `server/README.md`): the app itself headless in Chrome for Testing,
+   making every batch day and night. Built and tested end to end here (stand-in posting function over CDP),
+   not on Railway - he hasn't set it up yet (no reports from a headless device). Known limits told to him:
+   Hobby volume 5 GB (it lets unused clips go after 2 days and drops its copy once Postiz has a video), one
+   posting profile per server, no "Edit again" on server-made videos, Google's emoji instead of Apple's.
+   The Docker image couldn't be built here (Debian mirrors blocked by the proxy); the app builds from exactly
+   the image's context.
+3. **Rejected batch videos are not replaced**: `filled` still counts them, so "10 a day" can mean fewer going
+   out. Asked him whether to remake them automatically with a different mix - no answer yet. Don't change it
+   without his yes.
+4. **Grok Bot idea** (send finished videos to brands on WhatsApp/Discord, read approve / changes, approve in
+   the Cutter when the brand approves, onboard campaigns): plan explained only, nothing built. Waiting on him for
+   where the links go for Cantina, Lock In, Lovable BATCH, Mirage, Money Pilot, OpenArt Batch and Videotto.
+
+## The planner (`zziadissa117/ugc-planner`)
+
+Netlify deploys `main` by itself; changes were pushed to `main` (and `claude/cutter-bridge-accounts`). Done and
+live: the `min_views` crash (Dexie v9), the Post grid ticking boxes on its own / splitting one post into columns
+(`data/cutterBridge.ts`: `mergeSplitPosts`, `joinHandColumns`, `claim`), and negative money (corrections come
+off the day they correct - `redateCorrections`, `removeVideoPost(..., { correction: true })`).
+
+## Testing real renders here
+
+Chromium in this container can't encode H.264; Chrome for Testing can. Download
+`https://storage.googleapis.com/chrome-for-testing-public/138.0.7204.168/linux64/chrome-linux64.zip`, then run
+`server/main.mjs` as in `server/README.md` ("Running it on a computer") with `CUTTER_SERVER_TEST_TOKEN` and
+`CHROME_EXTRA_ARGS=--remote-debugging-port=9334`; answer the Supabase functions over CDP `Fetch.requestPaused`
+(pull -> one campaign, profile, posts [], start -> upload URLs on a local receiver, sent). To check a start
+frame by frame, make a source where every frame is its own solid colour (ffmpeg `geq` on `N`, `scenecut=0`),
+then match each output frame's mean colour to the source frames - repeated or skipped indices show a freeze or
+lag. Files that froze/lagged on the old code: a stream copy cut mid-GOP (`-ss 0.5 -c copy -copyinkf`) and
+every-other first frames (`select`, `-fps_mode passthrough`).
