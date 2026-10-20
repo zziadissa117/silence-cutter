@@ -3,6 +3,20 @@
 Newest first. Every change says what it does, how to use it, and how it works
 underneath. Kept up to date with each commit.
 
+## Fix: a reaction that froze at the start now just plays
+Only ./deploy.sh is needed; then close the Cutter and open it again. Videos already made stay as they are - Start over
+in the Batch tab makes the ones not out yet again.
+**What was wrong:** some batch videos froze on the reaction's first picture for up to a second, then played; others
+showed the first frames twice each (laggy). Both come from how a clip's first frames are stored: a clip cut where
+there is no key frame can't show anything until the next one, and the video held its first picture until then; a
+clip whose first frames come every other one played them at half speed. Reproduced here with files built both ways,
+on the code that was live: 16 frames frozen, and 10 frames doubled.
+**Fix:** every clip starts where its frames are steady (`clipParts.steadyFrom`/`steadyStart`, from the packets alone,
+never more than a second skipped), and a batch clip whose first frame only comes later starts on that frame instead
+of freezing on it (`writeWhole`). Both test files now play every frame from the first one. A video whose start still
+holds or skips frames reports it (`cutter_errors`, phase "start", `montageRender.openingProblem`), and each reaction
+is reported once more with where a video starts it.
+
 ## The Cutter server: every batch made on Railway, day and night, with the phone closed
 ./deploy.sh for the phone, then the Railway steps in `server/README.md` once (no ./deploy-server.sh: the login
 function already has `whoami`). New dependency, OK'd with the server: `@mediabunny/aac-encoder` 1.58.0 (only the

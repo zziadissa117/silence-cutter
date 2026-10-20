@@ -46,6 +46,54 @@ export async function firstShown(track: Pick<InputVideoTrack, 'getFirstTimestamp
   return Math.max(0, await track.getFirstTimestamp())
 }
 
+/** Frames this far past a clip's start are read to find where it goes steady. */
+const STEADY_LOOK = 3
+/** Gaps in a row, each no longer than one and a half frames, that count as steady. */
+const STEADY_RUN = 6
+/** The most of a clip's start ever skipped to get to its steady frames. */
+const MAX_SKIP = 1
+
+/**
+ * Where a clip's picture plays steadily from, at or after `from`: `from`
+ * itself for an ordinary file. A file whose first frame comes late - the
+ * video froze on it until the next - or whose first frames come every other
+ * one or worse - laggy, then normal - starts at its first frame from which
+ * the frames follow each other evenly. "It's just supposed to play the
+ * video": the reactions he trims on the iPhone came in both kinds.
+ */
+export function steadyFrom(times: readonly number[], from: number): number {
+  const shown = [...new Set(times)].filter((t) => t >= from - 1e-6).sort((a, b) => a - b)
+  if (shown.length < 3) return Math.max(from, shown[0] ?? from)
+  const gaps = shown.slice(1).map((t, k) => t - shown[k])
+  const usual = [...gaps].sort((a, b) => a - b)[Math.floor(gaps.length / 2)]
+  const steady = (gap: number) => gap <= usual * 1.5
+  for (let k = 0; k < gaps.length; k++) {
+    if (shown[k] - from > MAX_SKIP) break
+    if (!gaps.slice(k, k + STEADY_RUN).every(steady)) continue
+    // On time and steady from the start: exactly where it was asked to.
+    return k === 0 && steady(shown[0] - from) ? from : shown[k]
+  }
+  return steady(shown[0] - from) ? from : shown[0]
+}
+
+/** The start of a clip's steady frames (steadyFrom), read off its packets
+ *  alone - nothing decoded. */
+export async function steadyStart(video: InputVideoTrack, from: number, duration: number): Promise<number> {
+  const times: number[] = []
+  try {
+    for await (const packet of new EncodedPacketSink(video).packets(undefined, undefined, { metadataOnly: true })) {
+      times.push(packet.timestamp)
+      // Past the part looked at - a little further, for frames stored out of order.
+      if (packet.timestamp > from + STEADY_LOOK + 0.5 || times.length > 400) break
+    }
+  } catch {
+    return from
+  }
+  const start = steadyFrom(times.filter((t) => t <= from + STEADY_LOOK), from)
+  // Never so much that little of the clip is left.
+  return duration - start >= 0.5 ? start : from
+}
+
 /** Opens a clip, or says in plain words why it can't be used. The caller
  *  disposes `input`. */
 export async function openClip(file: Blob, which: string): Promise<Clip> {
@@ -57,13 +105,14 @@ export async function openClip(file: Blob, which: string): Promise<Clip> {
       throw new SilenceCutError(`This browser can't read the ${which} clip's format. Try saving it again from Photos.`)
     }
     const soundReadable = audio ? await audio.canDecode() : false
-    const [width, height, first, duration] = await Promise.all([
+    const [width, height, shownFrom, duration] = await Promise.all([
       video.getDisplayWidth(),
       video.getDisplayHeight(),
       firstShown(video),
       input.computeDuration(),
     ])
-    if (!(duration > first)) throw new SilenceCutError(`The ${which} clip is empty.`)
+    if (!(duration > shownFrom)) throw new SilenceCutError(`The ${which} clip is empty.`)
+    const first = await steadyStart(video, shownFrom, duration)
     return { input, video, audio: soundReadable ? audio : null, width, height, first, duration }
   } catch (error) {
     input.dispose()
@@ -130,6 +179,9 @@ export async function eachSound(
  *  exactly as long as its picture. The phone's decoder giving up partway is
  *  picked up again from the last frame, as the render does for his own
  *  video. Returns where the clip ends. */
+/** A first frame this much after a clip's start is late (a frame and a half at 30 fps). */
+const LATE_FIRST = 0.05
+
 export async function writeWhole(
   clip: Clip,
   at: number,
@@ -169,6 +221,10 @@ export async function writeWhole(
       let from = whole.start
       let done = -Infinity
       let recoveries = 0
+      // Where the clip's time 0 is: its start - or, under music (a batch),
+      // its first frame when that only comes later, so the video plays from
+      // it instead of freezing on it until it is due.
+      let origin: number | null = null
       let frames = new RangeReader(inTimestampOrder(new VideoSampleSink(clip.video).samples(from, whole.end)))
       try {
         for (;;) {
@@ -178,7 +234,8 @@ export async function writeWhole(
                 sample.close()
                 continue
               }
-              const timestamp = videoClock(at + Math.max(0, sample.timestamp - whole.start))
+              origin ??= !onSound && sample.timestamp - whole.start > LATE_FIRST ? sample.timestamp : whole.start
+              const timestamp = videoClock(at + Math.max(0, sample.timestamp - origin))
               videoEnd = timestamp + sample.duration
               done = sample.timestamp
               try {

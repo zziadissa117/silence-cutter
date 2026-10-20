@@ -147,8 +147,9 @@ function remember(id: string): void {
   }
 }
 
-/** Reaction files already reported (clipCheck), by fingerprint. */
-const CHECKED_KEY = 'batch.reactionsChecked'
+/** Reaction files already reported (clipCheck), by fingerprint - each again
+ *  once since the report says where a video starts it. */
+const CHECKED_KEY = 'batch.reactionsChecked2'
 
 function readList(key: string): string[] {
   try {

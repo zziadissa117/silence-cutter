@@ -9,6 +9,8 @@
 
 import { ALL_FORMATS, BlobSource, EncodedPacketSink, Input } from 'mediabunny'
 
+import { steadyFrom } from './clipParts'
+
 /** Enough frames to see how a file is put together, quickly. */
 const LOOK_AT = 600
 
@@ -67,6 +69,13 @@ export async function describeClip(name: string, file: Blob): Promise<string> {
       if (packets.length >= LOOK_AT) break
     }
     const t = frameTiming(packets)
+    // Where a video made from it starts it (clipParts.steadyStart): past a
+    // first frame that comes late, or first frames that come every other one.
+    const shownFrom = Math.max(0, packets.length ? Math.min(...packets.map((p) => p.timestamp)) : 0)
+    const playsFrom = steadyFrom(
+      packets.map((p) => p.timestamp),
+      shownFrom,
+    )
     return [
       `${name}: ${config?.codec ?? codec ?? '?'} ${width}x${height}${rotation ? ` turned ${rotation}` : ''}`,
       colour ? `${colour.primaries ?? '?'}/${colour.transfer ?? '?'}` : 'colour ?',
@@ -76,6 +85,7 @@ export async function describeClip(name: string, file: Blob): Promise<string> {
       t.reordered ? 'stored out of order' : 'stored in order',
       `${t.keyFrames} key`,
       `${packets.filter((p) => p.timestamp < 0).length} hidden before the start`,
+      playsFrom > shownFrom + 0.001 ? `plays from ${Math.round(playsFrom * 1000)} ms (start not steady)` : 'steady start',
       `${Math.round(seconds * 10) / 10} s`,
       `${Math.round(file.size / 100_000) / 10} MB`,
       readable ? '' : 'NOT readable',

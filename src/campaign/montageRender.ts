@@ -64,6 +64,20 @@ export const BATCH_LOWER = 0.04
 
 /** How many frames of a steady `fps` start before `until` seconds - the ones
  *  a clip's frame starting there takes over from. */
+/** What was wrong with how the first clip's frames came at the start of the
+ *  video - held on its first frame, or a gap of several frames - in words,
+ *  or null when they came steadily. */
+export function openingProblem(opening: readonly { own: number; at: number }[]): string | null {
+  if (opening.length === 0) return 'no frame in its first second and a half'
+  const held = opening[0].at
+  const gaps = opening.slice(1).map((f, k) => f.at - opening[k].at)
+  const worst = gaps.length ? Math.max(...gaps) : 0
+  if (held <= 0.07 && worst <= 0.1) return null
+  const ms = (s: number) => `${Math.round(s * 1000)} ms`
+  const own = opening.slice(0, 12).map((f) => Math.round(f.own * 1000)).join(' ')
+  return `first frame at ${ms(held)}, longest gap ${ms(worst)}, ${opening.length} frames in 1.5 s; its own times ${own}`
+}
+
 export function framesBy(until: number, fps: number): number {
   return Math.max(0, Math.ceil(until * fps - 1e-6))
 }
@@ -279,6 +293,9 @@ export async function renderMontage(
     let made = 0
     // The frame on screen until the next one starts, kept past its own turn.
     let shown: { sample: VideoSample; clip: number } | null = null
+    // When the first clip's frames came, in its own time and in the video's,
+    // for its first second and a half: a start that froze or lagged says so.
+    const opening: { own: number; at: number }[] = []
     const stretches: { fill: ReturnType<typeof cover>; start: number; length: number }[] = []
     const frameAt = async (sample: VideoSample, i: number, t: number) => {
       const { fill, start, length } = stretches[i]
@@ -320,6 +337,7 @@ export async function renderMontage(
           audioClock: contiguousAudio(),
           maxRecoveries: MAX_RECOVERIES,
           onFrame: async (sample, timestamp) => {
+            if (i === 0 && timestamp < 1.5) opening.push({ own: sample.timestamp, at: timestamp })
             // Every steady frame before this one starts shows the one before
             // it (the very first frame of the video: this one).
             const before = shown ?? { sample, clip: i }
@@ -338,6 +356,8 @@ export async function renderMontage(
     }
     at = Math.max(at, made / FPS)
     await soundTo(at)
+    const start = openingProblem(opening)
+    if (start) reportProblem({ kind: 'check', phase: 'start', message: `${files[0] instanceof File ? files[0].name : 'clip 1'}: ${start}` })
 
     await output.finalize()
     const blob = await sink.finish()
