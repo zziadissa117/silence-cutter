@@ -33,6 +33,13 @@ export interface BatchBank {
   headlines: string[]
   music: BankFile[]
   perDay: number
+  /** More videos each day than the day before ("start with 4 and add +1 per
+   *  day every single day"): `perDay` on `growthFrom`, this many more on each
+   *  day after it, up to the most a day (batchRun.perDayOn). None or 0: the
+   *  same every day. */
+  growth?: number
+  /** The day `perDay` is the number for, while it grows (his own date). */
+  growthFrom?: string
   /** No longer used: the batch keeps going (batchRun.ts) instead of being
    *  made for a number of days. Kept so banks saved before still load. */
   days: number

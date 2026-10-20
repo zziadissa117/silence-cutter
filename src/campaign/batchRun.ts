@@ -17,6 +17,7 @@ import {
   DEFAULT_FORMULA,
   LEAD_MINUTES,
   addDays,
+  dayLabel,
   combos,
   formulaLine,
   formulaText,
@@ -40,7 +41,7 @@ import { engineJob, makeOnEngine, saveEngineSeries, sendFootage, stopEngineJob }
 import { DEFAULT_CORNER } from './greenScreenRender'
 import type { Job } from './jobs'
 import { NO_POSTING, type Campaign, type HeadlineStyle } from './look'
-import { batchTimesOn, listPosts, stackTimesOn, stoppable, stopPostsNow, takenTimes, type CampaignPlace, type ServerPost } from './posting'
+import { BATCH_MAX_PER_DAY, batchTimesOn, listPosts, stackTimesOn, stoppable, stopPostsNow, takenTimes, type CampaignPlace, type ServerPost } from './posting'
 import { loadBankFile, type JobBatch } from './store'
 import { SERVER_MODE, serverConnected } from './serverFlag'
 
@@ -70,6 +71,70 @@ export interface BatchVideo {
 
 const minutes = (time: string) => Number(time.slice(0, 2)) * 60 + Number(time.slice(3, 5))
 
+/** Whole days from `from` to `to` (dates, YYYY-MM-DD). */
+function daysFrom(from: string, to: string): number {
+  const day = (d: string) => Date.UTC(Number(d.slice(0, 4)), Number(d.slice(5, 7)) - 1, Number(d.slice(8, 10))) / 86_400_000
+  return Math.round(day(to) - day(from))
+}
+
+/** How many videos a day the batch makes on `date`: his number, or - while it
+ *  grows - his number for `growthFrom` and `growth` more on each day after,
+ *  never over the most a day. */
+export function perDayOn(bank: Pick<BatchBank, 'perDay' | 'growth' | 'growthFrom'>, date: string): number {
+  // 0 is paused, growing or not.
+  if (!bank.growth || !bank.growthFrom || bank.perDay === 0) return bank.perDay
+  return Math.min(BATCH_MAX_PER_DAY, Math.max(0, bank.perDay + bank.growth * Math.max(0, daysFrom(bank.growthFrom, date))))
+}
+
+/** The bank with `n` a day from `today` on - his number now, the growth (if
+ *  any) going on from it. */
+export function withPerDay<T extends Pick<BatchBank, 'perDay' | 'growth' | 'growthFrom'>>(bank: T, n: number, today: string): T {
+  return { ...bank, perDay: n, ...(bank.growth ? { growthFrom: today } : {}) }
+}
+
+/** The bank growing by `growth` a day from today's number (0: the same every day). */
+export function withGrowth<T extends Pick<BatchBank, 'perDay' | 'growth' | 'growthFrom'>>(bank: T, growth: number, today: string): T {
+  const now = perDayOn(bank, today)
+  return growth > 0 ? { ...bank, perDay: now, growth, growthFrom: today } : { ...bank, perDay: now, growth: undefined, growthFrom: undefined }
+}
+
+/** How many days `left` videos last from `today` at the batch's numbers. */
+export function daysToMake(bank: Pick<BatchBank, 'perDay' | 'growth' | 'growthFrom'>, left: number, today: string): number {
+  let still = left
+  let days = 0
+  while (still > 0) {
+    const n = perDayOn(bank, addDays(today, days))
+    if (n <= 0 || days > 3650) return Infinity
+    still -= n
+    days++
+  }
+  return days
+}
+
+/** While a batch grows each day, in words: today, tomorrow and a week on,
+ *  the day it reaches the most a batch makes, and the first day the posting
+ *  window (`fits`: how many a day it holds) is too small for it. */
+export function growthSummary(
+  bank: Pick<BatchBank, 'perDay' | 'growth' | 'growthFrom'>,
+  today: string,
+  fits: (date: string, wanted: number) => number,
+): { text: string; tight: boolean } {
+  const on = (d: number) => perDayOn(bank, addDays(today, d))
+  let top: number | null = null
+  for (let d = 0; d < 400 && top === null; d++) if (on(d) >= BATCH_MAX_PER_DAY) top = d
+  let tight: { day: number; holds: number } | null = null
+  for (let d = 0; d <= (top ?? 60) && tight === null; d++) {
+    const holds = fits(addDays(today, d), on(d))
+    if (holds < on(d)) tight = { day: d, holds }
+  }
+  const text = [
+    `Today ${on(0)}, tomorrow ${on(1)}, in a week ${on(7)}`,
+    top !== null ? `, then ${BATCH_MAX_PER_DAY} a day from ${dayLabel(addDays(today, top))} - the most a batch makes.` : '.',
+    tight ? ` From ${tight.day === 0 ? 'today' : dayLabel(addDays(today, tight.day))} the posting window only fits ${tight.holds} a day - widen it in the campaign's Posting.` : '',
+  ].join('')
+  return { text, tight: tight !== null }
+}
+
 /** How many videos the batch has put on `date`. A day made before days were
  *  counted holds what the batch that made it made a day. */
 export function filledOn(bank: Pick<BatchBank, 'filled' | 'madeThrough' | 'lastPerDay' | 'perDay'>, date: string): number {
@@ -90,7 +155,7 @@ export function runSlots({
   taken = () => [],
   now = new Date(),
 }: {
-  bank: Pick<BatchBank, 'perDay' | 'filled' | 'madeThrough' | 'lastPerDay'>
+  bank: Pick<BatchBank, 'perDay' | 'filled' | 'madeThrough' | 'lastPerDay' | 'growth' | 'growthFrom'>
   place: CampaignPlace
   campaignId: string
   taken?: (date: string) => readonly string[]
@@ -102,10 +167,11 @@ export function runSlots({
   for (let d = 0; d < AHEAD_DAYS; d++) {
     const date = addDays(today, d)
     const have = filledOn(bank, date)
-    const need = bank.perDay - have
+    const wanted = perDayOn(bank, date)
+    const need = wanted - have
     if (need <= 0) continue
     const ahead = (t: string) => date !== today || minutes(t) >= soonest
-    const times = have === 0 ? batchTimesOn(place, campaignId, date, bank.perDay).filter(ahead).slice(0, need) : []
+    const times = have === 0 ? batchTimesOn(place, campaignId, date, wanted).filter(ahead).slice(0, need) : []
     // The rest clear of the times the day holds, spread over what is left of it.
     if (times.length < need) times.push(...stackTimesOn(place, campaignId, date, need - times.length, [...taken(date), ...times], ahead))
     for (const time of times.sort()) slots.push({ date, time })
@@ -370,11 +436,11 @@ export function dayVideos(posts: readonly ServerPost[], jobs: readonly Job[], ca
 }
 
 /** The days holding more than his number, from today on. */
-export function overfull(bank: Pick<BatchBank, 'perDay' | 'filled' | 'madeThrough' | 'lastPerDay'>, now = new Date()): string[] {
+export function overfull(bank: Pick<BatchBank, 'perDay' | 'filled' | 'madeThrough' | 'lastPerDay' | 'growth' | 'growthFrom'>, now = new Date()): string[] {
   const today = todayHere(now)
   const dates = new Set(Object.keys(bank.filled ?? {}).filter((d) => d >= today))
   for (let d = 0; d < AHEAD_DAYS; d++) dates.add(addDays(today, d))
-  return [...dates].filter((date) => filledOn(bank, date) > bank.perDay).sort()
+  return [...dates].filter((date) => filledOn(bank, date) > perDayOn(bank, date)).sort()
 }
 
 /** Which videos to take out so each day holds no more than his number: the
@@ -382,7 +448,7 @@ export function overfull(bank: Pick<BatchBank, 'perDay' | 'filled' | 'madeThroug
  *  can still go; and the days' counts after. A day that can't lose enough
  *  (posted already, or being made right now) keeps the rest. */
 export function trimPlan(
-  bank: Pick<BatchBank, 'perDay' | 'filled' | 'madeThrough' | 'lastPerDay'>,
+  bank: Pick<BatchBank, 'perDay' | 'filled' | 'madeThrough' | 'lastPerDay' | 'growth' | 'growthFrom'>,
   videos: readonly DayVideo[],
   now = new Date(),
 ): { remove: DayVideo[]; filled: Record<string, number> } {
@@ -392,10 +458,11 @@ export function trimPlan(
   const remove: DayVideo[] = []
   for (const date of overfull(bank, now)) {
     const count = filledOn(bank, date)
-    const excess = count - bank.perDay
+    const wanted = perDayOn(bank, date)
+    const excess = count - wanted
     const day = videos.filter((v) => v.date === date).sort((a, b) => a.time.localeCompare(b.time))
     const keep = new Set<number>()
-    for (let i = 0; i < bank.perDay; i++) keep.add(Math.min(day.length - 1, Math.round((i * day.length) / bank.perDay)))
+    for (let i = 0; i < wanted; i++) keep.add(Math.min(day.length - 1, Math.round((i * day.length) / wanted)))
     const going = day.filter((v, i) => v.removable && !keep.has(i)).slice(0, excess)
     // Not enough of those: the latest of the rest that can go.
     for (const v of [...day].reverse()) if (going.length < excess && v.removable && !going.includes(v)) going.push(v)

@@ -71,7 +71,7 @@ only, no Supabase); `./deploy-server.sh` ships the `postiz` and `cutter` functio
 - Audio: `voice.ts`, `music.ts`, `sounds.ts`; captions `captions.ts`; headline `overlay.ts`, `look.ts`; effects `effects.ts`
 - Videos before/after/in the middle (at a phrase): `clips.ts`, `cueClips.ts`, `ClipRow.tsx`, `ClipsField.tsx`
 - Green screen (Batch layout): `cutout.ts` (once per reaction), `greenScreenRender.ts`
-- Batch keeps going (Videos a day + Start, no days): `batchRun.ts` (`runSlots`, `planVideos`, `topUp`; Batch tab and `CampaignApp` top up)
+- Batch keeps going (Videos a day + Start, no days): `batchRun.ts` (`runSlots`, `planVideos`, `topUp`; Batch tab and `CampaignApp` top up); more each day: `perDayOn` (`growth`, `growthFrom`)
 - Analytics tab (views per video, trend, "ready for more a day?"): `analytics.ts`, `AnalyticsView.tsx`; server `postiz/views.ts` (one account read per tick, cache in `cutter_config` `views:<profile>`)
 - Formats tab (takes -> made -> kept -> saved for the brand -> scheduled): `formats.ts`, `FormatsView.tsx`; formats are angles with `isFormat`, takes are jobs with `forFormat` (`CampaignApp.addFormatTakes/holdFormat/scheduleFormat`, `store.holdMade/heldVideos`); server `batch.approvalFor` (`meta.scheduled`)
 - Batch mixing: `batch.ts` (`pickBatch`, `combos`; hooks in shares `looks`/`looksToMix` - headline looks and Claude + X; product steps `BatchStep` set in `StepOrder.tsx` - names and order only), made by `montageRender.ts` (reaction zoom; each step clip plays its moment, found by `stepPiece.ts` from frame sizes)

@@ -62,6 +62,11 @@ import { deleteBankFile, loadBankFile, loadBatchBank, saveBankFile, saveBatchBan
 import {
   AHEAD_DAYS,
   dayVideos,
+  daysToMake,
+  growthSummary,
+  perDayOn,
+  withGrowth,
+  withPerDay,
   leftToMake,
   missingFor,
   oneAtATime,
@@ -169,6 +174,9 @@ function writeList(key: string, list: string[]): void {
 }
 
 const mb = (bytes: number) => `${Math.max(1, Math.round(bytes / 1e6))} MB`
+
+/** The most "more each day" there is. */
+const MAX_GROWTH = 5
 
 /** "2 min ago", "at 14:05": when the server last said something. */
 function timeAgo(iso: string, now = Date.now()): string {
@@ -364,10 +372,13 @@ export function BatchView({
   const accounts = place.accounts.map((id) => profile.accounts.find((a) => a.id === id)).filter((a) => a !== undefined)
   // As many times a day as he picked: random ones from the campaign's
   // window, or his own (with random extras when he wants more than he has).
-  const perDay = bank?.perDay ?? 1
+  const today = todayHere()
+  // Today's number: his, or - while it grows each day - where it has got to.
+  const perDay = bank ? perDayOn(bank, today) : 1
+  const growth = bank?.growth ?? 0
   const running = Boolean(bank?.running)
   const takenOn = takenBy(posts, jobs, campaign.id)
-  const times = batchTimesOn(place, campaign.id, todayHere(), perDay)
+  const times = batchTimesOn(place, campaign.id, today, perDay)
   const random = ownDayTimes(place).length === 0
   const angle = campaign.angles.find((a) => a.id === bank?.angleId) ?? campaign.angles[0]
 
@@ -682,7 +693,10 @@ export function BatchView({
   const trimNow = over.length > 0 && saving === null && !topping
   const dueNow = running && !onServer && over.length === 0 && due.length > 0 && missing.length === 0 && saving === null && !topping
   const setPerDay = (n: number) => {
-    if (bank && Number.isFinite(n)) keep({ ...bank, perDay: Math.min(BATCH_MAX_PER_DAY, Math.max(0, Math.round(n))) })
+    if (bank && Number.isFinite(n)) keep(withPerDay(bank, Math.min(BATCH_MAX_PER_DAY, Math.max(0, Math.round(n))), today))
+  }
+  const setGrowth = (n: number) => {
+    if (bank && Number.isFinite(n)) keep(withGrowth(bank, Math.min(MAX_GROWTH, Math.max(0, Math.round(n))), today))
   }
 
   const bankSize = bank
@@ -818,10 +832,14 @@ export function BatchView({
           : running
             ? perDay === 0
               ? 'Paused · 0 a day'
-              : `Running${onServer ? ' on the server' : ''} · ${perDay} a day`
-            : `Start · ${perDay} a day`
+              : `Running${onServer ? ' on the server' : ''} · ${perDay} ${growth > 0 ? `today, +${growth} a day` : 'a day'}`
+            : `Start · ${perDay} ${growth > 0 ? `today, +${growth} a day` : 'a day'}`
   // How long the footage lasts at this many a day.
-  const daysLeft = Number.isFinite(left) && perDay > 0 ? Math.ceil(left / perDay) : Infinity
+  const daysLeft = Number.isFinite(left) && perDay > 0 ? daysToMake(bank!, left, today) : Infinity
+  // The videos the week ahead holds at his numbers - growing ones count each day's.
+  const aim = bank ? Array.from({ length: AHEAD_DAYS }, (_, d) => perDayOn(bank, addDays(today, d))).reduce((a, b) => a + b, 0) : 0
+  // While it grows: how it goes from here, and the first day the window is too small for it.
+  const growthLine = bank && growth > 0 && perDay > 0 ? growthSummary(bank, today, (date, n) => batchTimesOn(place, campaign.id, date, n).length) : null
 
   return (
     <section className="screen batch">
@@ -1103,8 +1121,8 @@ export function BatchView({
                   type="button"
                   className="btn small icon-btn"
                   aria-label="Fewer a day"
-                  disabled={bank.perDay <= 0}
-                  onClick={() => setPerDay(bank.perDay - 1)}
+                  disabled={perDay <= 0}
+                  onClick={() => setPerDay(perDay - 1)}
                 >
                   −
                 </button>
@@ -1115,7 +1133,7 @@ export function BatchView({
                   aria-label="Videos a day"
                   min={0}
                   max={BATCH_MAX_PER_DAY}
-                  value={perDayDraft ?? String(bank.perDay)}
+                  value={perDayDraft ?? String(perDay)}
                   onFocus={(e) => e.target.select()}
                   onChange={(e) => {
                     setPerDayDraft(e.target.value)
@@ -1127,17 +1145,17 @@ export function BatchView({
                   type="button"
                   className="btn small icon-btn"
                   aria-label="More a day"
-                  disabled={bank.perDay >= BATCH_MAX_PER_DAY}
-                  onClick={() => setPerDay(bank.perDay + 1)}
+                  disabled={perDay >= BATCH_MAX_PER_DAY}
+                  onClick={() => setPerDay(perDay + 1)}
                 >
                   +
                 </button>
               </div>
-              {bank.perDay === 0 ? (
+              {perDay === 0 ? (
                 <span className="hint">Paused: nothing more goes out until you raise it. Your clips and what's left to make are kept.</span>
               ) : (
-                <span className={`hint${times.length < bank.perDay ? ' warn-text' : ''}`}>
-                  {times.length < bank.perDay
+                <span className={`hint${times.length < perDay ? ' warn-text' : ''}`}>
+                  {times.length < perDay
                     ? `The window only fits ${times.length} a day, 10 minutes apart - widen it in the campaign's Posting. `
                     : ''}
                   {random
@@ -1148,6 +1166,31 @@ export function BatchView({
                 </span>
               )}
               {running ? <span className="hint">Change it any time - the week ahead follows at once, up or down.</span> : null}
+            </div>
+            <div className="field">
+              <span className="label">More each day</span>
+              <div className="stepper">
+                <button type="button" className="btn small icon-btn" aria-label="Less more each day" disabled={growth <= 0} onClick={() => setGrowth(growth - 1)}>
+                  −
+                </button>
+                <span className="stepper-value" aria-label="More each day">
+                  {growth > 0 ? `+${growth}` : '0'}
+                </span>
+                <button
+                  type="button"
+                  className="btn small icon-btn"
+                  aria-label="More each day"
+                  disabled={growth >= MAX_GROWTH || perDay === 0}
+                  onClick={() => setGrowth(growth + 1)}
+                >
+                  +
+                </button>
+              </div>
+              {growthLine ? (
+                <span className={`hint${growthLine.tight ? ' warn-text' : ''}`}>{growthLine.text}</span>
+              ) : (
+                <span className="hint">0: the same number every day. +1: one more video each day than the day before.</span>
+              )}
             </div>
           </div>
 
@@ -1163,13 +1206,13 @@ export function BatchView({
             // What "Running · 10 a day" is aiming for: "it says 10 a day, but
             // in Posts there are only 20 - I don't know how much it wants to make".
             <p className="hint batch-aim">
-              Next {AHEAD_DAYS} days: {aheadCount} of {perDay * AHEAD_DAYS} videos made
+              Next {AHEAD_DAYS} days: {aheadCount} of {aim} videos made
               {onServer
                 ? serverQueued > 0
                   ? ` - the server is making ${serverQueued} more, one after another`
                   : ''
-                : aheadCount < perDay * AHEAD_DAYS
-                  ? ` - it makes the other ${perDay * AHEAD_DAYS - aheadCount} a few at a time`
+                : aheadCount < aim
+                  ? ` - it makes the other ${aim - aheadCount} a few at a time`
                   : ''}
               .
             </p>
@@ -1312,7 +1355,7 @@ export function BatchView({
               {Number.isFinite(left) ? (
                 <div className={`hint batch-left${perDay > 0 && daysLeft <= AHEAD_DAYS ? ' warn-text' : ''}`}>
                   {left === different ? 'None made yet' : `${left.toLocaleString('en-US')} still to make`}
-                  {perDay > 0 ? ` - ${daysLeft} day${daysLeft === 1 ? '' : 's'} at ${perDay} a day.` : '.'}
+                  {perDay > 0 ? ` - ${daysLeft} day${daysLeft === 1 ? '' : 's'} at ${perDay} a day${growth > 0 ? `, +${growth} each day` : ''}.` : '.'}
                   {perDay > 0 && daysLeft <= AHEAD_DAYS ? ' After them, film new reactions and product showcases.' : ''}
                 </div>
               ) : null}

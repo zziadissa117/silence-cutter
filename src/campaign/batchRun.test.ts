@@ -13,7 +13,7 @@ vi.mock('./posting', async (original) => ({
 }))
 
 import { emptyBank, type BankFile, type BatchBank } from './batch'
-import { AHEAD_DAYS, countedDays, dayVideos, filledOn, leftToMake, missingFor, overfull, planVideos, runSlots, startOver, takenBy, topUp, trimPlan, variationParts } from './batchRun'
+import { AHEAD_DAYS, countedDays, dayVideos, daysToMake, filledOn, growthSummary, leftToMake, missingFor, overfull, perDayOn, planVideos, runSlots, startOver, takenBy, topUp, trimPlan, variationParts, withGrowth, withPerDay } from './batchRun'
 import { makeOnEngine } from './engine'
 import type { Job } from './jobs'
 import { listPosts, stopPostsNow, type CampaignPlace, type ServerPost } from './posting'
@@ -354,5 +354,56 @@ describe('starting the batch over', () => {
     expect(saved).toHaveLength(1)
     // So Start makes the week again.
     expect(runSlots({ bank: done.bank, place, campaignId: 'c1' }).length).toBeGreaterThanOrEqual(3 * (AHEAD_DAYS - 1))
+  })
+})
+
+describe('a batch that grows each day ("start with 4 and add +1 per day")', () => {
+  const growing = (fields: Partial<BatchBank> = {}) => bank({ perDay: 4, growth: 1, growthFrom: '2026-09-30', ...fields })
+
+  it('makes its number on its first day, and one more each day after, up to the most a day', () => {
+    expect(perDayOn(growing(), '2026-09-30')).toBe(4)
+    expect(perDayOn(growing(), '2026-10-01')).toBe(5)
+    expect(perDayOn(growing(), '2026-10-07')).toBe(11)
+    expect(perDayOn(growing(), '2026-12-31')).toBe(25)
+    expect(perDayOn(growing(), '2026-09-01')).toBe(4)
+    expect(perDayOn(growing({ perDay: 0 }), '2026-10-07')).toBe(0)
+    expect(perDayOn(bank({ perDay: 4 }), '2026-10-07')).toBe(4)
+  })
+
+  it("fills each day of the week ahead to that day's number", () => {
+    const slots = runSlots({ bank: growing(), place: { accounts: ['tt'], times: [] }, campaignId: 'c1', now: new Date(2026, 8, 30, 6, 0) })
+    const per = (date: string) => slots.filter((s) => s.date === date).length
+    expect(per('2026-09-30')).toBe(4)
+    expect(per('2026-10-01')).toBe(5)
+    expect(per('2026-10-06')).toBe(10)
+  })
+
+  it("a day already made at a lower number is topped up, and it is never overfull", () => {
+    const made = growing({ filled: { '2026-10-01': 4 } })
+    const slots = runSlots({ bank: made, place: { accounts: ['tt'], times: [] }, campaignId: 'c1', now: new Date(2026, 8, 30, 6, 0) })
+    expect(slots.filter((s) => s.date === '2026-10-01')).toHaveLength(1)
+    expect(overfull(made, new Date(2026, 8, 30, 6, 0))).toEqual([])
+  })
+
+  it("changing today's number or the growth carries on from today", () => {
+    const later = growing()
+    const today = '2026-10-03'
+    expect(perDayOn(later, today)).toBe(7)
+    const lowered = withPerDay(later, 5, today)
+    expect(perDayOn(lowered, today)).toBe(5)
+    expect(perDayOn(lowered, '2026-10-04')).toBe(6)
+    const steady = withGrowth(later, 0, today)
+    expect(steady.perDay).toBe(7)
+    expect(perDayOn(steady, '2026-10-10')).toBe(7)
+    const started = withGrowth(bank({ perDay: 4 }), 1, today)
+    expect(perDayOn(started, '2026-10-04')).toBe(5)
+  })
+
+  it('says how it goes, and when the posting window is too small', () => {
+    const { text, tight } = growthSummary(growing(), '2026-09-30', (_date, wanted) => Math.min(wanted, 12))
+    expect(text).toMatch(/^Today 4, tomorrow 5, in a week 11, then 25 a day from/)
+    expect(tight).toBe(true)
+    expect(text).toMatch(/only fits 12 a day/)
+    expect(daysToMake(growing(), 15, '2026-09-30')).toBe(3)
   })
 })

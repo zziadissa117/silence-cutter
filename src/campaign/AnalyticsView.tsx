@@ -17,7 +17,8 @@ import {
   type Suggestion,
   type ViewsByAccount,
 } from './analytics'
-import type { BatchBank } from './batch'
+import { todayHere, type BatchBank } from './batch'
+import { perDayOn, withPerDay } from './batchRun'
 import type { Campaign } from './look'
 import { placeFor, type Profile } from './posting'
 import { loadBatchBank, saveBatchBank } from './store'
@@ -57,7 +58,10 @@ export function useCampaignRows(campaigns: readonly Campaign[] | null, profile: 
         // Only campaigns with a batch: the rest are his own accounts.
         if (!bank || !(bank.running || bank.madeThrough)) return []
         const stats = campaignViews(accountIds, views)
-        const suggestion = suggestRate({ perDay: bank.perDay, running: Boolean(bank.running), stats, target: bank.viewTarget, answeredAt: answeredAt(campaign.id) })
+        // A batch growing each day already gets more: nothing to suggest.
+        const suggestion = bank.growth
+          ? null
+          : suggestRate({ perDay: bank.perDay, running: Boolean(bank.running), stats, target: bank.viewTarget, answeredAt: answeredAt(campaign.id) })
         return [{ campaign, accountIds, stats, bank, suggestion }]
       }),
     [posting, banks, views, version], // eslint-disable-line react-hooks/exhaustive-deps
@@ -118,7 +122,9 @@ export function AnalyticsView({
         <div key={campaign.id} className="group analytics-campaign">
           <div className="analytics-head">
             <span className="group-title">{campaign.name}</span>
-            <span className="hint">{bank.running ? (bank.perDay === 0 ? 'Paused' : `${bank.perDay} a day`) : 'Stopped'}</span>
+            <span className="hint">
+              {bank.running ? (bank.perDay === 0 ? 'Paused' : `${perDayOn(bank, todayHere())} a day${bank.growth ? `, +${bank.growth} each day` : ''}`) : 'Stopped'}
+            </span>
           </div>
           <div className="analytics-big">
             <span className="big-number">{shortNumber(stats.perVideo)}</span>
@@ -188,7 +194,7 @@ export async function answerSuggestion(campaignId: string, to: number | null): P
   rememberAnswer(campaignId)
   if (to === null) return
   const bank = await loadBatchBank(campaignId)
-  if (bank) await saveBatchBank({ ...bank, perDay: to })
+  if (bank) await saveBatchBank(withPerDay(bank, to, todayHere()))
 }
 
 export async function saveTarget(campaignId: string, target: number | null): Promise<void> {

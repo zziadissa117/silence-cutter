@@ -3,6 +3,18 @@
 Newest first. Every change says what it does, how to use it, and how it works
 underneath. Kept up to date with each commit.
 
+## Batch: more videos each day ("start with 4 and add +1 per day")
+Only ./deploy.sh is needed.
+**How to use it:** Batch tab, Posting: **Videos a day** is today's number; **More each day** (0 to +5) adds that
+many each day after - 4 today, 5 tomorrow, 11 in a week - up to 25 a day, the most a batch makes. It says where it
+goes, and from which day the posting window is too small for it. Change either any time: it carries on from today.
+0 is the same number every day, as before.
+**How:** `BatchBank.growth` and `growthFrom` (his number is `perDay` on that day); `batchRun.perDayOn` gives each
+day's number, used by the top-ups (`runSlots`), trimming (`overfull`, `trimPlan`), the week's count and the days
+left (`daysToMake`); `withPerDay`/`withGrowth` change them from today; `growthSummary` is the line under it.
+Analytics shows today's number and suggests nothing for a growing batch. Same on the Cutter server (both are his
+settings, sent with the bank).
+
 ## Fix: a reaction that froze at the start now just plays
 Only ./deploy.sh is needed; then close the Cutter and open it again. Videos already made stay as they are - Start over
 in the Batch tab makes the ones not out yet again.
