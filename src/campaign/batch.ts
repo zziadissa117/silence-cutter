@@ -673,3 +673,27 @@ export interface BatchSlot {
 export function dayLabel(date: string): string {
   return new Date(`${date}T12:00:00`).toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' })
 }
+
+/** How many of a campaign's batch videos were made with the file `name`, and
+ *  how many of them he rejected - read off each video's file name, the files
+ *  it was made of joined by " + " (a reaction first). A reaction whose videos
+ *  he keeps rejecting is the one to watch and take out: 8 reactions out of 17
+ *  made laggy videos every time, the others never. */
+export function madeWith(
+  posts: readonly { campaignId: string; fileName: string | null; status: string; batch?: unknown }[],
+  campaignId: string,
+  name: string,
+  first: boolean,
+): { made: number; rejected: number } {
+  const bare = name.replace(/\.[^./]+$/, '')
+  let made = 0
+  let rejected = 0
+  for (const post of posts) {
+    if (post.campaignId !== campaignId || !post.batch || !post.fileName) continue
+    const parts = post.fileName.replace(/\.[^./]+$/, '').split(' + ')
+    if (!(first ? parts[0] === bare : parts.slice(1).includes(bare))) continue
+    made++
+    if (post.status === 'rejected') rejected++
+  }
+  return { made, rejected }
+}

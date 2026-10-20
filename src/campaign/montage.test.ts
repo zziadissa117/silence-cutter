@@ -4,13 +4,16 @@ import { BATCH_LOWER, FPS, framesBy, liftMusic, lowered, musicTrack, soloMusicGa
 import type { HeadlineLayout } from './overlay'
 
 /** Which of the clips' frames each steady frame shows: frames given as
- *  [start, duration], in order, as the render gets them. */
+ *  [start, duration], in order, as the render gets them - each steady frame
+ *  before one starts shows the one before it, the last runs to its end. */
 function steady(frames: [number, number][], fps = FPS): number[] {
   const shown: number[] = []
   let made = 0
-  frames.forEach(([start, duration], k) => {
-    for (const by = framesBy(start + duration, fps); made < by; made++) shown.push(k)
+  frames.forEach(([start], k) => {
+    for (const by = framesBy(start, fps); made < by; made++) shown.push(Math.max(0, k - 1))
   })
+  const [start, duration] = frames[frames.length - 1]
+  for (const by = framesBy(start + duration, fps); made < by; made++) shown.push(frames.length - 1)
   return shown
 }
 
@@ -27,6 +30,11 @@ describe('a steady frame rate', () => {
     // A first frame at 0.1 s lasting 0.2 s, then ordinary ones.
     const uneven: [number, number][] = [[0.1, 0.2], [0.3, 1 / 30], [0.3333, 1 / 30]]
     expect(steady(uneven)).toEqual([0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 2])
+  })
+  it("goes by when each frame starts, never by how long a file says it lasts", () => {
+    // Frames a 30th of a second apart that each claim a tenth: none skipped.
+    const claimed = Array.from({ length: 6 }, (_, k): [number, number] => [k / 30, 0.1])
+    expect(steady(claimed).slice(0, 6)).toEqual([0, 1, 2, 3, 4, 5])
   })
   it('carries on across clips with no frame twice or missing', () => {
     // A clip ending at 0.51 s, then the next from there.

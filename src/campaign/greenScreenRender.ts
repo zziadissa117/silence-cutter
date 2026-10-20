@@ -211,39 +211,49 @@ export async function renderGreenScreen(
       out.close()
     }
 
-    // A steady FPS from the first moment, as in montageRender: each of the
-    // background's frames on every steady one before its end.
+    // A steady FPS from the first moment, as in montageRender: each steady
+    // frame shows the background's frame on screen then, by timestamps alone.
     let made = 0
-    const at = await writeWhole(bg, 0, {
-      rate: RATE,
-      channels: CHANNELS,
-      videoClock: forwardOnly(),
-      audioClock: contiguousAudio(),
-      maxRecoveries: MAX_RECOVERIES,
-      onFrame: async (sample, timestamp) => {
-        for (const by = framesBy(timestamp + sample.duration, FPS); made < by; made++) await draw(sample, made / FPS)
-      },
-      onSound: async (planes, timestamp) => {
-        const length = planes[0].length
-        const data = new Float32Array(length * CHANNELS)
-        const out = [data.subarray(0, length), data.subarray(length)]
-        for (let c = 0; c < CHANNELS; c++) {
-          const from = planes[c] ?? planes[0]
-          for (let k = 0; k < length; k++) out[c][k] = from[k] * gain
-        }
-        limiter.process(out)
-        const audio = new AudioSample({ data, format: 'f32-planar', numberOfChannels: CHANNELS, sampleRate: RATE, timestamp })
-        await audioSource.add(audio)
-        audio.close()
-      },
-    })
+    let shown: VideoSample | null = null
+    try {
+      const at = await writeWhole(bg, 0, {
+        rate: RATE,
+        channels: CHANNELS,
+        videoClock: forwardOnly(),
+        audioClock: contiguousAudio(),
+        maxRecoveries: MAX_RECOVERIES,
+        onFrame: async (sample, timestamp) => {
+          const before = shown ?? sample
+          for (const by = framesBy(timestamp, FPS); made < by; made++) await draw(before, made / FPS)
+          shown?.close()
+          shown = sample.clone()
+        },
+        onSound: async (planes, timestamp) => {
+          const length = planes[0].length
+          const data = new Float32Array(length * CHANNELS)
+          const out = [data.subarray(0, length), data.subarray(length)]
+          for (let c = 0; c < CHANNELS; c++) {
+            const from = planes[c] ?? planes[0]
+            for (let k = 0; k < length; k++) out[c][k] = from[k] * gain
+          }
+          limiter.process(out)
+          const audio = new AudioSample({ data, format: 'f32-planar', numberOfChannels: CHANNELS, sampleRate: RATE, timestamp })
+          await audioSource.add(audio)
+          audio.close()
+        },
+      })
+      const last = shown as VideoSample | null
+      if (last) for (const by = framesBy(at, FPS); made < by; made++) await draw(last, made / FPS)
 
-    await output.finalize()
-    const blob = await sink.finish()
-    if (blob.size === 0) throw new SilenceCutError('Making the video finished but produced no file. Try again.')
-    finished = true
-    onProgress?.(1)
-    return { blob, storedAs: sink.storedAs, totalSec: at }
+      await output.finalize()
+      const blob = await sink.finish()
+      if (blob.size === 0) throw new SilenceCutError('Making the video finished but produced no file. Try again.')
+      finished = true
+      onProgress?.(1)
+      return { blob, storedAs: sink.storedAs, totalSec: at }
+    } finally {
+      ;(shown as VideoSample | null)?.close()
+    }
   } finally {
     await him?.dispose().catch(() => {})
     for (const clip of clips) clip.input.dispose()

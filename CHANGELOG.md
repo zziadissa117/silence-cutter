@@ -3,6 +3,23 @@
 Newest first. Every change says what it does, how to use it, and how it works
 underneath. Kept up to date with each commit.
 
+## Laggy hooks: watch every reaction, see which ones he rejects, frames by timestamps only
+Only ./deploy.sh is needed.
+**What was wrong:** of 40 batch videos, every video from 8 reactions (IMG_0250-0253, 0257, 0261-0263) was laggy and
+rejected, every video from 8 others was fine - same filming, and the files play smoothly in Photos. So it is something
+in those files that the making trips on. The steady 30 fps drew each clip frame until "its end" as the file states it;
+a file that states its frames longer than they are had frames skipped and others held.
+**Fix:** each steady frame now shows the clip's frame on screen at that moment by the frames' own timestamps alone - a
+frame stays until the next one starts - never by the length a file states (both batch layouts).
+**New in the Batch tab:** tap any reaction, product or step clip to watch it full screen, with "Take it out" right there.
+A reaction whose videos he rejected says so next to it in orange ("3 videos, 3 rejected").
+**Finding the cause for sure:** opening the Batch tab now reports, once per reaction file, what it is made of - codec,
+size, turn, colour, frame rate, how evenly its frames are spaced, the length it says each frame lasts, whether its frames
+are stored out of order, and how many of its videos were rejected (`cutter_errors`, phase "reaction").
+**How:** `montageRender.ts` / `greenScreenRender.ts` keep the frame on screen (`shown`, a clone) and draw it on every
+steady frame before the next one starts; `clipCheck.ts` (`frameTiming`, `describeClip`, + tests); `batch.madeWith`;
+`ClipViewer.tsx`; `BatchView` (tap a name, the orange count, the report).
+
 ## Batch videos: a steady 30 frames a second, and the words a little lower
 Only ./deploy.sh is needed. Videos already made keep their old frames: only ones made after the update change.
 **What was wrong:** some batch videos stuttered at the start once posted, though they played smoothly in Posts. A batch

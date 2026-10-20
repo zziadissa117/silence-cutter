@@ -847,3 +847,12 @@ input[type='color']::-webkit-color-swatch { border: 0.5px solid var(--edge); bor
 .pic-chip { display: flex; align-items: center; gap: 6px; flex: none; padding: 4px 10px 4px 4px; border: 1px solid var(--edge); border-radius: 999px; background: var(--surface); color: inherit; font: inherit; font-size: 13px; font-variant-numeric: tabular-nums; cursor: pointer; }
 .pic-chip.on { border-color: var(--accent); }
 .pic-chip img { width: 28px; height: 28px; object-fit: contain; border-radius: 50%; background: color-mix(in srgb, var(--text) 6%, transparent); }
+
+/* A batch clip played full screen (ClipViewer). */
+.clip-viewer { position: fixed; inset: 0; z-index: 60; display: flex; flex-direction: column; gap: 10px; background: #000; padding: calc(env(safe-area-inset-top) + 12px) 16px calc(env(safe-area-inset-bottom) + 12px); }
+.clip-viewer-head { display: flex; align-items: baseline; gap: 10px; min-width: 0; }
+.clip-viewer video { flex: 1; min-height: 0; width: 100%; object-fit: contain; background: #000; }
+.clip-viewer-wait { flex: 1; display: flex; align-items: center; justify-content: center; }
+.clip-viewer-actions { display: flex; gap: 10px; justify-content: flex-end; }
+.bank-name.watch { background: none; border: 0; padding: 0; color: inherit; font: inherit; font-weight: 600; text-align: left; cursor: pointer; text-decoration: underline; text-decoration-color: var(--rule); text-underline-offset: 3px; }
+.bank-item .hint.rejected { color: var(--warn); }

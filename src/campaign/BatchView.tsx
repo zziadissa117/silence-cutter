@@ -18,6 +18,7 @@ import {
   formulaLine,
   headlinesFrom,
   logoName,
+  madeWith,
   MAX_COMBOS,
   ONLY_HOOK_ELSE,
   rememberUsed,
@@ -34,6 +35,9 @@ import {
   type BatchStep,
 } from './batch'
 import { StepOrder } from './StepOrder'
+import { ClipViewer } from './ClipViewer'
+import { describeClip } from './clipCheck'
+import { report as reportProblem } from '../report'
 import { filmingOf } from './filming'
 import { fingerprint, skippedNotice } from './fingerprint'
 import { formatTime, labelOf, type Job } from './jobs'
@@ -140,6 +144,26 @@ function remember(id: string): void {
   }
 }
 
+/** Reaction files already reported (clipCheck), by fingerprint. */
+const CHECKED_KEY = 'batch.reactionsChecked'
+
+function readList(key: string): string[] {
+  try {
+    const raw = JSON.parse(localStorage.getItem(key) ?? '[]') as unknown
+    return Array.isArray(raw) ? raw.filter((x): x is string => typeof x === 'string') : []
+  } catch {
+    return []
+  }
+}
+
+function writeList(key: string, list: string[]): void {
+  try {
+    localStorage.setItem(key, JSON.stringify(list))
+  } catch {
+    // Reported again next time: harmless.
+  }
+}
+
 const mb = (bytes: number) => `${Math.max(1, Math.round(bytes / 1e6))} MB`
 
 export function BatchView({
@@ -172,6 +196,8 @@ export function BatchView({
   /** The campaign's posts as the server has them, for the times a day
    *  topped up keeps clear of; the last copy seen until they come. */
   const [posts, setPosts] = useState<ServerPost[]>(() => lastPosts())
+  // The clip being watched full screen, and how to take it out from there.
+  const [watching, setWatching] = useState<{ file: BankFile; note: string; out: () => void } | null>(null)
   useEffect(() => {
     if (!posting) return
     let alive = true
@@ -240,6 +266,41 @@ export function BatchView({
       cancelled = true
     }
   }, [campaign?.id]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // What each reaction file is made of, reported once per file (clipCheck):
+  // some reactions made every video from them laggy and others never, and
+  // this is how to tell those files apart without asking him anything.
+  const reactionIds = bank?.reactions.map((f) => f.id).join(',') ?? ''
+  useEffect(() => {
+    const reactions = bank?.reactions ?? []
+    if (reactions.length === 0) return
+    let stopped = false
+    const timer = setTimeout(() => {
+      void (async () => {
+        const seen = new Set(readList(CHECKED_KEY))
+        for (const file of reactions) {
+          if (stopped) return
+          const key = file.fp ?? `${file.name}|${file.size}`
+          if (seen.has(key)) continue
+          try {
+            const blob = await loadBankFile(file)
+            if (!blob || stopped) continue
+            const { made, rejected } = madeWith(posts, campaign?.id ?? '', file.name, true)
+            const line = await describeClip(file.name, blob)
+            reportProblem({ kind: 'check', phase: 'reaction', message: `${line}${made ? ` · ${made} made, ${rejected} rejected` : ''}` })
+            seen.add(key)
+            writeList(CHECKED_KEY, [...seen].slice(-300))
+          } catch {
+            // Not readable here: the render says so when it gets to it.
+          }
+        }
+      })()
+    }, 4000)
+    return () => {
+      stopped = true
+      clearTimeout(timer)
+    }
+  }, [reactionIds, posts.length]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const keep = (next: BatchBank) => {
     setBank(next)
@@ -399,6 +460,11 @@ export function BatchView({
     if (!bank || !window.confirm(`Take ${file.name} out of the bank?`)) return
     void deleteBankFile(file.id).catch(() => {})
     keep(rememberUsed({ ...bank, steps: (bank.steps ?? []).map((s) => (s.id === stepId ? { ...s, files: s.files.filter((f) => f.id !== file.id) } : s)) }, [file]))
+  }
+  /** "3 videos, 3 rejected": what the videos made with a clip came to. */
+  const madeNote = (file: BankFile, first: boolean) => {
+    const { made, rejected } = madeWith(posts, campaign.id, file.name, first)
+    return made === 0 ? '' : `${made} video${made === 1 ? '' : 's'}${rejected > 0 ? `, ${rejected} rejected` : ''}`
   }
   /** The order saved: a step taken out goes with its clips. */
   const saveOrder = (steps: BatchStep[]) => {
@@ -592,7 +658,9 @@ export function BatchView({
         <ul className="bank-list">
           {step.files.map((file) => (
             <li key={file.id} className="bank-item">
-              <span className="bank-name">{file.name}</span>
+              <button type="button" className="bank-name watch" onClick={() => setWatching({ file, note: madeNote(file, false), out: () => takeOutOfStep(step.id, file) })}>
+                {file.name}
+              </button>
               <span className="hint">{[file.seconds ? formatTime(file.seconds) : '', mb(file.size)].filter(Boolean).join(' · ')}</span>
               <button type="button" className="btn small icon-btn" aria-label={`Take out ${file.name}`} onClick={() => takeOutOfStep(step.id, file)}>
                 ✕
@@ -667,9 +735,18 @@ export function BatchView({
                   />
                 </>
               ) : (
-                <span className="bank-name">{file.name}</span>
+                <button
+                  type="button"
+                  className="bank-name watch"
+                  onClick={() => setWatching({ file, note: madeNote(file, kind === 'reactions'), out: () => takeOut(kind, file) })}
+                >
+                  {file.name}
+                </button>
               )}
               <span className="hint">{[file.seconds ? formatTime(file.seconds) : '', mb(file.size)].filter(Boolean).join(' · ')}</span>
+              {kind === 'reactions' && madeWith(posts, campaign.id, file.name, true).rejected > 0 ? (
+                <span className="hint rejected">{madeNote(file, true)}</span>
+              ) : null}
               <button type="button" className="btn small icon-btn" aria-label={`Take out ${file.name}`} onClick={() => takeOut(kind, file)}>
                 ✕
               </button>
@@ -1164,6 +1241,7 @@ export function BatchView({
           <p className="hint new-post-to">For {labelOf(campaign, angle)}</p>
         </>
       ) : null}
+      {watching ? <ClipViewer file={watching.file} note={watching.note} onClose={() => setWatching(null)} onTakeOut={watching.out} /> : null}
     </section>
   )
 }

@@ -62,8 +62,8 @@ export const FPS = 30
  *  "i want the text to be a little lower". */
 export const BATCH_LOWER = 0.04
 
-/** How many frames of a steady `fps` start before `until` seconds: a clip's
- *  frame ending there is drawn on every one from the next not yet made. */
+/** How many frames of a steady `fps` start before `until` seconds - the ones
+ *  a clip's frame starting there takes over from. */
 export function framesBy(until: number, fps: number): number {
   return Math.max(0, Math.ceil(until * fps - 1e-6))
 }
@@ -270,56 +270,72 @@ export async function renderMontage(
     const soundTo = musicTrack(bed, (sample) => audioSource.add(sample))
     const seconds: number[] = []
     let at = 0
-    // Frames written so far, at a steady FPS: each of the clips' own frames
-    // is drawn on every one that falls before its end - a 60 fps screen
-    // recording's every other frame, a slower clip's twice, a first frame
-    // that came late from the very start.
+    // Frames written so far, at a steady FPS. Each steady frame shows the
+    // clip's frame on screen at that moment - the last one starting at or
+    // before it - read off the frames' own timestamps alone: a 60 fps screen
+    // recording's every other frame, a slower clip's twice, a first frame that
+    // came late from the very start. Never off a frame's duration, which a
+    // file can state wrong and which had frames skipped or held too long.
     let made = 0
-    for (const [i, clip] of clips.entries()) {
-      const fill = cover(clip.width, clip.height, width, height)
-      const start = at
-      const length = Math.max(0.1, parts[i].end - parts[i].start)
-      at = await writeWhole(clip, at, {
-        window: windows[i] ? parts[i] : undefined,
-        rate: RATE,
-        channels: CHANNELS,
-        videoClock,
-        audioClock: contiguousAudio(),
-        maxRecoveries: MAX_RECOVERIES,
-        onFrame: async (sample, timestamp) => {
-          for (const by = framesBy(timestamp + sample.duration, FPS); made < by; made++) {
-            const t = made / FPS
-            onProgress?.(Math.min(0.99, t / total))
-            ctx.fillStyle = '#000'
-            ctx.fillRect(0, 0, width, height)
-            // Under the formula, the reaction pushes in slowly for its whole
-            // length instead of the usual opening push.
-            // A batch's reaction always pushes in slowly too, or the angle's
-            // own push-in where that is closer.
-            const own = framingAt(motion, i, t - start, [])
-            const framing =
-              i === 0 && formulaLayout
-                ? formulaPush(t - start, length)
-                : i === 0 && reactionFirst
-                  ? { ...own, scale: Math.max(own.scale, reactionZoom(t - start, length)) }
-                  : own
-            const spot = zoomPlace(fill, framing, width, height)
-            sample.draw(ctx, spot.x, spot.y, spot.width, spot.height)
-            if (i === 0 && headline) drawHeadline(ctx, headline)
-            const title = titleLayouts[i]
-            if (title) drawHeadline(ctx, title)
-            if (i === 0 && formulaLayout && logos) drawFormula(ctx, formulaLayout, logos)
-            const frame = new VideoSample(canvas, { timestamp: t, duration: 1 / FPS })
-            await videoSource.add(frame)
-            frame.close()
-            // The music keeps up with the picture, in one piece.
-            await soundTo(t + 1 / FPS)
-          }
-        },
-      })
-      seconds.push(at - start)
+    // The frame on screen until the next one starts, kept past its own turn.
+    let shown: { sample: VideoSample; clip: number } | null = null
+    const stretches: { fill: ReturnType<typeof cover>; start: number; length: number }[] = []
+    const frameAt = async (sample: VideoSample, i: number, t: number) => {
+      const { fill, start, length } = stretches[i]
+      onProgress?.(Math.min(0.99, t / total))
+      ctx.fillStyle = '#000'
+      ctx.fillRect(0, 0, width, height)
+      // Under the formula, the reaction pushes in slowly for its whole
+      // length instead of the usual opening push.
+      // A batch's reaction always pushes in slowly too, or the angle's
+      // own push-in where that is closer.
+      const own = framingAt(motion, i, t - start, [])
+      const framing =
+        i === 0 && formulaLayout
+          ? formulaPush(t - start, length)
+          : i === 0 && reactionFirst
+            ? { ...own, scale: Math.max(own.scale, reactionZoom(t - start, length)) }
+            : own
+      const spot = zoomPlace(fill, framing, width, height)
+      sample.draw(ctx, spot.x, spot.y, spot.width, spot.height)
+      if (i === 0 && headline) drawHeadline(ctx, headline)
+      const title = titleLayouts[i]
+      if (title) drawHeadline(ctx, title)
+      if (i === 0 && formulaLayout && logos) drawFormula(ctx, formulaLayout, logos)
+      const frame = new VideoSample(canvas, { timestamp: t, duration: 1 / FPS })
+      await videoSource.add(frame)
+      frame.close()
+      // The music keeps up with the picture, in one piece.
+      await soundTo(t + 1 / FPS)
     }
-    // To the very end of the last frame.
+    try {
+      for (const [i, clip] of clips.entries()) {
+        const start = at
+        stretches[i] = { fill: cover(clip.width, clip.height, width, height), start, length: Math.max(0.1, parts[i].end - parts[i].start) }
+        at = await writeWhole(clip, at, {
+          window: windows[i] ? parts[i] : undefined,
+          rate: RATE,
+          channels: CHANNELS,
+          videoClock,
+          audioClock: contiguousAudio(),
+          maxRecoveries: MAX_RECOVERIES,
+          onFrame: async (sample, timestamp) => {
+            // Every steady frame before this one starts shows the one before
+            // it (the very first frame of the video: this one).
+            const before = shown ?? { sample, clip: i }
+            for (const by = framesBy(timestamp, FPS); made < by; made++) await frameAt(before.sample, before.clip, made / FPS)
+            shown?.sample.close()
+            shown = { sample: sample.clone(), clip: i }
+          },
+        })
+        seconds.push(at - start)
+      }
+      // The last frame, to the very end.
+      const last = shown as { sample: VideoSample; clip: number } | null
+      if (last) for (const by = framesBy(at, FPS); made < by; made++) await frameAt(last.sample, last.clip, made / FPS)
+    } finally {
+      ;(shown as { sample: VideoSample } | null)?.sample.close()
+    }
     at = Math.max(at, made / FPS)
     await soundTo(at)
 
