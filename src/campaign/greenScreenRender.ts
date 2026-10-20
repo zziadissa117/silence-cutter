@@ -30,9 +30,9 @@ import { onEncodedPacketMatchingColour } from './colourCheck'
 import { CUTOUT_HEIGHT, CUTOUT_WIDTH, greyToAlpha } from './cutout'
 import { headlineFontReady } from './headlineFont'
 import type { VideoLook } from './look'
-import { soloMusicGain, verticalSize } from './montageRender'
+import { FPS, framesBy, lowered, soloMusicGain, verticalSize } from './montageRender'
 import { drawHeadline, layoutHeadline } from './overlay'
-import { frameRateOf, makeSize, videoQuality } from './quality'
+import { makeSize, videoQuality } from './quality'
 import { cover } from './reaction'
 import { Limiter, measureLoudness } from './voice'
 
@@ -158,7 +158,6 @@ export async function renderGreenScreen(
     }
     const limiter = new Limiter(RATE, CHANNELS)
 
-    const fps = await frameRateOf(bg.video)
     const { width, height } = makeSize((maxShort) => verticalSize(bg.width, bg.height, maxShort))
     const canvas = new OffscreenCanvas(width, height)
     const ctx = canvas.getContext('2d')
@@ -172,17 +171,49 @@ export async function renderGreenScreen(
     const maskCtx = mask.getContext('2d', { willReadFrequently: true })
     if (!ctx || !stackCtx || !personCtx || !maskCtx) throw new SilenceCutError("This phone couldn't prepare the canvas for the video.")
     await headlineFontReady()
-    const headline = headlineText.trim() ? layoutHeadline(ctx, width, height, { ...look.headline, text: headlineText }) : null
+    // A little lower than the angle's headline, as on every batch video.
+    const headline = lowered(headlineText.trim() ? layoutHeadline(ctx, width, height, { ...look.headline, text: headlineText }) : null, height)
     const place = cover(bg.width, bg.height, width, height)
     const spot = cornerBox(width, height, corner)
     him = new CutoutFrames(cut.video, cut.first, cut.duration - cut.first)
 
-    const videoSource = new VideoSampleSource({ codec: 'avc', quality: videoQuality(width, height, fps), onEncodedPacket: onEncodedPacketMatchingColour })
+    const videoSource = new VideoSampleSource({ codec: 'avc', quality: videoQuality(width, height, FPS), onEncodedPacket: onEncodedPacketMatchingColour })
     const audioSource = new AudioSampleSource({ codec: 'aac', quality: QUALITY_MEDIUM })
     output.addVideoTrack(videoSource)
     output.addAudioTrack(audioSource)
     await output.start()
 
+    // One frame of the video at `timestamp`: the background's frame, him
+    // over it, the headline.
+    const draw = async (sample: VideoSample, timestamp: number) => {
+      onProgress?.(Math.min(0.99, timestamp / total))
+      ctx.fillStyle = '#000'
+      ctx.fillRect(0, 0, width, height)
+      sample.draw(ctx, place.x, place.y, place.width, place.height)
+      const frame = await him!.at(timestamp)
+      if (frame) {
+        stackCtx.clearRect(0, 0, stack.width, stack.height)
+        frame.draw(stackCtx, 0, 0, CUTOUT_WIDTH, CUTOUT_HEIGHT * 2)
+        maskCtx.drawImage(stack, 0, CUTOUT_HEIGHT, CUTOUT_WIDTH, CUTOUT_HEIGHT, 0, 0, mask.width, mask.height)
+        const pixels = maskCtx.getImageData(0, 0, mask.width, mask.height)
+        greyToAlpha(pixels.data)
+        maskCtx.putImageData(pixels, 0, 0)
+        personCtx.globalCompositeOperation = 'copy'
+        personCtx.drawImage(stack, 0, 0, CUTOUT_WIDTH, CUTOUT_HEIGHT, 0, 0, CUTOUT_WIDTH, CUTOUT_HEIGHT)
+        personCtx.globalCompositeOperation = 'destination-in'
+        personCtx.drawImage(mask, 0, 0, CUTOUT_WIDTH, CUTOUT_HEIGHT)
+        personCtx.globalCompositeOperation = 'source-over'
+        ctx.drawImage(person, spot.x, spot.y, spot.width, spot.height)
+      }
+      if (headline && timestamp < look.headline.seconds) drawHeadline(ctx, headline)
+      const out = new VideoSample(canvas, { timestamp, duration: 1 / FPS })
+      await videoSource.add(out)
+      out.close()
+    }
+
+    // A steady FPS from the first moment, as in montageRender: each of the
+    // background's frames on every steady one before its end.
+    let made = 0
     const at = await writeWhole(bg, 0, {
       rate: RATE,
       channels: CHANNELS,
@@ -190,29 +221,7 @@ export async function renderGreenScreen(
       audioClock: contiguousAudio(),
       maxRecoveries: MAX_RECOVERIES,
       onFrame: async (sample, timestamp) => {
-        onProgress?.(Math.min(0.99, timestamp / total))
-        ctx.fillStyle = '#000'
-        ctx.fillRect(0, 0, width, height)
-        sample.draw(ctx, place.x, place.y, place.width, place.height)
-        const frame = await him!.at(timestamp)
-        if (frame) {
-          stackCtx.clearRect(0, 0, stack.width, stack.height)
-          frame.draw(stackCtx, 0, 0, CUTOUT_WIDTH, CUTOUT_HEIGHT * 2)
-          maskCtx.drawImage(stack, 0, CUTOUT_HEIGHT, CUTOUT_WIDTH, CUTOUT_HEIGHT, 0, 0, mask.width, mask.height)
-          const pixels = maskCtx.getImageData(0, 0, mask.width, mask.height)
-          greyToAlpha(pixels.data)
-          maskCtx.putImageData(pixels, 0, 0)
-          personCtx.globalCompositeOperation = 'copy'
-          personCtx.drawImage(stack, 0, 0, CUTOUT_WIDTH, CUTOUT_HEIGHT, 0, 0, CUTOUT_WIDTH, CUTOUT_HEIGHT)
-          personCtx.globalCompositeOperation = 'destination-in'
-          personCtx.drawImage(mask, 0, 0, CUTOUT_WIDTH, CUTOUT_HEIGHT)
-          personCtx.globalCompositeOperation = 'source-over'
-          ctx.drawImage(person, spot.x, spot.y, spot.width, spot.height)
-        }
-        if (headline && timestamp < look.headline.seconds) drawHeadline(ctx, headline)
-        const out = new VideoSample(canvas, { timestamp, duration: sample.duration })
-        await videoSource.add(out)
-        out.close()
+        for (const by = framesBy(timestamp + sample.duration, FPS); made < by; made++) await draw(sample, made / FPS)
       },
       onSound: async (planes, timestamp) => {
         const length = planes[0].length

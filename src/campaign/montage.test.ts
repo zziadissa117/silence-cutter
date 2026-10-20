@@ -1,6 +1,66 @@
 import { describe, expect, it } from 'vitest'
 
-import { liftMusic, musicTrack, soloMusicGain, verticalSize } from './montageRender'
+import { BATCH_LOWER, FPS, framesBy, liftMusic, lowered, musicTrack, soloMusicGain, verticalSize } from './montageRender'
+import type { HeadlineLayout } from './overlay'
+
+/** Which of the clips' frames each steady frame shows: frames given as
+ *  [start, duration], in order, as the render gets them. */
+function steady(frames: [number, number][], fps = FPS): number[] {
+  const shown: number[] = []
+  let made = 0
+  frames.forEach(([start, duration], k) => {
+    for (const by = framesBy(start + duration, fps); made < by; made++) shown.push(k)
+  })
+  return shown
+}
+
+describe('a steady frame rate', () => {
+  it('draws one of every two frames of a 60 fps clip', () => {
+    const sixty = Array.from({ length: 12 }, (_, k): [number, number] => [k / 60, 1 / 60])
+    expect(steady(sixty)).toEqual([0, 2, 4, 6, 8, 10])
+  })
+  it('draws a 15 fps clip twice over', () => {
+    const fifteen = Array.from({ length: 3 }, (_, k): [number, number] => [k / 15, 1 / 15])
+    expect(steady(fifteen)).toEqual([0, 0, 1, 1, 2, 2])
+  })
+  it('starts at the first moment even when the first frame comes late, and holds a long one', () => {
+    // A first frame at 0.1 s lasting 0.2 s, then ordinary ones.
+    const uneven: [number, number][] = [[0.1, 0.2], [0.3, 1 / 30], [0.3333, 1 / 30]]
+    expect(steady(uneven)).toEqual([0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 2])
+  })
+  it('carries on across clips with no frame twice or missing', () => {
+    // A clip ending at 0.51 s, then the next from there.
+    const first = Array.from({ length: 17 }, (_, k): [number, number] => [k * 0.03, 0.03])
+    const next = Array.from({ length: 10 }, (_, k): [number, number] => [0.51 + k / 30, 1 / 30])
+    const shown = steady([...first, ...next])
+    expect(shown).toHaveLength(framesBy(0.51 + 10 / 30, FPS))
+    expect(shown.indexOf(17)).toBe(16)
+  })
+})
+
+describe("a batch video's words", () => {
+  const layout = (top: number, lines = 2): HeadlineLayout => ({
+    lines: Array.from({ length: lines }, () => ({ text: 'x', width: 10 })),
+    font: '',
+    fontPx: 60,
+    centerX: 540,
+    top,
+    baselineOffset: 40,
+    lineHeight: 70,
+    style: 'outline',
+    outlineColor: '#000000',
+    outlineWidth: 'normal',
+  })
+  it('sit a little lower than the headline', () => {
+    expect(lowered(layout(300), 1920)?.top).toBeCloseTo(300 + 1920 * BATCH_LOWER)
+  })
+  it('never into the caption at the bottom', () => {
+    // Two lines of 70 px; the caption starts at 80% of 1920 = 1536.
+    expect(lowered(layout(1380), 1920)?.top).toBeCloseTo(1536 - 140)
+    expect(lowered(layout(1450), 1920)?.top).toBe(1450)
+    expect(lowered(null, 1920)).toBeNull()
+  })
+})
 
 describe('music on a video with no talking', () => {
   it('brings a loud master down to about -14 LUFS', () => {

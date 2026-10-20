@@ -3,6 +3,18 @@
 Newest first. Every change says what it does, how to use it, and how it works
 underneath. Kept up to date with each commit.
 
+## Batch videos: a steady 30 frames a second, and the words a little lower
+Only ./deploy.sh is needed. Videos already made keep their old frames: only ones made after the update change.
+**What was wrong:** some batch videos stuttered at the start once posted, though they played smoothly in Posts. A batch
+video took its clips' frames as they came: a screen recording's uneven ones, a reaction at another frame rate, a first
+frame that arrives late. The platforms re-encode every upload to a steady rate, and an uneven start is where that shows.
+**Fix:** every batch video (both layouts) is now made at a steady 30 frames a second from its very first moment: each of a
+clip's frames is drawn on every steady frame before its end (a 60 fps recording's every other frame, a slower clip's
+twice). 30 fps is also less work for the phone than 60. The hook, the step names and Claude + X sit 4% of the height
+lower than the angle's headline ("i want the text to be a little lower"), never into the caption at the bottom.
+**How:** `montageRender.ts` `FPS`, `framesBy`, `BATCH_LOWER`, `lowered` (+ tests in `montage.test.ts`); the montage
+and `greenScreenRender.ts` loops draw on the steady frames. Talking videos are unchanged.
+
 ## Each posted video's views, for the planner's views tracker
 Needs deploying: run ./deploy-server.sh (the database field is already added).
 **What:** the server now reads each posted video's views from Postiz, per account, a day, three days and a week after

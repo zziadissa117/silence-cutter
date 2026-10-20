@@ -25,13 +25,13 @@ import { isSilenceCutSupported } from '../media/silenceCut'
 import { openClip, writeWhole, type Clip } from './clipParts'
 import { framingAt, planMotion, randomFrom, reactionZoom, zoomPlace } from './effects'
 import { ONLY_HOOK_ELSE } from './batch'
-import { drawFormula, formulaPush, layoutFormula } from './formulaOverlay'
+import { drawFormula, formulaPush, layoutFormula, type FormulaLayout } from './formulaOverlay'
 import { headlineFontReady } from './headlineFont'
 import type { VideoLook } from './look'
 import { MusicBed, trackLoudness } from './music'
 import { Limiter } from './voice'
-import { drawHeadline, layoutHeadline, outputSize } from './overlay'
-import { frameRateOf, makeSize, videoQuality } from './quality'
+import { TIKTOK_ZONES, drawHeadline, layoutHeadline, outputSize, type HeadlineLayout, type LogoLayout } from './overlay'
+import { makeSize, videoQuality } from './quality'
 import { cover } from './reaction'
 import { fitShowcase, pickPiece, readActivity } from './stepPiece'
 import { musicProblem, prepareMusic } from './sounds'
@@ -50,6 +50,43 @@ const MUSIC_LUFS = -14
 /** The most a quiet song is turned up - 24 dB - so a near-silent one stays
  *  a quiet song, not a wall of hiss. */
 const MAX_LIFT = 10 ** (24 / 20)
+/** Frames a second of every video made here, steady from its first moment.
+ *  The clips' own frames came through as they were - a screen recording's
+ *  uneven ones, a reaction at another rate, a first frame late - and posted,
+ *  some batch videos stuttered at the start, though they played smoothly
+ *  here: the platforms re-encode to a steady rate, and an uneven start is
+ *  where that shows. */
+export const FPS = 30
+/** A batch video's words - the hook, the step names, Claude + X - sit this
+ *  much lower than the angle puts its headline, as a share of the height:
+ *  "i want the text to be a little lower". */
+export const BATCH_LOWER = 0.04
+
+/** How many frames of a steady `fps` start before `until` seconds: a clip's
+ *  frame ending there is drawn on every one from the next not yet made. */
+export function framesBy(until: number, fps: number): number {
+  return Math.max(0, Math.ceil(until * fps - 1e-6))
+}
+
+/** A headline moved BATCH_LOWER down, never into the caption at the bottom. */
+export function lowered(layout: HeadlineLayout | null, height: number): HeadlineLayout | null {
+  if (!layout) return null
+  const room = height * (1 - TIKTOK_ZONES.bottom) - (layout.top + layout.lines.length * layout.lineHeight)
+  return { ...layout, top: layout.top + Math.max(0, Math.min(height * BATCH_LOWER, room)) }
+}
+
+/** Claude + X's logos and money line moved BATCH_LOWER down together. */
+function loweredFormula(layout: FormulaLayout | null, height: number): FormulaLayout | null {
+  if (!layout) return null
+  const dy = height * BATCH_LOWER
+  const down = (logo: LogoLayout | null) => (logo ? { ...logo, y: logo.y + dy } : null)
+  return {
+    left: down(layout.left),
+    right: down(layout.right),
+    plus: { ...layout.plus, y: layout.plus.y + dy },
+    line: layout.line ? { ...layout.line, top: layout.line.top + dy } : null,
+  }
+}
 
 export interface MontageRenderInput {
   clips: Blob[]
@@ -191,17 +228,20 @@ export async function renderMontage(
       if (musicFailed) reportProblem({ kind: 'fallback', phase: 'music', message: musicProblem(new Error(musicFailed), music.audio) })
     }
 
-    // 1080p at its own frame rate, at a bitrate to match (quality.ts).
-    const fps = await frameRateOf(clips[0].video)
+    // 1080p at a steady FPS, at a bitrate to match (quality.ts).
     const { width, height } = makeSize((maxShort) => verticalSize(clips[0].width, clips[0].height, maxShort))
     const canvas = new OffscreenCanvas(width, height)
     const ctx = canvas.getContext('2d')
     if (!ctx) throw new SilenceCutError("This browser couldn't prepare a canvas to draw the headline on.")
     await headlineFontReady()
-    const headline = !formula && headlineText.trim() ? layoutHeadline(ctx, width, height, { ...look.headline, text: headlineText }) : null
+    // A batch's words sit a little lower (BATCH_LOWER).
+    const place = (layout: HeadlineLayout | null) => (reactionFirst ? lowered(layout, height) : layout)
+    const headline = place(!formula && headlineText.trim() ? layoutHeadline(ctx, width, height, { ...look.headline, text: headlineText }) : null)
     // Each step's name over its clip, laid out once - always in the outline
     // look: Snapchat (and the white box) is for the hook alone.
-    const titleLayouts = clips.map((_, i) => (titles[i]?.trim() ? layoutHeadline(ctx, width, height, { ...look.headline, style: ONLY_HOOK_ELSE, text: titles[i]! }) : null))
+    const titleLayouts = clips.map((_, i) =>
+      place(titles[i]?.trim() ? layoutHeadline(ctx, width, height, { ...look.headline, style: ONLY_HOOK_ELSE, text: titles[i]! }) : null),
+    )
     // The formula's logos, decoded once for every frame.
     const decode = async (blob: Blob | null) => {
       if (!blob) return null
@@ -212,12 +252,13 @@ export async function renderMontage(
       }
     }
     logos = formula ? { left: await decode(formula.left), right: await decode(formula.right) } : null
-    const formulaLayout =
+    const laidFormula =
       formula && logos
         ? layoutFormula(ctx, width, height, { left: logos.left, right: logos.right }, formula.line, { ...look.headline, style: ONLY_HOOK_ELSE })
         : null
+    const formulaLayout = reactionFirst ? loweredFormula(laidFormula, height) : laidFormula
 
-    const videoSource = new VideoSampleSource({ codec: 'avc', quality: videoQuality(width, height, fps), onEncodedPacket: onEncodedPacketMatchingColour })
+    const videoSource = new VideoSampleSource({ codec: 'avc', quality: videoQuality(width, height, FPS), onEncodedPacket: onEncodedPacketMatchingColour })
     const audioSource = new AudioSampleSource({ codec: 'aac', quality: QUALITY_MEDIUM })
     output.addVideoTrack(videoSource)
     output.addAudioTrack(audioSource)
@@ -229,8 +270,13 @@ export async function renderMontage(
     const soundTo = musicTrack(bed, (sample) => audioSource.add(sample))
     const seconds: number[] = []
     let at = 0
+    // Frames written so far, at a steady FPS: each of the clips' own frames
+    // is drawn on every one that falls before its end - a 60 fps screen
+    // recording's every other frame, a slower clip's twice, a first frame
+    // that came late from the very start.
+    let made = 0
     for (const [i, clip] of clips.entries()) {
-      const place = cover(clip.width, clip.height, width, height)
+      const fill = cover(clip.width, clip.height, width, height)
       const start = at
       const length = Math.max(0.1, parts[i].end - parts[i].start)
       at = await writeWhole(clip, at, {
@@ -241,36 +287,40 @@ export async function renderMontage(
         audioClock: contiguousAudio(),
         maxRecoveries: MAX_RECOVERIES,
         onFrame: async (sample, timestamp) => {
-          onProgress?.(Math.min(0.99, timestamp / total))
-          ctx.fillStyle = '#000'
-          ctx.fillRect(0, 0, width, height)
-          // Under the formula, the reaction pushes in slowly for its whole
-          // length instead of the usual opening push.
-          // A batch's reaction always pushes in slowly too, or the angle's
-          // own push-in where that is closer.
-          const own = framingAt(motion, i, timestamp - start, [])
-          const framing =
-            i === 0 && formulaLayout
-              ? formulaPush(timestamp - start, length)
-              : i === 0 && reactionFirst
-                ? { ...own, scale: Math.max(own.scale, reactionZoom(timestamp - start, length)) }
-                : own
-          const spot = zoomPlace(place, framing, width, height)
-          sample.draw(ctx, spot.x, spot.y, spot.width, spot.height)
-          if (i === 0 && headline) drawHeadline(ctx, headline)
-          const title = titleLayouts[i]
-          if (title) drawHeadline(ctx, title)
-          if (i === 0 && formulaLayout && logos) drawFormula(ctx, formulaLayout, logos)
-          const frame = new VideoSample(canvas, { timestamp, duration: sample.duration })
-          await videoSource.add(frame)
-          frame.close()
-          // The music keeps up with the picture, in one piece.
-          await soundTo(timestamp + sample.duration)
+          for (const by = framesBy(timestamp + sample.duration, FPS); made < by; made++) {
+            const t = made / FPS
+            onProgress?.(Math.min(0.99, t / total))
+            ctx.fillStyle = '#000'
+            ctx.fillRect(0, 0, width, height)
+            // Under the formula, the reaction pushes in slowly for its whole
+            // length instead of the usual opening push.
+            // A batch's reaction always pushes in slowly too, or the angle's
+            // own push-in where that is closer.
+            const own = framingAt(motion, i, t - start, [])
+            const framing =
+              i === 0 && formulaLayout
+                ? formulaPush(t - start, length)
+                : i === 0 && reactionFirst
+                  ? { ...own, scale: Math.max(own.scale, reactionZoom(t - start, length)) }
+                  : own
+            const spot = zoomPlace(fill, framing, width, height)
+            sample.draw(ctx, spot.x, spot.y, spot.width, spot.height)
+            if (i === 0 && headline) drawHeadline(ctx, headline)
+            const title = titleLayouts[i]
+            if (title) drawHeadline(ctx, title)
+            if (i === 0 && formulaLayout && logos) drawFormula(ctx, formulaLayout, logos)
+            const frame = new VideoSample(canvas, { timestamp: t, duration: 1 / FPS })
+            await videoSource.add(frame)
+            frame.close()
+            // The music keeps up with the picture, in one piece.
+            await soundTo(t + 1 / FPS)
+          }
         },
       })
       seconds.push(at - start)
     }
     // To the very end of the last frame.
+    at = Math.max(at, made / FPS)
     await soundTo(at)
 
     await output.finalize()
