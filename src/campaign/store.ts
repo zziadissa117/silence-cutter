@@ -27,6 +27,7 @@ import {
   type PictureCue,
 } from './look'
 import { filesOf, type BankFile, type BatchBank } from './batch'
+import { emptyScript, type FormatScript } from './formats'
 import type { ManualPicture } from './manualPictures'
 import type { MusicLevel } from './music'
 import type { CaptionPosition, CaptionSize, CaptionStyle, CaptionWord } from './captions'
@@ -151,6 +152,10 @@ interface StoredJob {
    *  kept on the phone - not sent - until he schedules it. (Not the
    *  campaign's `format`, which says talking or reaction.) */
   forFormat?: string
+  /** A format video mixed from its script (formats.mixesOf): the takes, line
+   *  by line, read from the format's keeping - this job keeps no copy. Joined
+   *  first when there are several (`prejoin`). */
+  formatMix?: BankFile[]
   /** A format video made and waiting to be scheduled: what its post needs
    *  (the words heard, for the caption; the headline; how long it is). Its
    *  finished MP4 is kept under heldKey(id) until it is scheduled or he
@@ -1110,7 +1115,7 @@ export async function sweepRetiredBankFiles(inUse: string[] = []): Promise<void>
       ...inUse,
       ...rows.flatMap((row) => {
         const bank = row.montage?.bank
-        return bank ? filesOf(bank) : []
+        return [...(bank ? filesOf(bank) : []), ...(row.formatMix ?? []).map((take) => take.id)]
       }),
     ])
     const keep: string[] = []
@@ -1141,6 +1146,34 @@ export const BATCH_BANK_SAVED = 'cutter:batch-bank-saved'
 export async function saveBatchBank(bank: BatchBank): Promise<void> {
   await setMeta(bankKey(bank.campaignId), JSON.stringify(bank))
   if (typeof window !== 'undefined') window.dispatchEvent(new CustomEvent(BATCH_BANK_SAVED, { detail: bank.campaignId }))
+}
+
+// --- A format's script (the Formats tab) --------------------------------------
+//
+// Its lines and the takes of each, one row of meta per format; the takes
+// themselves are kept like the Batch tab's clips (saveBankFile). Never shared.
+
+const scriptKey = (angleId: string) => `format:${angleId}`
+
+export async function loadFormatScript(angleId: string): Promise<FormatScript> {
+  try {
+    const raw = await getMeta(scriptKey(angleId))
+    return raw ? (JSON.parse(raw) as FormatScript) : emptyScript(angleId)
+  } catch {
+    return emptyScript(angleId)
+  }
+}
+
+export async function saveFormatScript(script: FormatScript): Promise<void> {
+  await setMeta(scriptKey(script.angleId), JSON.stringify(script))
+}
+
+/** A format deleted: its script goes now, and the takes it held - returned,
+ *  to be let go of (retireBankFiles) once no video still to be made needs them. */
+export async function deleteFormatScript(angleId: string): Promise<string[]> {
+  const script = await loadFormatScript(angleId)
+  await setMeta(scriptKey(angleId), null)
+  return script.lines.flatMap((line) => line.takes.map((take) => take.id))
 }
 
 export async function claimAttempt(id: string): Promise<boolean> {

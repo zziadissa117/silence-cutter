@@ -5,6 +5,7 @@ import type { PopPosition } from './popVideo'
 import type { Range, SilenceSettings } from '../media/silenceMath'
 import type { Angle, Campaign, HeadlineStyle } from './look'
 import type { CampaignResult } from './pipeline'
+import type { BankFile } from './batch'
 import type { CaptionPosition, CaptionSize, CaptionStyle, CaptionWord } from './captions'
 import type { CampaignPlan } from './plan'
 import type { ManualPicture } from './manualPictures'
@@ -85,6 +86,9 @@ export type Job = {
    *  there, not in the Videos list; when made it is kept, not sent, until he
    *  schedules it. */
   forFormat?: string
+  /** A format video mixed from its script: its takes, line by line, read
+   *  from the format's keeping (joined first when there are several). */
+  formatMix?: BankFile[]
   /** Recordings he joined before anything else, put together first: this
    *  job's own file is the first until then. */
   prejoin?: { clips: { name: string; type: string }[]; files?: File[] }

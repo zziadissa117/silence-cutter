@@ -832,6 +832,13 @@ input[type='color']::-webkit-color-swatch { border: 0.5px solid var(--edge); bor
 .format-ready { padding: 4px 0; }
 .format-video { display: block; width: 100%; max-height: 70vh; margin: 8px 0 4px; border-radius: 12px; background: #000; }
 .format-schedule .btn { flex: 1 1 10rem; }
+.format-script .step-list { margin-bottom: 12px; }
+.format-takes { display: flex; flex-basis: 100%; align-items: center; justify-content: space-between; gap: 8px; padding-left: 2em; }
+.format-line textarea.step-name { flex: 1 1 calc(100% - 2.5rem); }
+.format-takes .linkbtn:disabled { color: var(--muted); cursor: default; text-decoration: none; }
+.format-take-list { flex-basis: 100%; padding-left: 2em; }
+.format-new-line { flex-wrap: nowrap; }
+.format-new-line input { flex: 1 1 auto; min-width: 0; }
 
 /* A picture on a video, edited in the cuts editor (CutsEditor) */
 .cuts-pic-preview { position: absolute; object-fit: fill; pointer-events: auto; cursor: pointer; }

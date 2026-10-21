@@ -43,6 +43,12 @@ He wants plain words, no permission questions (questions are fine), the deploy c
 4. **Grok Bot idea** (send finished videos to brands on WhatsApp/Discord, read approve / changes, approve in
    the Cutter when the brand approves, onboard campaigns): plan explained only, nothing built. Waiting on him for
    where the links go for Cantina, Lock In, Lovable BATCH, Mirage, Money Pilot, OpenArt Batch and Videotto.
+5. **Formats are now scripts** (2026-10-21, his words: "one format with the same exact script ... I can say that
+   30 times in 30 different videos ... half of my work is automated for the month"). Lines + takes per line, Make
+   mixes one take of each line per video (`formats.mixesOf`; see the CHANGELOG entry and ARCHITECTURE.md Formats).
+   Checked in Chrome for Testing up to the join (the speech model can't be downloaded here); ask him for one real
+   month from his phone. Ideas not built: the app sorting a pile of takes into lines by what is said (each take is
+   heard anyway), and making automatically when new takes land instead of the Make tap.
 
 ## The planner (`zziadissa117/ugc-planner`)
 

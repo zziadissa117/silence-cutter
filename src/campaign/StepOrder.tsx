@@ -116,7 +116,7 @@ export function StepOrder({
  *  long one takes the whole row), and on the video a long one gets smaller
  *  to fit (overlay.ts MAX_BLOCK). One line of words - Enter is done, a new
  *  line typed or pasted is a space. */
-function StepName({ label, value, onChange }: { label: string; value: string; onChange: (name: string) => void }) {
+export function StepName({ label, value, onChange }: { label: string; value: string; onChange: (name: string) => void }) {
   const box = useRef<HTMLTextAreaElement>(null)
   useLayoutEffect(() => {
     const el = box.current

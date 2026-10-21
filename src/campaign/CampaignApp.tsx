@@ -32,7 +32,7 @@ import { BatchView } from './BatchView'
 import { oneAtATime, overfull, settled, startOver, takenBy, topUp, trimDown, type BatchVideo } from './batchRun'
 import { AnalyticsView, answerSuggestion, saveTarget, useCampaignRows } from './AnalyticsView'
 import { FormatsView, type FormatClips } from './FormatsView'
-import { daysLine, spreadOver } from './formats'
+import { afterMixing, daysLine, mixesOf, spreadOver } from './formats'
 import type { ViewsByAccount } from './analytics'
 import { filesOf, stepTitle, styleFor, stylesOf, type BankFile, type BatchBank } from './batch'
 import { CampaignsView } from './CampaignsView'
@@ -180,7 +180,9 @@ import {
   saveCutout,
   deleteOverlayFile,
   loadCampaigns,
+  deleteFormatScript,
   loadBankFile,
+  loadFormatScript,
   loadJobFile,
   loadMontageFile,
   loadPendingJobs,
@@ -195,6 +197,7 @@ import {
   recordPhase,
   resetAttempts,
   saveCampaign,
+  saveFormatScript,
   spaceOnDevice,
   retireBankFiles,
   finishPrejoin,
@@ -438,7 +441,7 @@ export function CampaignApp() {
   /** A file from a batch's bank, or why the video can't be made without it. */
   const bankFileOf = async (file: BankFile): Promise<File> => {
     const found = await loadBankFile(file).catch(() => null)
-    if (!found) throw new SilenceCutError(`${file.name} was taken out of the batch's bank, or is no longer on this phone. Skip this video.`)
+    if (!found) throw new SilenceCutError(`${file.name} was taken out, or is no longer on this phone. Skip this video.`)
     return found
   }
 
@@ -549,25 +552,24 @@ export function CampaignApp() {
     setHeldVersion((v) => v + 1)
   }
 
-  /** Takes dropped into a format: each is listened to for its captions, then
-   *  made with the format's look and joined with its clips - and kept, not
-   *  sent, for the Formats tab. Always cut, whatever their shape. */
-  const addFormatTakes = (owner: Campaign, angle: Angle, files: File[]) => {
-    const problem = pickArrived(files)
-    if (problem) setNotice(problem)
-    if (files.length === 0) {
-      pickSaved()
-      return
-    }
-    void (async () => {
-      const filming = await Promise.all(files.map(filmingOf))
-      const order = files.map((file, i) => ({ file, filming: filming[i] }))
-      if (order.every((o) => o.filming.filmedAt !== undefined)) order.sort((a, b) => a.filming.filmedAt! - b.filming.filmedAt!)
-      const settings = { ...PRESETS[preset] }
-      const added: Job[] = order.map(({ file, filming: filmed }) => ({
-        id: `${Date.now()}-${nextId++}`,
-        name: file.name,
-        file,
+  /** Make on a format: a video for every opening not made yet, mixed from
+   *  its script (formats.mixesOf) - its takes joined, listened to for the
+   *  captions, made with the format's look and clips, and kept, not sent,
+   *  for the Formats tab. Each is keyed on what its opening is, so tapping
+   *  twice never makes one twice. The jobs are saved before the script
+   *  moves their openings out, and the openings go from the phone once no
+   *  video still to be made needs them. Says how many. */
+  const makeFormat = async (owner: Campaign, angle: Angle): Promise<number> => {
+    const script = await loadFormatScript(angle.id)
+    const mixes = mixesOf(script)
+    if (mixes.length === 0) return 0
+    const settings = { ...PRESETS[preset] }
+    const have = new Set(jobsRef.current.map((j) => j.id))
+    const added: Job[] = mixes
+      .map((takes): Job => ({
+        id: `format-${angle.id}-${takes[0].fp ?? takes[0].id}`,
+        name: `${takes.map((t) => t.name.replace(/\.[^./]+$/, '')).join(' + ')}.mp4`,
+        file: null,
         campaignId: owner.id,
         angleId: angle.id,
         label: labelOf(owner, angle),
@@ -575,20 +577,20 @@ export function CampaignApp() {
         settings,
         cleanSpeech,
         status: 'queued',
-        phase: 'cutting',
+        phase: takes.length > 1 ? 'joining' : 'cutting',
         progress: 0,
         day: { approved: false, chosen: true },
         forFormat: angle.id,
-        ...filmed,
+        formatMix: takes,
+        ...(takes.length > 1 ? { prejoin: { clips: takes.slice(1).map((t) => ({ name: t.name, type: t.type })) } } : {}),
       }))
-      setJobs((current) => [...current, ...added])
-      const saving: Promise<unknown>[] = []
-      for (const job of added) {
-        const saved = persistJob({
+      .filter((job) => !have.has(job.id))
+    await Promise.all(
+      added.map((job) =>
+        persistJobRow({
           id: job.id,
-          fileBlob: job.file!,
           fileName: job.name,
-          fileType: job.file!.type,
+          fileType: job.formatMix![0].type,
           campaignId: job.campaignId,
           angleId: job.angleId,
           headlineText: '',
@@ -596,14 +598,16 @@ export function CampaignApp() {
           cleanSpeech,
           day: job.day,
           forFormat: angle.id,
-          ...(job.filmedAt !== undefined ? { filmedAt: job.filmedAt } : {}),
-          ...(job.seconds !== undefined ? { seconds: job.seconds } : {}),
-        }).catch(() => {})
-        persisting.current.set(job.id, saved)
-        saving.push(saved)
-      }
-      void Promise.all(saving).finally(pickSaved)
-    })()
+          formatMix: job.formatMix,
+          ...(job.prejoin ? { prejoin: { clips: job.prejoin.clips } } : {}),
+        }),
+      ),
+    )
+    setJobs((current) => [...current, ...added])
+    await saveFormatScript(afterMixing(script, mixes))
+    await retireBankFiles(mixes.map((takes) => takes[0].id))
+    sweepBank()
+    return added.length
   }
 
   /** Returns whether it went: false when nothing here sends it. */
@@ -1057,12 +1061,15 @@ export function CampaignApp() {
     interrupted: () => boolean,
   ): Promise<void> => {
     const parts = next.prejoin!
+    // A format video's takes are the format's, read one at a time.
+    const mix = next.formatMix
     try {
-      const first = next.file ?? (await loadJobFile(next.id))
+      const first = next.file ?? (mix ? await bankFileOf(mix[0]) : await loadJobFile(next.id))
       if (!first) throw new SilenceCutError('The first recording is no longer on this phone. Remove this video and join them again.')
       const rest: File[] = []
       for (const [i, clip] of parts.clips.entries()) {
-        const file = parts.files?.[i] ?? (await loadMontageFile(next.id, i + 1, clip.name, clip.type).catch(() => null))
+        const file =
+          parts.files?.[i] ?? (mix ? await bankFileOf(mix[i + 1]) : await loadMontageFile(next.id, i + 1, clip.name, clip.type).catch(() => null))
         if (!file) throw new SilenceCutError(`Recording ${i + 2} is no longer on this phone. Remove this video and join them again.`)
         rest.push(file)
       }
@@ -1189,6 +1196,7 @@ export function CampaignApp() {
         ...(p.montage ? { montage: p.montage } : {}),
         ...(p.batch ? { batch: p.batch } : {}),
         ...(p.forFormat ? { forFormat: p.forFormat } : {}),
+        ...(p.formatMix ? { formatMix: p.formatMix } : {}),
         ...(p.prejoin ? { prejoin: p.prejoin } : {}),
       }))
       setJobs((current) => [...restored, ...current])
@@ -1291,8 +1299,16 @@ export function CampaignApp() {
           await joinParts(next, setPhase, watched, () => interrupted)
           return
         }
-        // A batch video's first clip is its reaction, read from the bank.
-        const file = next.file ?? (next.montage?.bank ? await bankFileOf(next.montage.bank.reaction) : await loadJobFile(next.id))
+        // A batch video's first clip is its reaction, read from the bank; a
+        // one-line format's video is its take, read from the format's keeping
+        // (several takes were joined into the job's own file first).
+        const file =
+          next.file ??
+          (next.montage?.bank
+            ? await bankFileOf(next.montage.bank.reaction)
+            : next.formatMix?.length === 1
+              ? await bankFileOf(next.formatMix[0])
+              : await loadJobFile(next.id))
         if (!file && next.day?.parts) {
           // Its joined file didn't keep: put the parts together again.
           const day = { ...next.day, plan: undefined, captions: undefined, checked: undefined, keep: undefined }
@@ -2102,7 +2118,14 @@ export function CampaignApp() {
       : done
   }
 
+  /** A format deleted (or its campaign): its script and takes go too. */
+  const forgetFormats = async (angles: readonly Angle[]) => {
+    const takes = (await Promise.all(angles.filter((a) => a.isFormat).map((a) => deleteFormatScript(a.id).catch(() => [])))).flat()
+    if (takes.length > 0) await retireBankFiles(takes).then(sweepBank)
+  }
+
   const removeCampaign = async (id: string) => {
+    void forgetFormats((campaigns ?? []).find((c) => c.id === id)?.angles ?? [])
     await deleteCampaign(id)
     const rest = ordered((campaigns ?? []).filter((c) => c.id !== id))
     setCampaigns(rest)
@@ -2111,6 +2134,7 @@ export function CampaignApp() {
   }
 
   const removeAngle = async (owner: Campaign, id: string) => {
+    void forgetFormats(owner.angles.filter((a) => a.id === id))
     setAngleClips(await saveAngleClips(angleKey(owner.id, id), {}).catch(() => angleClips))
     const saved = await store({ ...owner, angles: owner.angles.filter((a) => a.id !== id) })
     select(saved)
@@ -2308,7 +2332,9 @@ export function CampaignApp() {
   /** Deletes the footage a spent bank let go of, once nothing needs it. */
   const sweepBank = () => {
     sweepBankRef.current = sweepBank
-    const inUse = jobsNow.current.flatMap((j) => (j.montage?.bank && j.status !== 'done' ? filesOf(j.montage.bank) : []))
+    const inUse = jobsNow.current.flatMap((j) =>
+      j.status === 'done' ? [] : [...(j.montage?.bank ? filesOf(j.montage.bank) : []), ...(j.formatMix ?? []).map((take) => take.id)],
+    )
     void sweepRetiredBankFiles(inUse)
   }
 
@@ -3532,7 +3558,8 @@ export function CampaignApp() {
         clipsOf={formatClips}
         onNewFormat={newFormat}
         onEditFormat={(c, a) => setEditing({ kind: 'angle', campaign: c, angle: a, isNew: false })}
-        onAddTakes={addFormatTakes}
+        onMake={makeFormat}
+        onLetGo={(ids) => void retireBankFiles(ids).then(sweepBank)}
         onSchedule={scheduleFormat}
         onRemove={removeFormatVideo}
         onRetry={startHeld}

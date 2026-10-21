@@ -3,6 +3,36 @@
 Newest first. Every change says what it does, how to use it, and how it works
 underneath. Kept up to date with each commit.
 
+## Formats: a script you film again and again, mixed into a month of videos
+Only ./deploy.sh is needed; then close the Cutter and open it again.
+**What changed:** a format was one take = one video. He meant a script: "ELON MUST BE STOPPED", "NO WAY HE DID THIS",
+"Oh and by the way vertus", "Link in bio" - each line said 30 different ways, and the app mixes them into 30 videos,
+"so half of my work is automated for the month".
+**How to use it:** Formats, open a format (or + New format). Under **Script**, type each line and **+ Add line**, in
+order. Each line has **+ Takes**: pick all your takes of that line. When every line has takes, **Make 30 videos**
+(the number is how many takes line 1 has). Each video opens with a different take of line 1 - never the same opening
+twice - then takes one of every other line: the one in the fewest videos so far, and of those the one filmed closest
+to that opening, so takes filmed together stay together. 30 takes of every line make 30 videos with every take once;
+3 takes of "Link in bio" go round evenly. The takes of each video are joined, then cut, captioned and made with the
+format's look and clips, and wait under Ready as before: Watch, Save for the brand, then **Over the month** (new),
+the week or the next 5 days. Next month: add new takes of line 1 (and of any other line - new ones go first) and
+Make again. A take you add twice is skipped and named; an opening already made can't be added again. Tap "30 takes"
+to see a line's takes: watch one, or ✕ it. ↑ moves a line up, ✕ takes it out. A one-line format still makes one
+video per take.
+**How:** `formats.ts` `FormatScript` (lines, takes, `uses`, `opened`), `mixesOf`, `afterMixing`; the script in
+meta `format:<angleId>` (`store.loadFormatScript/saveFormatScript/deleteFormatScript`), takes kept once like the
+Batch tab's clips (`saveBankFile`). `CampaignApp.makeFormat` queues a job per video with `formatMix` (its takes, read
+from the bank, no copies) and `prejoin`, id `format-<angle>-<opening fingerprint>` (Make twice can't make one twice);
+`joinFirst` reads them from the bank. Used openings and taken-out takes go from the phone once no video still to be
+made needs them (`retireBankFiles`, the sweep now also keeps `formatMix` takes); a deleted format or campaign lets
+its takes go (`forgetFormats`). `daysLine` says "Thu 22 Oct to Fri 20 Nov" past a week. The old "+ Add takes" (each
+take its own video) is gone - a one-line script does the same. Tests in `formats.test.ts`, `formatsView.test.tsx`.
+**Checked here** in Chrome for Testing on the real app: lines, takes (kept, duplicate skipped), Make 2 videos from
+3 lines x 2 takes added out of order - paired by filming time - the takes joined into one H.264 + AAC file from the
+format's keeping, and the script and videos still there after a reload. **Not checked here:** the rest of making
+(listening needs the speech model, which this computer can't download) - that part is the same road "Join first"
+and format takes already took - and the iPhone.
+
 ## A hook that lags at the start now says so too (not only one that freezes)
 Only ./deploy.sh is needed; then close the Cutter and open it again. Nothing changes in the videos themselves.
 **What was wrong:** the report that a batch video's start held or skipped frames (`cutter_errors`, phase "start") only

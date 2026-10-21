@@ -257,16 +257,28 @@ the number of variations and `variationParts` (what multiplies into it).
 
 ## Formats (`formats.ts`, `FormatsView.tsx`)
 
-A format is an angle with `isFormat`: its look and the clips joined onto every take (clips.ts,
-set in the angle editor's Clips). It is never a candidate when sorting a day's videos. Takes
-added on the Formats tab (`CampaignApp.addFormatTakes`) are jobs with `forFormat` and
-`day.chosen`: listened to for captions, then `approved` at once, made like any talking video,
-and on `done` kept instead of sent (`holdFormat` -> `store.holdMade`: the finished MP4 under
-`held:<id>`, the transcript/headline/duration on the row; never expired, the recording goes after
-the edit window). They are left out of the Videos tab. Save opens the share sheet with the
-files (to send the brand). Schedule (`scheduleFormat`) spreads them over 7 or 5 days
-(`spreadOver`: `perDayCounts`, the campaign's `batchTimesOn`, `stackTimesOn` clear of taken
-times, today only with room an hour ahead) and queues each with `meta.batch` and
+A format is an angle with `isFormat`: its look and the clips joined onto every video (clips.ts,
+set in the angle editor's Clips), and a script (`FormatScript`, meta `format:<angleId>`,
+`store.loadFormatScript/saveFormatScript`): its lines in order, each with its takes - bank files
+(`store.saveBankFile`, fingerprinted, a duplicate skipped) with `filmedAt` from the file. It is
+never a candidate when sorting a day's videos. Make (`CampaignApp.makeFormat`) turns the script
+into videos with `mixesOf`: one per take of line 1 (an opening opens one video only, then leaves
+the line; its fingerprint goes in `opened` so it can't be added again), each with the take of
+every other line in the fewest videos so far (`uses`), and of those the one filmed nearest the
+opening (or at the same place in the line). Each video is a job with `forFormat`, `day.chosen`,
+`formatMix` (its takes, read from the bank - no copies) and, for 2+ lines, `prejoin`; its id is
+`format-<angle>-<opening fp>`, so Make twice never makes one twice. The rows are saved, then
+`afterMixing` saves the script, then the openings are retired (`retireBankFiles`; the sweep keeps
+any a saved row's `formatMix` still needs). `joinFirst` joins the takes (`finishPrejoin` keeps the
+joined file as the job's own), then the job is listened to for captions, `approved` at once, made
+like any talking video, and on `done` kept instead of sent (`holdFormat` -> `store.holdMade`: the
+finished MP4 under `held:<id>`, the transcript/headline/duration on the row; never expired, the
+recording goes after the edit window). A one-line format's video is its take, read straight from
+the bank. They are left out of the Videos tab. Taking a take or line out, or deleting the format
+or its campaign (`forgetFormats`, `store.deleteFormatScript`), retires its takes. Save opens the
+share sheet with the files (to send the brand). Schedule (`scheduleFormat`) spreads them over
+30, 7 or 5 days (`spreadOver`: `perDayCounts`, the campaign's `batchTimesOn`, `stackTimesOn`
+clear of taken times, today only with room an hour ahead) and queues each with `meta.batch` and
 `meta.scheduled`; the server's `approvalFor` makes such a post `direct`, so `takeBatchSlot` puts
 it at its day and time and it is scheduled without waiting in Posts.
 
