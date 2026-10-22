@@ -495,7 +495,7 @@ export async function startOver({
     const job = await engineJob(bank.engineJob).catch(() => null)
     if (job && (job.status === 'waiting' || job.status === 'making')) await stopEngineJob(bank.engineJob)
   }
-  const posts = await listPosts()
+  const posts = await listPosts(true)
   const videos = dayVideos(posts, jobs, campaignId)
   const going = videos.filter((v) => v.removable)
   for (const v of going) if (v.kind === 'job') removeJob(v.id)
@@ -614,7 +614,7 @@ export async function trimDown({
       stoppedEngine = true
     }
   }
-  const posts = await listPosts()
+  const posts = await listPosts(true)
   const videos = dayVideos(posts, jobs, campaignId)
   const plan = trimPlan(stoppedEngine ? { ...bank, filled: countedDays(videos) } : bank, videos)
   for (const v of plan.remove) if (v.kind === 'job') removeJob(v.id)

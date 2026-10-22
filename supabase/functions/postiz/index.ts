@@ -1778,11 +1778,12 @@ async function schedule(start: Post): Promise<Post> {
     if (covered.length === 0) throw error
     const at = now ? Date.now() : new Date(date).getTime()
     if (at - Date.now() > HAND_AHEAD_MS) {
-      // Not due for a while: Postiz gets another go nearer its time, and
-      // Buffer takes it then if Postiz still can't - Buffer's free plan holds
-      // only 10 posts a channel.
+      // Not due for a while: Postiz gets another go once it answers again
+      // (probePostiz, a tick's one question every half hour) or nearer its
+      // time, and Buffer takes it then if Postiz still can't - Buffer's free
+      // plan holds only 10 posts a channel.
       return update(post.id, {
-        error: `${error.message} Buffer takes it a few hours before its time if Postiz still can't.`,
+        error: `${POSTIZ_WAIT} (${error.message})`,
         retry_at: new Date(at - HAND_AHEAD_MS).toISOString(),
         attempts: 0,
       })
@@ -1972,12 +1973,20 @@ async function act(profile: Profile, action: string, body: Record<string, unknow
       return reply({ post: postView(await update(post.id, { status: 'rejected', error: stopping, retry_at: null, ...(stopping ? { attempts: 0 } : {}) })) })
     }
     case 'unschedule': {
-      if (post.status !== 'scheduled') return reply({ post: postView(post) })
+      // Approved is scheduled to him (the Posts screen lists them together):
+      // either comes back to To approve.
+      if (post.status !== 'scheduled' && post.status !== 'approved') return reply({ post: postView(post) })
       if (post.post_at && new Date(post.post_at).getTime() < Date.now()) throw new Problem('It has already gone out.')
+      // Not while a run is handing it to Postiz: that run would put it there
+      // anyway. Held (claimed) until it is back in To approve.
+      if (post.status === 'approved' && (post.creating_at || !(await claim(post.id)))) {
+        throw new Problem('It is going to Postiz this moment - try again in a minute.')
+      }
       const { postiz: key } = await keysFor(profile.id)
       if (post.postiz_ids?.[0]) await deleteScheduled(key, post)
       if (post.buffer_ids) await dropFromBuffer(profile, post)
-      return reply({ post: postView(await update(post.id, { status: 'waiting', ready_at: null, postiz_ids: null, buffer_ids: null, error: null })) })
+      const back = { status: 'waiting' as const, ready_at: null, postiz_ids: null, buffer_ids: null, error: null, retry_at: null, attempts: 0, working_at: null }
+      return reply({ post: postView(await update(post.id, back)) })
     }
     case 'retry-accounts':
       return reply({ post: postView(await retryAccounts(profile, post)) })
@@ -2469,6 +2478,48 @@ async function finishEndings(): Promise<void> {
 
 // --- The scheduler ------------------------------------------------------------
 
+/** What an approved post far ahead says while Postiz won't take it: the
+ *  tick asks again (probePostiz), and Buffer takes it before its time. */
+const POSTIZ_WAIT = "Approved - Postiz didn't take it yet, so it tries again by itself. Buffer posts it a few hours before its time if Postiz still can't."
+/** Matches POSTIZ_WAIT and what such a post said before it. */
+const POSTIZ_WAIT_LIKE = "%a few hours before its time if Postiz still can't%"
+/** How often a profile's posts waiting on Postiz ask it again: Postiz allows
+ *  about 30 questions an hour, and posting needs them. */
+const PROBE_EVERY_MS = 30 * MINUTE
+
+/** Approved posts far ahead that Postiz turned down (POSTIZ_WAIT) used to sit
+ *  until a few hours before their time - days, after an outage - looking
+ *  stuck. Now one of them asks Postiz again every half hour per profile, and
+ *  the moment one gets in, the rest follow. */
+async function probePostiz(now: number): Promise<void> {
+  const { data } = await db
+    .from('cutter_posts')
+    .select('id, profile_id, post_at, updated_at')
+    .eq('status', 'approved')
+    .like('error', POSTIZ_WAIT_LIKE)
+    .gt('retry_at', new Date(now).toISOString())
+    .order('post_at', { ascending: true })
+    .limit(500)
+  const byProfile = new Map<string, Pick<Post, 'id' | 'profile_id' | 'post_at' | 'updated_at'>[]>()
+  for (const row of (data ?? []) as Pick<Post, 'id' | 'profile_id' | 'post_at' | 'updated_at'>[]) {
+    byProfile.set(row.profile_id, [...(byProfile.get(row.profile_id) ?? []), row])
+  }
+  for (const [profileId, rows] of byProfile) {
+    // Asked within the last half hour: not again yet.
+    if (rows.some((r) => Date.parse(r.updated_at) > now - PROBE_EVERY_MS)) continue
+    await advance(rows[0].id)
+    const after = await reload(rows[0].id).catch(() => null)
+    if (after?.status !== 'scheduled') continue
+    // Postiz answers again: the rest go now, a few each tick.
+    await db
+      .from('cutter_posts')
+      .update({ retry_at: new Date(now).toISOString() })
+      .eq('profile_id', profileId)
+      .eq('status', 'approved')
+      .like('error', POSTIZ_WAIT_LIKE)
+  }
+}
+
 async function tick(): Promise<void> {
   const now = Date.now()
   const iso = (ms: number) => new Date(ms).toISOString()
@@ -2483,6 +2534,7 @@ async function tick(): Promise<void> {
     .order('updated_at', { ascending: true })
     .limit(10)
   for (const row of due ?? []) await advance(row.id)
+  await probePostiz(now).catch((error) => console.error('asking Postiz again failed', error))
 
   // Uploads that never finished, after two days: the phone gave up on them.
   const { data: abandoned } = await db

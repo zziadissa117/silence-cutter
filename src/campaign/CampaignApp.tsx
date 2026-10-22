@@ -516,7 +516,7 @@ export function CampaignApp() {
   const retireOld = async (job: Job): Promise<void> => {
     if (!job.replaces) return
     try {
-      const posts = await listPosts().catch(() => lastPosts())
+      const posts = await listPosts(true).catch(() => lastPosts())
       const old = posts.find((p) => p.key === job.replaces)
       if (!old || old.status === 'rejected') return
       const wentOut = old.status === 'posted' || (old.status === 'scheduled' && old.postAt !== null && new Date(old.postAt).getTime() <= Date.now())
@@ -2105,7 +2105,7 @@ export function CampaignApp() {
     } catch (error) {
       // A server from before stop-campaign: stop its posts one by one instead.
       if (!(error instanceof Error) || !/unknown action/i.test(error.message)) throw error
-      const outcome = await stopPostsNow(stoppable((await listPosts()).filter((p) => p.campaignId === owner.id)))
+      const outcome = await stopPostsNow(stoppable((await listPosts(true)).filter((p) => p.campaignId === owner.id)))
       stopped = outcome.stopped
       failed = outcome.failed.length
     }

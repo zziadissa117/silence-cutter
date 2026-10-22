@@ -14,7 +14,7 @@ vi.mock('./cloud', async (original) => ({
   currentSession: () => ({ token: 't' }),
 }))
 
-import { batchTimesOn, onFixedTimes, placeTimesOn, stackTimesOn, takenTimes, stopPostsNow, switchToRandom, type Profile, type ServerPost } from './posting'
+import { batchTimesOn, listPosts, onFixedTimes, placeTimesOn, shared, stackTimesOn, takenTimes, stopPostsNow, switchToRandom, type Profile, type ServerPost } from './posting'
 
 const post = (id: string, postAt: string) => ({ id, campaignId: 'c', campaignName: 'Polsia', status: 'scheduled', postAt }) as unknown as ServerPost
 
@@ -240,5 +240,38 @@ describe('a batch stacked on one running', () => {
       { campaignId: 'inflow', status: 'waiting', postAt: at(16, 45) },
     ] as unknown as ServerPost[]
     expect(takenTimes(posts, 'inflow').get('2026-10-14')).toEqual(['12:00', '16:45'])
+  })
+})
+
+describe('asking the server', () => {
+  it('shares one question among everyone asking at once, and a fresh ask after a change goes again', async () => {
+    let asked = 0
+    const ask = shared(async () => ++asked, 4000)
+    expect(await Promise.all([ask(), ask(), ask()])).toEqual([1, 1, 1])
+    expect(await ask()).toBe(1)
+    expect(await ask(true)).toBe(2)
+    expect(asked).toBe(2)
+  })
+
+  it('tries once more a moment later when the question never arrived, before saying so', async () => {
+    vi.useFakeTimers()
+    let tries = 0
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => {
+        if (++tries === 1) throw new TypeError('Load failed')
+        return new Response(JSON.stringify({ posts: [] }), { status: 200 })
+      }),
+    )
+    const posts = listPosts(true)
+    await vi.advanceTimersByTimeAsync(1600)
+    expect(await posts).toEqual([])
+    expect(tries).toBe(2)
+    vi.useRealTimers()
+  })
+
+  it('says the server is busy, to be tried again, when Supabase turns a burst away', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => new Response('{}', { status: 429 })))
+    await expect(listPosts(true)).rejects.toMatchObject({ message: 'The server is busy for a moment. Trying again by itself.', later: true })
   })
 })

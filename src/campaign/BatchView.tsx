@@ -657,7 +657,7 @@ export function BatchView({
       })
       setPosts(done.posts)
       if (done.failed > 0) setProblem(`${done.failed} couldn't be taken out: ${done.reason}`)
-      void listPosts().then(setPosts).catch(() => {})
+      void listPosts(true).then(setPosts).catch(() => {})
     })
       .catch((error: unknown) => setProblem(error instanceof Error ? error.message : String(error)))
       .finally(() => {
@@ -705,7 +705,7 @@ export function BatchView({
       setPosts(done.posts)
       setNotice(`Took out ${done.taken} video${done.taken === 1 ? '' : 's'}. Tap Start to make them again.`)
       if (done.failed > 0) setProblem(`${done.failed} couldn't be taken out: ${done.reason}`)
-      void listPosts().then(setPosts).catch(() => {})
+      void listPosts(true).then(setPosts).catch(() => {})
     })
       .catch((error: unknown) => setProblem(error instanceof Error ? error.message : String(error)))
       .finally(() => {

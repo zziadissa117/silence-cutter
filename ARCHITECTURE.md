@@ -194,6 +194,16 @@ phone (outbox.ts, posting.ts)          Edge Function postiz            Postiz
                                       Postiz API (per-profile key)  ------> TikTok/IG/YT/FB
  push.ts + public/push-sw.js  <-----  web push notifications
 ```
+**The Posts screen** (`PostsView`) is To approve -> Ready to post -> On the way -> Failed -> Scheduled ->
+Posted. Approved posts are listed with Scheduled (they go at their time; Take back works on both). On
+the way is one line (`OnTheWay`): the phone's queue - one video at a time (`outbox.sending().now`),
+the rest "waiting their turn" whatever their last error - plus the server's `uploading`/`writing`;
+only a video that can't go by itself (`SendEntry.stuck`: a `PostingError` that isn't `later`) gets
+a row with Try again / Stop sending. The phone asks for posts, views and the profile through
+`posting.shared`: askers at the same moment share one question, an answer from the last few seconds
+is reused (`listPosts(true)` after a change of his), so a batch going up never sends Supabase a burst
+it turns away (its 429 has no CORS header - Safari reads it as no connection). `call` tries a failed
+fetch once more after 1.5 s before saying there is no connection.
 **Ending a campaign** (`EndCampaign.tsx` -> `end-campaign`): its posts are stopped, its accounts that nothing else
 needs (`channels.ts` `endPlan`) are unticked and then deleted from Postiz in the background and on each tick
 (`finishEnding`; the job in `cutter_profiles.settings.ending`, the result in `settings.ended`). Postiz's public API
@@ -280,7 +290,9 @@ goes on without Postiz's copy of the video for a post with a backed-up account; 
 Postiz fails, hands the backed-up accounts to Buffer (`toBuffer`: one `createPost` per account,
 saved at once in `cutter_posts.buffer_ids`, so a retry never sends one twice) - unless the post is
 over `HAND_AHEAD_MS` (6 h) away, when it waits with a `retry_at` nearer its time (Buffer's free plan
-holds 10 posts a channel). The rest of its accounts stay with Postiz. "Postiz is down"
+holds 10 posts a channel) and says `POSTIZ_WAIT`; the tick's `probePostiz` asks Postiz again with one
+of a profile's such posts every 30 min (Postiz allows ~30 questions an hour), and once one gets in,
+the rest get `retry_at` now. The rest of its accounts stay with Postiz. "Postiz is down"
 (`settings.backup.active`) also has the tick's `handOver` give Buffer the posts Postiz already holds
 whose accounts are all backed up (Postiz deletes whole posts only), `handOverPlan`: due within 6 h at
 their own time, missed in the last 2 h spaced 30 min apart from now; `unpostHanded` then deletes

@@ -354,6 +354,9 @@ export interface SendEntry {
   state: 'sending' | 'sent'
   postId?: string
   error?: string
+  /** The last error won't pass by itself (its copy gone, signed out): he
+   *  has to act. Otherwise it is only waiting to be tried again. */
+  stuck?: boolean
   tries: number
   addedAt: number
 }

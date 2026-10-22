@@ -3,6 +3,32 @@
 Newest first. Every change says what it does, how to use it, and how it works
 underneath. Kept up to date with each commit.
 
+## Posts screen: approved posts with Scheduled, one line for everything going up, no false "No connection"
+Needs deploying: run ./deploy-server.sh, then ./deploy.sh; then close the Cutter and open it again.
+**What was wrong:**
+- About 17 Loveable zi posts for Wednesday sat in "On the way" saying "Going to Postiz…" since yesterday. They were
+  approved during the Postiz outage; a post days ahead then waited until 6 hours before its time to ask Postiz again
+  (the Buffer backup rule), so they looked stuck and weren't in Postiz. They were put back in line by hand
+  (2026-10-22 17:30 UTC) and are all scheduled in Postiz now.
+- Videos going up showed "No connection" at 0% for an hour while the phone had signal. The phone sends one video at a
+  time; the others were only waiting their turn but showed the error from an earlier try. That error came from
+  Supabase turning away a burst of 18 questions in 3 seconds (the Posts screen, the Videos count and the Batch tab
+  all asking for the posts as each video finished) - its "too many" answer can't be read by Safari, which calls it
+  no connection.
+**Now:**
+- Approved posts are listed with Scheduled, with their time and Take back - approved is scheduled, to you.
+- On the way is one line: "12 videos going up - Now IMG_1 45% - 11 waiting their turn - Claude is writing 2
+  captions". Tap it to see each one. Only a video you have to act on (its copy gone from the phone) gets its own row,
+  with Try again / Stop sending.
+- The server asks Postiz again every half hour for posts it turned down, and when one gets in the rest follow at
+  once - after an outage they go into Postiz within the hour, not hours before their time.
+- The phone asks the server once for everyone asking at the same moment, and tries once more before saying there is
+  no connection.
+**How:** `postiz/index.ts` `POSTIZ_WAIT`, `probePostiz` (in the tick), `unschedule` takes back approved posts too.
+`outbox.ts` `Sending.now`, `SendEntry.stuck`; `PostsView` `OnTheWay`, approved in Scheduled; `posting.ts`
+`shared` (`listPosts(fresh)`, `listViews`, `refreshProfile`), `call` retry and 429. Tests: `postsFlow.test.tsx`,
+`outbox.test.ts`, `posting.test.ts`.
+
 ## Reports: Safari's own "EmptyRanges" error no longer counted as a crash
 Rides the next ./deploy.sh. 39 "crash" reports in ten days were Safari's own script ("Can't find variable:
 EmptyRanges"), not the app's: Safari 26 names its file "undefined" instead of none, so the filter let them through.

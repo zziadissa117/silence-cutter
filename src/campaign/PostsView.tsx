@@ -321,9 +321,10 @@ function WaitingPost({
   )
 }
 
-/** Scheduled in Postiz with its time still ahead: what the blue clock means. */
+/** Scheduled - or approved, which is the same to him - with its time still
+ *  ahead: what the blue clock means. */
 function waitingForTime(post: ServerPost, now = Date.now()): boolean {
-  return post.status === 'scheduled' && post.postAt !== null && Date.parse(post.postAt) > now
+  return (post.status === 'scheduled' || post.status === 'approved') && post.postAt !== null && Date.parse(post.postAt) > now
 }
 
 function OtherPost({
@@ -357,7 +358,7 @@ function OtherPost({
         : post.status === 'failed' || post.status === 'error'
           ? (post.error ?? 'Failed')
           : post.status === 'approved'
-            ? 'Going to Postiz…'
+            ? `Approved · ${post.accounts.map(accountLabel).join(', ')}`
             : post.status === 'writing'
               ? post.error ?? 'Writing the caption…'
               : 'Sending…'
@@ -377,7 +378,7 @@ function OtherPost({
         </>
       ) : null}
       {post.status === 'posted' && post.error ? <div className="hint warn-text">{post.error}</div> : null}
-      {post.status === 'scheduled' && post.error ? (
+      {(post.status === 'scheduled' || post.status === 'approved') && post.error ? (
         <div className={`hint${post.error.startsWith("The caption couldn't") ? ' warn-text' : ''}`}>{post.error}</div>
       ) : null}
       {post.repostDue ? (
@@ -411,7 +412,7 @@ function OtherPost({
             {busy ? 'Trying…' : post.status === 'error' ? 'Post again' : 'Post again to the missing ones'}
           </button>
         ) : null}
-        {post.status === 'scheduled' && post.postAt && new Date(post.postAt).getTime() > Date.now() ? (
+        {(post.status === 'scheduled' || post.status === 'approved') && post.postAt && new Date(post.postAt).getTime() > Date.now() ? (
           <button type="button" className="linkbtn" disabled={busy} onClick={() => onAct('unschedule')}>
             Take back
           </button>
@@ -481,34 +482,101 @@ function BatchRow({
   )
 }
 
+/** A video that can't go up until he does something - its copy gone from
+ *  the phone, signed out: what is wrong, and his two ways out. */
 function SendingRow({ item, onRemove }: { item: Sending; onRemove: () => void }) {
   const { entry } = item
   return (
     <li className="post">
       <div className="post-head">
-        <span className={`dot ${entry.error ? 'warn' : 'later'}`} aria-hidden />
+        <span className="dot bad" aria-hidden />
         <span className="post-title">{entry.campaign.name}</span>
-        <span className="post-when">{Math.round(item.progress * 100)}%</span>
+        <span className="post-when">Not sent</span>
       </div>
-      <div className={`post-line${entry.error ? ' warn' : ''}`}>
-        {entry.error ? `${entry.error} Trying again by itself.` : `Sending ${entry.meta.fileName}…`}
+      <div className="post-line bad">
+        {entry.meta.fileName}: {entry.error}
       </div>
-      <div className="bar">
-        <div style={{ width: `${Math.round(item.progress * 100)}%` }} />
+      <div className="post-actions">
+        <button type="button" className="btn small" onClick={kick}>
+          Try again
+        </button>
+        <button
+          type="button"
+          className="linkbtn danger"
+          onClick={() => window.confirm("Stop sending this video? It won't be posted.") && onRemove()}
+        >
+          Stop sending
+        </button>
       </div>
-      {entry.error ? (
-        <div className="post-actions">
-          <button type="button" className="btn small" onClick={kick}>
-            Try now
-          </button>
-          <button
-            type="button"
-            className="linkbtn danger"
-            onClick={() => window.confirm("Stop sending this video? It won't be posted.") && onRemove()}
-          >
-            Stop sending
-          </button>
+    </li>
+  )
+}
+
+/** Everything still on its way, as one line: the videos going up from this
+ *  phone - one at a time, so the rest are only waiting their turn - and what
+ *  the server is still getting ready. Each one shows in To approve as soon as
+ *  it is ready. Open it to see them one by one. */
+function OnTheWay({ sending, working }: { sending: Sending[]; working: ServerPost[] }) {
+  const [open, setOpen] = useState(false)
+  const offline = typeof navigator !== 'undefined' && !navigator.onLine
+  const now = sending.find((item) => item.now)
+  const writing = working.filter((p) => p.status === 'writing').length
+  const arriving = working.length - writing
+  const count = sending.length
+  const head =
+    count > 0
+      ? `${count} video${count === 1 ? '' : 's'} going up`
+      : `${working.length} getting ready`
+  const line = [
+    count === 0
+      ? null
+      : offline
+        ? 'No signal - they go up by themselves when there is.'
+        : now
+          ? `Now ${now.entry.meta.fileName} · ${Math.round(now.progress * 100)}%${count > 1 ? ` · ${count - 1} waiting their turn` : ''}`
+          : 'Starting again in a moment…',
+    arriving > 0 ? `${arriving} arriving on the server` : null,
+    writing > 0 ? `Claude is writing ${writing === 1 ? 'a caption' : `${writing} captions`}` : null,
+  ]
+    .filter(Boolean)
+    .join(' · ')
+  return (
+    <li className="post">
+      <button type="button" className="post-head as-button" onClick={() => setOpen((o) => !o)} aria-expanded={open}>
+        <span className={`dot ${offline && count > 0 ? 'warn' : 'later'}`} aria-hidden />
+        <span className="post-title">{head}</span>
+        <span className="post-when">{open ? 'Hide' : 'Show'}</span>
+      </button>
+      <div className="post-line">{line}</div>
+      {now ? (
+        <div className="bar">
+          <div style={{ width: `${Math.round(now.progress * 100)}%` }} />
         </div>
+      ) : null}
+      <div className="hint">Each one shows in To approve as soon as it is ready - nothing to do here.</div>
+      {open ? (
+        <ul className="posts-list batch-inside">
+          {sending.map((item) => (
+            <li key={item.entry.key} className="post">
+              <div className="post-head">
+                <span className="dot later" aria-hidden />
+                <span className="post-title">{item.entry.campaign.name}</span>
+                <span className="post-when">{item.now ? `${Math.round(item.progress * 100)}%` : 'Waiting its turn'}</span>
+              </div>
+              <div className="post-line">{item.entry.meta.fileName}</div>
+            </li>
+          ))}
+          {working.map((post) => (
+            <li key={post.id} className="post">
+              <div className="post-head">
+                <span className="dot later" aria-hidden />
+                <span className="post-title">{post.campaignName}</span>
+                <span className="post-when">{post.status === 'writing' ? 'Caption' : 'Arriving'}</span>
+              </div>
+              <div className="post-line">{post.status === 'writing' ? (post.error ?? 'Claude is writing the caption…') : 'The last parts are arriving…'}</div>
+            </li>
+          ))}
+        </ul>
       ) : null}
     </li>
   )
@@ -544,9 +612,9 @@ export function PostsView({
   const [allPosted, setAllPosted] = useState(false)
   const outgoing = useSending()
 
-  const load = useCallback(async () => {
+  const load = useCallback(async (fresh = false) => {
     try {
-      const next = await listPosts()
+      const next = await listPosts(fresh)
       setPosts(next)
       setProblem(null)
       void tidySends(next)
@@ -558,7 +626,7 @@ export function PostsView({
   /** Music was added to a post and sent as a new version: say so, and look again. */
   const onMusicDone = (message: string) => {
     setSaid(message)
-    void load()
+    void load(true)
   }
 
   useEffect(() => {
@@ -575,7 +643,7 @@ export function PostsView({
   // A video that just finished going up shows as soon as the server has it.
   const sentCount = outgoing.filter((s) => s.entry.state === 'sent').length
   useEffect(() => {
-    if (sentCount > 0) void load()
+    if (sentCount > 0) void load(true)
   }, [sentCount, load])
 
   const act = async (post: ServerPost, action: PostAction, fields?: { caption?: string; at?: string }) => {
@@ -635,7 +703,7 @@ export function PostsView({
     if (!window.confirm(ask)) return
     try {
       setSaid(redoSaid(owner.name, await redoCaptions(owner.id, owner.posting, batch.map((p) => p.id), mode), mode, tags))
-      void load()
+      void load(true)
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error)
       setProblem(/unknown action/i.test(message) ? 'Redoing captions needs the server updated first - run ./deploy-server.sh in silence-cutter.' : message)
@@ -658,9 +726,15 @@ export function PostsView({
   const approvable = waiting.filter((p) => p.approval !== 'brand' && p.caption?.trim())
   const sendingNow = outgoing.filter((s) => s.entry.state === 'sending')
   const sendingKeys = new Set(sendingNow.map((s) => s.entry.key))
-  const working = view.filter((p) => ['uploading', 'writing', 'approved'].includes(p.status) && !sendingKeys.has(p.key))
+  // On the way: what is still going up from this phone, and what the server
+  // is still getting ready (the last parts arriving, Claude writing the
+  // caption) - seconds to minutes, then each goes to To approve.
+  const working = view.filter((p) => (p.status === 'uploading' || p.status === 'writing') && !sendingKeys.has(p.key))
   const byTime = (a: ServerPost, b: ServerPost) => (a.postAt ?? '').localeCompare(b.postAt ?? '')
-  const scheduled = view.filter((p) => p.status === 'scheduled').sort(byTime)
+  // Approved is scheduled, to him: it goes at its time. The server hands it
+  // to Postiz on its own (or Buffer, if Postiz can't), so it waits with the
+  // scheduled ones - not "on the way" for days.
+  const scheduled = view.filter((p) => p.status === 'scheduled' || p.status === 'approved').sort(byTime)
   const failed = view.filter((p) => p.status === 'failed')
   const done = view
     .filter((p) => p.status === 'posted' || p.status === 'error')
@@ -703,7 +777,7 @@ export function PostsView({
           onDone={(message) => {
             setStopping(false)
             setSaid(message)
-            void load()
+            void load(true)
           }}
         />
       ) : null}
@@ -784,12 +858,13 @@ export function PostsView({
         <>
           <div className="list-title">On the way</div>
           <ul className="posts-list">
-            {sendingNow.map((item) => (
-              <SendingRow key={item.entry.key} item={item} onRemove={() => void forgetSend(item.entry.key)} />
-            ))}
-            {working.map((post) => (
-              <OtherPost key={post.id} editable={editable} onEdit={onEditAgain} campaigns={campaigns} onChanged={onMusicDone} post={post} busy={busy.has(post.id)} onAct={(action) => void act(post, action)} />
-            ))}
+            {/* What he has to act on, one by one; the rest is one line. */}
+            {sendingNow
+              .filter((item) => item.entry.stuck)
+              .map((item) => (
+                <SendingRow key={item.entry.key} item={item} onRemove={() => void forgetSend(item.entry.key)} />
+              ))}
+            <OnTheWay sending={sendingNow.filter((item) => !item.entry.stuck)} working={working} />
           </ul>
         </>
       ) : null}

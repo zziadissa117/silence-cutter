@@ -26,10 +26,15 @@ export interface Sending {
   entry: SendEntry
   /** 0-1 while its parts go up. */
   progress: number
+  /** Going up right now: the queue sends one video at a time, so the rest
+   *  are only waiting their turn - not stuck, whatever went wrong before. */
+  now: boolean
 }
 
 let entries: SendEntry[] = []
 const progress = new Map<string, number>()
+/** The video going up right now. */
+let current: string | null = null
 const listeners = new Set<() => void>()
 let loaded: Promise<void> | null = null
 
@@ -44,7 +49,7 @@ export function watchSending(listener: () => void): () => void {
 }
 
 export function sending(): Sending[] {
-  return entries.map((entry) => ({ entry, progress: progress.get(entry.key) ?? (entry.state === 'sent' ? 1 : 0) }))
+  return entries.map((entry) => ({ entry, progress: progress.get(entry.key) ?? (entry.state === 'sent' ? 1 : 0), now: entry.key === current }))
 }
 
 function load(): Promise<void> {
@@ -180,22 +185,28 @@ async function pump(): Promise<void> {
       await refresh()
       for (const entry of entries.filter((e) => e.state === 'sending')) {
         if (document.visibilityState !== 'visible' || !navigator.onLine) return
+        current = entry.key
+        emit()
         try {
           await sendOne(entry)
         } catch (error) {
           const said = error instanceof Error ? error.message : String(error)
           const tries = entry.tries + 1
-          await updateSend(entry.key, { error: said, tries })
+          // Only what can't pass by itself is his to act on.
+          await updateSend(entry.key, { error: said, tries, stuck: error instanceof PostingError && !error.later })
           progress.delete(entry.key)
           // Tried again by itself: soon, then less often.
           const wait = [5, 15, 30, 60, 120, 300][Math.min(tries - 1, 5)] * 1000
           window.clearTimeout(retryTimer)
           retryTimer = window.setTimeout(kick, wait)
+        } finally {
+          current = null
         }
       }
     } while (again)
   } finally {
     running = false
+    current = null
     await refresh()
   }
 }
@@ -239,7 +250,7 @@ async function sendOne(entry: SendEntry): Promise<void> {
 }
 
 async function sent(entry: SendEntry, postId: string): Promise<void> {
-  await updateSend(entry.key, { state: 'sent', postId, error: undefined })
+  await updateSend(entry.key, { state: 'sent', postId, error: undefined, stuck: undefined })
   progress.set(entry.key, 1)
   // On the Cutter server nobody watches it there - the phone plays Postiz's
   // copy - and a week of batch videos kept would fill its small disk.

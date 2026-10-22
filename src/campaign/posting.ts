@@ -157,16 +157,29 @@ export class PostingError extends Error {
 async function call<T>(action: string, body: Record<string, unknown> = {}): Promise<T> {
   const session = currentSession()
   if (!session) throw new PostingError('Sign in with the shared login first, in Settings.')
-  let response: Response
-  try {
-    response = await fetch(FUNCTION_URL, {
+  const ask = () =>
+    fetch(FUNCTION_URL, {
       method: 'POST',
       headers: { 'content-type': 'application/json', apikey: PUBLISHABLE_KEY },
       body: JSON.stringify({ action, token: session.token, ...body }),
     })
+  let response: Response
+  try {
+    response = await ask()
   } catch {
-    throw new PostingError('No connection. It goes when there is signal.', true)
+    // Safari says the same "Load failed" for no signal and for a moment's
+    // blip - or Supabase turning away a burst (its 429 carries no CORS
+    // header, so the page can't read it): one more try a moment later
+    // before saying there is no connection.
+    if (!navigator.onLine) throw new PostingError('No connection. It goes when there is signal.', true)
+    await new Promise((resolve) => setTimeout(resolve, 1500))
+    try {
+      response = await ask()
+    } catch {
+      throw new PostingError(navigator.onLine ? 'The server didn\'t answer. Trying again by itself.' : 'No connection. It goes when there is signal.', true)
+    }
   }
+  if (response.status === 429) throw new PostingError('The server is busy for a moment. Trying again by itself.', true)
   const json = (await response.json().catch(() => ({}))) as T & { error?: string; later?: boolean }
   if (!response.ok) {
     if (json.error === 'no-profile') {
@@ -198,8 +211,10 @@ export async function connect(postizKey: string, anthropicKey: string): Promise<
   return remember(await call<Profile>('connect', { postizKey, anthropicKey, timezone }))
 }
 
+const askProfile = shared(async () => remember(await call<Profile>('profile', { profile: profileId() })), 2000)
+
 export async function refreshProfile(): Promise<Profile> {
-  return remember(await call<Profile>('profile', { profile: profileId() }))
+  return askProfile()
 }
 
 export async function refreshAccounts(): Promise<Profile> {
@@ -446,7 +461,34 @@ export function lastPosts(): ServerPost[] {
   }
 }
 
-export async function listPosts(): Promise<ServerPost[]> {
+/** One question for many askers: the Posts screen, the Videos screen's
+ *  count, the Batch tab and a top-up all ask for the posts, often in the same
+ *  moment - every finished video makes each of them look again. A question
+ *  already on its way is shared, and an answer from the last few seconds is
+ *  used again, so a batch going up never sends Supabase a burst it turns
+ *  away (it did: 18 at once, and the videos going up then said "No
+ *  connection"). */
+export function shared<T>(ask: () => Promise<T>, freshMs = 4000): (fresh?: boolean) => Promise<T> {
+  let pending: Promise<T> | null = null
+  let last: { at: number; value: T } | null = null
+  // `fresh`: asked after a change he made - nothing from before it will do.
+  return (fresh = false) => {
+    if (!fresh && last && Date.now() - last.at < freshMs) return Promise.resolve(last.value)
+    if (!fresh && pending) return pending
+    const asking: Promise<T> = ask()
+      .then((value) => {
+        last = { at: Date.now(), value }
+        return value
+      })
+      .finally(() => {
+        if (pending === asking) pending = null
+      })
+    pending = asking
+    return asking
+  }
+}
+
+const askPosts = shared(async () => {
   const { posts } = await call<{ posts: ServerPost[] }>('posts', { profile: profileId() })
   try {
     localStorage.setItem(POSTS_KEY, JSON.stringify(posts))
@@ -454,6 +496,12 @@ export async function listPosts(): Promise<ServerPost[]> {
     // Just won't be there offline.
   }
   return posts
+})
+
+/** The posts as the server has them now. `fresh`: after he changed one, so
+ *  an answer from a moment ago won't do. */
+export async function listPosts(fresh = false): Promise<ServerPost[]> {
+  return askPosts(fresh)
 }
 
 const VIEWS_KEY = 'cutter.views'
@@ -468,7 +516,7 @@ export function lastViews(): ViewsByAccount {
   }
 }
 
-export async function listViews(): Promise<ViewsByAccount> {
+export const listViews = shared(async (): Promise<ViewsByAccount> => {
   const { accounts } = await call<{ accounts: ViewsByAccount }>('views', { profile: profileId() })
   try {
     localStorage.setItem(VIEWS_KEY, JSON.stringify(accounts ?? {}))
@@ -476,7 +524,7 @@ export async function listViews(): Promise<ViewsByAccount> {
     // Just won't be there offline.
   }
   return accounts ?? {}
-}
+}, 60_000)
 
 export type PostAction = 'edit' | 'approve' | 'ready' | 'reject' | 'unschedule' | 'retry' | 'retry-accounts'
 
