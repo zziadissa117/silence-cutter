@@ -75,6 +75,7 @@ import { approvalFor, batchChoices, batchInfo, batchReady, type BatchInfo } from
 import { handFields } from './hand.ts'
 import { lastTimeToday, nextSlot, normalTimes, pickTime, spreadDay, spreadEnd, spreadUntil, timesFor, type OtherPost, type Spread, addDays, localDate, localTime, zoned } from './slots.ts'
 import { cleanWindow, type PostingWindow } from './window.ts'
+import { cleanPlace, instagramPlace, type Place } from './place.ts'
 import { attachMove, summarise, type AttachMove } from './attach.ts'
 import { cleanMode, pickRecaption, recaptionMode } from './recaption.ts'
 import { cleanLimits, firstDayWithRoom, heldNote, releasable, split, usedOn, type Limits, type PostAccount } from './limits.ts'
@@ -296,7 +297,10 @@ async function listAccounts(key: string): Promise<Account[]> {
 
 /** Each platform's settings. Nothing is ever marked as branded or paid -
  *  his rule, whatever the campaign. */
-function settingsFor(platform: string, title: string): Record<string, unknown> {
+/** What Postiz is told for one account. `place`: the Instagram place its
+ *  posts are tagged with (place.ts) - kept by Postiz, which doesn't hand it
+ *  to Instagram yet. */
+function settingsFor(platform: string, title: string, place: Place | null = null): Record<string, unknown> {
   switch (platform) {
     // A TikTok Business account takes TikTok's own settings, under its name.
     case 'tiktok':
@@ -317,7 +321,7 @@ function settingsFor(platform: string, title: string): Record<string, unknown> {
       return { __type: 'youtube', title, type: 'public', selfDeclaredMadeForKids: 'no', tags: [] }
     case 'instagram':
     case 'instagram-standalone':
-      return { __type: platform, post_type: 'post', is_trial_reel: false, collaborators: [] }
+      return { __type: platform, post_type: 'post', is_trial_reel: false, collaborators: [], ...(place ? { location_id: place.id } : {}) }
     case 'facebook':
       return { __type: 'facebook', post_type: 'post' }
     default:
@@ -333,7 +337,9 @@ interface Profile {
   accounts: Account[]
   accounts_at: string | null
   settings: {
-    campaigns?: Record<string, { accounts?: string[]; times?: string[]; window?: PostingWindow }>
+    campaigns?: Record<string, { accounts?: string[]; times?: string[]; window?: PostingWindow; instagramPlace?: Place }>
+    /** The place every Instagram post is tagged with, unless its campaign has its own (place.ts). */
+    instagramPlace?: Place
     limits?: Limits
     /** Campaigns being ended: the accounts still to delete from Postiz. */
     ending?: Record<string, EndingJob>
@@ -614,12 +620,28 @@ async function saveCampaign(profile: Profile, body: Record<string, unknown>): Pr
   // A window is kept only beside no times of his own: his own times win,
   // and keeping both would leave a window that silently does nothing.
   const window = times.length === 0 ? cleanWindow(body.window) : null
+  // Its own Instagram place, over the default (place.ts).
+  const ownPlace = cleanPlace(body.instagramPlace)
   const campaigns = { ...(profile.settings.campaigns ?? {}) }
-  if (accounts.length === 0 && times.length === 0 && !window) delete campaigns[campaignId]
-  else campaigns[campaignId] = window ? { accounts, times, window } : { accounts, times }
+  if (accounts.length === 0 && times.length === 0 && !window && !ownPlace) delete campaigns[campaignId]
+  else campaigns[campaignId] = { accounts, times, ...(window ? { window } : {}), ...(ownPlace ? { instagramPlace: ownPlace } : {}) }
   const { data, error } = await db
     .from('cutter_profiles')
     .update({ settings: { ...profile.settings, campaigns }, updated_at: new Date().toISOString() })
+    .eq('id', profile.id)
+    .select('*')
+    .single()
+  if (error || !data) throw new Problem('It could not be saved. Try again.', true, 500)
+  return reply(await profileView(data as Profile))
+}
+
+/** The place every Instagram post is tagged with (place.ts), or none. */
+async function savePlace(profile: Profile, body: Record<string, unknown>): Promise<Response> {
+  const place = cleanPlace(body.place)
+  const { instagramPlace: _old, ...rest } = profile.settings
+  const { data, error } = await db
+    .from('cutter_profiles')
+    .update({ settings: place ? { ...rest, instagramPlace: place } : rest, updated_at: new Date().toISOString() })
     .eq('id', profile.id)
     .select('*')
     .single()
@@ -710,7 +732,7 @@ async function releaseHeld(now: number): Promise<void> {
                 return {
                   integration: { id: account.id },
                   value: [{ content: text.caption, image: [{ id: owned.media!.id, path: owned.media!.path }] }],
-                  settings: settingsFor(account.platform, finishTitle(text.title ?? '', [owned.headline ?? '', owned.campaign_name])),
+                  settings: settingsFor(account.platform, finishTitle(text.title ?? '', [owned.headline ?? '', owned.campaign_name]), instagramPlace(profile.settings, owned.campaign_id)),
                 }
               }),
             }))
@@ -804,7 +826,7 @@ async function attachAccounts(profile: Profile, body: Record<string, unknown>): 
               return {
                 integration: { id: account.id },
                 value: [{ content: text.caption, image: [{ id: owned.media!.id, path: owned.media!.path }] }],
-                settings: settingsFor(account.platform, finishTitle(text.title ?? '', [owned.headline ?? '', owned.campaign_name])),
+                settings: settingsFor(account.platform, finishTitle(text.title ?? '', [owned.headline ?? '', owned.campaign_name]), instagramPlace(profile.settings, owned.campaign_id)),
               }
             }),
           }))
@@ -1765,7 +1787,7 @@ async function schedule(start: Post): Promise<Post> {
         return {
           integration: { id: account.id },
           value: [{ content: text.caption, image: [{ id: media.id, path: media.path }] }],
-          settings: settingsFor(account.platform, finishTitle(text.title ?? '', [post.headline ?? '', post.campaign_name])),
+          settings: settingsFor(account.platform, finishTitle(text.title ?? '', [post.headline ?? '', post.campaign_name]), instagramPlace(profile.settings, post.campaign_id)),
         }
       }),
     })
@@ -2027,7 +2049,7 @@ async function retryAccounts(profile: Profile, post: Post): Promise<Post> {
         return {
           integration: { id: account.id },
           value: [{ content: text.caption, image: [{ id: owned.media!.id, path: owned.media!.path }] }],
-          settings: settingsFor(account.platform, finishTitle(text.title ?? '', [owned.headline ?? '', owned.campaign_name])),
+          settings: settingsFor(account.platform, finishTitle(text.title ?? '', [owned.headline ?? '', owned.campaign_name]), instagramPlace(profile.settings, owned.campaign_id)),
         }
       }),
     })
@@ -3060,6 +3082,8 @@ Deno.serve(async (req) => {
         return reply(await profileView(await refreshAccounts(profile)))
       case 'save-campaign':
         return await saveCampaign(profile, body)
+      case 'save-place':
+        return await savePlace(profile, body)
       case 'save-limits':
         return await saveLimits(profile, body)
       case 'attach-accounts':

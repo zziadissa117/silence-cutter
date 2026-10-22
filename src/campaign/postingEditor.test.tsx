@@ -132,3 +132,43 @@ describe('redoing captions already made', () => {
     expect(redoBox()).toBeUndefined()
   })
 })
+
+describe('the Instagram location', () => {
+  const withInstagram = (place: Partial<CampaignPlace>, instagramPlace?: { id: string; name: string }): LocalPosting => {
+    const posting = local(place)
+    posting.profile.accounts.push({ id: 'ig', name: 'Michaelangelo', platform: 'instagram', profile: 'traderzi2', picture: '', disabled: false })
+    if (instagramPlace) posting.profile.settings.instagramPlace = instagramPlace
+    return posting
+  }
+  const type = (input: HTMLInputElement, value: string) =>
+    act(() => {
+      Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!.call(input, value)
+      input.dispatchEvent(new Event('input', { bubbles: true }))
+    })
+
+  it('is only asked for a campaign posting to Instagram', () => {
+    show(local({ accounts: ['tt'] }))
+    expect(host.textContent).not.toContain('Instagram location')
+    act(() => root.unmount())
+    root = createRoot(host)
+    show(withInstagram({ accounts: ['ig'] }, { id: '110970792260960', name: 'Los Angeles California' }))
+    expect(host.textContent).toContain('Same as every campaign: Los Angeles California')
+  })
+
+  it("gives a campaign its own place from a pasted link, saved with its posting - and kept when saved again", async () => {
+    const onSave = show(withInstagram({ accounts: ['ig'] }))
+    await type(host.querySelector('input[aria-label^="Instagram location"]') as HTMLInputElement, 'https://www.facebook.com/pages/New-York-New-York/108424279189115')
+    await act(async () => button('Set').click())
+    expect(host.textContent).toContain("New York New York · tagged on this campaign's Instagram posts")
+    await act(async () => button('Save posting').click())
+    const saved = (onSave.mock.calls[0] as unknown[])[1] as CampaignPlace
+    expect(saved.instagramPlace).toEqual({ id: '108424279189115', name: 'New York New York' })
+  })
+
+  it('says so when nothing can be read from what was pasted', async () => {
+    show(withInstagram({ accounts: ['ig'] }))
+    await type(host.querySelector('input[aria-label^="Instagram location"]') as HTMLInputElement, 'facebook.com/LosAngeles')
+    await act(async () => button('Set').click())
+    expect(host.textContent).toContain('No place could be read from that.')
+  })
+})

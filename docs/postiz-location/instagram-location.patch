@@ -1,0 +1,83 @@
+--- a/libraries/nestjs-libraries/src/dtos/posts/providers-settings/instagram.dto.ts
++++ b/libraries/nestjs-libraries/src/dtos/posts/providers-settings/instagram.dto.ts
+@@ -70,4 +70,10 @@
+   @ValidateNested()
+   @IsOptional()
+   audio?: InstagramAudio;
++
++  // The place to tag the post with: the Facebook Page ID of a location, as
++  // Instagram's own `location_id` takes it. Not used on stories.
++  @IsOptional()
++  @IsString()
++  location_id?: string;
+ }
+--- a/libraries/nestjs-libraries/src/integrations/social/instagram.provider.ts
++++ b/libraries/nestjs-libraries/src/integrations/social/instagram.provider.ts
+@@ -740,6 +740,15 @@
+           )}`
+         : ``;
+     const isTrialReel = this.assetBoolean(firstPost.settings.is_trial_reel);
++    // A place to tag the post with (a location's Facebook Page ID). Not on
++    // stories; on a carousel it goes on the carousel container, not its items.
++    const locationId =
++      firstPost?.settings?.location_id && !isStory
++        ? String(firstPost.settings.location_id).trim()
++        : '';
++    const location = locationId
++      ? `&location_id=${encodeURIComponent(locationId)}`
++      : ``;
+     const medias = await Promise.all(
+       firstPost?.media?.map(async (m) => {
+         const caption =
+@@ -783,6 +792,7 @@
+         // they go on the carousel container instead
+         const itemCollaborators =
+           firstPost?.media?.length === 1 ? collaborators : ``;
++        const itemLocation = firstPost?.media?.length === 1 ? location : ``;
+ 
+         // audio_configuration is only supported for Reels (single video, not a story)
+         // and only with Facebook Login (not Instagram Login / graph.instagram.com)
+@@ -809,7 +819,7 @@
+ 
+         const { id: photoId } = await (
+           await this.fetch(
+-            `https://${type}/${META_GRAPH_API_VERSION}/${id}/media?${mediaType}${isCarousel}${itemCollaborators}${trialParams}${audioConfiguration}&access_token=${accessToken}${caption}`,
++            `https://${type}/${META_GRAPH_API_VERSION}/${id}/media?${mediaType}${isCarousel}${itemCollaborators}${itemLocation}${trialParams}${audioConfiguration}&access_token=${accessToken}${caption}`,
+             {
+               method: 'POST',
+             }
+@@ -846,6 +856,7 @@
+                 ),
+               }
+             : {}),
++          ...(locationId ? { locationId } : {}),
+         },
+       },
+     ];
+@@ -860,6 +871,7 @@
+       message?: string;
+       carouselId?: string;
+       collaborators?: string[];
++      locationId?: string;
+     },
+     integration: Integration
+   ): Promise<PendingCheckResponse> {
+@@ -927,6 +939,7 @@
+       message?: string;
+       carouselId?: string;
+       collaborators?: string[];
++      locationId?: string;
+     },
+     integration: Integration
+   ): Promise<PendingCheckResponse> {
+@@ -989,6 +1002,10 @@
+                   JSON.stringify(pendingData.collaborators)
+                 )}`
+               : ``
++          }${
++            pendingData.locationId
++              ? `&location_id=${encodeURIComponent(pendingData.locationId)}`
++              : ``
+           }&access_token=${accessToken}`,
+           {
+             method: 'POST',

@@ -9,8 +9,9 @@ import { savedTheme, savedTips, setTheme, setTips, type Theme } from '../theme'
 import { cleanEngineUrl, engineStatus, engineUrl, setEngineUrl } from './engine'
 import { bringBack, connectServer, serverStatus, serverUrl, setServerUrl } from './serverLink'
 import { loadBatchBank } from './store'
+import { cleanPlace } from '../../supabase/functions/postiz/place.ts'
 import { DEFAULT_WINDOW } from '../../supabase/functions/postiz/window.ts'
-import { onFixedTimes, switchToRandom, windowLabel, type LocalPosting, type Profile } from './posting'
+import { onFixedTimes, saveInstagramPlace, switchToRandom, windowLabel, type LocalPosting, type Profile } from './posting'
 import {
   CAPTION_POSITIONS,
   CAPTION_SIZES,
@@ -27,6 +28,7 @@ import { cutNoiseOn, setCutNoise } from './noiseSetting'
 import { LANDSCAPE_MODES, landscapeMode, setLandscapeMode, type LandscapeMode } from './framing916'
 import { PostingLimits, PostingLimitsRow } from './PostingLimits'
 import { BufferBackup } from './BufferBackup'
+import { PlaceField } from './InstagramPlace'
 import type { PushState } from './push'
 
 const PUSH_LINE: Record<PushState, string> = {
@@ -325,6 +327,17 @@ export function SettingsView({
           <RandomForAll profile={posting.profile} campaigns={campaigns} onChanged={onPlacesChanged} />
           <PostingLimitsRow profile={posting.profile} onOpen={() => setLimitsOpen(true)} />
           <BufferBackup profile={posting.profile} onChanged={onPlacesChanged} />
+          {posting.profile.accounts.some((a) => a.platform.startsWith('instagram')) ? (
+            <PlaceField
+              label="Instagram location"
+              place={cleanPlace(posting.profile.settings.instagramPlace)}
+              emptyLine="None. Set a place once and every Instagram post is tagged with it - a campaign can have its own, in its Posting."
+              onSave={async (place) => {
+                await saveInstagramPlace(place)
+                onPlacesChanged()
+              }}
+            />
+          ) : null}
           <div className="setting">
             <div className="setting-text">
               <span className="row-name">Notifications</span>

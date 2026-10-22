@@ -278,6 +278,16 @@ pick the logos and `formulaLine(…, amount)`, a headline pick its `headlineStyl
 picked now, and `withHeadlineStyle` swaps it into the angle. The bottom of the Batch tab shows
 the number of variations and `variationParts` (what multiplies into it).
 
+## Instagram location (`postiz/place.ts`, `InstagramPlace.tsx`)
+
+One place every Instagram post is tagged with (`settings.instagramPlace`, action `save-place`,
+Settings, Posting), or a campaign's own (`settings.campaigns[id].instagramPlace`, saved with its
+posting). He pastes the place's Facebook page link, its Instagram location page or its ID
+(`parsePlace`); `settingsFor` puts `location_id` (the Facebook Page ID Instagram takes) in every
+Instagram post's Postiz settings (`instagramPlace`). Postiz validates settings without a whitelist,
+so the extra field is kept - but it doesn't pass it to Instagram yet: the change for Postiz, and
+the request, are in `docs/postiz-location`. Not sent to Buffer.
+
 ## Buffer, the backup for Postiz (`postiz/buffer.ts`)
 
 When Postiz can't post, the Instagram accounts Buffer backs up get the same video, caption and

@@ -3,6 +3,19 @@
 Newest first. Every change says what it does, how to use it, and how it works
 underneath. Kept up to date with each commit.
 
+## Instagram location on every Instagram post (waiting on Postiz)
+Needs deploying: run ./deploy-server.sh, then ./deploy.sh. No database change.
+**What it is:** Settings, Posting has **Instagram location**: paste a place's Facebook page link (or its Instagram
+location page, or its ID) once, and every Instagram post the Cutter schedules is tagged with it. A campaign can have
+its own, in its Posting (shown only for a campaign posting to Instagram).
+**What's not there yet:** Postiz keeps the place with each post but doesn't pass it on to Instagram - its Instagram
+settings have no location. The request and the change for them (about 30 lines) are in `docs/postiz-location`; the
+day they add it, every post already scheduled shows the place, nothing to do here. Postiz accepts the extra setting
+today without refusing the post (checked in their code).
+**How:** `postiz/place.ts` (`parsePlace`, `cleanPlace`, `instagramPlace`), `settingsFor(..., place)` adds
+`location_id` for Instagram, action `save-place`, `saveCampaign` keeps a campaign's `instagramPlace`;
+`InstagramPlace.tsx` `PlaceField` in Settings and `PostingEditor`. Tests: `place.test.ts`, `postingEditor.test.tsx`.
+
 ## The music bank is shared by everyone who uses the Cutter; Analytics shows views again
 Needs deploying: run ./deploy-server.sh (both functions), then ./deploy.sh; then close the Cutter and open it again
 on each phone. No database change.

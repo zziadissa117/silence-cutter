@@ -8,6 +8,7 @@ import { useState } from 'react'
 import { EditorFrame, useSaver } from './Editors'
 import { NO_POSTING, type Campaign, type CampaignPosting } from './look'
 import { DEFAULT_WINDOW, MAX_PER_DAY, cleanWindow, lengthOf, pastMidnight, type PostingWindow } from '../../supabase/functions/postiz/window.ts'
+import { PlaceField } from './InstagramPlace'
 import {
   PostingError,
   accountLabel,
@@ -109,12 +110,14 @@ export function PostingEditor({
       saving={saving}
       saveLabel="Save posting"
       onSave={() =>
-        void run(timing === 'random' && !cleanWindow(windowDraft) ? ['Random times need a window that ends at least 10 minutes after it starts.'] : [], async () => {
+        void run(timing === 'random' && !cleanWindow(windowDraft) ? ['Random times need a window at least 10 minutes long.'] : [], async () => {
           const hashtags = tags
           // Own times and a window never both: whichever he picked is saved.
-          let saved: CampaignPlace = { accounts: place.accounts, times: place.times }
+          // Its own Instagram place goes with either.
+          const own = place.instagramPlace ? { instagramPlace: place.instagramPlace } : {}
+          let saved: CampaignPlace = { accounts: place.accounts, times: place.times, ...own }
           const window = timing === 'random' ? cleanWindow(windowDraft) : null
-          if (window) saved = { accounts: place.accounts, times: [], window }
+          if (window) saved = { accounts: place.accounts, times: [], window, ...own }
           try {
             await onSave({ ...posting, rules: posting.rules.trim(), hashtags }, local ? saved : null, catchUpOn ? behind.accounts : [], made > 0 && redoOn ? (rewrite && rulesChanged ? 'rewrite' : 'hashtags') : null)
           } catch (error) {
@@ -188,6 +191,22 @@ export function PostingEditor({
           </>
         )}
       </div>
+
+      {local && accounts.some((a) => place.accounts.includes(a.id) && a.platform.startsWith('instagram')) ? (
+        <div className="group">
+          <PlaceField
+            label="Instagram location"
+            tagged="this campaign's Instagram posts - save to keep it"
+            place={place.instagramPlace ?? null}
+            emptyLine={
+              local.profile.settings.instagramPlace
+                ? `Same as every campaign: ${local.profile.settings.instagramPlace.name}. Set one here for this campaign only.`
+                : 'None. Set it here for this campaign, or once for all of them in Settings, Posting.'
+            }
+            onSave={async (next) => setPlace((p) => ({ ...p, instagramPlace: next ?? undefined }))}
+          />
+        </div>
+      ) : null}
 
       {local ? (
         <div className="group">

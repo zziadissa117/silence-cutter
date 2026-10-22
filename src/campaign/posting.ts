@@ -10,6 +10,7 @@
 
 import type { ViewsByAccount } from './analytics'
 import { DEFAULT_WINDOW, LEAST_GAP_MINUTES, cleanWindow, gapFor, spanOf, windowTimes, type PostingWindow } from '../../supabase/functions/postiz/window.ts'
+import { cleanPlace, type Place } from '../../supabase/functions/postiz/place.ts'
 import { timesFor, timesOn } from '../../supabase/functions/postiz/slots.ts'
 import { PUBLISHABLE_KEY, currentSession } from './cloud'
 import type { Campaign, CampaignPosting } from './look'
@@ -35,6 +36,8 @@ export interface CampaignPlace {
   accounts: string[]
   times: string[]
   window?: PostingWindow
+  /** Its own place for Instagram posts, over the default (place.ts). */
+  instagramPlace?: Place
 }
 
 /** Pause and posts-a-day, per platform and per account. The server holds a
@@ -59,6 +62,8 @@ export interface Profile {
     ending?: Record<string, { accounts: string[]; at: string }>
     /** What ending each campaign did. */
     ended?: Record<string, EndedResult>
+    /** The place every Instagram post is tagged with (place.ts). */
+    instagramPlace?: Place
   }
   timezone: string
   hasAnthropic: boolean
@@ -225,6 +230,11 @@ export async function saveCampaignPlace(campaignId: string, place: CampaignPlace
   return remember(await call<Profile>('save-campaign', { profile: profileId(), campaignId, ...place }))
 }
 
+/** The place every Instagram post is tagged with, or none (place.ts). */
+export async function saveInstagramPlace(place: Place | null): Promise<Profile> {
+  return remember(await call<Profile>('save-place', { profile: profileId(), place }))
+}
+
 /** Of the accounts picked for a campaign, the ones some video already made
  *  for it - waiting, approved, or scheduled and not about to go out - does not
  *  go to, and how many videos are in that position. Read from the last list of
@@ -305,7 +315,8 @@ export function disconnect(): void {
 export function placeFor(profile: Profile | undefined, campaignId: string): CampaignPlace {
   const place = profile?.settings.campaigns?.[campaignId]
   const window = cleanWindow(place?.window)
-  return { accounts: place?.accounts ?? [], times: place?.times ?? [], ...(window ? { window } : {}) }
+  const own = cleanPlace(place?.instagramPlace)
+  return { accounts: place?.accounts ?? [], times: place?.times ?? [], ...(window ? { window } : {}), ...(own ? { instagramPlace: own } : {}) }
 }
 
 /** A campaign's times on one date, as the server will use them (slots.ts
@@ -422,7 +433,12 @@ export async function switchToRandom(profile: Profile, campaigns: readonly { id:
   for (const campaign of onFixedTimes(profile, campaigns)) {
     const place = placeFor(profile, campaign.id)
     try {
-      await saveCampaignPlace(campaign.id, { accounts: place.accounts, times: [], window: cleanWindow(place.window) ?? DEFAULT_WINDOW })
+      await saveCampaignPlace(campaign.id, {
+        accounts: place.accounts,
+        times: [],
+        window: cleanWindow(place.window) ?? DEFAULT_WINDOW,
+        ...(place.instagramPlace ? { instagramPlace: place.instagramPlace } : {}),
+      })
     } catch (error) {
       throw new PostingError(`${campaign.name} kept its own times: ${error instanceof Error ? error.message : String(error)}`)
     }
