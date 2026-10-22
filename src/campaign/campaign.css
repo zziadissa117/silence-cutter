@@ -838,6 +838,8 @@ input[type='color']::-webkit-color-swatch { border: 0.5px solid var(--edge); bor
 .format-takes .linkbtn:disabled { color: var(--muted); cursor: default; text-decoration: none; }
 .format-take-list { flex-basis: 100%; padding-left: 2em; }
 .format-new-line { flex-wrap: nowrap; }
+.buffer-key { flex-wrap: nowrap; padding: 0 16px 8px; }
+.buffer-key input { flex: 1 1 auto; min-width: 0; }
 .format-new-line input { flex: 1 1 auto; min-width: 0; }
 
 /* A picture on a video, edited in the cuts editor (CutsEditor) */

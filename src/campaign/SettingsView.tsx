@@ -26,6 +26,7 @@ import type { AngleEffects, EffectLevel } from './effects'
 import { cutNoiseOn, setCutNoise } from './noiseSetting'
 import { LANDSCAPE_MODES, landscapeMode, setLandscapeMode, type LandscapeMode } from './framing916'
 import { PostingLimits, PostingLimitsRow } from './PostingLimits'
+import { BufferBackup } from './BufferBackup'
 import type { PushState } from './push'
 
 const PUSH_LINE: Record<PushState, string> = {
@@ -323,6 +324,7 @@ export function SettingsView({
           </label>
           <RandomForAll profile={posting.profile} campaigns={campaigns} onChanged={onPlacesChanged} />
           <PostingLimitsRow profile={posting.profile} onOpen={() => setLimitsOpen(true)} />
+          <BufferBackup profile={posting.profile} onChanged={onPlacesChanged} />
           <div className="setting">
             <div className="setting-text">
               <span className="row-name">Notifications</span>

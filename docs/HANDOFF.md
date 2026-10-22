@@ -11,6 +11,12 @@ He wants plain words, no permission questions (questions are fine), the deploy c
 - In it: the freeze/lag fix for reaction starts (`1352fcf`), "More each day" for batches (`f0a8fc8`), and the
   Cutter server's phone side (`cbbcd49`, does nothing until a server is connected in Settings).
 - No `supabase/functions` changes pending; the live `cutter` function already has `whoami`.
+- **2026-10-22: Buffer backup for Postiz** (CHANGELOG top entry, ARCHITECTURE "Buffer, the backup") needs
+  `./deploy-server.sh` then `./deploy.sh`; its migration is applied. Postiz was down from 2026-10-21 21:28 UTC
+  ("Application not found" on every new call; Postiz says an outage, safe). Priority account: MediaMaxing's
+  @traderzi2 = Postiz account "Michaelangelo" (`cmukq09z00404pr0ywfhhanwc`, campaign Loveable zi), 85 posts held in
+  Postiz whose only copy is on uploads.postiz.com. Not tested against Buffer (api.buffer.com blocked here) - check
+  `cutter_posts.buffer_ids` and errors after his first key/switch.
 
 ## Open threads
 

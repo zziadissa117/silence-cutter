@@ -347,11 +347,13 @@ function OtherPost({
   const [addingMusic, setAddingMusic] = useState(false)
   const tone =
     post.status === 'posted' ? (post.error ? 'warn' : 'ok') : post.status === 'error' || post.status === 'failed' ? 'bad' : 'later'
+  // Sent through Buffer, the backup, instead of Postiz.
+  const viaBuffer = (post.viaBuffer ?? []).length > 0 ? ' · via Buffer' : ''
   const line =
     post.status === 'posted'
-      ? `Posted · ${post.accounts.filter((a) => !a.held).map((a) => (handleOf(a) ? `@${handleOf(a)}` : a.name)).join(', ')}`
+      ? `Posted · ${post.accounts.filter((a) => !a.held).map((a) => (handleOf(a) ? `@${handleOf(a)}` : a.name)).join(', ')}${viaBuffer}`
       : post.status === 'scheduled'
-        ? post.accounts.map(accountLabel).join(', ')
+        ? `${post.accounts.map(accountLabel).join(', ')}${viaBuffer}`
         : post.status === 'failed' || post.status === 'error'
           ? (post.error ?? 'Failed')
           : post.status === 'approved'

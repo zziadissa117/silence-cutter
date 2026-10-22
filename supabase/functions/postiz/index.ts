@@ -45,6 +45,8 @@
 //                  would come out of Postiz; with confirm (the account ids he saw) -> { stopped, removing, profile }:
 //                  its posts stopped, those accounts unticked, then deleted from Postiz in the background (and on
 //                  each tick) once its posts are out of Postiz - the result lands in settings.ended
+//   backup         { profile, bufferKey?, removeKeys?, active? } -> profile   Buffer as a backup for Postiz
+//                  (buffer.ts): a key pasted, the keys taken out, or "Postiz is down" switched on or off
 //   views          { profile }                  -> { accounts: { [accountId]: AccountViews } }  how each account's
 //                  videos are doing (views.ts), read from Postiz one account per tick, about once a day each
 //   tick           { secret }                   (the scheduler; no token)
@@ -79,6 +81,18 @@ import { cleanLimits, firstDayWithRoom, heldNote, releasable, split, usedOn, typ
 import { PENDING_STATUSES, channelReport, endPlan, isPending, splitStop, type EndPost, type Integration, type PendingPost } from './channels.ts'
 import { VIEWS_WINDOW_DAYS, dueAt, notRead, parseCache, readViews, remember, type ViewsCache } from './views.ts'
 import { POST_VIEW_AGES_H, POST_VIEW_MAX_DAYS, accountNameFor, postViewCount, postViewsDue } from './postViews.ts'
+import {
+  HAND_AHEAD_MS,
+  MISSED_MS,
+  createPost as createBufferPost,
+  deletePost as deleteBufferPost,
+  handOverPlan,
+  listChannels,
+  matchChannels,
+  readPost as readBufferPost,
+  type BufferChannel,
+  type BufferRef,
+} from './buffer.ts'
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!
 const SERVICE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
@@ -121,6 +135,10 @@ class Problem extends Error {
     this.status = status
   }
 }
+
+/** Postiz itself failing - down, refusing, unreachable: where a Buffer
+ *  backup takes over (buffer.ts). */
+class PostizProblem extends Problem {}
 
 // --- The shared login ---------------------------------------------------------
 //
@@ -229,7 +247,7 @@ async function postiz<T>(key: string, method: string, path: string, body?: unkno
       signal: AbortSignal.timeout(5 * MINUTE),
     })
   } catch (error) {
-    throw new Problem(`Postiz could not be reached (${error instanceof Error ? error.message : String(error)}).`, true)
+    throw new PostizProblem(`Postiz could not be reached (${error instanceof Error ? error.message : String(error)}).`, true)
   }
   const text = await response.text()
   let json: unknown = null
@@ -244,14 +262,14 @@ async function postiz<T>(key: string, method: string, path: string, body?: unkno
 
 function postizFailure(status: number, said: string): never {
   if (/unsupported file type/i.test(said)) {
-    throw new Problem('Postiz only takes MP4 videos and this one is another format. Remove it and post it again - the app now turns it into an MP4 first.')
+    throw new PostizProblem('Postiz only takes MP4 videos and this one is another format. Remove it and post it again - the app now turns it into an MP4 first.')
   }
   if (status === 401 || status === 403) {
-    throw new Problem("Postiz didn't accept your key - paste it again in Settings, Posting.", false, 401)
+    throw new PostizProblem("Postiz didn't accept your key - paste it again in Settings, Posting.", false, 401)
   }
-  if (status === 429) throw new Problem('Postiz says too many requests right now.', true, 429)
-  if (status >= 500) throw new Problem(`Postiz had a problem (${status}${said ? `: ${said}` : ''}).`, true, 502)
-  throw new Problem(`Postiz said: ${said || status}`, false, 400)
+  if (status === 429) throw new PostizProblem('Postiz says too many requests right now.', true, 429)
+  if (status >= 500) throw new PostizProblem(`Postiz had a problem (${status}${said ? `: ${said}` : ''}).`, true, 502)
+  throw new PostizProblem(`Postiz said: ${said || status}`, false, 400)
 }
 
 function postizMessage(json: unknown): string | null {
@@ -318,8 +336,20 @@ interface Profile {
     ending?: Record<string, EndingJob>
     /** What ending each campaign did, for its page. */
     ended?: Record<string, EndedResult>
+    /** Buffer as a backup (buffer.ts): its channels as last read - never the
+     *  keys, which are sealed with the Postiz key. */
+    backup?: BackupSettings
   }
   timezone: string
+}
+
+interface BackupSettings {
+  keys: number
+  channels: BufferChannel[]
+  /** "Postiz is down": what Postiz holds on backed-up accounts goes through Buffer (handOver). */
+  active: boolean
+  checkedAt: string
+  problem: string | null
 }
 
 interface EndingJob {
@@ -384,6 +414,8 @@ interface Post {
   reposted_at: string | null
   media: Media | null
   postiz_ids: { postId: string; integration: string }[] | null
+  /** The accounts it went to through Buffer instead of Postiz, by account id. */
+  buffer_ids: Record<string, BufferRef> | null
   release_urls: Record<string, string> | null
   /** Views by account name, read a few times after it went out (postViews.ts). */
   views: Record<string, number> | null
@@ -419,6 +451,17 @@ async function profileView(profile: Profile) {
     timezone: profile.timezone,
     hasAnthropic: Boolean(secret?.anthropic_key),
     vapidPublic: vapid?.value ?? null,
+    // Buffer, the backup: its channels and the accounts it backs up - never the keys.
+    backup: profile.settings.backup
+      ? {
+          keys: profile.settings.backup.keys,
+          active: profile.settings.backup.active,
+          problem: profile.settings.backup.problem,
+          checkedAt: profile.settings.backup.checkedAt,
+          channels: profile.settings.backup.channels.map((c) => ({ name: c.name || c.displayName, service: c.service })),
+          matched: Object.fromEntries(Object.entries(backupFor(profile)).map(([id, c]) => [id, c.name || c.displayName])),
+        }
+      : null,
   }
 }
 
@@ -456,6 +499,8 @@ function postView(post: Post) {
     accounts: post.accounts,
     videoUrl: post.media?.path ?? null,
     links: post.release_urls ?? {},
+    /** The account ids it went to through Buffer instead of Postiz. */
+    viaBuffer: Object.keys(post.buffer_ids ?? {}),
     error: post.error,
     retryAt: post.retry_at,
     createdAt: post.created_at,
@@ -891,8 +936,7 @@ async function signature(id: string, expires: number): Promise<string> {
   return b64url(bytes)
 }
 
-async function videoUrl(post: Post): Promise<string> {
-  const expires = Date.now() + 60 * MINUTE
+async function videoUrl(post: Post, expires = Date.now() + 60 * MINUTE): Promise<string> {
   return `${PUBLIC_URL}/video/${post.id}.mp4?e=${expires}&s=${await signature(post.id, expires)}`
 }
 
@@ -927,6 +971,132 @@ async function serveVideo(req: Request, url: URL): Promise<Response> {
     },
   })
   return new Response(stream, { headers })
+}
+
+// --- Buffer, the backup (buffer.ts) -------------------------------------------------
+//
+// When Postiz can't post something, the accounts Buffer backs up get the same
+// video, caption and time through Buffer. A post that never got into Postiz
+// goes there by itself (schedule); posts Postiz already holds go only while
+// he has switched "Postiz is down" on (handOver), since Postiz's own
+// scheduler can keep posting while its API is down. An account with a backup
+// keeps the server's copy of its video until the post is out, for Buffer to
+// fetch.
+
+async function bufferKeysFor(profileId: string): Promise<string[]> {
+  const { data } = await db.from('cutter_profile_secrets').select('buffer_keys').eq('profile_id', profileId).maybeSingle()
+  if (!data?.buffer_keys) return []
+  try {
+    const keys = JSON.parse(await unseal(data.buffer_keys)) as unknown
+    return Array.isArray(keys) ? keys.map(String) : []
+  } catch {
+    return []
+  }
+}
+
+/** Postiz account id -> the Buffer channel that backs it up. */
+function backupFor(profile: Pick<Profile, 'accounts' | 'settings'>): Record<string, BufferChannel> {
+  return matchChannels(profile.accounts, profile.settings.backup?.channels ?? [])
+}
+
+/** The video for Buffer to fetch: the server's own copy while it has it -
+ *  signed until a day past its time - or else Postiz's. */
+async function bufferVideoUrl(post: Post): Promise<string> {
+  const parts = await partsIn(post).catch(() => new Map<number, number>())
+  if (post.parts > 0 && parts.size === post.parts) {
+    const at = post.post_at ? new Date(post.post_at).getTime() : Date.now()
+    return videoUrl(post, Math.max(at, Date.now()) + 24 * 60 * MINUTE)
+  }
+  if (post.media?.path?.startsWith('https://')) return post.media.path
+  throw new Problem('The video is no longer on the server, and Postiz has no copy to give Buffer.')
+}
+
+/** Sends these accounts of a post through Buffer, at `dueAt` (null: now) -
+ *  each saved on the post as it goes, so none is ever sent twice. Says what
+ *  Buffer turned down. */
+async function toBuffer(profile: Profile, start: Post, accounts: PostAccount[], dueAt: number | null): Promise<{ post: Post; problems: string[] }> {
+  const matched = backupFor(profile)
+  const keys = await bufferKeysFor(profile.id)
+  let post = start
+  let url: string | null = null
+  const problems: string[] = []
+  for (const account of accounts) {
+    const channel = matched[account.id]
+    if (!channel || post.buffer_ids?.[account.id]) continue
+    const key = keys[channel.key]
+    if (!key) {
+      problems.push(`${account.name}: its Buffer key is gone - paste it again in Settings, Posting.`)
+      continue
+    }
+    try {
+      url ??= await bufferVideoUrl(post)
+      const made = await createBufferPost(key, { channel, caption: textFor(post, account.id).caption ?? '', videoUrl: url, dueAt })
+      const ref: BufferRef = { postId: made.id, channelId: channel.id, at: new Date(dueAt ?? Date.now()).toISOString(), status: made.status }
+      post = await update(post.id, { buffer_ids: { ...(post.buffer_ids ?? {}), [account.id]: ref } })
+    } catch (error) {
+      problems.push(`${account.name}: ${error instanceof Error ? error.message : String(error)}`)
+    }
+  }
+  return { post, problems }
+}
+
+/** Takes what Buffer still holds of a post out of it, so it doesn't go. */
+async function dropFromBuffer(profile: Profile, post: Post): Promise<void> {
+  const refs = Object.values(post.buffer_ids ?? {}).filter((ref) => ref.status !== 'sent')
+  if (refs.length === 0) return
+  const keys = await bufferKeysFor(profile.id)
+  const channels = profile.settings.backup?.channels ?? []
+  for (const ref of refs) {
+    const key = keys[channels.find((c) => c.id === ref.channelId)?.key ?? -1]
+    if (!key) throw new Problem("Its Buffer key is gone, so it couldn't be taken out of Buffer - delete it there.")
+    await deleteBufferPost(key, ref.postId)
+  }
+}
+
+/** Buffer as a backup: a key pasted (checked by reading its channels), every
+ *  key taken out, or "Postiz is down" switched. Every key's channels are
+ *  read again each time; the keys are sealed like the Postiz key. */
+async function saveBackup(profile: Profile, body: Record<string, unknown>): Promise<Response> {
+  let keys = await bufferKeysFor(profile.id)
+  const pasted = typeof body.bufferKey === 'string' ? body.bufferKey.trim() : ''
+  if (pasted) {
+    if (pasted.length > 500 || /\s/.test(pasted)) throw new Problem("That doesn't look like a Buffer key - copy it again from Buffer: Settings, API.")
+    if (!keys.includes(pasted)) {
+      if (keys.length >= 5) throw new Problem('Five Buffer keys at most - take the old ones out first.')
+      try {
+        await listChannels(pasted, keys.length)
+      } catch (error) {
+        throw new Problem(error instanceof Error ? error.message : String(error))
+      }
+      keys = [...keys, pasted]
+    }
+  }
+  if (body.removeKeys === true) keys = []
+  const channels: BufferChannel[] = []
+  const problems: string[] = []
+  for (const [i, key] of keys.entries()) {
+    try {
+      channels.push(...(await listChannels(key, i)))
+    } catch (error) {
+      problems.push(`Key ${i + 1}: ${error instanceof Error ? error.message : String(error)}`)
+    }
+  }
+  const { error } = await db
+    .from('cutter_profile_secrets')
+    .update({ buffer_keys: keys.length > 0 ? await seal(JSON.stringify(keys)) : null })
+    .eq('profile_id', profile.id)
+  if (error) throw new Problem('The Buffer key could not be saved. Try again.', true, 500)
+  const saved = await patchSettings(profile.id, (settings) => ({
+    ...settings,
+    backup: {
+      keys: keys.length,
+      channels,
+      active: keys.length > 0 && (typeof body.active === 'boolean' ? body.active : Boolean(settings.backup?.active)),
+      checkedAt: new Date().toISOString(),
+      problem: problems.join(' ') || null,
+    },
+  }))
+  return reply(await profileView(saved))
 }
 
 // --- A video arriving -----------------------------------------------------------
@@ -1180,13 +1350,6 @@ async function prepare(start: Post): Promise<Post> {
     post = await update(post.id, written)
   }
 
-  if (!post.media) {
-    const media = await postiz<Media>(keys.postiz, 'POST', '/upload-from-url', { url: await videoUrl(post) })
-    if (!media?.id || !media?.path) throw new Problem('Postiz took the video but gave nothing back to post it with.', true)
-    post = await update(post.id, { media: { id: media.id, path: media.path } })
-    await removeParts(post).catch(() => {})
-  }
-
   const chosen = profile.settings.campaigns?.[post.campaign_id]
   const accounts = (chosen?.accounts ?? [])
     .map((accountId) => profile.accounts.find((a) => a.id === accountId))
@@ -1194,6 +1357,17 @@ async function prepare(start: Post): Promise<Post> {
     .map((a) => ({ id: a.id, name: a.name, platform: a.platform, profile: a.profile }))
   if (accounts.length === 0) {
     throw new Problem(`No accounts are picked for ${post.campaign_name} - pick them in the campaign's Posting, then Try again.`)
+  }
+
+  if (!post.media) {
+    const backedUp = accounts.some((a) => backupFor(profile)[a.id])
+    try {
+      post = await mediaInPostiz(keys.postiz, post, backedUp)
+    } catch (error) {
+      // Postiz can't take it: with a Buffer backup it goes on without, and
+      // schedule() hands those accounts to Buffer.
+      if (!(error instanceof PostizProblem) || !backedUp) throw error
+    }
   }
 
   if (post.batch && !post.post_at) post = await takeBatchSlot(post, profile)
@@ -1211,6 +1385,16 @@ async function prepare(start: Post): Promise<Post> {
   })
   if (post.status === 'waiting') await (post.batch ? notifyBatch(post.profile_id, post.batch.id) : notifyWaiting(post.profile_id))
   return post
+}
+
+/** The video into Postiz. The server's copy goes then - unless a Buffer
+ *  backup may need it, in which case it stays until the post is out. */
+async function mediaInPostiz(key: string, post: Post, keepCopy: boolean): Promise<Post> {
+  const media = await postiz<Media>(key, 'POST', '/upload-from-url', { url: await videoUrl(post) })
+  if (!media?.id || !media?.path) throw new PostizProblem('Postiz took the video but gave nothing back to post it with.', true)
+  const saved = await update(post.id, { media: { id: media.id, path: media.path } })
+  if (!keepCopy) await removeParts(saved).catch(() => {})
+  return saved
 }
 
 /** A batch video's day and time: its own, or - taken by another video of
@@ -1481,7 +1665,6 @@ async function schedule(start: Post): Promise<Post> {
   const { data: profileRow } = await db.from('cutter_profiles').select('*').eq('id', post.profile_id).single()
   const profile = profileRow as Profile
   const keys = await keysFor(profile.id)
-  if (!post.media) throw new Problem('The video never reached Postiz - Try again.')
   if (!post.caption?.trim()) throw new Problem(post.rules.caption === 'paste' ? 'Paste the caption first.' : 'Write the caption first.')
 
   const soon = Date.now() + 2 * MINUTE
@@ -1522,41 +1705,74 @@ async function schedule(start: Post): Promise<Post> {
   if (send.length === 0) {
     return update(post.id, { accounts: held, error: heldNote(held), retry_at: new Date(Date.now() + 30 * MINUTE).toISOString(), attempts: 0 })
   }
-  post = { ...post, accounts: send }
+  const scheduled = (fields: Partial<Post>) =>
+    update(post.id, {
+      status: 'scheduled',
+      accounts: [...send, ...held],
+      post_at: date,
+      creating_at: null,
+      error: heldNote(held),
+      attempts: 0,
+      retry_at: null,
+      checks: 0,
+      checked_at: null,
+      ...fields,
+    })
+  // The accounts already sent through Buffer stay there.
+  const toPostiz = send.filter((account) => !post.buffer_ids?.[account.id])
+  if (toPostiz.length === 0) return scheduled({})
 
-  if (post.creating_at) {
-    // A run before this one may have got as far as creating it.
-    const found = await findCreated(keys.postiz, post, date)
-    if (found) return update(post.id, { status: 'scheduled', accounts: [...send, ...held], postiz_ids: found, creating_at: null, error: heldNote(held), attempts: 0, retry_at: null })
+  try {
+    if (!post.media) post = await mediaInPostiz(keys.postiz, post, toPostiz.some((a) => backupFor(profile)[a.id]))
+    if (post.creating_at) {
+      // A run before this one may have got as far as creating it.
+      const found = await findCreated(keys.postiz, { ...post, accounts: toPostiz }, date)
+      if (found) return scheduled({ postiz_ids: found })
+    }
+    await update(post.id, { creating_at: new Date().toISOString() })
+    const media = post.media!
+    const created = await postiz<{ postId: string; integration: string }[]>(keys.postiz, 'POST', '/posts', {
+      type: now ? 'now' : 'schedule',
+      date,
+      shortLink: false,
+      tags: [],
+      posts: toPostiz.map((account) => {
+        const text = textFor(post, account.id)
+        return {
+          integration: { id: account.id },
+          value: [{ content: text.caption, image: [{ id: media.id, path: media.path }] }],
+          settings: settingsFor(account.platform, finishTitle(text.title ?? '', [post.headline ?? '', post.campaign_name])),
+        }
+      }),
+    })
+    return scheduled({ postiz_ids: Array.isArray(created) ? created : [] })
+  } catch (error) {
+    if (!(error instanceof PostizProblem)) throw error
+    // Postiz can't post it: the accounts Buffer backs up go through Buffer,
+    // at the same time; the rest wait for Postiz as before.
+    const covered = toPostiz.filter((a) => backupFor(profile)[a.id])
+    if (covered.length === 0) throw error
+    const at = now ? Date.now() : new Date(date).getTime()
+    if (at - Date.now() > HAND_AHEAD_MS) {
+      // Not due for a while: Postiz gets another go nearer its time, and
+      // Buffer takes it then if Postiz still can't - Buffer's free plan holds
+      // only 10 posts a channel.
+      return update(post.id, {
+        error: `${error.message} Buffer takes it a few hours before its time if Postiz still can't.`,
+        retry_at: new Date(at - HAND_AHEAD_MS).toISOString(),
+        attempts: 0,
+      })
+    }
+    const handed = await toBuffer(profile, post, covered, now ? null : at)
+    post = handed.post
+    const left = toPostiz.filter((a) => !post.buffer_ids?.[a.id])
+    if (left.length > 0) {
+      const through = covered.filter((a) => post.buffer_ids?.[a.id]).map((a) => a.name)
+      const note = [error.message, through.length > 0 ? `Sent through Buffer to ${through.join(', ')}.` : '', ...handed.problems]
+      throw new PostizProblem(note.filter(Boolean).join(' '), error.later, error.status)
+    }
+    return scheduled({})
   }
-  await update(post.id, { creating_at: new Date().toISOString() })
-  const title = finishTitle(post.title ?? '', [post.headline ?? '', post.campaign_name])
-  const created = await postiz<{ postId: string; integration: string }[]>(keys.postiz, 'POST', '/posts', {
-    type: now ? 'now' : 'schedule',
-    date,
-    shortLink: false,
-    tags: [],
-    posts: post.accounts.map((account) => {
-      const text = textFor(post, account.id)
-      return {
-        integration: { id: account.id },
-        value: [{ content: text.caption, image: [{ id: post.media!.id, path: post.media!.path }] }],
-        settings: settingsFor(account.platform, finishTitle(text.title ?? '', [post.headline ?? '', post.campaign_name])),
-      }
-    }),
-  })
-  return update(post.id, {
-    status: 'scheduled',
-    accounts: [...send, ...held],
-    post_at: date,
-    postiz_ids: Array.isArray(created) ? created : [],
-    creating_at: null,
-    error: heldNote(held),
-    attempts: 0,
-    retry_at: null,
-    checks: 0,
-    checked_at: null,
-  })
 }
 
 interface PostizPost {
@@ -1702,19 +1918,30 @@ async function act(profile: Profile, action: string, body: Record<string, unknow
       return reply({ post: postView(await update(post.id, { ...fields, ready_at: new Date().toISOString(), error: null })) })
     }
     case 'reject': {
+      // Out of Buffer first: a post there goes whatever Postiz does.
+      if (post.buffer_ids) await dropFromBuffer(profile, post)
+      let stopping: string | null = null
       if (post.status === 'scheduled' && post.postiz_ids?.[0]) {
         const { postiz: key } = await keysFor(profile.id)
-        await deleteScheduled(key, post)
+        try {
+          await deleteScheduled(key, post)
+        } catch (error) {
+          // Gone through Buffer while Postiz is down: Postiz lets go of it later (unpostStopped).
+          if (!viaBufferOnly(post) || !(error instanceof PostizProblem)) throw error
+          stopping = STOPPING
+        }
       }
-      if (post.status === 'uploading' || post.status === 'writing' || post.status === 'failed') await removeParts(post).catch(() => {})
-      return reply({ post: postView(await update(post.id, { status: 'rejected', error: null, retry_at: null })) })
+      // Its parts, or the copy kept for a Buffer backup.
+      await removeParts(post).catch(() => {})
+      return reply({ post: postView(await update(post.id, { status: 'rejected', error: stopping, retry_at: null, ...(stopping ? { attempts: 0 } : {}) })) })
     }
     case 'unschedule': {
       if (post.status !== 'scheduled') return reply({ post: postView(post) })
       if (post.post_at && new Date(post.post_at).getTime() < Date.now()) throw new Problem('It has already gone out.')
       const { postiz: key } = await keysFor(profile.id)
       if (post.postiz_ids?.[0]) await deleteScheduled(key, post)
-      return reply({ post: postView(await update(post.id, { status: 'waiting', ready_at: null, postiz_ids: null, error: null })) })
+      if (post.buffer_ids) await dropFromBuffer(profile, post)
+      return reply({ post: postView(await update(post.id, { status: 'waiting', ready_at: null, postiz_ids: null, buffer_ids: null, error: null })) })
     }
     case 'retry-accounts':
       return reply({ post: postView(await retryAccounts(profile, post)) })
@@ -1959,6 +2186,12 @@ async function stopAll(profile: Profile, rows: Post[], unpostNow: boolean): Prom
   later(
     (async () => {
       for (const post of unfinished) await removeParts(post).catch(() => {})
+      // Out of Buffer too, and the copies kept for a Buffer backup.
+      const matched = backupFor(profile)
+      for (const post of rows.filter((p) => p.buffer_ids || p.accounts.some((a) => matched[a.id]))) {
+        if (post.buffer_ids) await dropFromBuffer(profile, post).catch((error) => console.error('taking a post out of Buffer failed', post.id, error))
+        await removeParts(post).catch(() => {})
+      }
       // A batch at a time until none is left. A batch that takes nothing
       // out (Postiz refusing) stops the loop; the tick tries those again.
       while (unpostNow && (await unpostStopped(profile.id)) > 0) {
@@ -2248,6 +2481,11 @@ async function tick(): Promise<void> {
   // Captions marked to be written again with a campaign's new rules.
   await rewriteMarked()
   await checkPosted(now)
+  // Buffer, the backup: what Postiz holds while "Postiz is down" is on, what
+  // Buffer has posted, and Postiz's copies of what went through Buffer.
+  await handOver(now).catch((error) => console.error('handing over to Buffer failed', error))
+  await checkBuffer(now).catch((error) => console.error('checking Buffer failed', error))
+  await unpostHanded().catch((error) => console.error('taking handed-over posts out of Postiz failed', error))
   await remindReposts(now)
   await remind(now)
   await refreshViews(now).catch((error) => console.error('reading views failed', error))
@@ -2369,7 +2607,10 @@ async function checkPosted(now: number): Promise<void> {
     .or(`checked_at.is.null,checked_at.lt.${new Date(now - 8 * MINUTE).toISOString()}`)
     .limit(100)
   const byProfile = new Map<string, Post[]>()
-  for (const post of (data ?? []) as Post[]) byProfile.set(post.profile_id, [...(byProfile.get(post.profile_id) ?? []), post])
+  // Gone through Buffer on every account: checkBuffer follows those.
+  for (const post of ((data ?? []) as Post[]).filter((p) => !viaBufferOnly(p))) {
+    byProfile.set(post.profile_id, [...(byProfile.get(post.profile_id) ?? []), post])
+  }
   for (const [profileId, posts] of byProfile) {
     try {
       const { postiz: key } = await keysFor(profileId)
@@ -2400,12 +2641,147 @@ async function checkPosted(now: number): Promise<void> {
           if (errored.length > 0) fields.error = notPostedNote(errored, post.accounts)
         }
         const saved = await update(post.id, fields)
+        // A copy kept for a Buffer backup is no longer needed.
+        if (saved.status !== 'scheduled') await removeParts(saved).catch(() => {})
         if (saved.status === 'error') {
           await notify(profileId, { title: `${post.campaign_name}: not posted`, body: saved.error ?? '', tag: `error-${post.id}` })
         }
       }
     } catch (error) {
       console.error('check failed', profileId, error instanceof Error ? error.message : String(error))
+    }
+  }
+}
+
+/** Every account of the post went through Buffer instead of Postiz. */
+function viaBufferOnly(post: Post): boolean {
+  return post.accounts.length > 0 && post.accounts.every((a) => post.buffer_ids?.[a.id])
+}
+
+/** Posts that went through Buffer: posted once Buffer has sent them all, with
+ *  their links - and then the server's copy of the video goes. */
+async function checkBuffer(now: number): Promise<void> {
+  const { data } = await db
+    .from('cutter_posts')
+    .select('*')
+    .eq('status', 'scheduled')
+    .not('buffer_ids', 'is', null)
+    .lt('post_at', new Date(now - 2 * MINUTE).toISOString())
+    .lt('checks', 12)
+    .or(`checked_at.is.null,checked_at.lt.${new Date(now - 8 * MINUTE).toISOString()}`)
+    .limit(30)
+  const profiles = new Map<string, { profile: Profile; keys: string[] }>()
+  for (const post of ((data ?? []) as Post[]).filter(viaBufferOnly)) {
+    try {
+      if (!profiles.has(post.profile_id)) {
+        const { data: row } = await db.from('cutter_profiles').select('*').eq('id', post.profile_id).single()
+        profiles.set(post.profile_id, { profile: row as Profile, keys: await bufferKeysFor(post.profile_id) })
+      }
+      const { profile, keys } = profiles.get(post.profile_id)!
+      const channels = profile.settings.backup?.channels ?? []
+      const refs = { ...post.buffer_ids! }
+      const links: Record<string, string> = { ...(post.release_urls ?? {}) }
+      for (const account of post.accounts) {
+        const ref = refs[account.id]
+        if (ref.status === 'sent' || ref.status === 'error') continue
+        const key = keys[channels.find((c) => c.id === ref.channelId)?.key ?? -1]
+        if (!key) continue
+        const read = await readBufferPost(key, ref.postId)
+        refs[account.id] = { ...ref, status: read.status, ...(read.link ? { link: read.link } : {}) }
+        if (read.link) links[accountName(account.name, account.platform, post.accounts)] = read.link
+      }
+      const fields: Partial<Post> = { buffer_ids: refs, release_urls: links, checked_at: new Date().toISOString(), checks: post.checks + 1 }
+      if (post.accounts.every((a) => refs[a.id].status === 'sent' || refs[a.id].status === 'error')) {
+        const errored = post.accounts.filter((a) => refs[a.id].status === 'error')
+        const names = errored.map((a) => a.name).join(', ')
+        if (errored.length === post.accounts.length) {
+          fields.status = 'error'
+          fields.error = `Buffer couldn't post it to ${names}. Open Buffer to see why.`
+        } else {
+          fields.status = 'posted'
+          if (!post.repost_of) {
+            const due = repostDueAt(Date.now(), post.rules.repost)
+            if (due !== null && !post.reposted_at) fields.repost_at = new Date(due).toISOString()
+          }
+          if (errored.length > 0) fields.error = `Not posted to ${names} (Buffer couldn't).`
+        }
+      }
+      const saved = await update(post.id, fields)
+      if (saved.status !== 'scheduled') await removeParts(saved).catch(() => {})
+      if (saved.status === 'error') {
+        await notify(post.profile_id, { title: `${post.campaign_name}: not posted`, body: saved.error ?? '', tag: `error-${post.id}` })
+      }
+    } catch (error) {
+      console.error('buffer check failed', post.id, error instanceof Error ? error.message : String(error))
+      await update(post.id, { checked_at: new Date().toISOString(), checks: post.checks + 1 }).catch(() => {})
+    }
+  }
+}
+
+/** "Postiz is down" switched on: the posts Postiz holds on accounts all backed
+ *  up by Buffer go through Buffer instead - a few hours before their time, or,
+ *  missed in the last two hours, from now on, apart (handOverPlan) - and come
+ *  out of Postiz once it answers again (unpostHanded), so none goes twice. A
+ *  post with an account Buffer doesn't back up stays with Postiz: Postiz can
+ *  only take a post out whole. */
+async function handOver(now: number): Promise<void> {
+  const { data: profiles } = await db.from('cutter_profiles').select('*').eq('settings->backup->>active', 'true').limit(20)
+  for (const profile of (profiles ?? []) as Profile[]) {
+    const matched = backupFor(profile)
+    if (Object.keys(matched).length === 0) continue
+    const { data } = await db
+      .from('cutter_posts')
+      .select('*')
+      .eq('profile_id', profile.id)
+      .eq('status', 'scheduled')
+      .gte('post_at', new Date(now - MISSED_MS).toISOString())
+      .lte('post_at', new Date(now + HAND_AHEAD_MS).toISOString())
+      .limit(50)
+    // Never one with a paused or capped account: that waits for its turn as before.
+    const posts = ((data ?? []) as Post[]).filter(
+      (p) =>
+        p.accounts.length > 0 &&
+        p.accounts.every((a) => matched[a.id] && !a.held) &&
+        p.accounts.some((a) => !p.buffer_ids?.[a.id]),
+    )
+    for (const { post, dueAt } of handOverPlan(posts, now)) {
+      const claimed = await claim(post.id)
+      if (!claimed) continue
+      try {
+        const { post: handed, problems } = await toBuffer(profile, claimed, claimed.accounts, dueAt)
+        await update(
+          handed.id,
+          viaBufferOnly(handed)
+            ? { post_at: new Date(dueAt).toISOString(), error: null, checks: 0, checked_at: null }
+            : { error: `Couldn't go through Buffer: ${problems.join(' ')}` },
+        )
+      } catch (error) {
+        await update(post.id, { error: `Couldn't go through Buffer: ${error instanceof Error ? error.message : String(error)}` }).catch(() => {})
+      } finally {
+        await release(post.id)
+      }
+    }
+  }
+}
+
+/** Posts handed to Buffer that Postiz still holds: taken out of Postiz as
+ *  soon as it answers, a few each tick. */
+async function unpostHanded(): Promise<void> {
+  const { data } = await db
+    .from('cutter_posts')
+    .select('*')
+    .in('status', ['scheduled', 'posted', 'error'])
+    .not('buffer_ids', 'is', null)
+    .not('postiz_ids', 'is', null)
+    .order('updated_at', { ascending: true })
+    .limit(10)
+  for (const post of ((data ?? []) as Post[]).filter(viaBufferOnly)) {
+    try {
+      if (post.postiz_ids?.[0]) await deleteScheduled((await keysFor(post.profile_id)).postiz, post)
+      await update(post.id, { postiz_ids: null })
+    } catch {
+      // Postiz still down: to the back of the line, for a later tick.
+      await update(post.id, {}).catch(() => {})
     }
   }
 }
@@ -2605,6 +2981,8 @@ Deno.serve(async (req) => {
         return await stopPicked(profile, body)
       case 'end-campaign':
         return await endCampaign(profile, body)
+      case 'backup':
+        return await saveBackup(profile, body)
       case 'views':
         return await views(profile)
       default:

@@ -255,6 +255,29 @@ pick the logos and `formulaLine(…, amount)`, a headline pick its `headlineStyl
 picked now, and `withHeadlineStyle` swaps it into the angle. The bottom of the Batch tab shows
 the number of variations and `variationParts` (what multiplies into it).
 
+## Buffer, the backup for Postiz (`postiz/buffer.ts`)
+
+When Postiz can't post, the Instagram accounts Buffer backs up get the same video, caption and
+time through Buffer's GraphQL API (api.buffer.com, a personal key as Bearer; no upload - Buffer
+fetches the video from a public link). Keys: pasted in Settings, Posting (`BufferBackup.tsx`,
+action `backup`), checked by listing their channels, sealed in `cutter_profile_secrets.buffer_keys`;
+the channels go in `settings.backup` and are matched to Postiz accounts by username
+(`matchChannels`) whenever needed. Every error from a Postiz call is a `PostizProblem`. `prepare`
+goes on without Postiz's copy of the video for a post with a backed-up account; `schedule`, when
+Postiz fails, hands the backed-up accounts to Buffer (`toBuffer`: one `createPost` per account,
+saved at once in `cutter_posts.buffer_ids`, so a retry never sends one twice) - unless the post is
+over `HAND_AHEAD_MS` (6 h) away, when it waits with a `retry_at` nearer its time (Buffer's free plan
+holds 10 posts a channel). The rest of its accounts stay with Postiz. "Postiz is down"
+(`settings.backup.active`) also has the tick's `handOver` give Buffer the posts Postiz already holds
+whose accounts are all backed up (Postiz deletes whole posts only), `handOverPlan`: due within 6 h at
+their own time, missed in the last 2 h spaced 30 min apart from now; `unpostHanded` then deletes
+them from Postiz once it answers. It is a switch because Postiz's scheduler can keep posting while
+its API is down. `checkBuffer` reads Buffer's status for posts that went only through Buffer (posted
+/ error, links); `checkPosted` leaves those alone. A backed-up account's video keeps the server's
+copy (the outbox parts) until its post is posted, errored or rejected, for Buffer to fetch through
+the signed `videoUrl`; without it (posts Postiz took before this), Postiz's own `media.path`. Reject,
+unschedule and stop also delete it in Buffer (`dropFromBuffer`).
+
 ## Formats (`formats.ts`, `FormatsView.tsx`)
 
 A format is an angle with `isFormat`: its look and the clips joined onto every video (clips.ts,

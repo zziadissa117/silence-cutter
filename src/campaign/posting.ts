@@ -63,6 +63,20 @@ export interface Profile {
   timezone: string
   hasAnthropic: boolean
   vapidPublic: string | null
+  /** Buffer as a backup for Postiz (postiz/buffer.ts); null until a key is pasted. */
+  backup?: BackupView | null
+}
+
+/** What the phone is told about the Buffer backup - never the keys. */
+export interface BackupView {
+  keys: number
+  /** "Postiz is down": what Postiz holds on backed-up accounts goes through Buffer. */
+  active: boolean
+  problem: string | null
+  checkedAt: string | null
+  channels: { name: string; service: string }[]
+  /** Postiz account id -> the Buffer channel backing it up. */
+  matched: Record<string, string>
 }
 
 export type PostStatus = 'uploading' | 'writing' | 'waiting' | 'approved' | 'scheduled' | 'posted' | 'error' | 'rejected' | 'failed'
@@ -93,6 +107,8 @@ export interface ServerPost {
   /** Postiz's own copy of the video, for when this phone has none. */
   videoUrl: string | null
   links: Record<string, string>
+  /** The account ids it went to through Buffer instead of Postiz. */
+  viaBuffer?: string[]
   error: string | null
   retryAt: string | null
   createdAt: string
@@ -225,6 +241,12 @@ export function accountsBehind(
 
 export async function saveLimits(limits: Limits): Promise<Profile> {
   return remember(await call<Profile>('save-limits', { profile: profileId(), limits }))
+}
+
+/** Buffer as a backup: a key pasted, every key taken out, or "Postiz is down"
+ *  switched on or off. The server reads each key's channels again. */
+export async function saveBackup(change: { bufferKey?: string; removeKeys?: boolean; active?: boolean }): Promise<Profile> {
+  return remember(await call<Profile>('backup', { profile: profileId(), ...change }))
 }
 
 export interface AttachResult {

@@ -3,6 +3,39 @@
 Newest first. Every change says what it does, how to use it, and how it works
 underneath. Kept up to date with each commit.
 
+## Buffer as a backup for Postiz: same video, caption and time, same Instagram accounts
+Needs deploying: run ./deploy-server.sh, then ./deploy.sh. The database change (Buffer keys, which posts went through
+Buffer) is already applied - migration `20261022120000_cutter_buffer_backup.sql`, OK'd by the owner 2026-10-22.
+**Why:** Postiz went down (2026-10-21 21:28 UTC: every new call "Application not found"), and MediaMaxing's
+@traderzi2 can't miss a day. "If ever Postiz fails to post anything, then we have a good backup that can post for us."
+**How to use it:** Settings, Posting, **Backup · Buffer**: paste the Buffer API key (in Buffer: Settings, API,
+Personal Access - pick 1 year), **Add**. It finds the accounts it backs up by itself - the same Instagram username in
+Buffer and Postiz - and says "Backs up @traderzi2 on Instagram". Up to 5 keys (one per Buffer account).
+- **By itself:** a video Postiz can't take (down, refusing) goes through Buffer for the backed-up accounts, at the
+  same time with the same caption. One not due for over 6 hours stays with Postiz and is tried again nearer its time
+  (Buffer's free plan holds only 10 posts a channel).
+- **"Postiz is down: post through Buffer"** (the switch under it): the posts Postiz *already holds* for those
+  accounts go through Buffer instead, a few hours before their time - and ones missed in the last 2 hours from now on,
+  30 minutes apart - and are taken out of Postiz as soon as it answers, so none goes twice. Turn it off when Postiz is
+  back. It's a switch, not automatic, because Postiz's own scheduler can keep posting while its API is down (it did on
+  2026-10-21) - handing those over by itself could post a video twice.
+- Posts show "via Buffer" in Posts; once Buffer has sent them they turn Posted, with the link. Rejecting or stopping
+  one takes it out of Buffer too.
+**How:** `postiz/buffer.ts` - Buffer's GraphQL API (api.buffer.com, the key as Bearer): `listChannels`,
+`matchChannels` (by username), `createPost` (`customScheduled` + `dueAt`, the video as a public link, Instagram as a
+Reel shown on the feed - as a post if Buffer turns that down), `readPost`, `deletePost`, `handOverPlan`. In
+`index.ts`: keys sealed like the Postiz key (`cutter_profile_secrets.buffer_keys`), channels in
+`settings.backup`; `PostizProblem` marks Postiz's own failures; `prepare` goes on without Postiz's copy for a
+backed-up post, `schedule` hands the backed-up accounts to Buffer (`toBuffer`, saved per account in
+`cutter_posts.buffer_ids` so none goes twice); tick: `handOver` (the switch), `checkBuffer` (posted/error, links),
+`unpostHanded`. Buffer fetches the video from the server's signed link - a backed-up account now keeps the server's
+copy until its post is out (it used to go once Postiz had it) - or else Postiz's copy. Phone: `BufferBackup.tsx`,
+`posting.saveBackup`. Tests: `buffer.test.ts`, `bufferBackup.test.tsx`.
+**Not checked here:** Buffer itself - this computer can't reach api.buffer.com. Built from Buffer's API docs and two
+open-source clients that use it; the first real call is his key. The 85 @traderzi2 posts Postiz already holds have
+no copy on our server (it went once Postiz took them): Buffer fetches them from uploads.postiz.com, which works only
+if Postiz's file storage is up.
+
 ## Formats: a script you film again and again, mixed into a month of videos
 Only ./deploy.sh is needed; then close the Cutter and open it again.
 **What changed:** a format was one take = one video. He meant a script: "ELON MUST BE STOPPED", "NO WAY HE DID THIS",
