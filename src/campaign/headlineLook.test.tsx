@@ -64,7 +64,6 @@ async function show(job: Job) {
           campaigns={[campaign]}
           onApprove={() => {}}
           onMusic={() => {}}
-          onNoEffects={() => {}}
           pictures={[]}
           onSkipPicture={() => {}}
           onChoose={() => {}}

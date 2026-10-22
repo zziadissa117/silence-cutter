@@ -1,7 +1,9 @@
 // One video in the list: a dot for its state, its name, one line saying
 // where it is, and the one thing to do next - approve it, send it, try it
-// again. The rest (what it heard, where it goes, its headline) opens on a
-// tap, and opens by itself when it needs him.
+// again. The rest (what it heard, what is joined on) opens on a tap, and
+// opens by itself when it needs him. Where it goes, its headline and music
+// are asked on its Captions screen (CheckQuestions) - in the row only for a
+// video that has none.
 //
 // Rows never move: the list stays in the order the videos were added, so
 // approving one does not slide the next under his thumb.
@@ -11,8 +13,6 @@ import { useEffect, useMemo, useState, type ReactNode } from 'react'
 import { totalDuration } from '../media/silenceMath'
 import { ChevronDown } from './icons'
 import type { PictureChoice } from './skipPictures'
-import { anyEffect, defaultEffects } from './defaultEffects'
-import { NO_EFFECTS } from './effects'
 import { canShareFiles, formatTime, outputName, share, type Job } from './jobs'
 import { HEADLINE_STYLES, LIMITS, type Campaign, type HeadlineStyle } from './look'
 import { songFile, useMusicBank } from './musicBank'
@@ -43,7 +43,6 @@ export function JobRow({
   onCheck,
   onCuts,
   onMusic,
-  onNoEffects,
   pictures,
   onSkipPicture,
   onChoose,
@@ -74,7 +73,6 @@ export function JobRow({
   /** Picks the track under this video: "campaignId:angleId", "none", or ""
    *  for its angle's own. */
   onMusic: (choice: string) => void
-  onNoEffects: (off: boolean) => void
   pictures: PictureChoice[]
   onSkipPicture: (pictureId: string, skip: boolean) => void
   onChoose: (campaignId: string, angleId: string) => void
@@ -250,9 +248,9 @@ export function JobRow({
               onHeadline={onHeadline}
               onHeadlineDone={onHeadlineDone}
               onHeadlineStyle={onHeadlineStyle}
-              onCuts={onCuts}
+              onCuts={onCheck ? undefined : onCuts}
+              asked={Boolean(onCheck)}
               onMusic={onMusic}
-              onNoEffects={onNoEffects}
               pictures={pictures}
               onSkipPicture={onSkipPicture}
               clips={clips}
@@ -407,8 +405,8 @@ function SortedDetails({
   onHeadlineDone,
   onHeadlineStyle,
   onCuts,
+  asked,
   onMusic,
-  onNoEffects,
   pictures,
   onSkipPicture,
   clips,
@@ -423,14 +421,106 @@ function SortedDetails({
   onHeadlineDone: () => void
   onHeadlineStyle?: (style: HeadlineStyle) => void
   onCuts?: () => void
+  /** Where it goes, its headline and music are asked on its Captions
+   *  screen, so they are not here too. */
+  asked: boolean
   onMusic: (choice: string) => void
-  onNoEffects: (off: boolean) => void
   pictures: PictureChoice[]
   onSkipPicture: (pictureId: string, skip: boolean) => void
   clips?: ReactNode
   joinWith?: { id: string; label: string }[]
   onJoin?: (otherId: string) => void
   parts?: { names: string[]; onSplit: () => void }
+}) {
+  const plan = job.day?.plan
+  const kept = job.day?.keep ?? plan?.keep ?? []
+  const heard = (job.day?.plan?.words ?? []).map((w) => w.text.trim()).join(' ')
+  // Sounds the cutter took out that could have been quiet words, or left that are long and wordless.
+  const toCheck = (plan?.checks ?? []).filter((c) => c.kind !== 'noise').length
+  return (
+    <>
+      <div className="quote">{heard ? `"${heard.length > 160 ? `${heard.slice(0, 160)}…` : heard}"` : 'No words heard.'}</div>
+      {asked ? null : (
+        <VideoFields
+          job={job}
+          campaigns={campaigns}
+          onChoose={onChoose}
+          onHeadline={onHeadline}
+          onHeadlineDone={onHeadlineDone}
+          onHeadlineStyle={onHeadlineStyle}
+          onMusic={onMusic}
+        />
+      )}
+      {pictures.length > 0 ? (
+        <div className="field">
+          <span className="label">Pictures in this video</span>
+          {pictures.map((p) => (
+            <PictureToggle key={p.id} picture={p} shown={!job.day?.skipPictures?.includes(p.id)} onChange={(shown) => onSkipPicture(p.id, !shown)} />
+          ))}
+        </div>
+      ) : null}
+      {clips}
+      {parts ? (
+        <div className="cuts-row">
+          <span className="facts">Joined from {parts.names.join(' + ')}</span>
+          <button type="button" className="linkbtn" onClick={parts.onSplit}>
+            Split apart
+          </button>
+        </div>
+      ) : null}
+      {joinWith && joinWith.length > 0 && onJoin ? (
+        <label className="field">
+          <span className="label">Join with another recording</span>
+          <select value="" onChange={(e) => e.target.value && onJoin(e.target.value)}>
+            <option value="" disabled>
+              It goes after this one…
+            </option>
+            {joinWith.map((o) => (
+              <option key={o.id} value={o.id}>
+                {o.label}
+              </option>
+            ))}
+          </select>
+        </label>
+      ) : null}
+      {onCuts ? (
+        <div className="cuts-row">
+          <span className="facts">
+            {job.reaction ? 'Product clip: ' : ''}
+            {plan ? `${formatTime(plan.duration)} → ${formatTime(totalDuration(kept))}` : ''}
+            {job.day?.keep ? ' · cuts fixed by hand' : ''}
+            {toCheck > 0 ? ` · ${toCheck} sound${toCheck === 1 ? '' : 's'} to check` : ''}
+          </span>
+          <button type="button" className={`btn small${toCheck > 0 ? ' primary' : ''}`} onClick={onCuts}>
+            {toCheck > 0 ? 'Check cuts' : 'Edit cuts'}
+          </button>
+        </div>
+      ) : job.reaction && !asked ? (
+        <div className="facts">No talking over the product, so it is kept whole.</div>
+      ) : null}
+    </>
+  )
+}
+
+/** Where a video goes, its headline and how it looks, and its music: asked
+ *  on the screen Captions opens (CheckQuestions), or in the row of a video
+ *  that has no Captions screen. */
+export function VideoFields({
+  job,
+  campaigns,
+  onChoose,
+  onHeadline,
+  onHeadlineDone,
+  onHeadlineStyle,
+  onMusic,
+}: {
+  job: Job
+  campaigns: Campaign[]
+  onChoose: (campaignId: string, angleId: string) => void
+  onHeadline: (text: string) => void
+  onHeadlineDone: () => void
+  onHeadlineStyle?: (style: HeadlineStyle) => void
+  onMusic: (choice: string) => void
 }) {
   const songs = useMusicBank()
   // The track picked, to hear before the video is made.
@@ -445,15 +535,9 @@ function SortedDetails({
     const music = campaigns.find((c) => c.id === campaignId)?.angles.find((a) => a.id === angleId)?.music
     return music ? { name: music.name, load: async () => music.audio } : null
   })()
-  const plan = job.day?.plan
-  const kept = job.day?.keep ?? plan?.keep ?? []
-  const heard = (job.day?.plan?.words ?? []).map((w) => w.text.trim()).join(' ')
-  // Sounds the cutter took out that could have been quiet words, or left that are long and wordless.
-  const toCheck = (plan?.checks ?? []).filter((c) => c.kind !== 'noise').length
   const angle = campaigns.find((c) => c.id === job.campaignId)?.angles.find((a) => a.id === job.angleId)
   return (
     <>
-      <div className="quote">{heard ? `"${heard.length > 160 ? `${heard.slice(0, 160)}…` : heard}"` : 'No words heard.'}</div>
       <label className="field">
         <span className="label">Goes to</span>
         <select
@@ -514,62 +598,6 @@ function SortedDetails({
         </div>
         {songs.length === 0 ? <span className="hint">Keep songs with names in Bank → Music to pick them here.</span> : null}
       </label>
-      {anyEffect(defaultEffects()) && !anyEffect(angle?.effects ?? NO_EFFECTS) ? (
-        <label className="field">
-          <span className="label">Effects</span>
-          <select value={job.day?.noEffects ? 'off' : 'default'} onChange={(e) => onNoEffects(e.target.value === 'off')}>
-            <option value="default">Default effects</option>
-            <option value="off">No effects</option>
-          </select>
-        </label>
-      ) : null}
-      {pictures.length > 0 ? (
-        <div className="field">
-          <span className="label">Pictures in this video</span>
-          {pictures.map((p) => (
-            <PictureToggle key={p.id} picture={p} shown={!job.day?.skipPictures?.includes(p.id)} onChange={(shown) => onSkipPicture(p.id, !shown)} />
-          ))}
-        </div>
-      ) : null}
-      {clips}
-      {parts ? (
-        <div className="cuts-row">
-          <span className="facts">Joined from {parts.names.join(' + ')}</span>
-          <button type="button" className="linkbtn" onClick={parts.onSplit}>
-            Split apart
-          </button>
-        </div>
-      ) : null}
-      {joinWith && joinWith.length > 0 && onJoin ? (
-        <label className="field">
-          <span className="label">Join with another recording</span>
-          <select value="" onChange={(e) => e.target.value && onJoin(e.target.value)}>
-            <option value="" disabled>
-              It goes after this one…
-            </option>
-            {joinWith.map((o) => (
-              <option key={o.id} value={o.id}>
-                {o.label}
-              </option>
-            ))}
-          </select>
-        </label>
-      ) : null}
-      {onCuts ? (
-        <div className="cuts-row">
-          <span className="facts">
-            {job.reaction ? 'Product clip: ' : ''}
-            {plan ? `${formatTime(plan.duration)} → ${formatTime(totalDuration(kept))}` : ''}
-            {job.day?.keep ? ' · cuts fixed by hand' : ''}
-            {toCheck > 0 ? ` · ${toCheck} sound${toCheck === 1 ? '' : 's'} to check` : ''}
-          </span>
-          <button type="button" className={`btn small${toCheck > 0 ? ' primary' : ''}`} onClick={onCuts}>
-            {toCheck > 0 ? 'Check cuts' : 'Edit cuts'}
-          </button>
-        </div>
-      ) : job.reaction ? (
-        <div className="facts">No talking over the product, so it is kept whole.</div>
-      ) : null}
     </>
   )
 }

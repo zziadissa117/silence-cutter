@@ -45,7 +45,6 @@ function show(fields: { onEditAgain?: () => void; sendTo?: { campaigns: { id: st
           campaigns={[]}
           onApprove={() => {}}
           onMusic={() => {}}
-          onNoEffects={() => {}}
           pictures={[]}
           onSkipPicture={() => {}}
           onChoose={() => {}}

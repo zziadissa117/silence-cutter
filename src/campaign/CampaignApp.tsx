@@ -47,7 +47,7 @@ import { JobRow } from './JobRow'
 import type { PopReview } from './CaptionReview'
 import { CutsEditor } from './CutsEditor'
 import { EditScreen, type EditedCuts } from './EditScreen'
-import { HookQuestion } from './HookQuestion'
+import { CheckQuestions } from './CheckQuestions'
 import {
   captionWords,
   withRestored,
@@ -658,7 +658,7 @@ export function CampaignApp() {
   // the caption check it was opened from.
   const [cutting, setCutting] = useState<{ id: string } | null>(null)
   // Videos about to be checked, waiting on whether the hook gets captions.
-  const [askingHook, setAskingHook] = useState<string[] | null>(null)
+  const [asking, setAsking] = useState<string[] | null>(null)
   // Dropped videos that are not 9:16, waiting for: cut them too, or only 9:16?
   const [askWide, setAskWide] = useState<{ order: { file: File; filming: Filming }[]; names: string[] } | null>(null)
   // A made batch video being fixed: its headline and track.
@@ -3025,10 +3025,9 @@ export function CampaignApp() {
                 campaigns={campaigns ?? []}
                 onApprove={() => approve([job.id])}
                 onCheck={captionsOn && talkingIn(job) ? () => startCheck([job.id]) : undefined}
-                onCuts={talkingIn(job) ? () => (captionsOn ? setReviewing([job.id]) : setCutting({ id: job.id })) : undefined}
+                onCuts={talkingIn(job) && !captionsOn ? () => setCutting({ id: job.id }) : undefined}
                 onMusic={(choice) => setMusic(job.id, choice)}
                 onHeadlineStyle={(style) => setHeadlineStyle(job.id, style)}
-                onNoEffects={(off) => setNoEffects(job.id, off)}
                 pictures={picturesFor(job)}
                 onSkipPicture={(pictureId, skip) => setSkipPicture(job.id, pictureId, skip)}
                 clips={clipsField(job)}
@@ -3284,14 +3283,6 @@ export function CampaignApp() {
     void recordDay(id, day, { campaignId: job.campaignId, angleId: job.angleId, headlineText: job.headlineText })
   }
 
-  const setNoEffects = (id: string, noEffects: boolean) => {
-    const job = jobs.find((j) => j.id === id)
-    if (!job?.day) return
-    const day = { ...job.day, noEffects: noEffects || undefined }
-    setJobs((js) => js.map((j) => (j.id === id ? { ...j, day } : j)))
-    void recordDay(id, day, { campaignId: job.campaignId, angleId: job.angleId, headlineText: job.headlineText })
-  }
-
   /** The kept parts as he fixed them, or none when they are the plan's own. */
   const keepCuts = (id: string, keep: Range[], overlays: ManualPicture[] = [], files: Map<string, Blob> = new Map()) => {
     const job = jobs.find((j) => j.id === id)
@@ -3369,22 +3360,22 @@ export function CampaignApp() {
     return { all, shown, merge }
   })()
 
-  /** Checks these videos' captions - first asking whether the hook gets
-   *  captions, when any of them has a headline to have a hook under. */
-  const startCheck = (ids: string[]) => {
-    if (ids.some((id) => jobs.some((j) => j.id === id && hookFor(j) > 0))) setAskingHook(ids)
-    else setReviewing(ids)
-  }
+  /** Checks these videos' captions - first asking where each goes, its
+   *  headline and music, and whether the hook gets captions (CheckQuestions). */
+  const startCheck = (ids: string[]) => setAsking(ids)
 
-  /** Keeps the hook answer on each video, then goes on to check them. */
-  const answerHook = (ids: string[], hookCaptions: boolean) => {
-    for (const job of jobs) {
-      if (!ids.includes(job.id) || !job.day) continue
-      const day = { ...job.day, hookCaptions }
-      void recordDay(job.id, day, { campaignId: job.campaignId, angleId: job.angleId, headlineText: job.headlineText })
+  /** Keeps the hook answer on each video, when it was asked, then goes on to
+   *  check them. */
+  const answerQuestions = (ids: string[], hookCaptions?: boolean) => {
+    if (hookCaptions !== undefined) {
+      for (const job of jobs) {
+        if (!ids.includes(job.id) || !job.day) continue
+        const day = { ...job.day, hookCaptions }
+        void recordDay(job.id, day, { campaignId: job.campaignId, angleId: job.angleId, headlineText: job.headlineText })
+      }
+      setJobs((js) => js.map((j) => (ids.includes(j.id) && j.day ? { ...j, day: { ...j.day, hookCaptions } } : j)))
     }
-    setJobs((js) => js.map((j) => (ids.includes(j.id) && j.day ? { ...j, day: { ...j.day, hookCaptions } } : j)))
-    setAskingHook(null)
+    setAsking(null)
     setReviewing(ids)
   }
 
@@ -3510,8 +3501,19 @@ export function CampaignApp() {
         }
         onCancel={() => setCutting(null)}
       />
-    ) : askingHook ? (
-      <HookQuestion count={askingHook.length} onChoose={(on) => answerHook(askingHook, on)} onCancel={() => setAskingHook(null)} />
+    ) : asking ? (
+      <CheckQuestions
+        videos={asking.flatMap((id) => jobs.filter((j) => j.id === id && j.status === 'sorted'))}
+        campaigns={campaigns ?? []}
+        hasHook={(job) => hookFor(job) > 0}
+        onChoose={chooseFor}
+        onHeadline={setHeadline}
+        onHeadlineDone={saveHeadline}
+        onHeadlineStyle={setHeadlineStyle}
+        onMusic={setMusic}
+        onNext={(hookCaptions) => answerQuestions(asking, hookCaptions)}
+        onCancel={() => setAsking(null)}
+      />
     ) : reviewJob && reviewing && review ? (
       <EditScreen
         key={reviewJob.id}
@@ -3709,7 +3711,7 @@ export function CampaignApp() {
     showSignIn ||
     settingUpPosting ||
     (showPosts && posting !== null) ||
-    askingHook !== null || Boolean(cutsJob && cutting) || Boolean(reviewJob && reviewing)
+    asking !== null || Boolean(cutsJob && cutting) || Boolean(reviewJob && reviewing)
 
   return (
     <>

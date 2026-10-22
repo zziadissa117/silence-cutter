@@ -87,6 +87,8 @@ raw video file(s)
   -> listen  pipeline.ts / plan.ts silence curve (media/silenceMath.ts) + speech model
              transcribe.worker.ts   words (+ align.ts re-times them to the voice)
              media/fillerWords.ts   which "um"/stumbles to cut
+  -> ask     CheckQuestions.tsx (what Captions opens first): where it goes, headline + its look,
+             music (JobRow.VideoFields), captions on the hook - in the row only without Captions
   -> review  EditScreen.tsx: CutsEditor.tsx/cuts.ts (the cut, by hand) with CaptionReview.tsx
              (the words) under it, on one page; captions off: CutsEditor alone
   -> make    render.ts             ONE pass: decode -> canvas (headline overlay.ts,

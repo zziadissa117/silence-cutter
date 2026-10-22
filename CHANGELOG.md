@@ -3,6 +3,21 @@
 Newest first. Every change says what it does, how to use it, and how it works
 underneath. Kept up to date with each commit.
 
+## Videos screen: one Captions button asks everything, the row is clean
+Only ./deploy.sh is needed; then close the Cutter and open it again.
+**Now:**
+- Tapping Captions on a video (or Check N for several) opens one screen with everything about it: where it goes,
+  the headline and its look (White box / Outline / Snapchat), the music, and - when it has a headline - captions
+  on the hook. All start as they would be made, so with nothing to change it is one tap on to the edit screen.
+  Several videos: each one's settings on the same screen, the hook asked once.
+- The row in the list no longer has Goes to, Headline, its look, Music, Effects or Edit cuts: the Captions screen
+  has the first four, and the edit screen has the cuts. Effects is gone for good - every video gets the default
+  effects, as it always did. A video with no Captions screen (a reaction he doesn't talk in, or captions turned
+  off) still has them in its row, without Effects.
+**How:** `CheckQuestions.tsx` (was `HookQuestion.tsx`; `lastHookChoice` kept) is shown for `CampaignApp.asking`;
+`startCheck` always asks, `answerQuestions` keeps the hook answer when it was asked. The four fields are
+`JobRow.VideoFields`, shared by the questions screen and a row without Captions (`SortedDetails` `asked`).
+
 ## "Making it 0%": the Cutter checks whether it is the iPhone, and says so
 Only ./deploy.sh is needed; then close the Cutter and open it again.
 **What the reports showed:** since 18:00 on 2026-10-22 every talking video on his phone stopped at "Making it 0%" -

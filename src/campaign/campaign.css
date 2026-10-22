@@ -365,6 +365,9 @@ html, body { overscroll-behavior-y: none; }
 /* The look, after the phrases: what is joined on, the headline, where the
    captions sit and how big. */
 .review-look { display: flex; flex-direction: column; gap: 10px; margin-top: 8px; }
+.check-questions h2 { font-size: 22px; font-weight: 700; margin: 0; overflow-wrap: anywhere; }
+.check-hook { display: flex; flex-direction: column; gap: 10px; padding-top: 16px; border-top: 1px solid var(--rule); }
+.check-hook .hint { margin: 0; }
 
 /* Fixing cuts by hand: the video held at the top, a timeline under it that
    scrolls under a playhead fixed in the middle. Kept parts are lit, cut-out
