@@ -3,6 +3,21 @@
 Newest first. Every change says what it does, how to use it, and how it works
 underneath. Kept up to date with each commit.
 
+## Buffer backup: never more than 10 waiting per account, for accounts posting 25 a day
+Needs deploying: run ./deploy-server.sh (server only - nothing changes on the phones).
+**What was wrong:** his friend's @jakelikesai (Postiz "Jake") posts 25 a day, about one every 17 minutes from 11:00
+to 18:00. Buffer's free plan holds only 10 scheduled posts per account, and the backup handed Buffer everything due
+in the next 6 hours - about 20. Buffer would have turned half down, and those would have gone back to "waiting" for
+him to approve again.
+**Fix:** at most 10 wait in a Buffer account at once, the earliest first; each one Buffer posts makes room for the
+next, on the following ticks. A post waiting for room stays approved (or held in Postiz) and goes in as soon as there
+is room - never back to him. A post Buffer actually turns down is tried again every 10 minutes, and comes back to him
+with Buffer's reason only after 6 tries. If Buffer says it's full before we count 10 (posts added in Buffer by hand),
+that counts as full too, not as a failure.
+**How:** `buffer.ts` `BUFFER_QUEUE` (10), `roomLeft` (from `cutter_posts.buffer_ids` not yet sent or failed),
+`isFull`, `handOverPlan` earliest first; `index.ts` `bufferRoom`, `toBuffer(..., room)` (returns `full`), `schedule`
+keeps a backed-up post approved with `retry_at` +10 min, `handOver` stops at a full channel. Tests in `buffer.test.ts`.
+
 ## Buffer as a backup for Postiz: same video, caption and time, same Instagram accounts
 Needs deploying: run ./deploy-server.sh, then ./deploy.sh. The database change (Buffer keys, which posts went through
 Buffer) is already applied - migration `20261022120000_cutter_buffer_backup.sql`, OK'd by the owner 2026-10-22.

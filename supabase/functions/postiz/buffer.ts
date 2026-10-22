@@ -8,13 +8,17 @@
 // mapped by hand. Buffer has no upload: it fetches the video from a public
 // HTTPS link - the server's own signed link (serveVideo), or Postiz's copy.
 //
-// Free plan: 3 channels and 10 scheduled posts per channel, so posts are
-// handed over only a few hours before their time (HAND_AHEAD_MS).
+// Free plan: 3 channels and 10 scheduled posts per channel. So posts are
+// handed over at most a few hours before their time (HAND_AHEAD_MS), earliest
+// first, never more than BUFFER_QUEUE waiting in a channel at once - an
+// account posting 25 a day gets its next 10, topped up as each goes out.
 
 export const BUFFER_API = 'https://api.buffer.com'
 
 /** How long before its time a post Postiz holds is handed to Buffer. */
 export const HAND_AHEAD_MS = 6 * 60 * 60 * 1000
+/** The most posts waiting in one Buffer channel at once: the free plan's limit. */
+export const BUFFER_QUEUE = 10
 /** A post Postiz should have posted this recently still goes, through Buffer.
  *  Kept short: Postiz's own scheduler can still post while its API is down,
  *  so an older one may already be out - better missed than posted twice. */
@@ -218,9 +222,30 @@ export function handOverPlan<T extends { id: string; post_at: string | null }>(p
   const timed = posts.filter((p) => p.post_at !== null).map((p) => ({ post: p, at: new Date(p.post_at!).getTime() }))
   const soon = now + 3 * 60 * 1000
   const missed = timed.filter((t) => t.at < soon && t.at >= now - MISSED_MS).sort((a, b) => a.at - b.at)
-  const coming = timed.filter((t) => t.at >= soon && t.at <= now + HAND_AHEAD_MS)
+  const coming = timed.filter((t) => t.at >= soon && t.at <= now + HAND_AHEAD_MS).sort((a, b) => a.at - b.at)
   return [
     ...missed.map((t, i) => ({ post: t.post, dueAt: now + 5 * 60 * 1000 + i * MISSED_GAP_MS })),
     ...coming.map((t) => ({ post: t.post, dueAt: t.at })),
   ]
+}
+
+/** How many more posts each channel can take now: BUFFER_QUEUE less the ones
+ *  already waiting there (sent through Buffer, not yet sent or failed). */
+export function roomLeft(
+  posts: readonly { buffer_ids: Record<string, BufferRef> | null }[],
+  channels: readonly Pick<BufferChannel, 'id'>[],
+): Map<string, number> {
+  const waiting = new Map<string, number>()
+  for (const post of posts) {
+    for (const ref of Object.values(post.buffer_ids ?? {})) {
+      if (ref.status !== 'sent' && ref.status !== 'error') waiting.set(ref.channelId, (waiting.get(ref.channelId) ?? 0) + 1)
+    }
+  }
+  return new Map(channels.map((c) => [c.id, Math.max(0, BUFFER_QUEUE - (waiting.get(c.id) ?? 0))]))
+}
+
+/** Buffer turning a post down because the channel is full (the plan's limit),
+ *  not because of the post: it goes in once one is out. */
+export function isFull(message: string): boolean {
+  return /limit|queue is full|upgrade|maximum|too many (scheduled )?posts/i.test(message)
 }

@@ -1,6 +1,21 @@
 import { describe, expect, it } from 'vitest'
 
-import { BufferError, HAND_AHEAD_MS, MISSED_GAP_MS, bufferCall, createPost, handOverPlan, handleOf, listChannels, matchChannels, postInput, type BufferChannel } from './buffer.ts'
+import {
+  BUFFER_QUEUE,
+  BufferError,
+  HAND_AHEAD_MS,
+  MISSED_GAP_MS,
+  bufferCall,
+  createPost,
+  handOverPlan,
+  handleOf,
+  isFull,
+  listChannels,
+  matchChannels,
+  postInput,
+  roomLeft,
+  type BufferChannel,
+} from './buffer.ts'
 
 /** A stand-in for api.buffer.com: answers each query in turn. */
 function fakeBuffer(answers: { status?: number; body: unknown }[]) {
@@ -97,5 +112,34 @@ describe('which posts Postiz holds go to Buffer, and when', () => {
     expect(plan[0].dueAt).toBe(now + 5 * 60_000)
     expect(plan[1].dueAt - plan[0].dueAt).toBe(MISSED_GAP_MS)
     expect(plan[2].dueAt).toBe(now + 60 * 60_000)
+  })
+})
+
+describe("an account posting 25 a day on Buffer's free plan (10 waiting at once)", () => {
+  const now = Date.UTC(2026, 9, 22, 15, 0)
+
+  it('hands over the earliest first', () => {
+    const at = (minutes: number) => ({ id: `p${minutes}`, post_at: new Date(now + minutes * 60_000).toISOString() })
+    expect(handOverPlan([at(120), at(17), at(60)], now).map((p) => p.post.id)).toEqual(['p17', 'p60', 'p120'])
+  })
+
+  it('counts the room each channel has left: what is still waiting there, not what went out', () => {
+    const ref = (channelId: string, status?: string) => ({ postId: 'x', channelId, at: '', status })
+    const posts = [
+      ...Array.from({ length: 7 }, () => ({ buffer_ids: { a1: ref('ch-jake', 'scheduled') } })),
+      { buffer_ids: { a1: ref('ch-jake', 'sent') } },
+      { buffer_ids: { a1: ref('ch-jake', 'error') } },
+      { buffer_ids: { a2: ref('ch-zi') } },
+      { buffer_ids: null },
+    ]
+    const room = roomLeft(posts, [{ id: 'ch-jake' }, { id: 'ch-zi' }, { id: 'ch-new' }])
+    expect(Object.fromEntries(room)).toEqual({ 'ch-jake': BUFFER_QUEUE - 7, 'ch-zi': BUFFER_QUEUE - 1, 'ch-new': BUFFER_QUEUE })
+    const crowded = Array.from({ length: 14 }, () => ({ buffer_ids: { a1: ref('ch-jake', 'scheduled') } }))
+    expect(roomLeft(crowded, [{ id: 'ch-jake' }]).get('ch-jake')).toBe(0)
+  })
+
+  it("tells Buffer's own 'full' apart from a post it turns down", () => {
+    expect(isFull("You've reached your queue limit of 10 posts. Upgrade to schedule more.")).toBe(true)
+    expect(isFull('Video could not be downloaded')).toBe(false)
   })
 })

@@ -82,14 +82,17 @@ import { PENDING_STATUSES, channelReport, endPlan, isPending, splitStop, type En
 import { VIEWS_WINDOW_DAYS, dueAt, notRead, parseCache, readViews, remember, type ViewsCache } from './views.ts'
 import { POST_VIEW_AGES_H, POST_VIEW_MAX_DAYS, accountNameFor, postViewCount, postViewsDue } from './postViews.ts'
 import {
+  BUFFER_QUEUE,
   HAND_AHEAD_MS,
   MISSED_MS,
   createPost as createBufferPost,
   deletePost as deleteBufferPost,
   handOverPlan,
+  isFull,
   listChannels,
   matchChannels,
   readPost as readBufferPost,
+  roomLeft,
   type BufferChannel,
   type BufferRef,
 } from './buffer.ts'
@@ -1011,18 +1014,43 @@ async function bufferVideoUrl(post: Post): Promise<string> {
   throw new Problem('The video is no longer on the server, and Postiz has no copy to give Buffer.')
 }
 
+/** How many more posts each of his Buffer channels can take now (roomLeft:
+ *  the free plan holds BUFFER_QUEUE waiting at once). */
+async function bufferRoom(profile: Profile): Promise<Map<string, number>> {
+  const { data } = await db
+    .from('cutter_posts')
+    .select('buffer_ids')
+    .eq('profile_id', profile.id)
+    .eq('status', 'scheduled')
+    .not('buffer_ids', 'is', null)
+    .limit(1000)
+  return roomLeft((data ?? []) as Pick<Post, 'buffer_ids'>[], profile.settings.backup?.channels ?? [])
+}
+
 /** Sends these accounts of a post through Buffer, at `dueAt` (null: now) -
- *  each saved on the post as it goes, so none is ever sent twice. Says what
- *  Buffer turned down. */
-async function toBuffer(profile: Profile, start: Post, accounts: PostAccount[], dueAt: number | null): Promise<{ post: Post; problems: string[] }> {
+ *  each saved on the post as it goes, so none is ever sent twice - while
+ *  their channel has `room` (taken as it goes). Says which accounts wait for
+ *  room (`full`) and what Buffer turned down (`problems`). */
+async function toBuffer(
+  profile: Profile,
+  start: Post,
+  accounts: PostAccount[],
+  dueAt: number | null,
+  room: Map<string, number>,
+): Promise<{ post: Post; problems: string[]; full: string[] }> {
   const matched = backupFor(profile)
   const keys = await bufferKeysFor(profile.id)
   let post = start
   let url: string | null = null
   const problems: string[] = []
+  const full: string[] = []
   for (const account of accounts) {
     const channel = matched[account.id]
     if (!channel || post.buffer_ids?.[account.id]) continue
+    if ((room.get(channel.id) ?? 0) <= 0) {
+      full.push(account.name)
+      continue
+    }
     const key = keys[channel.key]
     if (!key) {
       problems.push(`${account.name}: its Buffer key is gone - paste it again in Settings, Posting.`)
@@ -1033,11 +1061,17 @@ async function toBuffer(profile: Profile, start: Post, accounts: PostAccount[], 
       const made = await createBufferPost(key, { channel, caption: textFor(post, account.id).caption ?? '', videoUrl: url, dueAt })
       const ref: BufferRef = { postId: made.id, channelId: channel.id, at: new Date(dueAt ?? Date.now()).toISOString(), status: made.status }
       post = await update(post.id, { buffer_ids: { ...(post.buffer_ids ?? {}), [account.id]: ref } })
+      room.set(channel.id, (room.get(channel.id) ?? 0) - 1)
     } catch (error) {
-      problems.push(`${account.name}: ${error instanceof Error ? error.message : String(error)}`)
+      const said = error instanceof Error ? error.message : String(error)
+      if (isFull(said)) {
+        // Buffer counts it full before we do (posts added in Buffer by hand).
+        room.set(channel.id, 0)
+        full.push(account.name)
+      } else problems.push(`${account.name}: ${said}`)
     }
   }
-  return { post, problems }
+  return { post, problems, full }
 }
 
 /** Takes what Buffer still holds of a post out of it, so it doesn't go. */
@@ -1763,15 +1797,27 @@ async function schedule(start: Post): Promise<Post> {
         attempts: 0,
       })
     }
-    const handed = await toBuffer(profile, post, covered, now ? null : at)
+    const handed = await toBuffer(profile, post, covered, now ? null : at, await bufferRoom(profile))
     post = handed.post
-    const left = toPostiz.filter((a) => !post.buffer_ids?.[a.id])
-    if (left.length > 0) {
-      const through = covered.filter((a) => post.buffer_ids?.[a.id]).map((a) => a.name)
-      const note = [error.message, through.length > 0 ? `Sent through Buffer to ${through.join(', ')}.` : '', ...handed.problems]
-      throw new PostizProblem(note.filter(Boolean).join(' '), error.later, error.status)
+    if (toPostiz.every((a) => post.buffer_ids?.[a.id])) return scheduled({})
+    const through = covered.filter((a) => post.buffer_ids?.[a.id]).map((a) => a.name)
+    const note = [
+      error.message,
+      through.length > 0 ? `Sent through Buffer to ${through.join(', ')}.` : '',
+      handed.full.length > 0 ? `Buffer holds ${BUFFER_QUEUE} at a time for ${handed.full.join(', ')} - it goes in as soon as one is out.` : '',
+      ...handed.problems,
+    ]
+      .filter(Boolean)
+      .join(' ')
+    // A backed-up account still to go - its Buffer channel full, or Buffer
+    // turned it down - stays approved and is tried again shortly (Postiz
+    // first, then Buffer): never sent back to him for being full, only once
+    // Buffer has turned it down MAX_ATTEMPTS times.
+    const attempts = handed.problems.length > 0 ? post.attempts + 1 : post.attempts
+    if (covered.some((a) => !post.buffer_ids?.[a.id]) && attempts < MAX_ATTEMPTS) {
+      return update(post.id, { error: note, retry_at: new Date(Date.now() + 10 * MINUTE).toISOString(), attempts })
     }
-    return scheduled({})
+    throw new PostizProblem(note, error.later, error.status)
   }
 }
 
@@ -2744,17 +2790,16 @@ async function handOver(now: number): Promise<void> {
         p.accounts.every((a) => matched[a.id] && !a.held) &&
         p.accounts.some((a) => !p.buffer_ids?.[a.id]),
     )
+    // Earliest first, while each channel has room: the rest on a later tick.
+    const room = await bufferRoom(profile)
     for (const { post, dueAt } of handOverPlan(posts, now)) {
+      if (post.accounts.some((a) => (room.get(matched[a.id].id) ?? 0) <= 0)) continue
       const claimed = await claim(post.id)
       if (!claimed) continue
       try {
-        const { post: handed, problems } = await toBuffer(profile, claimed, claimed.accounts, dueAt)
-        await update(
-          handed.id,
-          viaBufferOnly(handed)
-            ? { post_at: new Date(dueAt).toISOString(), error: null, checks: 0, checked_at: null }
-            : { error: `Couldn't go through Buffer: ${problems.join(' ')}` },
-        )
+        const { post: handed, problems } = await toBuffer(profile, claimed, claimed.accounts, dueAt, room)
+        if (viaBufferOnly(handed)) await update(handed.id, { post_at: new Date(dueAt).toISOString(), error: null, checks: 0, checked_at: null })
+        else if (problems.length > 0) await update(handed.id, { error: `Couldn't go through Buffer: ${problems.join(' ')}` })
       } catch (error) {
         await update(post.id, { error: `Couldn't go through Buffer: ${error instanceof Error ? error.message : String(error)}` }).catch(() => {})
       } finally {
