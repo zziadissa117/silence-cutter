@@ -141,6 +141,11 @@ describe('batchTimesOn', () => {
     for (const t of many) expect(t >= '11:00' && t <= '18:00').toBe(true)
     for (let i = 1; i < many.length; i++) expect(minutes(many[i]) - minutes(many[i - 1])).toBeGreaterThanOrEqual(10)
     expect(batchTimesOn(place, 'inflow', '2026-10-12', 5)).not.toEqual(batchTimesOn(place, 'inflow', '2026-10-13', 5))
+    // No most a day: past 25, as many as the day holds 10 minutes apart.
+    const more = batchTimesOn(place, 'inflow', '2026-10-12', 35)
+    expect(more).toHaveLength(35)
+    for (let i = 1; i < more.length; i++) expect(minutes(more[i]) - minutes(more[i - 1])).toBeGreaterThanOrEqual(10)
+    expect(batchTimesOn({ accounts: [], times: ['18:00'] }, 'inflow', '2026-10-12', 35)).toHaveLength(35)
   })
 
   it('keeps his own times and adds random ones, half an hour clear of his, when he wants more', () => {

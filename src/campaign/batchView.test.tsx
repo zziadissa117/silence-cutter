@@ -153,11 +153,11 @@ describe('videos a day', () => {
     while (Number(value()) < n) await act(async () => more().click())
   }
 
-  it('goes up to 25 for a campaign with a single time of its own, keeping his time', async () => {
+  it('goes past 25 - there is no most a day - for a campaign with a single time of its own, keeping his time', async () => {
     await show({ times: ['18:00'] })
-    await upTo(25)
-    expect(value()).toBe('25')
-    expect(more().disabled).toBe(true)
+    await upTo(30)
+    expect(value()).toBe('30')
+    expect(more().disabled).toBe(false)
     expect(host.textContent).toContain('At your times and random ones in between')
     expect(host.querySelector('.stepper + .hint')?.textContent).toMatch(/6(:00)? PM/)
   })

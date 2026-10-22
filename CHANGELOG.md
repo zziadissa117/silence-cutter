@@ -3,6 +3,24 @@
 Newest first. Every change says what it does, how to use it, and how it works
 underneath. Kept up to date with each commit.
 
+## Batch: a step with one clip plays whole (no more videos cut at 11 s), and no most a day
+Only ./deploy.sh is needed; then close the Cutter and open it again. Videos already made stay as they are - Start over
+in the Batch tab makes the ones not out yet again.
+**What was wrong:** "the videos always cut at 11 seconds, so I lose the last part of the product". In Lovable 16 his
+steps are draw, photograph the drawing, then one whole 16-second video of the products - the same clip in every
+video. Every step played only a "moment" of its clip (at most 5 s, or 2-3.5 s when the whole clip moves, as an
+edited product video does), and all steps together at most 12 s: his videos came out 7-13 s, the products cut short.
+Not the music: a song shorter than the video goes round, faded at the seam.
+**Fix:** a step with a single clip is a fixed part of every video, so it plays whole and doesn't count toward the
+12 s. Steps with several clips still play a moment of each (Loveable zi, 9 steps of 3+ clips, is unchanged). His
+Lovable 16 videos now run about 22-24 s: reaction, steps 1-2, then all 16 s of the products.
+**Also: no most a day.** Videos a day and More each day (+1, +2...) no longer stop at 25 - the + button, typing a
+number, the growth and the Analytics suggestions all go past it. What still caps a day is the posting window
+(11 AM - 6 PM, 10 minutes apart: about 40 a campaign), and the Batch tab says when a day no longer fits.
+**How:** `stepPiece.playsWhole`; `CampaignApp` sets `windows` from the campaign's steps as they are now (one file:
+false). `BATCH_MAX_PER_DAY` is gone: `batchRun.perDayOn`, `growthSummary`, `analytics.stepFrom`/`suggestRate`,
+`BatchView`; `posting.batchTimesOn`/`stackTimesOn` draw at least twice as many candidates as wanted. Tests updated.
+
 ## Buffer backup: never more than 10 waiting per account, for accounts posting 25 a day
 Needs deploying: run ./deploy-server.sh (server only - nothing changes on the phones).
 **What was wrong:** his friend's @jakelikesai (Postiz "Jake") posts 25 a day, about one every 17 minutes from 11:00

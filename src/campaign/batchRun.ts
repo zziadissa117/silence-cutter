@@ -41,7 +41,7 @@ import { engineJob, makeOnEngine, saveEngineSeries, sendFootage, stopEngineJob }
 import { DEFAULT_CORNER } from './greenScreenRender'
 import type { Job } from './jobs'
 import { NO_POSTING, type Campaign, type HeadlineStyle } from './look'
-import { BATCH_MAX_PER_DAY, batchTimesOn, listPosts, stackTimesOn, stoppable, stopPostsNow, takenTimes, type CampaignPlace, type ServerPost } from './posting'
+import { batchTimesOn, listPosts, stackTimesOn, stoppable, stopPostsNow, takenTimes, type CampaignPlace, type ServerPost } from './posting'
 import { loadBankFile, type JobBatch } from './store'
 import { SERVER_MODE, serverConnected } from './serverFlag'
 
@@ -79,11 +79,11 @@ function daysFrom(from: string, to: string): number {
 
 /** How many videos a day the batch makes on `date`: his number, or - while it
  *  grows - his number for `growthFrom` and `growth` more on each day after,
- *  never over the most a day. */
+ *  with no most a day ("it's just +1, +1, +1 - there's no limit"). */
 export function perDayOn(bank: Pick<BatchBank, 'perDay' | 'growth' | 'growthFrom'>, date: string): number {
   // 0 is paused, growing or not.
   if (!bank.growth || !bank.growthFrom || bank.perDay === 0) return bank.perDay
-  return Math.min(BATCH_MAX_PER_DAY, Math.max(0, bank.perDay + bank.growth * Math.max(0, daysFrom(bank.growthFrom, date))))
+  return Math.max(0, bank.perDay + bank.growth * Math.max(0, daysFrom(bank.growthFrom, date)))
 }
 
 /** The bank with `n` a day from `today` on - his number now, the growth (if
@@ -112,24 +112,21 @@ export function daysToMake(bank: Pick<BatchBank, 'perDay' | 'growth' | 'growthFr
 }
 
 /** While a batch grows each day, in words: today, tomorrow and a week on,
- *  the day it reaches the most a batch makes, and the first day the posting
- *  window (`fits`: how many a day it holds) is too small for it. */
+ *  and the first day (in the next two months) the posting window (`fits`:
+ *  how many a day it holds, 10 minutes apart) is too small for it. */
 export function growthSummary(
   bank: Pick<BatchBank, 'perDay' | 'growth' | 'growthFrom'>,
   today: string,
   fits: (date: string, wanted: number) => number,
 ): { text: string; tight: boolean } {
   const on = (d: number) => perDayOn(bank, addDays(today, d))
-  let top: number | null = null
-  for (let d = 0; d < 400 && top === null; d++) if (on(d) >= BATCH_MAX_PER_DAY) top = d
   let tight: { day: number; holds: number } | null = null
-  for (let d = 0; d <= (top ?? 60) && tight === null; d++) {
+  for (let d = 0; d <= 60 && tight === null; d++) {
     const holds = fits(addDays(today, d), on(d))
     if (holds < on(d)) tight = { day: d, holds }
   }
   const text = [
-    `Today ${on(0)}, tomorrow ${on(1)}, in a week ${on(7)}`,
-    top !== null ? `, then ${BATCH_MAX_PER_DAY} a day from ${dayLabel(addDays(today, top))} - the most a batch makes.` : '.',
+    `Today ${on(0)}, tomorrow ${on(1)}, in a week ${on(7)}.`,
     tight ? ` From ${tight.day === 0 ? 'today' : dayLabel(addDays(today, tight.day))} the posting window only fits ${tight.holds} a day - widen it in the campaign's Posting.` : '',
   ].join('')
   return { text, tight: tight !== null }

@@ -35,6 +35,7 @@ import { FormatsView, type FormatClips } from './FormatsView'
 import { afterMixing, daysLine, mixesOf, spreadOver } from './formats'
 import type { ViewsByAccount } from './analytics'
 import { filesOf, stepTitle, styleFor, stylesOf, type BankFile, type BatchBank } from './batch'
+import { playsWhole } from './stepPiece'
 import { CampaignsView } from './CampaignsView'
 import { CloudError, currentSession, signOut, syncNow, type Session, type SyncState } from './cloud'
 import { AngleEditor, CampaignEditor } from './Editors'
@@ -1440,15 +1441,12 @@ export function CampaignApp() {
           const track = await montageMusic(next)
           setPhase('cutting', 0)
           // Each step's name over its clip. Videos planned before the name was
-          // kept with them take it from the campaign's steps as they are now.
+          // kept with them take it from the campaign's steps as they are now -
+          // as does whether a step holds a single clip, which then plays whole.
           const stepped = next.montage.bank?.steps
-          const titles = stepped
-            ? await (async () => {
-                const known = stepped.some((s) => s.name === undefined) ? (batchBank ?? (await loadBatchBank(next.campaignId).catch(() => null))) : null
-                const nameOf = (s: (typeof stepped)[number]) => s.name ?? known?.steps?.find((k) => k.files.some((f) => f.id === s.file.id))?.name
-                return [null, ...stepped.map((s) => stepTitle(nameOf(s)) || null)]
-              })()
-            : undefined
+          const known = stepped ? (batchBank ?? (await loadBatchBank(next.campaignId).catch(() => null))) : null
+          const stepOf = (s: NonNullable<typeof stepped>[number]) => known?.steps?.find((k) => k.files.some((f) => f.id === s.file.id))
+          const titles = stepped ? [null, ...stepped.map((s) => stepTitle(s.name ?? stepOf(s)?.name) || null)] : undefined
           const hook = next.montage.bank?.formula
           const formula = hook
             ? {
@@ -1463,9 +1461,10 @@ export function CampaignApp() {
               defaults: next.day?.noEffects ? null : defaultEffects(),
               formula,
               // A batch: the reaction always zooms in slowly, and each
-              // product step plays the moment something happens in it.
+              // product step plays the moment something happens in it - a
+              // step with a single clip plays whole (stepPiece.playsWhole).
               reactionFirst: Boolean(next.montage.bank),
-              windows: next.montage.bank?.steps ? [false, ...next.montage.bank.steps.map(() => true)] : undefined,
+              windows: stepped ? [false, ...stepped.map((s) => !playsWhole(stepOf(s)))] : undefined,
               titles,
             }),
           )

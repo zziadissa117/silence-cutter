@@ -148,6 +148,15 @@ export function pickPiece(activity: readonly number[] | null, first: number, dur
   return within({ start, end }, first, duration)
 }
 
+/** A step with a single clip is the same in every video - a fixed part, like
+ *  the products shown in full ("Step 3 is one whole video of like 16 seconds
+ *  that shows the products" - it was cut to a few seconds, and the video
+ *  ended at 11). It plays whole, never cut to a moment and never counted in
+ *  PIECE.showcaseMax. A step with several clips plays a moment of each. */
+export function playsWhole(step: { files: readonly unknown[] } | null | undefined): boolean {
+  return step?.files.length === 1
+}
+
 /** The steps' pieces brought down to PIECE.showcaseMax together, each
  *  shortened about its middle by the same share, none under a second. */
 export function fitShowcase(pieces: readonly Range[], max: number = PIECE.showcaseMax): Range[] {

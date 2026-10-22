@@ -2,7 +2,7 @@
 import { ALL_FORMATS, BufferSource, BufferTarget, EncodedPacket, EncodedVideoPacketSource, Input, Mp4OutputFormat, Output } from 'mediabunny'
 import { describe, expect, it } from 'vitest'
 
-import { PIECE, activityOf, fitShowcase, momentsOf, pickPiece, readActivity, type PacketInfo } from './stepPiece'
+import { PIECE, activityOf, fitShowcase, momentsOf, pickPiece, playsWhole, readActivity, type PacketInfo } from './stepPiece'
 
 const FPS = 30
 
@@ -141,5 +141,14 @@ describe('finding the moment something happens in a step clip', () => {
     const activity = await readActivity(track, first, await input.computeDuration())
     expect(activity).toEqual(activityOf(clip, first, await input.computeDuration()))
     expect(momentsOf(activity, first)).toHaveLength(1)
+  })
+})
+
+describe('a step with a single clip', () => {
+  it('plays whole - the products shown in full - while a step with several clips plays a moment of each', () => {
+    expect(playsWhole({ files: [{ id: 'products-16s' }] })).toBe(true)
+    expect(playsWhole({ files: [{ id: 'draw-1' }, { id: 'draw-2' }] })).toBe(false)
+    // A step no longer in the campaign: a moment, as before.
+    expect(playsWhole(undefined)).toBe(false)
   })
 })

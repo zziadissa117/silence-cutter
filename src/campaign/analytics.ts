@@ -9,11 +9,9 @@
 // and Not now. It comes when a running batch's videos are doing well - views
 // per video up a fifth or more on the week before, or at or above the number
 // he set for the campaign - and the other way when they fall away. Each step
-// is small (one a day, two once past five), never past 25, and after he
+// is small (one a day, two once past five), with no most a day, and after he
 // answers it leaves the campaign alone for a few days to let the new rate
 // show in the views.
-
-import { BATCH_MAX_PER_DAY } from './posting'
 
 /** One account's views as the server last read them. */
 export interface AccountViews {
@@ -90,7 +88,7 @@ export interface Suggestion {
 /** One step up or down from `perDay`: one a day, two once past five. */
 export function stepFrom(perDay: number, up: boolean): number {
   const step = (up ? perDay >= 5 : perDay > 5) ? 2 : 1
-  return Math.min(BATCH_MAX_PER_DAY, Math.max(1, perDay + (up ? step : -step)))
+  return Math.max(1, perDay + (up ? step : -step))
 }
 
 const views = (n: number) => `${Math.round(n).toLocaleString('en-US')} view${Math.round(n) === 1 ? '' : 's'}`
@@ -121,7 +119,7 @@ export function suggestRate({
   const atTarget = Boolean(target && target > 0 && perVideo >= target)
   const falling = change !== null && change <= -DOWN_SHARE
   // At his number but falling hard: it holds, neither way.
-  if (perDay < BATCH_MAX_PER_DAY && ((atTarget && !falling) || (change !== null && change >= UP_SHARE))) {
+  if ((atTarget && !falling) || (change !== null && change >= UP_SHARE)) {
     const why =
       change !== null && change >= UP_SHARE
         ? `Views per video up ${pct(change)} on last week (${views(perVideo)} a video).`

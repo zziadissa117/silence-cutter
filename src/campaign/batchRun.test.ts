@@ -360,11 +360,11 @@ describe('starting the batch over', () => {
 describe('a batch that grows each day ("start with 4 and add +1 per day")', () => {
   const growing = (fields: Partial<BatchBank> = {}) => bank({ perDay: 4, growth: 1, growthFrom: '2026-09-30', ...fields })
 
-  it('makes its number on its first day, and one more each day after, up to the most a day', () => {
+  it('makes its number on its first day, and one more each day after - no most a day', () => {
     expect(perDayOn(growing(), '2026-09-30')).toBe(4)
     expect(perDayOn(growing(), '2026-10-01')).toBe(5)
     expect(perDayOn(growing(), '2026-10-07')).toBe(11)
-    expect(perDayOn(growing(), '2026-12-31')).toBe(25)
+    expect(perDayOn(growing(), '2026-12-31')).toBe(4 + 92)
     expect(perDayOn(growing(), '2026-09-01')).toBe(4)
     expect(perDayOn(growing({ perDay: 0 }), '2026-10-07')).toBe(0)
     expect(perDayOn(bank({ perDay: 4 }), '2026-10-07')).toBe(4)
@@ -401,7 +401,8 @@ describe('a batch that grows each day ("start with 4 and add +1 per day")', () =
 
   it('says how it goes, and when the posting window is too small', () => {
     const { text, tight } = growthSummary(growing(), '2026-09-30', (_date, wanted) => Math.min(wanted, 12))
-    expect(text).toMatch(/^Today 4, tomorrow 5, in a week 11, then 25 a day from/)
+    expect(text).toMatch(/^Today 4, tomorrow 5, in a week 11\. From/)
+    expect(text).not.toMatch(/the most/)
     expect(tight).toBe(true)
     expect(text).toMatch(/only fits 12 a day/)
     expect(daysToMake(growing(), 15, '2026-09-30')).toBe(3)

@@ -45,7 +45,6 @@ import { formatTime, labelOf, type Job } from './jobs'
 import type { Angle, Campaign } from './look'
 import { copySong, useMusicBank } from './musicBank'
 import {
-  BATCH_MAX_PER_DAY,
   accountLabel,
   batchTimesOn,
   lastPosts,
@@ -693,7 +692,7 @@ export function BatchView({
   const trimNow = over.length > 0 && saving === null && !topping
   const dueNow = running && !onServer && over.length === 0 && due.length > 0 && missing.length === 0 && saving === null && !topping
   const setPerDay = (n: number) => {
-    if (bank && Number.isFinite(n)) keep(withPerDay(bank, Math.min(BATCH_MAX_PER_DAY, Math.max(0, Math.round(n))), today))
+    if (bank && Number.isFinite(n)) keep(withPerDay(bank, Math.max(0, Math.round(n)), today))
   }
   const setGrowth = (n: number) => {
     if (bank && Number.isFinite(n)) keep(withGrowth(bank, Math.min(MAX_GROWTH, Math.max(0, Math.round(n))), today))
@@ -1132,7 +1131,6 @@ export function BatchView({
                   className="stepper-value"
                   aria-label="Videos a day"
                   min={0}
-                  max={BATCH_MAX_PER_DAY}
                   value={perDayDraft ?? String(perDay)}
                   onFocus={(e) => e.target.select()}
                   onChange={(e) => {
@@ -1145,7 +1143,6 @@ export function BatchView({
                   type="button"
                   className="btn small icon-btn"
                   aria-label="More a day"
-                  disabled={perDay >= BATCH_MAX_PER_DAY}
                   onClick={() => setPerDay(perDay + 1)}
                 >
                   +

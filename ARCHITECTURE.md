@@ -103,7 +103,9 @@ raw video file(s)
             (clips only, music only - the Batch tab's videos: reaction first, slowly
             zooming in, then the product whole or, with steps, one clip per step
             playing the moment something happens in it - stepPiece.ts finds it from
-            the clip's frame sizes - batch.ts BatchStep, StepOrder.tsx), media/silenceCut.ts
+            the clip's frame sizes, all moments together at most showcaseMax; a step
+            with a single clip plays whole, outside that cap (playsWhole) - batch.ts
+            BatchStep, StepOrder.tsx), media/silenceCut.ts
             (the plain cutter)
   -> outbox.ts                     copy the finished MP4 to private storage, send in
                                    parts, resume after a dropped connection

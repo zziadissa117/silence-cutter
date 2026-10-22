@@ -35,7 +35,7 @@ export interface BatchBank {
   perDay: number
   /** More videos each day than the day before ("start with 4 and add +1 per
    *  day every single day"): `perDay` on `growthFrom`, this many more on each
-   *  day after it, up to the most a day (batchRun.perDayOn). None or 0: the
+   *  day after it, with no most a day (batchRun.perDayOn). None or 0: the
    *  same every day. */
   growth?: number
   /** The day `perDay` is the number for, while it grows (his own date). */

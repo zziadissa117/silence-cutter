@@ -305,8 +305,10 @@ export function ownDayTimes(place: Pick<CampaignPlace, 'times'>): string[] {
   return [...new Set(place.times)].filter(inDay).sort()
 }
 
-/** The most videos a day a batch can be. */
-export const BATCH_MAX_PER_DAY = 25
+/** How many candidate times a day's extras are picked from - at least twice
+ *  as many as wanted. There is no most a day ("there's no limit, it's just +1,
+ *  +1, +1"): what the window holds, 10 minutes apart, is all that caps it. */
+const candidatesFor = (count: number) => Math.max(50, count * 2)
 
 /** A batch's times on one date: `perDay` of them, whatever the campaign's
  *  own count. A random campaign draws that many from its window; one on his
@@ -317,7 +319,7 @@ export const BATCH_MAX_PER_DAY = 25
  *  given. */
 export function batchTimesOn(place: CampaignPlace, campaignId: string, date: string, perDay: number): string[] {
   const window = windowOf(place)
-  const count = Math.min(perDay, BATCH_MAX_PER_DAY)
+  const count = perDay
   const gap = batchGap(window, count)
   const own = ownDayTimes(place)
   if (own.length === 0) return windowTimes({ ...window, perDay: count }, campaignId, date, gap)
@@ -328,7 +330,7 @@ export function batchTimesOn(place: CampaignPlace, campaignId: string, date: str
   let extras: string[] = []
   for (let g = gap; g >= 10 && extras.length < count - own.length; g--) {
     const clear = (t: string) => own.every((o) => Math.abs(minutes(o) - minutes(t)) >= g)
-    extras = windowTimes({ ...window, perDay: BATCH_MAX_PER_DAY * 2 }, `${campaignId}|batch`, date, g).filter(clear)
+    extras = windowTimes({ ...window, perDay: candidatesFor(count) }, `${campaignId}|batch`, date, g).filter(clear)
   }
   // An even pick of the candidates, so the extras spread over the window
   // instead of bunching up at its start.
@@ -363,12 +365,12 @@ export function stackTimesOn(
   usable: (time: string) => boolean = () => true,
 ): string[] {
   const window = windowOf(place)
-  const count = Math.min(perDay, BATCH_MAX_PER_DAY)
+  const count = perDay
   const minutes = (t: string) => Number(t.slice(0, 2)) * 60 + Number(t.slice(3, 5))
   let clear: string[] = []
   for (let gap = STACK_GAP; gap >= 10 && clear.length < count; gap--) {
     const far = (t: string) => taken.every((o) => Math.abs(minutes(o) - minutes(t)) >= gap)
-    clear = windowTimes({ ...window, perDay: BATCH_MAX_PER_DAY * 2 }, `${campaignId}|stack`, date, gap).filter((t) => far(t) && usable(t))
+    clear = windowTimes({ ...window, perDay: candidatesFor(count + taken.length) }, `${campaignId}|stack`, date, gap).filter((t) => far(t) && usable(t))
   }
   return spreadPick(clear, count, `${campaignId}|${date}|stack`)
 }

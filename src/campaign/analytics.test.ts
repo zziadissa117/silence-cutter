@@ -93,10 +93,10 @@ describe('suggesting a new videos a day', () => {
     expect(suggestRate({ perDay: 2, running: true, stats: stats(1000, 0.5), answeredAt: longAgo, now: NOW })?.to).toBe(3)
   })
 
-  it('steps slowly - one a day, two past five - and never past 25 or under 1', () => {
-    expect([stepFrom(1, true), stepFrom(4, true), stepFrom(5, true), stepFrom(24, true), stepFrom(25, true)]).toEqual([2, 5, 7, 25, 25])
+  it('steps slowly - one a day, two past five - with no most a day, never under 1', () => {
+    expect([stepFrom(1, true), stepFrom(4, true), stepFrom(5, true), stepFrom(24, true), stepFrom(25, true)]).toEqual([2, 5, 7, 26, 27])
     expect([stepFrom(8, false), stepFrom(5, false), stepFrom(1, false)]).toEqual([6, 4, 1])
-    expect(suggestRate({ perDay: 25, running: true, stats: stats(5000, 0.9), now: NOW })).toBeNull()
+    expect(suggestRate({ perDay: 25, running: true, stats: stats(5000, 0.9), now: NOW })).toMatchObject({ from: 25, to: 27 })
   })
 })
 
