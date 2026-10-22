@@ -3,6 +3,11 @@
 Newest first. Every change says what it does, how to use it, and how it works
 underneath. Kept up to date with each commit.
 
+## Reports: Safari's own "EmptyRanges" error no longer counted as a crash
+Rides the next ./deploy.sh. 39 "crash" reports in ten days were Safari's own script ("Can't find variable:
+EmptyRanges"), not the app's: Safari 26 names its file "undefined" instead of none, so the filter let them through.
+**How:** `report.safarisOwn` treats the file "undefined" as no file. Test in `report.test.ts`.
+
 ## Posting times follow each campaign's own schedule; no 30-minute floor past 48 a day; Add anyway and Start anyway
 Needs deploying: run ./deploy-server.sh, then ./deploy.sh; then close the Cutter and open it again. Nothing in the
 database changes. Posts already scheduled keep their times - only new ones follow the new rules.
