@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { KEEP_DAYS, REFRESH_HOURS, RETRY_HOURS, dueAt, notRead, parseCache, readViews, remember } from './views'
+import { KEEP_DAYS, REFRESH_HOURS, RETRY_HOURS, dueAt, fillPerVideo, notRead, parseCache, readViews, remember } from './views'
 
 const today = '2026-10-18'
 const NOW = new Date(`${today}T12:00:00Z`)
@@ -80,5 +80,19 @@ describe('keeping one reading a day', () => {
     expect(parseCache(null)).toEqual({ accounts: {} })
     expect(parseCache('nope')).toEqual({ accounts: {} })
     expect(parseCache('{"accounts":{"a":{"perVideo":1}}}').accounts.a.perVideo).toBe(1)
+  })
+})
+
+describe('an account read before the count of its videos worked', () => {
+  const read = { views: 17070, followers: null, perVideo: null, at: '2026-10-22T09:20:02.281Z', next: '2026-10-23T05:20:02.281Z', history: [] }
+
+  it('gets its views per video from the videos posted there, kept for the day it was read', () => {
+    expect(fillPerVideo(read, 'instagram', 23)).toMatchObject({ perVideo: 742, history: [{ date: '2026-10-22', perVideo: 742 }] })
+  })
+
+  it('is left alone when it has one, is TikTok, or nothing was posted there', () => {
+    expect(fillPerVideo({ ...read, perVideo: 500 }, 'instagram', 23).perVideo).toBe(500)
+    expect(fillPerVideo(read, 'tiktok', 23)).toBe(read)
+    expect(fillPerVideo(read, 'instagram', 0)).toBe(read)
   })
 })

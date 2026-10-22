@@ -8,7 +8,7 @@ import { useState } from 'react'
 import type { BankFile } from './batch'
 import { ChevronLeft } from './icons'
 import { LIMITS } from './look'
-import { useMusicBank } from './musicBank'
+import { ensureSong, useMusicBank } from './musicBank'
 import { loadBankFile } from './store'
 import { PlayButton } from './TrackPlayer'
 
@@ -36,6 +36,10 @@ export function BatchEdit({
   const bank = useMusicBank()
   const fromBank = bank.filter((song) => !options.some((o) => o.id === song.id))
   const chosen = [...options, ...fromBank].find((o) => o.id === track)
+  // A song from the shared bank may still be on the server only.
+  const inBank = fromBank.some((o) => o.id === track)
+  const [getting, setGetting] = useState(false)
+  const [problem, setProblem] = useState<string | null>(null)
   return (
     <section className="screen" aria-label={`Edit ${name}`}>
       <button type="button" className="back" onClick={onCancel}>
@@ -72,16 +76,25 @@ export function BatchEdit({
             ) : null}
             <option value="">No music</option>
           </select>
-          {chosen ? <PlayButton name={chosen.name} load={() => loadBankFile(chosen)} /> : null}
+          {chosen ? <PlayButton name={chosen.name} load={() => (inBank ? ensureSong(chosen) : loadBankFile(chosen))} /> : null}
         </div>
       </label>
       <button
         type="button"
         className="btn primary wide"
-        onClick={() => onMake({ headline: text.trim(), music: chosen ?? null })}
+        disabled={getting}
+        onClick={() => {
+          if (!chosen || !inBank) return onMake({ headline: text.trim(), music: chosen ?? null })
+          setGetting(true)
+          setProblem(null)
+          void ensureSong(chosen)
+            .then((file) => (file ? onMake({ headline: text.trim(), music: chosen }) : setProblem(`${chosen.name} couldn't be brought to this phone - try again with signal.`)))
+            .finally(() => setGetting(false))
+        }}
       >
-        Make it again
+        {getting ? 'Getting the song…' : 'Make it again'}
       </button>
+      {problem ? <p className="error">{problem}</p> : null}
     </section>
   )
 }

@@ -30,6 +30,12 @@
 //   push           { token, items }             -> { accepted }
 //   upload-urls    { token, files: [{ sha }] }  -> { uploads: [{ sha, url }] }
 //   download-urls  { token, shas }              -> { urls: { [sha]: url } }
+//   songs          { token }                    -> { songs }        the shared music bank (songs.ts)
+//   song-upload    { token, sha }               -> { url | null }   null: the file is there already
+//   add-song       { token, song }              -> { song }         the one kept: an earlier copy of it, if any
+//   rename-song    { token, id, name }          -> { song }
+//   remove-song    { token, id }                -> { removed }
+//   song-urls      { token, shas }              -> { urls: { [sha]: url } }
 //   report         { reports: [...] }            -> { stored }
 //
 // "report" needs no login: it is how a phone says a video failed, and a
@@ -37,6 +43,8 @@
 // nothing can read back through this function, and every field is capped.
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
+
+import { MUSIC_DIR, SONG_KEY, cleanSong, sameSong, songsFrom, type SharedSong } from './songs.ts'
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!
 const SERVICE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
@@ -303,6 +311,84 @@ async function downloadUrls(spaceId: string, body: Record<string, unknown>): Pro
   return reply({ urls })
 }
 
+// --- The shared music bank (songs.ts) ------------------------------------------
+//
+// Every login's phones see the same songs: rows `song:<id>` in cutter_config,
+// files at music/<sha> in the bucket. Only reached after a valid login.
+
+async function allSongs(): Promise<SharedSong[]> {
+  const { data, error } = await db.from('cutter_config').select('value').like('key', `${SONG_KEY}%`)
+  if (error) throw new Error('The server could not read the music bank.')
+  return songsFrom((data ?? []) as { value: string }[])
+}
+
+async function songFileThere(sha: string): Promise<boolean> {
+  const { data } = await db.storage.from(BUCKET).list(MUSIC_DIR, { search: sha, limit: 1 })
+  return (data ?? []).some((f: { name: string }) => f.name === sha)
+}
+
+async function songs(): Promise<Response> {
+  return reply({ songs: await allSongs() })
+}
+
+async function songUpload(body: Record<string, unknown>): Promise<Response> {
+  const sha = typeof body.sha === 'string' && SHA.test(body.sha) ? body.sha : null
+  if (!sha) return reply({ error: 'Which song?' }, 400)
+  const { data } = await db.storage.from(BUCKET).createSignedUploadUrl(`${MUSIC_DIR}/${sha}`)
+  // No URL: it is there already - named by what is in it, nothing to replace.
+  return reply({ url: data?.signedUrl ?? null })
+}
+
+async function addSong(body: Record<string, unknown>): Promise<Response> {
+  const song = cleanSong(body.song)
+  if (!song) return reply({ error: 'That song could not be added.' }, 400)
+  const same = sameSong(await allSongs(), song)
+  if (same) return reply({ song: same })
+  // Only once its file is up, so no phone ever sees a song it can't play.
+  if (!(await songFileThere(song.sha))) return reply({ error: "The song's file hasn't arrived yet.", later: true }, 409)
+  const { error } = await db.from('cutter_config').upsert({ key: `${SONG_KEY}${song.id}`, value: JSON.stringify(song) }, { onConflict: 'key' })
+  if (error) return reply({ error: 'The server could not keep the song.' }, 500)
+  return reply({ song })
+}
+
+async function renameSong(body: Record<string, unknown>): Promise<Response> {
+  const id = typeof body.id === 'string' ? body.id : ''
+  const song = (await allSongs()).find((s) => s.id === id)
+  const name = typeof body.name === 'string' ? body.name.trim().slice(0, 120) : ''
+  if (!song || !name) return reply({ song: song ?? null })
+  const renamed = { ...song, name }
+  const { error } = await db.from('cutter_config').update({ value: JSON.stringify(renamed) }).eq('key', `${SONG_KEY}${song.id}`)
+  if (error) return reply({ error: 'The server could not rename the song.' }, 500)
+  return reply({ song: renamed })
+}
+
+async function removeSong(body: Record<string, unknown>): Promise<Response> {
+  const id = typeof body.id === 'string' ? body.id : ''
+  const all = await allSongs()
+  const song = all.find((s) => s.id === id)
+  if (!song) return reply({ removed: false })
+  const { error } = await db.from('cutter_config').delete().eq('key', `${SONG_KEY}${song.id}`)
+  if (error) return reply({ error: 'The server could not take the song out.' }, 500)
+  // Its file too, unless another song is the same file.
+  if (!all.some((s) => s.id !== song.id && s.sha === song.sha)) await db.storage.from(BUCKET).remove([`${MUSIC_DIR}/${song.sha}`])
+  return reply({ removed: true })
+}
+
+async function songUrls(body: Record<string, unknown>): Promise<Response> {
+  const shas = (Array.isArray(body.shas) ? body.shas : []).filter((s): s is string => typeof s === 'string' && SHA.test(s))
+  if (shas.length === 0) return reply({ urls: {} })
+  const { data, error } = await db.storage.from(BUCKET).createSignedUrls(
+    shas.slice(0, 100).map((sha) => `${MUSIC_DIR}/${sha}`),
+    3600,
+  )
+  if (error) return reply({ error: 'The server could not find the songs.' }, 500)
+  const urls: Record<string, string> = {}
+  for (const entry of data ?? []) {
+    if (entry.signedUrl && entry.path) urls[entry.path.split('/').pop()!] = entry.signedUrl
+  }
+  return reply({ urls })
+}
+
 const KINDS = new Set(['failed', 'retried', 'fallback', 'interrupted', 'lost-pick', 'empty-pick', 'check', 'crash'])
 const MAX_REPORTS = 20
 
@@ -365,6 +451,18 @@ Deno.serve(async (req) => {
       // The engine (engine/) checks a phone's login with this: a valid token
       // gets its space's id back, nothing more.
       return reply({ space: spaceId })
+    case 'songs':
+      return songs().catch((error) => reply({ error: (error as Error).message }, 500))
+    case 'song-upload':
+      return songUpload(body)
+    case 'add-song':
+      return addSong(body).catch((error) => reply({ error: (error as Error).message }, 500))
+    case 'rename-song':
+      return renameSong(body).catch((error) => reply({ error: (error as Error).message }, 500))
+    case 'remove-song':
+      return removeSong(body).catch((error) => reply({ error: (error as Error).message }, 500))
+    case 'song-urls':
+      return songUrls(body)
     default:
       return reply({ error: 'Unknown action.' }, 400)
   }

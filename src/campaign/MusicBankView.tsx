@@ -1,10 +1,11 @@
-// The music bank, under the pictures: songs he keeps for every campaign,
-// each played with a tap and named as he likes - see musicBank.ts.
+// The music bank, under the pictures: songs for every campaign, the same on
+// every phone that uses the Cutter, each played with a tap and named as he
+// likes - see musicBank.ts.
 
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 
-import { addSongs, removeSong, renameSong, useMusicBank } from './musicBank'
-import { TrackName, TrackPlayer } from './TrackPlayer'
+import { addSongs, removeSong, renameSong, songFile, syncSongs, useMusicBank } from './musicBank'
+import { PlayButton, TrackName } from './TrackPlayer'
 
 const mb = (bytes: number) => `${(bytes / 1e6).toFixed(1)} MB`
 
@@ -13,6 +14,10 @@ export function MusicBankView() {
   const [busy, setBusy] = useState<string | null>(null)
   const [notice, setNotice] = useState<string | null>(null)
   const [problem, setProblem] = useState<string | null>(null)
+  // What the others added since, as the screen opens.
+  useEffect(() => {
+    void syncSongs().catch(() => {})
+  }, [])
 
   const add = async (files: File[]) => {
     setNotice(null)
@@ -51,8 +56,9 @@ export function MusicBankView() {
         </div>
       </div>
       <p className="lede tip">
-        Songs for every campaign. Add an MP3 or a video - only its sound is kept. Name each one so you know it when you pick
-        music for a video, and tap ▶ to hear it.
+        Songs for every campaign, shared with everyone who uses the Cutter - a song added on one phone shows on all of them.
+        Add an MP3 or a video - only its sound is kept. Name each one so you know it when you pick music for a video, and
+        tap ▶ to hear it.
       </p>
       {busy ? <p className="hint">{busy}</p> : null}
       {notice ? <p className="hint">{notice}</p> : null}
@@ -61,7 +67,7 @@ export function MusicBankView() {
       <ul className="bank-list">
         {bank.map((song) => (
           <li key={song.id} className="bank-item">
-            <TrackPlayer file={song} />
+            <PlayButton name={song.name} load={() => songFile(song)} />
             <TrackName name={song.name} onRename={(name) => void renameSong(song.id, name)} />
             <span className="hint">{mb(song.size)}</span>
             <button
@@ -69,7 +75,7 @@ export function MusicBankView() {
               className="btn small icon-btn"
               aria-label={`Take out ${song.name}`}
               onClick={() => {
-                if (window.confirm(`Take ${song.name} out of the music bank? Videos already made keep it.`)) void removeSong(song.id)
+                if (window.confirm(`Take ${song.name} out of the music bank - on every phone? Videos already made keep it.`)) void removeSong(song.id)
               }}
             >
               ✕

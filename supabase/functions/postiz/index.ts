@@ -79,7 +79,7 @@ import { attachMove, summarise, type AttachMove } from './attach.ts'
 import { cleanMode, pickRecaption, recaptionMode } from './recaption.ts'
 import { cleanLimits, firstDayWithRoom, heldNote, releasable, split, usedOn, type Limits, type PostAccount } from './limits.ts'
 import { PENDING_STATUSES, channelReport, endPlan, isPending, splitStop, type EndPost, type Integration, type PendingPost } from './channels.ts'
-import { VIEWS_WINDOW_DAYS, dueAt, notRead, parseCache, readViews, remember, type ViewsCache } from './views.ts'
+import { VIEWS_WINDOW_DAYS, dueAt, fillPerVideo, notRead, parseCache, readViews, remember, type ViewsCache } from './views.ts'
 import { POST_VIEW_AGES_H, POST_VIEW_MAX_DAYS, accountNameFor, postViewCount, postViewsDue } from './postViews.ts'
 import {
   BUFFER_QUEUE,
@@ -2597,6 +2597,22 @@ async function saveViews(profileId: string, cache: ViewsCache): Promise<void> {
   await db.from('cutter_config').upsert({ key: viewsKey(profileId), value: JSON.stringify(cache) }, { onConflict: 'key' })
 }
 
+/** How many videos the Cutter posted to an account in the views window.
+ *  `accounts` is jsonb: the filter wants it as JSON text - given as an array
+ *  it became `cs.{[object Object]}`, an error read as 0, so no Instagram
+ *  account ever had views per video and Analytics stayed empty. */
+async function postedThere(profileId: string, accountId: string, now: number): Promise<number> {
+  const { count, error } = await db
+    .from('cutter_posts')
+    .select('id', { count: 'exact', head: true })
+    .eq('profile_id', profileId)
+    .eq('status', 'posted')
+    .gte('post_at', new Date(now - VIEWS_WINDOW_DAYS * 24 * 60 * MINUTE).toISOString())
+    .contains('accounts', JSON.stringify([{ id: accountId }]))
+  if (error) throw new Problem(`The videos posted there couldn't be counted: ${error.message}`, true, 500)
+  return count ?? 0
+}
+
 /** The tick's share of Analytics: the one account whose views are most due,
  *  read from Postiz. One question a tick, about once a day per account, so
  *  reading views never takes what posting needs from Postiz's hourly
@@ -2622,14 +2638,8 @@ async function refreshViews(now: number): Promise<void> {
   try {
     const { postiz: key } = await keysFor(profileId)
     const metrics = await postiz<unknown>(key, 'GET', `/analytics/${encodeURIComponent(account.id)}?date=${VIEWS_WINDOW_DAYS}`)
-    const { count } = await db
-      .from('cutter_posts')
-      .select('id', { count: 'exact', head: true })
-      .eq('profile_id', profileId)
-      .eq('status', 'posted')
-      .gte('post_at', new Date(now - VIEWS_WINDOW_DAYS * 24 * 60 * MINUTE).toISOString())
-      .contains('accounts', [{ id: account.id }])
-    cache.accounts[account.id] = remember(cache.accounts[account.id], readViews(account.platform, metrics, count ?? 0), new Date(now))
+    const posted = await postedThere(profileId, account.id, now)
+    cache.accounts[account.id] = remember(cache.accounts[account.id], readViews(account.platform, metrics, posted), new Date(now))
   } catch (error) {
     // Too many questions this hour: left as it was, for a later tick.
     if (error instanceof Problem && error.status === 429) return
@@ -2677,9 +2687,23 @@ async function refreshPostViews(now: number): Promise<void> {
   await update(post.id, { views, views_at: new Date(now).toISOString() })
 }
 
-/** What the Analytics tab shows: this login's accounts' views as last read. */
+/** What the Analytics tab shows: this login's accounts' views as last read.
+ *  One read before the count was fixed gets its views per video here, from
+ *  what it read and the videos posted there (fillPerVideo), and keeps it. */
 async function views(profile: Profile): Promise<Response> {
   const cache = await loadViews(profile.id)
+  const now = Date.now()
+  let filled = false
+  for (const account of profile.accounts ?? []) {
+    const entry = cache.accounts[account.id]
+    if (!entry || entry.perVideo !== null || entry.views === null || account.platform.startsWith('tiktok')) continue
+    const next = fillPerVideo(entry, account.platform, await postedThere(profile.id, account.id, Date.parse(entry.at) || now).catch(() => 0))
+    if (next !== entry) {
+      cache.accounts[account.id] = next
+      filled = true
+    }
+  }
+  if (filled) await saveViews(profile.id, cache)
   return reply({ accounts: cache.accounts })
 }
 

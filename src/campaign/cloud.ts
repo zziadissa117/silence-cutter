@@ -101,6 +101,14 @@ async function call<T>(action: string, body: Record<string, unknown>): Promise<T
   return json
 }
 
+/** One of the shared login's other questions (the music bank's), asked with
+ *  this phone's login; null when it is not signed in. */
+export async function askShared<T>(action: string, body: Record<string, unknown> = {}): Promise<T | null> {
+  const session = currentSession()
+  if (!session) return null
+  return call<T>(action, { token: session.token, ...body })
+}
+
 /** Signs in. Logins cannot be created from here: the server has the one login
  *  and an admin backup, and says "Wrong login or password" to anything else.
  *  The first sign-in on a phone also sends everything already on it, so

@@ -124,6 +124,19 @@ export function notRead(before: AccountViews | undefined, error: string, now: Da
   }
 }
 
+/** An entry read with its views but no views per video because the count
+ *  of videos posted there came back empty (the count query was broken until
+ *  2026-10-22, so no Instagram account ever had one): views per video from
+ *  `posted`, kept for the day it was read. Unchanged when it has one, is a
+ *  TikTok account (that one comes from Postiz's own count), or there is
+ *  nothing to divide by. */
+export function fillPerVideo(entry: AccountViews, platform: string, posted: number): AccountViews {
+  if (entry.perVideo !== null || entry.views === null || platform.startsWith('tiktok') || posted <= 0) return entry
+  const perVideo = Math.round(entry.views / posted)
+  const date = day(entry.at)
+  return { ...entry, perVideo, history: [...entry.history.filter((h) => h.date !== date), { date, perVideo }].sort((a, b) => a.date.localeCompare(b.date)) }
+}
+
 /** When the account is next due to be read: never read is due at once. */
 export function dueAt(entry: AccountViews | undefined): number {
   if (!entry) return -Infinity

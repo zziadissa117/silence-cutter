@@ -27,7 +27,7 @@ import { VideoPicker } from '../VideoPicker'
 import { BankView } from './BankView'
 import { MusicBankView } from './MusicBankView'
 import { VideoBankView } from './VideoBankView'
-import { loadMusicBank, songFile } from './musicBank'
+import { findSong, songFile, syncSongs } from './musicBank'
 import { BatchView } from './BatchView'
 import { oneAtATime, overfull, settled, startOver, takenBy, topUp, trimDown, type BatchVideo } from './batchRun'
 import { AnalyticsView, answerSuggestion, saveTarget, useCampaignRows } from './AnalyticsView'
@@ -392,7 +392,7 @@ export function CampaignApp() {
     if (picked === 'none') return null
     if (!picked) return undefined
     if (picked.startsWith('bank:')) {
-      const song = (await loadMusicBank()).find((s) => `bank:${s.id}` === picked)
+      const song = await findSong(picked.slice('bank:'.length))
       const audio = song ? await songFile(song) : null
       if (!song || !audio) throw new SilenceCutError('The song picked for this video is no longer in the music bank. Pick another and make it again.')
       const own = campaignsRef.current.find((c) => c.id === job.campaignId)?.angles.find((a) => a.id === job.angleId)?.music
@@ -784,6 +784,8 @@ export function CampaignApp() {
   const runSync = useCallback(() => {
     if (!currentSession()) return
     setSyncState({ kind: 'syncing' })
+    // The music bank everyone shares goes its own way, beside the setups.
+    void syncSongs().catch(() => {})
     syncNow()
       .then(async (changed) => {
         if (changed) await reload()

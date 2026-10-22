@@ -3,6 +3,24 @@
 Newest first. Every change says what it does, how to use it, and how it works
 underneath. Kept up to date with each commit.
 
+## The music bank is shared by everyone who uses the Cutter; Analytics shows views again
+Needs deploying: run ./deploy-server.sh (both functions), then ./deploy.sh; then close the Cutter and open it again
+on each phone. No database change.
+**Shared music bank.** A song added on any phone now shows on every phone that uses the Cutter - yours and your
+friend's. Each phone's songs go up the first time it opens after the update (only the sound: a song taken from a
+video is its sound alone). The others' songs show in the list at once; a song's file comes down the first time it
+is played or used, so nothing fills the phone. Renaming or taking a song out does it on every phone. The same song
+added on two phones is kept once. Videos already made keep their music.
+**Analytics was empty** because the server's count of "videos posted to this account this week" always came back 0
+(its query was written wrong), so no Instagram account ever got a "views a video" number and the tab stayed on
+"Reading your views from Postiz". The count is fixed, and accounts already read get their number the first time
+Analytics opens - Michaelangelo (@traderzi2), for one, is about 740 views a video this week. The week-on-week trend
+fills in over the next days.
+**How:** server `cutter/songs.ts` + actions `songs`, `song-upload`, `add-song`, `rename-song`, `remove-song`,
+`song-urls` (behind the login); phone `musicBank.ts` `syncSongs`, `mergeSongs`, `ensureSong`, `findSong`;
+`cloud.askShared`. Analytics: `postiz/index.ts` `postedThere` (jsonb `contains` as JSON text), `views` fills
+`views.fillPerVideo`. Tests: `cutter/songs.test.ts`, `sharedMusic.test.ts`, `views.test.ts`.
+
 ## Posts screen: approved posts with Scheduled, one line for everything going up, no false "No connection"
 Needs deploying: run ./deploy-server.sh, then ./deploy.sh; then close the Cutter and open it again.
 **What was wrong:**

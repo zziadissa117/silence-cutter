@@ -350,12 +350,30 @@ views tracker (`campaigns.min_views`). The tick reads one account's views from P
 the accounts a campaign posts to, each about once a day - so Postiz's hourly allowance stays
 for posting. `readViews` brings each platform to views per video lately (TikTok: last 20
 videos' views over their count; others: the week's views over the Cutter's posts there that
-week); one reading a day is kept 60 days, in `cutter_config` `views:<profile>`. The `views`
-action hands them to the phone (`posting.listViews`, cached for offline). The phone averages a
+week - counted by `postedThere`, whose jsonb `contains` takes JSON text: given an array it
+failed and counted 0 until 2026-10-22, so no Instagram account had a number; the `views` action
+fills those from what was read, `fillPerVideo`); one reading a day is kept 60 days, in
+`cutter_config` `views:<profile>`. The `views` action hands them to the phone (`posting.listViews`, cached for offline). The phone averages a
 campaign's accounts (`campaignViews`), compares with a week before (`weekChange`), and for a
 running batch suggests a small step (`suggestRate`: up a fifth or at `BatchBank.viewTarget` ->
 more; down almost a third -> fewer; quiet 3 days after an answer). Yes saves the bank's
 `perDay` and runs the app's batch runner (`runBatchesRef`), which trims or tops up at once.
+
+## The music bank, shared (`musicBank.ts`, `MusicBankView.tsx`, server `cutter/songs.ts`)
+
+Songs for every campaign, the same on every phone that uses the Cutter, whatever the login. Each
+phone keeps its list in meta `music:bank` and the files as bank files (`saveBankFile`), as before.
+`syncSongs` (on each sync, on opening the Music screen, after a change) sends what this phone did -
+renames and takings-out queued in `music:pending`, then its songs not shared yet: the file (sound
+only - a video's is taken out on adding, `soundOf`) to `cutter-files` `music/<sha256>` through
+`song-upload`, then `add-song`, which keeps it as `cutter_config` `song:<id>` once the file is there
+(`songFileThere`) - or answers with the song already there by sha or fingerprint, which this phone's
+copy then becomes (`music:aliases` keeps the old id findable, `findSong`). Then `songs` brings the
+list: `mergeSongs` keeps this phone's unshared songs, takes the server's names (unless a rename is
+still going up), drops shared ones another phone took out and appends the others' new ones. Their
+files come down the first time they are used (`ensureSong`: `song-urls`, checked against the sha) -
+`songFile`, `copySong`, the Music screen's play and `BatchEdit` all go through it. Every song action
+is behind the cutter login (`spaceFor`); the rows and the bucket have no policies.
 
 ## The Cutter server (`server/`, on Railway)
 
