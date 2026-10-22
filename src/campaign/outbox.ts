@@ -14,6 +14,7 @@
 import { PostingError, finishSend, putPart, startSend, type ServerPost } from './posting'
 import { deleteSend, loadSendVideo, loadSends, saveSend, saveSendVideo, updateSend, type SendEntry } from './store'
 import { SERVER_MODE } from './serverFlag'
+import { within } from '../media/within'
 
 const DIR = 'posting'
 /** A copy with no post to show for it any more is let go after this. */
@@ -80,21 +81,29 @@ async function directory(): Promise<FileSystemDirectoryHandle | null> {
 
 const fileName = (key: string) => `${key.replace(/[^\w.-]/g, '_')}.mp4`
 
+/** How long the private files get to keep a copy: WebKit's storage can stop
+ *  answering altogether, and a video then never went out. */
+const COPY_WAIT_MS = 60_000
+
 /** Streamed, never held in memory whole. */
 async function keepCopy(key: string, video: Blob): Promise<SendEntry['where']> {
-  const dir = await directory()
+  const dir = await within(directory(), COPY_WAIT_MS, null)
   if (dir) {
-    try {
-      const handle = await dir.getFileHandle(fileName(key), { create: true })
-      if (typeof handle.createWritable === 'function') {
-        const writable = await handle.createWritable()
-        await video.stream().pipeTo(writable)
-        if ((await handle.getFile()).size === video.size) return 'opfs'
+    const onDisk = async (): Promise<boolean> => {
+      try {
+        const handle = await dir.getFileHandle(fileName(key), { create: true })
+        if (typeof handle.createWritable === 'function') {
+          const writable = await handle.createWritable()
+          await video.stream().pipeTo(writable)
+          if ((await handle.getFile()).size === video.size) return true
+        }
+      } catch {
+        // Falls through to the database.
       }
-    } catch {
-      // Falls through to the database.
+      return false
     }
-    await dir.removeEntry(fileName(key)).catch(() => {})
+    if (await within(onDisk(), COPY_WAIT_MS, false)) return 'opfs'
+    void dir.removeEntry(fileName(key)).catch(() => {})
   }
   await saveSendVideo(key, video)
   return 'idb'

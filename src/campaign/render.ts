@@ -227,7 +227,9 @@ export async function renderCampaignCut(
   const report = throttled(onProgress)
   traceStart()
   const input = new Input({ source: new BlobSource(file), formats: ALL_FORMATS })
+  traceStep('opening where the video is written')
   const sink = await createOutputSink()
+  traceStep('reading the video')
   const output = new Output({ format: new Mp4OutputFormat({ fastStart: false }), target: sink.target })
   let finished = false
   let videoFrames: RangeReader<VideoSample> | null = null
@@ -408,6 +410,7 @@ export async function renderCampaignCut(
     const ctx = canvas.getContext('2d')
     if (!ctx) throw new SilenceCutError("This browser couldn't prepare a canvas to draw the headline on.")
     // Measured in TikTok Sans, so it has to be here before the lines are laid out.
+    traceStep('the headline font')
     await headlineFontReady()
     const headline = layoutHeadline(ctx, width, height, { ...look.headline, text: headlineText })
     const logo = logoImage ? layoutLogo(width, height, logoImage, look.logo) : null

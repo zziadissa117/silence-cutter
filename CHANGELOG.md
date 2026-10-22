@@ -3,6 +3,26 @@
 Newest first. Every change says what it does, how to use it, and how it works
 underneath. Kept up to date with each commit.
 
+## "Making it 0%": the Cutter checks whether it is the iPhone, and says so
+Only ./deploy.sh is needed; then close the Cutter and open it again.
+**What the reports showed:** since 18:00 on 2026-10-22 every talking video on his phone stopped at "Making it 0%" -
+a 191 MB one, a 673 MB one, then a 19 MB one - after closing and opening the Cutter too, and the plain cut as well,
+while two videos made just before had gone through. Not the size, not the video, not his friend's batch (that is made
+on the friend's phone; each phone makes its own videos). Something under the Cutter stopped answering: WebKit's
+private storage (every video opens a file there before its first frame) or the iPhone's video hardware.
+**Now:**
+- When a video stops at 0%, the Cutter checks the three things every video needs - storage, the video encoder, the
+  decoder - a few seconds each. If one isn't answering it says so ("restart the iPhone") instead of failing video
+  after video, holds the videos (nothing is lost or marked failed), checks again every minute and carries on by
+  itself once they answer.
+- Storage that doesn't answer within 10 s no longer stops a video: it is made in memory instead, and the copy kept
+  for sending falls back to the database after a minute.
+- The report says where the video stopped (now including "opening where the video is written" and "the headline
+  font") and the result of the three checks.
+**How:** `mediaProbe.ts` (`mediaHealth`, `healthAdvice`; checked in Chrome for Testing: all "ok" there, and the
+encoder's failure caught in a browser without H.264); `CampaignApp` StallError path; `media/outputSink.ts`
+`createOutputSink` waits at most 10 s for storage (`openOnDisk`, else Blob pieces); `outbox.keepCopy` at most 60 s.
+
 ## A video that stays stuck at 0% is let go, and says where it stopped
 Only ./deploy.sh is needed; then close the Cutter and open it again.
 **What the reports showed:** the phone was still on the build from 18:04, before the restart fix - and in that fresh

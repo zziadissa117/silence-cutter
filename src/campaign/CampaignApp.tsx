@@ -19,6 +19,7 @@ import { pageLeaving } from '../leaving'
 import { within } from '../media/within'
 import { StallError, firstRestartFor } from './stallRestart'
 import { describeVideo, traceLine, traceReset, traceStarted } from './renderTrace'
+import { healthAdvice, healthLine, mediaHealth } from './mediaProbe'
 import { ModeNav } from '../ModeNav'
 import { lostPick, pickArrived, pickQuiet, pickSaved, whenPickGoesWrong } from '../pickWatch'
 import { report } from '../report'
@@ -749,7 +750,8 @@ export function CampaignApp() {
   }, [])
   const processing = useRef(false)
   const persisting = useRef(new Map<string, Promise<unknown>>())
-  /** Starting the page again (restartPage): nothing new is begun meanwhile. */
+  /** Starting the page again (restartPage), or the phone's storage or video
+ *  maker not answering (mediaProbe): nothing new is begun meanwhile. */
   const restarting = useRef(false)
   /** The page again, fresh - once nothing would be lost: not while he types,
    *  picks videos, or a video is still being kept on the phone. Every video
@@ -1628,10 +1630,33 @@ export function CampaignApp() {
         // fresh page gets it back, so the Cutter starts again by itself -
         // once per video - and carries on where it was.
         if (err instanceof StallError) {
-          // Where it stopped, and what the video is - so the next report says why.
+          // Where it stopped, what the video is, and whether the phone's
+          // storage and video maker still answer - so the report says why.
           const where = traceStarted() ? ` - ${traceLine()}` : ''
           const what = kept ? await describeVideo(kept) : ''
-          const said = `${why}${where}${what ? ` - the video: ${what}` : ''}`
+          const health = await mediaHealth()
+          const said = `${why}${where}${what ? ` - the video: ${what}` : ''} - ${healthLine(health)}`
+          const advice = healthAdvice(health)
+          if (advice) {
+            // The iPhone itself, not the video: every video would stop the
+            // same way, so none is tried (or failed) until it is restarted.
+            patch({ status: next.status, progress: 0 })
+            await resetAttempts(next.id)
+            report({ page: 'campaign', kind: 'interrupted', phase, message: said, video: kept })
+            restarting.current = true
+            setNotice(advice)
+            // Asked again every minute: once they answer, the videos go on.
+            const recheck = window.setInterval(() => {
+              void mediaHealth().then((now) => {
+                if (healthAdvice(now)) return
+                window.clearInterval(recheck)
+                restarting.current = false
+                setNotice(null)
+                setJobs((js) => [...js])
+              })
+            }, 60_000)
+            return
+          }
           if (firstRestartFor(next.id)) {
             patch({ status: next.status, progress: 0 })
             await resetAttempts(next.id)

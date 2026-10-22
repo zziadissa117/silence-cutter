@@ -18,6 +18,7 @@
 import { StreamTarget, type StreamTargetChunk } from 'mediabunny'
 
 import { moovToFront } from './fastStart'
+import { within } from './within'
 
 const DIR = 'cuts'
 /** How much is gathered before each write. Big enough that a long video is a
@@ -95,8 +96,20 @@ const leftoversCleared: Promise<void> = (async () => {
   }
 })()
 
+/** How long the private file storage gets to open a file for a new video.
+ *  WebKit's storage can stop answering altogether (no error, nothing): every
+ *  video then sat at "Making it 0%". After this the video is streamed into
+ *  Blob pieces instead and is made all the same. */
+const STORAGE_WAIT_MS = 10_000
+
 export async function createOutputSink(): Promise<OutputSink> {
-  await leftoversCleared
+  await within(leftoversCleared, STORAGE_WAIT_MS, undefined)
+  const opened = await within(openOnDisk(), STORAGE_WAIT_MS, null)
+  return opened ?? blobPieceSink()
+}
+
+/** A file in private storage to stream the video into, or null without one. */
+async function openOnDisk(): Promise<OutputSink | null> {
   const dir = await cutsDirectory()
   if (dir) {
     const name = `${Date.now()}-${Math.random().toString(36).slice(2)}.mp4`
@@ -123,7 +136,7 @@ export async function createOutputSink(): Promise<OutputSink> {
     }
     releaseLock(name)
   }
-  return blobPieceSink()
+  return null
 }
 
 /** Streams into a list of Blobs. Writes arrive in order except for a few
