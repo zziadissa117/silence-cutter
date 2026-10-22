@@ -7,7 +7,6 @@
 // Plain TypeScript with no imports beyond slots.ts, for Deno and the tests.
 
 import { jitterMinutes, normalTimes, timesOn, zoned, type Times } from './slots.ts'
-import { inDay } from './window.ts'
 
 export interface BatchInfo {
   /** The making it came from: every video he made in one go. */
@@ -36,15 +35,12 @@ export function batchInfo(value: unknown): BatchInfo | null {
 
 /** Where a batch video goes: its own time first, then the day's other
  *  times in order after it, then before it - each with the same small
- *  offset every post gets, so they don't all land on the minute. Its own
- *  time only while it is inside the day (window.ts DAY): one made for 3 AM
- *  before posting moved into the day takes the day's times instead. */
+ *  offset every post gets, so they don't all land on the minute. */
 export function batchChoices(batch: BatchInfo, times: Times, tz: string): { slot: string; at: Date }[] {
-  const all = timesOn(times, batch.date).filter(inDay)
+  const all = timesOn(times, batch.date)
   const after = all.filter((t) => t > batch.time)
   const before = all.filter((t) => t < batch.time).reverse()
-  const own = inDay(batch.time) ? [batch.time] : []
-  return [...own, ...after, ...before].map((time) => {
+  return [batch.time, ...after, ...before].map((time) => {
     const slot = `${batch.date} ${time}`
     return { slot, at: new Date(zoned(batch.date, time, tz).getTime() + jitterMinutes(slot) * 60_000) }
   })

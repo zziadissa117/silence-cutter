@@ -12,7 +12,7 @@
 // none of his own and a window set - each day's own random times inside it
 // (window.ts). `Times` carries either; `timesOn` reads one day of it.
 
-import { DAY, DEFAULT_WINDOW, MAX_PER_DAY, cleanWindow, dayWindow, inDay, windowTimes } from './window.ts'
+import { DEFAULT_WINDOW, cleanWindow, pastMidnight, windowTimes } from './window.ts'
 
 const MINUTE = 60_000
 
@@ -24,39 +24,31 @@ export function timesOn(times: Times, date: string): string[] {
   return normalTimes(typeof times === 'function' ? times(date) : times)
 }
 
-/** What a campaign's posting place says its times are: his own inside the
- *  day (window.ts DAY), else random ones from its window cut to the day - or
- *  from the default window, so no campaign posts a video the moment it is
- *  ready. A campaign whose own times all fall outside the day posts as many
- *  a day at random inside it: he wanted them that often, just not at night. */
+/** What a campaign's posting place says its times are: his own, all of
+ *  them, else random ones from its window as he set it - or from the
+ *  default window, so no campaign posts a video the moment it is ready. */
 export function timesFor(place: { times?: string[]; window?: unknown } | undefined, campaignId: string): Times {
-  const all = normalTimes(place?.times ?? [])
-  const own = all.filter(inDay)
+  const own = normalTimes(place?.times ?? [])
   if (own.length > 0) return own
-  const saved = cleanWindow(place?.window)
-  const window = saved
-    ? dayWindow(saved)
-    : all.length > 0
-      ? { ...DEFAULT_WINDOW, perDay: Math.min(all.length, MAX_PER_DAY) }
-      : DEFAULT_WINDOW
+  const window = cleanWindow(place?.window) ?? DEFAULT_WINDOW
   return (date: string) => windowTimes(window, campaignId, date)
 }
 
-/** When a day's spread ends: the end of the day (window.ts DAY), or three
- *  hours after it starts when it starts later than that - a video he puts
- *  in at 9 PM goes out before midnight - and never past midnight. */
-export function spreadEnd(start: number, date: string, tz: string): number {
-  const dayEnd = zoned(date, DAY.to, tz).getTime()
-  return Math.min(endOfDay(date, tz), Math.max(dayEnd, start + 3 * 60 * MINUTE))
+/** Until when a campaign's day's spread can go: the end of its window
+ *  (midnight for one that runs past it), or of the default window when it
+ *  posts at times of its own. */
+export function spreadUntil(place: { times?: string[]; window?: unknown } | undefined): string {
+  const window = normalTimes(place?.times ?? []).length > 0 ? null : (cleanWindow(place?.window) ?? DEFAULT_WINDOW)
+  if (!window) return DEFAULT_WINDOW.to
+  return pastMidnight(window) ? '24:00' : window.to
 }
 
-/** A time for a post that has to move to another day: its own time of day
- *  when that is inside the day, else one between noon and 2 PM - the same
- *  one for the same post, so it doesn't jump about while it waits. */
-export function dayTimeFor(timeOfDay: string, id: string): string {
-  if (inDay(timeOfDay)) return timeOfDay
-  const minutes = 12 * 60 + (jitterMinutes(`${id}|a`) * 10 + jitterMinutes(`${id}|b`)) % 120
-  return `${String(Math.floor(minutes / 60)).padStart(2, '0')}:${String(minutes % 60).padStart(2, '0')}`
+/** When a day's spread ends: at `until` (spreadUntil), or three hours after
+ *  it starts when it starts later than that - a video he puts in at 9 PM
+ *  goes out before midnight - and never past midnight. */
+export function spreadEnd(start: number, date: string, tz: string, until: string = DEFAULT_WINDOW.to): number {
+  const end = until === '24:00' ? endOfDay(date, tz) : zoned(date, until, tz).getTime()
+  return Math.min(endOfDay(date, tz), Math.max(end, start + 3 * 60 * MINUTE))
 }
 
 /** "HH:MM" times, valid and in order, each once. */
@@ -175,10 +167,10 @@ export function nextSlot({ times, taken, now, tz, leadMinutes = 10, days = 14, t
 // with no video, its videos for the rest of the day are spread at random
 // from a little after the first late one came in. On a day he is on time,
 // videos beyond the campaign's own times are spread from its last time.
-// Either way the spread ends with the day (6 PM), or three hours after it
-// starts when that is later - 9 PM in, out before midnight - and never past
-// midnight (spreadEnd). Videos he made for the next days skip all this and
-// take the normal times from tomorrow.
+// Either way the spread ends with its window (6 PM by default), or three
+// hours after it starts when that is later - 9 PM in, out before midnight -
+// and never past midnight (spreadEnd). Videos he made for the next days skip
+// all this and take the normal times from tomorrow.
 
 /** What decided a spread video's time: the day ran late, or it is one more
  *  than the campaign's own times. */

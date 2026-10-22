@@ -269,6 +269,8 @@ function FormatPage({
 }) {
   const [busy, setBusy] = useState<string | null>(null)
   const [said, setSaid] = useState<string | null>(null)
+  /** Openings just turned away as already made into a video, for Add anyway. */
+  const [reopen, setReopen] = useState<{ lineId: string; files: File[] } | null>(null)
   const [watching, setWatching] = useState<{ id: string; url: string } | null>(null)
   const urls = useRef(new Set<string>())
   useEffect(() => () => urls.current.forEach((u) => URL.revokeObjectURL(u)), [])
@@ -337,8 +339,8 @@ function FormatPage({
 
   /** His takes of one line, each kept once on the phone: the same recording
    *  again is skipped and named, and an opening already made into a video
-   *  never comes back. */
-  const addTakes = async (lineId: string, files: File[]) => {
+   *  comes back only when he says so (`again`, Add anyway). */
+  const addTakes = async (lineId: string, files: File[], again = false) => {
     const problem = pickArrived(files)
     if (problem) setSaid(problem)
     if (files.length === 0) return pickSaved()
@@ -347,9 +349,10 @@ function FormatPage({
       return setSaid('Wait a moment until they have started, then add these again.')
     }
     setSaid(null)
+    setReopen(null)
     const added: FormatTake[] = []
     const skipped: string[] = []
-    const usedBefore: string[] = []
+    const usedBefore: File[] = []
     try {
       for (const [i, file] of files.entries()) {
         const fp = await fingerprint(file)
@@ -359,8 +362,8 @@ function FormatPage({
           skipped.push(file.name)
           continue
         }
-        if (current?.lines[0]?.id === lineId && current.opened.includes(fp)) {
-          usedBefore.push(file.name)
+        if (!again && current?.lines[0]?.id === lineId && current.opened.includes(fp)) {
+          usedBefore.push(file)
           continue
         }
         setBusy(`Keeping ${files.length > 1 ? `${i + 1} of ${files.length}` : file.name} on this phone…`)
@@ -375,6 +378,7 @@ function FormatPage({
           fp,
           ...(seconds ? { seconds } : {}),
           ...(filmedAt !== undefined ? { filmedAt } : {}),
+          ...(again ? { again: Date.now() + i } : {}),
         })
       }
     } catch (error) {
@@ -383,12 +387,13 @@ function FormatPage({
       setBusy(null)
       pickSaved()
       if (added.length > 0) changeLine(lineId, (line) => ({ ...line, takes: [...line.takes, ...added] }))
-      const again =
+      const opened =
         usedBefore.length === 0
           ? null
-          : `${usedBefore.length === 1 ? usedBefore[0] : `${usedBefore.length} of them`} already opened a video you made, so ${usedBefore.length === 1 ? "it wasn't" : "they weren't"} added again - film new ones to make more.`
-      const notice = [skippedNotice(skipped, 'in this format'), again].filter(Boolean).join(' ')
+          : `${usedBefore.length === 1 ? usedBefore[0].name : `${usedBefore.length} of them`} already opened a video you made, so ${usedBefore.length === 1 ? "it wasn't" : "they weren't"} added again - film new ones, or tap Add anyway to use ${usedBefore.length === 1 ? 'it' : 'them'} again.`
+      const notice = [skippedNotice(skipped, 'in this format'), opened].filter(Boolean).join(' ')
       if (notice) setSaid(notice)
+      if (usedBefore.length > 0) setReopen({ lineId, files: usedBefore })
     }
   }
 
@@ -681,6 +686,19 @@ function FormatPage({
 
       {busy ? <p className="hint">{busy}</p> : null}
       {said ? <p className="notice">{said}</p> : null}
+      {reopen && busy === null ? (
+        <button
+          type="button"
+          className="btn small"
+          onClick={() => {
+            const { lineId, files } = reopen
+            setReopen(null)
+            void addTakes(lineId, files, true)
+          }}
+        >
+          Add {reopen.files.length === 1 ? 'it' : `these ${reopen.files.length}`} anyway
+        </button>
+      ) : null}
       {viewing ? (
         <ClipViewer
           file={viewing.take}

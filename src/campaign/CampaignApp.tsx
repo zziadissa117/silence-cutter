@@ -568,7 +568,8 @@ export function CampaignApp() {
     const have = new Set(jobsRef.current.map((j) => j.id))
     const added: Job[] = mixes
       .map((takes): Job => ({
-        id: `format-${angle.id}-${takes[0].fp ?? takes[0].id}`,
+        // An opening added again on purpose makes a video of its own.
+        id: `format-${angle.id}-${takes[0].fp ?? takes[0].id}${takes[0].again ? `-${takes[0].again}` : ''}`,
         name: `${takes.map((t) => t.name.replace(/\.[^./]+$/, '')).join(' + ')}.mp4`,
         file: null,
         campaignId: owner.id,

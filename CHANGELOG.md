@@ -3,6 +3,36 @@
 Newest first. Every change says what it does, how to use it, and how it works
 underneath. Kept up to date with each commit.
 
+## Posting times follow each campaign's own schedule; no 30-minute floor past 48 a day; Add anyway and Start anyway
+Needs deploying: run ./deploy-server.sh, then ./deploy.sh; then close the Cutter and open it again. Nothing in the
+database changes. Posts already scheduled keep their times - only new ones follow the new rules.
+**Your schedule is yours.** Every post used to be squeezed into 11 AM - 6 PM whatever the campaign said: a window
+of 1 AM - 11:59 PM (Lovable 16 has one) was cut back to 11-6, and his own times outside it (01:25, 08:00, 23:00...)
+were skipped. Now a campaign posts at all of its own times, or anywhere in its window as he set it. A window that
+ends at or before it starts runs past midnight: 10 PM - 2 AM, or 1 AM - 1 AM for the whole day. A campaign with
+neither still posts at random 11 AM - 6 PM, 3 a day, as before. Late videos spread until the end of the campaign's
+own window (never past midnight).
+**No 30-minute floor when you want more.** Times stay 30 minutes apart while they fit (up to 48 in a whole day),
+and close up evenly past that instead of stopping at 42: 125 a day on one account in a whole-day window is one every
+11 minutes. The only limit is a minute apart. Note: Instagram itself takes 50-100 posts a day per account through
+its API (Meta's own pages say both), so 125 a day on one Instagram account will hit Instagram's limit, not ours.
+**Add anyway.** When something is turned down for being used before, a button now lets him use it again:
+- New post: a video already sent for the campaign today - "Add it anyway - post again" posts it again as a new post
+  (its own send key, so tapping Post twice still makes one).
+- Batch tab: a reaction or clip already in videos made - "Add it anyway" takes it back in, as a clip of its own.
+- Formats: an opening that already opened a video - "Add it anyway" takes it back in, for a new video.
+**Start anyway (red, next to Start).** When some of a batch's mixes were already made, Start only makes the rest
+(or none). The red button makes them all again for this batch - for redoing a batch that wasn't good. The check
+that stops repeats stays on for every other Start.
+**How:** `window.ts` `DAY`, `inDay` and `dayWindow` are gone; `lengthOf`/`pastMidnight` handle windows past
+midnight; `gapFor` floors at `LEAST_GAP_MINUTES` (1) and `windowTimes` defaults to it. `slots.timesFor` keeps every
+own time, `spreadUntil` gives `spreadEnd` the window's end, `dayTimeFor` is gone (a post moved by an account's daily
+cap keeps its time of day), `batch.batchChoices` keeps a batch video's own time, and `schedule` no longer moves
+night slots. Phone: `posting.ownDayTimes`/`windowOf`/`batchGap`/`stackTimesOn`, `PostingEditor` hints.
+`BankFile.again` + `batch.usedKey` (Batch and Formats), `NewPost` `Picked.again`, `BatchBank.anyway` read by
+`fromPhone` so the Cutter server forgets its `made` too. Tests: window, slots, batch, posting, postingEditor,
+batchView, serverBank, formatsView, and a new newPost test.
+
 ## Batch: a step with one clip plays whole (no more videos cut at 11 s), and no most a day
 Only ./deploy.sh is needed; then close the Cutter and open it again. Videos already made stay as they are - Start over
 in the Batch tab makes the ones not out yet again.

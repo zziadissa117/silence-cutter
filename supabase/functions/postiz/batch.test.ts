@@ -27,10 +27,10 @@ describe('a batch video', () => {
 })
 
 describe('a batch video made for the night', () => {
-  it('takes the day\'s times instead of its own night time', () => {
+  it('keeps its own night time - his window is his', () => {
     const times = ['03:43', '13:42', '16:43', '20:44']
     const choices = batchChoices({ id: 'b', date: '2026-10-14', time: '03:43', size: 6 }, times, 'America/Toronto')
-    expect(choices.map((c) => c.slot)).toEqual(['2026-10-14 13:42', '2026-10-14 16:43'])
+    expect(choices.map((c) => c.slot)).toEqual(['2026-10-14 03:43', '2026-10-14 13:42', '2026-10-14 16:43', '2026-10-14 20:44'])
   })
 
   it('keeps its own time when it is in the day', () => {

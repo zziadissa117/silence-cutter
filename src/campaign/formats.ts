@@ -18,7 +18,9 @@ import { batchTimesOn, stackTimesOn, type CampaignPlace } from './posting'
 /** The ways to schedule a format's videos: over a month, a week, or 5 days. */
 export const SCHEDULE_DAYS = [30, 7, 5] as const
 
-/** One take of a line, kept like the Batch tab's clips (store.saveBankFile). */
+/** One take of a line, kept like the Batch tab's clips (store.saveBankFile).
+ *  An opening taken in again on purpose (Add anyway, `again`) though it
+ *  already opened a video makes a video with a key of its own. */
 export interface FormatTake extends BankFile {
   /** When it was filmed, from the file - takes filmed together go together. */
   filmedAt?: number

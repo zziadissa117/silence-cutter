@@ -9,7 +9,7 @@
 // The phone keeps only which profile is its own, and whether it sends.
 
 import type { ViewsByAccount } from './analytics'
-import { DEFAULT_WINDOW, cleanWindow, dayWindow, gapFor, inDay, spanOf, windowTimes, type PostingWindow } from '../../supabase/functions/postiz/window.ts'
+import { DEFAULT_WINDOW, LEAST_GAP_MINUTES, cleanWindow, gapFor, spanOf, windowTimes, type PostingWindow } from '../../supabase/functions/postiz/window.ts'
 import { timesFor, timesOn } from '../../supabase/functions/postiz/slots.ts'
 import { PUBLISHABLE_KEY, currentSession } from './cloud'
 import type { Campaign, CampaignPosting } from './look'
@@ -294,29 +294,29 @@ export function placeFor(profile: Profile | undefined, campaignId: string): Camp
 }
 
 /** A campaign's times on one date, as the server will use them (slots.ts
- *  timesFor): its own inside the day, else that day's random ones from its
- *  window cut to the day (or the default window). */
+ *  timesFor): its own, else that day's random ones from its window (or the
+ *  default window). */
 export function placeTimesOn(place: CampaignPlace, campaignId: string, date: string): string[] {
   return timesOn(timesFor(place, campaignId), date)
 }
 
-/** His own times that are used: the ones inside the day (window.ts DAY). */
+/** His own times, each once, in order - every one of them is used. */
 export function ownDayTimes(place: Pick<CampaignPlace, 'times'>): string[] {
-  return [...new Set(place.times)].filter(inDay).sort()
+  return [...new Set(place.times)].sort()
 }
 
 /** How many candidate times a day's extras are picked from - at least twice
  *  as many as wanted. There is no most a day ("there's no limit, it's just +1,
- *  +1, +1"): what the window holds, 10 minutes apart, is all that caps it. */
+ *  +1, +1"): what the window holds, a minute apart, is all that caps it. */
 const candidatesFor = (count: number) => Math.max(50, count * 2)
 
 /** A batch's times on one date: `perDay` of them, whatever the campaign's
  *  own count. A random campaign draws that many from its window; one on his
  *  own times keeps them (an even pick when he wants fewer) and, when he
  *  wants more, adds random ones from the window, clear of his. Half an hour
- *  apart when the window has room, closer (never under 10 minutes) when he
- *  wants more than that fits. The server takes a batch video's own time as
- *  given. */
+ *  apart when the window has room, closer - as close as it takes - when he
+ *  wants more than that fits (125 a day in the whole day are 8 to 11 minutes
+ *  apart). The server takes a batch video's own time as given. */
 export function batchTimesOn(place: CampaignPlace, campaignId: string, date: string, perDay: number): string[] {
   const window = windowOf(place)
   const count = perDay
@@ -326,9 +326,9 @@ export function batchTimesOn(place: CampaignPlace, campaignId: string, date: str
   if (count <= own.length) return dayTimes(own, count)
   const minutes = (t: string) => Number(t.slice(0, 2)) * 60 + Number(t.slice(3, 5))
   // His times take room from the window, so the extras close up a little
-  // more until enough of them keep clear of his (never under 10 minutes).
+  // more until enough of them keep clear of his.
   let extras: string[] = []
-  for (let g = gap; g >= 10 && extras.length < count - own.length; g--) {
+  for (let g = gap; g >= LEAST_GAP_MINUTES && extras.length < count - own.length; g--) {
     const clear = (t: string) => own.every((o) => Math.abs(minutes(o) - minutes(t)) >= g)
     extras = windowTimes({ ...window, perDay: candidatesFor(count) }, `${campaignId}|batch`, date, g).filter(clear)
   }
@@ -340,22 +340,21 @@ export function batchTimesOn(place: CampaignPlace, campaignId: string, date: str
 /** A batch's spacing: the window's own, but never so close that the times
  *  fill the whole day - a quarter of it stays free, so they still move from
  *  day to day (24 a day in 11 AM - 6 PM sat on 11:00, 11:17, 11:34... every
- *  day). Never under 10 minutes. */
+ *  day). */
 function batchGap(window: PostingWindow, count: number): number {
   const gap = gapFor(window, count)
-  return count <= 1 ? gap : Math.max(10, Math.min(gap, Math.floor((spanOf(window) * 0.75) / (count - 1))))
+  return count <= 1 ? gap : Math.max(LEAST_GAP_MINUTES, Math.min(gap, Math.floor((spanOf(window) * 0.75) / (count - 1))))
 }
 
 /** How far a stacked batch's times keep from the ones already taken: half
- *  as much as a window's own spacing, closing up to 10 minutes on a full
- *  day. */
+ *  as much as a window's own spacing, closing up on a full day. */
 const STACK_GAP = 20
 
 /** Times for a batch stacked on top of one already running: `perDay` of
- *  them inside the campaign's window (cut to the middle of the day), each
- *  clear of every time already `taken` that day - so 3 a day and 2 more
- *  make 5, none on top of another - and each one `usable` (today: far
- *  enough ahead). Closer than STACK_GAP only when that many don't fit. */
+ *  them inside the campaign's window, each clear of every time already
+ *  `taken` that day - so 3 a day and 2 more make 5, none on top of another -
+ *  and each one `usable` (today: far enough ahead). Closer than STACK_GAP
+ *  only when that many don't fit. */
 export function stackTimesOn(
   place: CampaignPlace,
   campaignId: string,
@@ -368,7 +367,7 @@ export function stackTimesOn(
   const count = perDay
   const minutes = (t: string) => Number(t.slice(0, 2)) * 60 + Number(t.slice(3, 5))
   let clear: string[] = []
-  for (let gap = STACK_GAP; gap >= 10 && clear.length < count; gap--) {
+  for (let gap = STACK_GAP; gap >= LEAST_GAP_MINUTES && clear.length < count; gap--) {
     const far = (t: string) => taken.every((o) => Math.abs(minutes(o) - minutes(t)) >= gap)
     clear = windowTimes({ ...window, perDay: candidatesFor(count + taken.length) }, `${campaignId}|stack`, date, gap).filter((t) => far(t) && usable(t))
   }
@@ -389,10 +388,10 @@ export function takenTimes(posts: readonly ServerPost[], campaignId: string): Ma
   return out
 }
 
-/** The window its random times come from: its own cut to the day, or the
+/** The window its random times come from: its own as he set it, or the
  *  default every campaign without fixed times posts by. */
 export function windowOf(place: Pick<CampaignPlace, 'window'>): PostingWindow {
-  return dayWindow(cleanWindow(place.window) ?? DEFAULT_WINDOW)
+  return cleanWindow(place.window) ?? DEFAULT_WINDOW
 }
 
 /** The campaigns still on fixed times of his own - the ones "Random times
@@ -408,7 +407,6 @@ export async function switchToRandom(profile: Profile, campaigns: readonly { id:
   for (const campaign of onFixedTimes(profile, campaigns)) {
     const place = placeFor(profile, campaign.id)
     try {
-      // The window as he set it: it is cut to the day where times are drawn.
       await saveCampaignPlace(campaign.id, { accounts: place.accounts, times: [], window: cleanWindow(place.window) ?? DEFAULT_WINDOW })
     } catch (error) {
       throw new PostingError(`${campaign.name} kept its own times: ${error instanceof Error ? error.message : String(error)}`)

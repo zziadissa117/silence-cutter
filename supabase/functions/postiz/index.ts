@@ -73,8 +73,8 @@ import { carryOver, cleanCaptions, cleanRepost, repostDueAt, textFor, variationN
 import { FAKE_CLAUDE, FakeError, fakeCaption, fakePostiz, isFakePostiz } from './fake.ts'
 import { approvalFor, batchChoices, batchInfo, batchReady, type BatchInfo } from './batch.ts'
 import { handFields } from './hand.ts'
-import { dayTimeFor, lastTimeToday, nextSlot, normalTimes, pickTime, spreadDay, spreadEnd, timesFor, type OtherPost, type Spread, addDays, localDate, localTime, zoned } from './slots.ts'
-import { cleanWindow, inDay, type PostingWindow } from './window.ts'
+import { lastTimeToday, nextSlot, normalTimes, pickTime, spreadDay, spreadEnd, spreadUntil, timesFor, type OtherPost, type Spread, addDays, localDate, localTime, zoned } from './slots.ts'
+import { cleanWindow, type PostingWindow } from './window.ts'
 import { attachMove, summarise, type AttachMove } from './attach.ts'
 import { cleanMode, pickRecaption, recaptionMode } from './recaption.ts'
 import { cleanLimits, firstDayWithRoom, heldNote, releasable, split, usedOn, type Limits, type PostAccount } from './limits.ts'
@@ -694,9 +694,8 @@ async function releaseHeld(now: number): Promise<void> {
         const gone = new Set<string>()
         let latest = owned.post_at ? new Date(owned.post_at).getTime() : 0
         for (const [day, accounts] of byDay) {
-          // Another day is not the same time tomorrow: 9 PM today waits for
-          // the middle of the next day (slots.ts dayTimeFor).
-          const at = day === baseDay ? new Date(soon) : zoned(day, dayTimeFor(timeOfDay, owned.id), tz)
+          // Another day: the same time of day.
+          const at = day === baseDay ? new Date(soon) : zoned(day, timeOfDay, tz)
           const date = at.toISOString()
           const found = await findCreated(keys.postiz, { ...owned, accounts }, date)
           const made =
@@ -1552,7 +1551,7 @@ async function respread(profile: Profile, campaignId: string, date: string): Pro
       kind === 'late'
         ? Math.min(...members.map((m) => Date.parse(m.created_at))) + 20 * MINUTE
         : (lastTimeToday(times, date, profile.timezone) ?? now)
-    const end = spreadEnd(start, date, profile.timezone)
+    const end = spreadEnd(start, date, profile.timezone, spreadUntil(profile.settings.campaigns?.[campaignId]))
     const placed = spreadDay(
       members.map((m) => ({
         id: m.id,
@@ -1710,15 +1709,6 @@ async function schedule(start: Post): Promise<Post> {
     await respread(profile, post.campaign_id, post.slot!.slice(0, 10))
     post = await reload(post.id)
   } else {
-    const clock = post.slot && !post.spread ? /^\d{4}-\d{2}-\d{2} (\d{2}:\d{2})$/.exec(post.slot)?.[1] : undefined
-    if (clock && post.post_at && !inDay(clock)) {
-      // Given a time at night before posting moved into the day (window.ts
-      // DAY): it takes one by the rules as they are now. His own picked
-      // times have no slot and are never moved.
-      post = post.batch
-        ? await takeBatchSlot(await update(post.id, { slot: null, post_at: null }), profile)
-        : await takeSlot(post, profile, { leadMinutes: 3 })
-    }
     if (!post.post_at || new Date(post.post_at).getTime() < soon) {
       if (post.slot) {
         const brand = post.rules.approval === 'brand'

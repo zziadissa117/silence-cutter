@@ -212,6 +212,8 @@ export function BatchView({
   const [saving, setSaving] = useState<string | null>(null)
   const [problem, setProblem] = useState<string | null>(null)
   const [notice, setNotice] = useState<string | null>(null)
+  /** Clips just turned away as already in videos made, for Add anyway. */
+  const [reuse, setReuse] = useState<{ target: Target; files: File[] } | null>(null)
   const songs = useMusicBank()
   /** The campaign's posts as the server has them, for the times a day
    *  topped up keeps clear of; the last copy seen until they come. */
@@ -381,7 +383,10 @@ export function BatchView({
   const random = ownDayTimes(place).length === 0
   const angle = campaign.angles.find((a) => a.id === bank?.angleId) ?? campaign.angles[0]
 
-  const add = async (target: Target, files: File[]) => {
+  /** Files into a bank. `again`: he tapped Add anyway - clips already in
+   *  videos made before are taken in again, each as a clip of its own
+   *  (batch.usedKey). */
+  const add = async (target: Target, files: File[], again = false) => {
     const kind: Kind = typeof target === 'string' ? target : 'products'
     const stepId = typeof target === 'string' ? null : target.step
     const listOf = (b: BatchBank | null): BankFile[] => (stepId ? (b?.steps?.find((s) => s.id === stepId)?.files ?? []) : (b?.[kind] ?? []))
@@ -394,10 +399,12 @@ export function BatchView({
     }
     setProblem(null)
     setNotice(null)
+    setReuse(null)
     const added: BankFile[] = []
     const skipped: string[] = []
-    // Clips already in videos made before, since taken out (usedClips).
-    const usedBefore: string[] = []
+    // Clips already in videos made before, since taken out (usedClips) - kept
+    // for Add anyway.
+    const usedBefore: File[] = []
     const mine = new Set<string>()
     try {
       for (const [i, file] of files.entries()) {
@@ -415,8 +422,8 @@ export function BatchView({
           continue
         }
         const used = new Set(bankRef.current?.usedClips ?? [])
-        if (kind !== 'music' && (used.has(fp) || used.has(`${file.name}|${file.size}`))) {
-          usedBefore.push(file.name)
+        if (kind !== 'music' && !again && (used.has(fp) || used.has(`${file.name}|${file.size}`))) {
+          usedBefore.push(file)
           continue
         }
         adding.current.add(fp)
@@ -425,7 +432,15 @@ export function BatchView({
         const id = crypto.randomUUID()
         await saveBankFile(id, file)
         const seconds = kind === 'music' ? undefined : (await filmingOf(file)).seconds
-        added.push({ id, name: file.name, type: file.type || (kind === 'music' ? 'audio/mpeg' : 'video/mp4'), size: file.size, fp, ...(seconds ? { seconds } : {}) })
+        added.push({
+          id,
+          name: file.name,
+          type: file.type || (kind === 'music' ? 'audio/mpeg' : 'video/mp4'),
+          size: file.size,
+          fp,
+          ...(seconds ? { seconds } : {}),
+          ...(again ? { again: Date.now() + i } : {}),
+        })
       }
     } catch (error) {
       setProblem(`Not all of them could be kept: ${error instanceof Error ? error.message : String(error)}`)
@@ -434,8 +449,9 @@ export function BatchView({
       const reused =
         usedBefore.length === 0
           ? null
-          : `${usedBefore.length === 1 ? usedBefore[0] : `${usedBefore.length} of them`} ${usedBefore.length === 1 ? 'was' : 'were'} already in videos you made, so ${usedBefore.length === 1 ? "it wasn't" : "they weren't"} added again - film new ones to make more.`
+          : `${usedBefore.length === 1 ? usedBefore[0].name : `${usedBefore.length} of them`} ${usedBefore.length === 1 ? 'was' : 'were'} already in videos you made, so ${usedBefore.length === 1 ? "it wasn't" : "they weren't"} added again - film new ones, or tap Add anyway to use ${usedBefore.length === 1 ? 'it' : 'them'} again.`
       setNotice([skippedNotice(skipped, stepId ? 'in this step' : `in the ${kind === 'music' ? 'music' : kind} bank`), reused].filter(Boolean).join(' ') || null)
+      setReuse(usedBefore.length > 0 ? { target, files: usedBefore } : null)
       if (kind !== 'music') pickSaved()
       const current = bankRef.current
       if (current && added.length > 0) {
@@ -598,6 +614,20 @@ export function BatchView({
     remember(campaign.id)
     setProblem(null)
     const next = { ...current, running: true, runProblem: undefined, spent: undefined, startedAt: new Date().toISOString() }
+    keep(next)
+    runTopUp(next)
+  }
+
+  /** Start anyway: the same, but the mixes already made are forgotten for
+   *  this batch - the same clips make the same videos again. Start on its
+   *  own still never repeats one. */
+  const startAnyway = () => {
+    const current = bankRef.current
+    if (!current || current.running || !canStart) return
+    remember(campaign.id)
+    setProblem(null)
+    const at = new Date().toISOString()
+    const next = { ...current, running: true, runProblem: undefined, spent: undefined, made: [], startedAt: at, anyway: at }
     keep(next)
     runTopUp(next)
   }
@@ -1153,7 +1183,7 @@ export function BatchView({
               ) : (
                 <span className={`hint${times.length < perDay ? ' warn-text' : ''}`}>
                   {times.length < perDay
-                    ? `The window only fits ${times.length} a day, 10 minutes apart - widen it in the campaign's Posting. `
+                    ? `The window only fits ${times.length} a day - widen it in the campaign's Posting. `
                     : ''}
                   {random
                     ? `At random times inside the window, different each day - today ${times.map(timeLabel).join(', ')}.`
@@ -1193,12 +1223,46 @@ export function BatchView({
 
           {problem ? <p className="error">{problem}</p> : null}
           {notice ? <p className="notice">{notice}</p> : null}
+          {reuse && saving === null ? (
+            <button
+              type="button"
+              className="btn small"
+              onClick={() => {
+                const { target, files } = reuse
+                setReuse(null)
+                void add(target, files, true)
+              }}
+            >
+              Add {reuse.files.length === 1 ? 'it' : `these ${reuse.files.length}`} anyway
+            </button>
+          ) : null}
 
           <WhenDue due={trimNow} signal={`${perDay}|${over.join(',')}`} run={() => bankRef.current && runTrim(bankRef.current)} />
           <WhenDue due={dueNow} signal={`${perDay}|${due.length}`} run={() => bankRef.current && runTopUp(bankRef.current)} />
-          <button type="button" className="btn primary batch-make" disabled={!canStart || busyMaking} onClick={start}>
-            {makeLabel}
-          </button>
+          {/* Mixes already made hold Start back: Start anyway, in red, makes
+              them again for this batch. */}
+          {!running && Number.isFinite(left) && left < different ? (
+            <>
+              <div className="batch-start-row">
+                <button type="button" className="btn primary batch-make" disabled={!canStart || busyMaking} onClick={start}>
+                  {makeLabel}
+                </button>
+                <button type="button" className="btn batch-make batch-anyway" disabled={!canStart || busyMaking} onClick={startAnyway}>
+                  Start anyway
+                </button>
+              </div>
+              <p className="hint">
+                {left === 0
+                  ? `Every one of these ${different.toLocaleString('en-US')} mixes was made before, so Start makes none.`
+                  : `${(different - left).toLocaleString('en-US')} of these ${different.toLocaleString('en-US')} mixes were made before, so Start makes only the other ${left.toLocaleString('en-US')}.`}{' '}
+                Start anyway makes them again.
+              </p>
+            </>
+          ) : (
+            <button type="button" className="btn primary batch-make" disabled={!canStart || busyMaking} onClick={start}>
+              {makeLabel}
+            </button>
+          )}
           {running && perDay > 0 ? (
             // What "Running · 10 a day" is aiming for: "it says 10 a day, but
             // in Posts there are only 20 - I don't know how much it wants to make".

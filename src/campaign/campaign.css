@@ -570,6 +570,10 @@ input.stepper-value { width: 3.2em; min-height: 40px; padding: 0; border: 0; bor
 input.stepper-value:focus { background: var(--field); outline: none; }
 input.stepper-value::-webkit-inner-spin-button, input.stepper-value::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
 .btn.primary.batch-make { min-height: 52px; }
+/* Start, and Start anyway in red beside it when mixes made before hold it back. */
+.batch-start-row { display: flex; gap: 8px; }
+.batch-start-row .btn.primary.batch-make { flex: 2 1 0; min-width: 0; }
+.btn.batch-make.batch-anyway { flex: 1 1 0; min-width: 0; min-height: 52px; border-color: transparent; background: var(--bad); color: #fff; font-weight: 600; }
 .batch-progress, .batch-failed { display: flex; flex-direction: column; gap: 8px; }
 .batch-spent { border-color: var(--now); }
 /* How many different videos the bank makes, and what multiplies into it. */

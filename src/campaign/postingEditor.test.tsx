@@ -75,14 +75,21 @@ describe('when a campaign posts', () => {
     expect(place).toEqual({ accounts: ['tt'], times: [], window: { from: '11:00', to: '18:00', perDay: 3 } })
   })
 
-  it('greys out his times outside the day and says they are skipped', () => {
+  it('keeps his night times like any other', () => {
     show(local({ accounts: ['tt'], times: ['03:43', '13:42'] }))
-    expect(host.textContent).toMatch(/3:43 AM is outside 11(:00)? AM - 6(:00)? PM, so skipped/)
+    expect(host.textContent).not.toMatch(/skipped/)
+    expect(host.querySelector('[aria-label="Remove 3:43 AM"]')?.className).toBe('active')
   })
 
-  it('says only the middle of the day is used of a window reaching past it', () => {
+  it('uses the whole window, and says when it runs past midnight', () => {
     show(local({ accounts: ['tt'], window: { from: '10:00', to: '22:00', perDay: 3 } }))
-    expect(host.textContent).toMatch(/Only 11(:00)? AM - 6(:00)? PM of it is used/)
+    expect(host.textContent).not.toMatch(/of it is used/)
+    act(() => {
+      const to = host.querySelector('[aria-label="Latest random time"]') as HTMLInputElement
+      Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!.call(to, '02:00')
+      to.dispatchEvent(new Event('input', { bubbles: true }))
+    })
+    expect(host.textContent).toMatch(/It runs past midnight, to 2(:00)? AM/)
   })
 
   it('opens on Random for a campaign that already has a window', () => {

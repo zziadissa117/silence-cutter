@@ -229,14 +229,25 @@ are recounted from what is left, and the batch stops for Start.
 No video twice: `made` holds this round's combinations (pruned to what is still in the bank);
 a clip that leaves the bank after going into videos (taken out, a step removed, or `spend`) is
 kept in `usedClips` by `clipKey` (fingerprint, else name|size), and adding it again is refused.
+Overrides, his to take: Add anyway (after that refusal) takes the clip in again with `again`
+(a timestamp) - `batch.usedKey` is then `clipKey~again`, so `fromPhone` keeps it though the
+server's `usedClips` has its plain key, and its own use is remembered apart (`rememberUsed`
+adds both). Start anyway (red, beside Start, only while mixes made before hold Start back)
+starts with `made: []` and `anyway = startedAt`; `fromPhone` takes the phone's `made` for that
+Start only. New post's Add anyway gives a video already sent its own send key
+(`handPostKey…~again-<ms>`); Formats' Add anyway takes an opening already made back in, its job
+id suffixed with the same stamp.
 Words on a batch video other than the hook - step titles and the Claude + X amount - are always
 `ONLY_HOOK_ELSE` (outline). `clipParts.writeWhole` fills each clip's sound up to its last frame's
 end, so clips joined one after another leave no hole in the soundtrack. A batch video's sound
 is the music alone, `montageRender.musicTrack`: one unbroken track from one running position,
 written up to each frame as the picture goes (never after it - the file is streamed, and held
 to the end it would keep every frame in memory); its clips' own sound is never read.
-Times: the day is `window.ts` DAY (11 AM - 6 PM). A full day keeps a quarter of it free
-(`posting.batchGap`) so its times move from day to day; times added to his own, or to a day
+Times: the campaign's own, all of them, or its window as he set it (`window.ts`; one ending at
+or before its start runs past midnight, `lengthOf`); without either, `DEFAULT_WINDOW` (11 AM -
+6 PM, 3 a day). Times are 30 minutes apart while that many fit, closer when he wants more
+(`gapFor`, never under `LEAST_GAP_MINUTES`, 1: 125 a day in a whole day are 11 minutes apart).
+A full day keeps a quarter of it free (`posting.batchGap`) so its times move from day to day; times added to his own, or to a day
 already holding some (`stackTimesOn`, given only the number still needed and today's `usable`
 ones, so it keeps 20 minutes clear when there is room), are one from each stretch of the free
 candidates (`batch.spreadPick`, seeded by campaign and day) - never the first free minutes.

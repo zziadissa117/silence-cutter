@@ -169,7 +169,8 @@ describe('videos a day', () => {
   })
 
   it('says when the window is too short for that many', async () => {
-    await show({ window: { from: '12:00', to: '13:00', perDay: 2 } })
+    // 5 minutes of room: 6 a day a minute apart, and no more.
+    await show({ window: { from: '12:00', to: '12:15', perDay: 2 } })
     await upTo(10)
     expect(host.textContent).toContain('The window only fits 6 a day')
   })
@@ -421,6 +422,56 @@ describe('a clip already in videos made before', () => {
     expect(host.textContent).toContain('old-reaction.mov was already in videos you made')
     const { saveBankFile } = await import('./store')
     expect(saveBankFile).not.toHaveBeenCalled()
+  })
+
+  it('comes back in when he taps Add anyway, as a clip of its own', async () => {
+    const { fingerprint } = await import('./fingerprint')
+    const { usedKey } = await import('./batch')
+    const file = new File([new Uint8Array(4096).fill(7)], 'old-reaction.mov', { type: 'video/quicktime' })
+    const fp = await fingerprint(file)
+    storedBank = { ...bank, usedClips: [fp] }
+    await show({})
+    const input = host.querySelector('input[aria-label="Add reactions"]') as HTMLInputElement
+    Object.defineProperty(input, 'files', { value: [file] })
+    await act(async () => input.dispatchEvent(new Event('change', { bubbles: true })))
+    await act(async () => new Promise((resolve) => setTimeout(resolve, 200)))
+    const anyway = [...host.querySelectorAll('button')].find((b) => b.textContent === 'Add it anyway')!
+    expect(anyway).toBeTruthy()
+    await act(async () => anyway.click())
+    await act(async () => new Promise((resolve) => setTimeout(resolve, 200)))
+    const saved = await savedBank()
+    const back = saved.reactions.find((r) => r.name === 'old-reaction.mov')!
+    expect(back.again).toBeGreaterThan(0)
+    // Still remembered as used, so the server's copy never drops it - its own
+    // use is remembered apart (usedKey).
+    expect(saved.usedClips).toEqual([fp])
+    expect(usedKey(back)).not.toBe(fp)
+    expect([...host.querySelectorAll('button')].some((b) => b.textContent === 'Add it anyway')).toBe(false)
+  })
+})
+
+describe('Start anyway', () => {
+  it('shows in red beside Start once mixes were made before, and makes them again', async () => {
+    const { pickBatch, mixFrom } = await import('./batch')
+    // Every one of the 27 mixes made already.
+    const { made } = pickBatch({ ...mixFrom(bank, bank.headlines), made: [] }, 27)
+    storedBank = { ...bank, made }
+    const { onMake } = await show({})
+    const anyway = host.querySelector('.batch-anyway') as HTMLButtonElement
+    expect(anyway.textContent).toBe('Start anyway')
+    expect(host.textContent).toContain('Every one of these 27 mixes was made before, so Start makes none.')
+    await act(async () => anyway.click())
+    expect(onMake).toHaveBeenCalledTimes(1)
+    expect((onMake.mock.calls[0][2] as unknown[]).length).toBeGreaterThan(0)
+    const saved = await savedBank()
+    expect(saved.running).toBe(true)
+    expect(saved.anyway).toBe(saved.startedAt)
+    expect(saved.made!.length).toBeLessThan(27)
+  })
+
+  it('is not there while nothing has been made yet', async () => {
+    await show({})
+    expect(host.querySelector('.batch-anyway')).toBeNull()
   })
 })
 

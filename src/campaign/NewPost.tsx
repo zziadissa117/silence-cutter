@@ -58,6 +58,10 @@ interface Picked {
   /** With "One by one": when this one goes, and the time picked for it. */
   when: 'now' | 'at'
   at: string
+  /** Posted again on purpose (Add anyway), though it was already sent: its
+   *  own send key, fixed when it was added, so it never lands on the first
+   *  post - and Post tapped twice still makes one. */
+  again?: number
 }
 
 type When = 'now' | 'at' | 'spread' | 'each'
@@ -95,6 +99,8 @@ export function NewPost({
   const [sending, setSending] = useState<string | null>(null)
   const [problem, setProblem] = useState<string | null>(null)
   const [notice, setNotice] = useState<string | null>(null)
+  /** The videos just skipped as already sent, for Add anyway. */
+  const [doubles, setDoubles] = useState<File[]>([])
 
   const alive = useRef(true)
   useEffect(
@@ -243,24 +249,29 @@ export function NewPost({
   const missingPaste = paste && items.some((i) => !i.caption.trim())
   const ready = items.length > 0 && writingCount === 0 && !missingPaste && sending === null
 
-  const add = async (picked: File[]) => {
+  /** Videos into the post. `again`: he tapped Add anyway - they go though
+   *  already sent, each as a new post. */
+  const add = async (picked: File[], again = false) => {
     const problemPicking = pickArrived(picked)
     if (problemPicking) {
       setProblem(problemPicking)
       return
     }
     // Never the same recording twice: not already in this post, not already in
-    // line or sent for this campaign, and not repeated within the pick.
+    // line or sent for this campaign, and not repeated within the pick -
+    // unless he says so (Add anyway).
     const prints = await Promise.all(picked.map(async (file) => ({ file, name: file.name, fp: await fingerprint(file) })))
     if (!alive.current) return
     const known = new Set([...itemsRef.current.map((i) => i.fp), ...(await fingerprintsFor(campaignRef.current?.id ?? ''))])
-    const { fresh, skipped } = newOnes(prints, known)
+    const { fresh, skipped } = again ? { fresh: prints, skipped: [] } : newOnes(prints, known)
     setNotice(skippedNotice(skipped, 'in this post or already sent'))
+    setDoubles(prints.filter((p) => !fresh.includes(p)).map((p) => p.file))
     if (fresh.length === 0) {
       pickSaved()
       return
     }
-    const added: Picked[] = fresh.map(({ file, fp }) => ({
+    const stamp = Date.now()
+    const added: Picked[] = fresh.map(({ file, fp }, i) => ({
       key: `np-${nextKey++}`,
       file,
       fp,
@@ -270,6 +281,7 @@ export function NewPost({
       note: null,
       when: 'now' as const,
       at: localInput(null),
+      ...(again ? { again: stamp + i } : {}),
     }))
     for (const item of added) files.current.set(item.key, item.file)
     setItems((current) => [...current, ...added])
@@ -299,6 +311,7 @@ export function NewPost({
     setNotice(null)
     const list = [...items]
     const skipped: string[] = []
+    const doubled: File[] = []
     for (const [n, item] of list.entries()) {
       const counting = list.length > 1 ? ` ${n + 1} of ${list.length}` : ''
       setSending(`Getting${counting} ready…`)
@@ -306,9 +319,11 @@ export function NewPost({
         // The same video for the same campaign on the same day is the same
         // post, so tapping again - or coming back to this screen and picking
         // it again - finds it already in line instead of making a second one.
-        const key = handPostKey(item.fp, campaign.id, localDay())
+        // One he added anyway has its own key: a new post, made once.
+        const key = `${handPostKey(item.fp, campaign.id, localDay())}${item.again ? `~again-${item.again}` : ''}`
         if (await isQueued(key)) {
           skipped.push(item.file.name)
+          if (!item.again) doubled.push(item.file)
           if (alive.current) setItems((current) => current.filter((i) => i.key !== item.key))
           continue
         }
@@ -334,7 +349,10 @@ export function NewPost({
           },
           mp4.file,
         )
-        if (result === 'duplicate') skipped.push(item.file.name)
+        if (result === 'duplicate') {
+          skipped.push(item.file.name)
+          if (!item.again) doubled.push(item.file)
+        }
         // The send queue keeps its own copy.
         if (mp4.storedAs) void forgetCut(mp4.storedAs)
         if (alive.current) setItems((current) => current.filter((i) => i.key !== item.key))
@@ -352,6 +370,7 @@ export function NewPost({
     const said = skippedNotice(skipped, 'sent or on its way')
     if (said) {
       setNotice(said)
+      setDoubles(doubled)
       setSending(null)
       return
     }
@@ -531,6 +550,20 @@ export function NewPost({
 
       {problem ? <p className="error">{problem}</p> : null}
       {notice ? <p className="notice">{notice}</p> : null}
+      {doubles.length > 0 && sending === null ? (
+        <button
+          type="button"
+          className="btn small"
+          onClick={() => {
+            const again = doubles
+            setDoubles([])
+            setNotice(null)
+            void add(again, true)
+          }}
+        >
+          Add {doubles.length === 1 ? 'it' : `these ${doubles.length}`} anyway - post again
+        </button>
+      ) : null}
 
       <button type="button" className="btn primary" disabled={!ready} onClick={() => void post()}>
         {postLabel}

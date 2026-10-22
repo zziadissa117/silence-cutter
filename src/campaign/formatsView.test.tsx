@@ -222,6 +222,24 @@ describe('the Formats tab', () => {
     expect(host.textContent).toContain('old.mov already opened a video you made')
   })
 
+  it('takes an opening already made back in when he taps Add anyway, to open a video of its own', async () => {
+    script = twoLines()
+    await show()
+    await act(async () => button('Morning routine').click())
+    const picker = host.querySelector('input[aria-label="Add takes of ELON MUST BE STOPPED"]') as HTMLInputElement
+    Object.defineProperty(picker, 'files', { value: [new File(['x'], 'old.mov')], configurable: true })
+    await act(async () => picker.dispatchEvent(new Event('change', { bubbles: true })))
+    await act(async () => {})
+    expect(saveBankFile).not.toHaveBeenCalled()
+    await act(async () => button('Add it anyway').click())
+    await act(async () => {})
+    expect(saveBankFile).toHaveBeenCalledTimes(1)
+    const saved = vi.mocked(saveFormatScript).mock.calls.at(-1)![0]
+    const back = saved.lines[0].takes.find((t) => t.name === 'old.mov')!
+    expect(back.again).toBeGreaterThan(0)
+    expect(button('Add it anyway')).toBeUndefined()
+  })
+
   it("takes a take out: off the line, and off the phone once no video needs it", async () => {
     script = twoLines()
     const props = await show()

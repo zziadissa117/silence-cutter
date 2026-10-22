@@ -22,6 +22,10 @@ export interface BankFile {
    *  kept twice. Absent on files kept before it existed; those are matched on
    *  name and size instead. */
   fp?: string
+  /** Taken in again on purpose (Add anyway), though already in videos made
+   *  before: when. It is its own clip then (usedKey) - what the earlier
+   *  videos used it up for doesn't turn it away. */
+  again?: number
 }
 
 export interface BatchBank {
@@ -113,6 +117,10 @@ export interface BatchBank {
   /** When he last tapped Start: what stopped the batch before (every video
    *  made, a problem) is behind it - read by fromPhone. */
   startedAt?: string
+  /** When he last tapped Start anyway: the mixes made before were forgotten
+   *  then, so the same clips make the same videos again - read by fromPhone,
+   *  which takes the phone's `made` for that Start. */
+  anyway?: string
 }
 
 /** What the making of a batch has done so far - what was made, used, put on
@@ -135,8 +143,10 @@ export function fromPhone(server: BatchBank | null, phone: BatchBank): BatchBank
     else (next as unknown as Record<string, unknown>)[key] = server[key]
   }
   if (phone.startedAt !== server.startedAt) {
-    // He tapped Start since the server last had it: what stopped it is behind it.
-    for (const key of ['spent', 'runProblem'] as const) {
+    // He tapped Start since the server last had it: what stopped it is behind
+    // it - and with Start anyway, the mixes made before too.
+    const behind = phone.anyway !== undefined && phone.anyway === phone.startedAt ? (['spent', 'runProblem', 'made'] as const) : (['spent', 'runProblem'] as const)
+    for (const key of behind) {
       if (phone[key] === undefined) delete next[key]
       else (next as unknown as Record<string, unknown>)[key] = phone[key]
     }
@@ -151,7 +161,7 @@ export function fromPhone(server: BatchBank | null, phone: BatchBank): BatchBank
   // cleared out) never comes back from the phone's older copy: those videos
   // would be made again.
   const spent = new Set(server.usedClips ?? [])
-  const fresh = (files: BankFile[]) => files.filter((f) => !spent.has(clipKey(f)))
+  const fresh = (files: BankFile[]) => files.filter((f) => !spent.has(usedKey(f)))
   next.reactions = fresh(next.reactions)
   next.products = fresh(next.products)
   if (next.steps) next.steps = next.steps.map((step) => ({ ...step, files: fresh(step.files) }))
@@ -649,10 +659,17 @@ export function clipKey(file: Pick<BankFile, 'fp' | 'name' | 'size'>): string {
   return file.fp ?? `${file.name}|${file.size}`
 }
 
+/** How a clip is remembered as used up (usedClips): by clipKey - or, for
+ *  one taken in again on purpose, by that and when, so the earlier use
+ *  never turns it away and its own use does. */
+export function usedKey(file: Pick<BankFile, 'fp' | 'name' | 'size' | 'again'>): string {
+  return file.again ? `${clipKey(file)}~${file.again}` : clipKey(file)
+}
+
 /** The bank, remembering those of `files` that went into videos as used,
  *  so they are never taken in again (usedClips). */
 export function rememberUsed(bank: BatchBank, files: readonly BankFile[]): BatchBank {
-  const keys = files.filter((f) => (bank.used[f.id] ?? 0) > 0).map(clipKey)
+  const keys = files.filter((f) => (bank.used[f.id] ?? 0) > 0).flatMap((f) => [clipKey(f), usedKey(f)])
   if (keys.length === 0) return bank
   return { ...bank, usedClips: [...new Set([...(bank.usedClips ?? []), ...keys])] }
 }

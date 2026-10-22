@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { emptyBank, fromPhone, type BankFile, type BatchBank } from './batch'
+import { emptyBank, fromPhone, rememberUsed, usedKey, type BankFile, type BatchBank } from './batch'
 import { handOver } from './batchRun'
 import type { Job } from './jobs'
 import type { ServerPost } from './posting'
@@ -54,6 +54,28 @@ describe('fromPhone (the server and the phone sharing a batch)', () => {
     expect(next.running).toBe(true)
     expect(next.spent).toBeUndefined()
     expect(next.runProblem).toBeUndefined()
+  })
+
+  it('a Start anyway tapped since forgets the mixes made before, there too', () => {
+    const server = bank({ movedAt: 't', startedAt: 's1', running: false, made: ['a', 'b', 'c'] })
+    const phone = bank({ movedAt: 't', startedAt: 's2', anyway: 's2', running: true, made: [] })
+    expect(fromPhone(server, phone).made).toEqual([])
+    // Once the server has that Start, what it makes from then on is its own.
+    const after = bank({ movedAt: 't', startedAt: 's2', anyway: 's2', running: true, made: ['d'] })
+    expect(fromPhone(after, phone).made).toEqual(['d'])
+    // A plain Start keeps what was made.
+    expect(fromPhone(server, bank({ movedAt: 't', startedAt: 's3', anyway: 's2', running: true, made: [] })).made).toEqual(['a', 'b', 'c'])
+  })
+
+  it('keeps a clip taken in again on purpose, until its own videos use it up', () => {
+    const again: BankFile = { ...file('r3', 'fp-r1'), again: 5 }
+    const server = bank({ movedAt: 't', reactions: [], usedClips: ['fp-r1'] })
+    const phone = bank({ movedAt: 't', reactions: [again] })
+    expect(fromPhone(server, phone).reactions).toEqual([again])
+    // Its own videos made: remembered both ways, and it doesn't come back.
+    const usedUp = rememberUsed(bank({ reactions: [again], used: { r3: 1 } }), [again])
+    expect(usedUp.usedClips).toEqual(['fp-r1', usedKey(again)])
+    expect(fromPhone(bank({ movedAt: 't', reactions: [], usedClips: usedUp.usedClips }), phone).reactions).toEqual([])
   })
 
   it('Stop on the phone stops the server', () => {

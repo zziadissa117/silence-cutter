@@ -113,7 +113,7 @@ export function daysToMake(bank: Pick<BatchBank, 'perDay' | 'growth' | 'growthFr
 
 /** While a batch grows each day, in words: today, tomorrow and a week on,
  *  and the first day (in the next two months) the posting window (`fits`:
- *  how many a day it holds, 10 minutes apart) is too small for it. */
+ *  how many a day it holds) is too small for it. */
 export function growthSummary(
   bank: Pick<BatchBank, 'perDay' | 'growth' | 'growthFrom'>,
   today: string,

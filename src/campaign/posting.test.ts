@@ -102,11 +102,9 @@ describe('random times for every campaign', () => {
     for (const time of times) expect(time >= '11:00' && time <= '18:00').toBe(true)
   })
 
-  it('shows the times the server will use: his own in the day, night ones skipped', () => {
-    expect(placeTimesOn({ accounts: [], times: ['03:43', '13:42', '20:44'] }, 'lovable', '2026-10-10')).toEqual(['13:42'])
-    const night = placeTimesOn({ accounts: [], times: ['01:25', '02:25'] }, 'reaction', '2026-10-10')
-    expect(night).toHaveLength(2)
-    for (const time of night) expect(time >= '11:00' && time <= '18:00').toBe(true)
+  it('shows the times the server will use: every one of his own, night ones too', () => {
+    expect(placeTimesOn({ accounts: [], times: ['03:43', '13:42', '20:44'] }, 'lovable', '2026-10-10')).toEqual(['03:43', '13:42', '20:44'])
+    expect(placeTimesOn({ accounts: [], times: ['01:25', '02:25'] }, 'reaction', '2026-10-10')).toEqual(['01:25', '02:25'])
   })
 
   it('switches only the ones on his own times, keeping a window one already had', async () => {
@@ -133,19 +131,34 @@ describe('batchTimesOn', () => {
     for (let n = 1; n <= 6; n++) {
       const times = batchTimesOn(place, 'inflow', '2026-10-12', n)
       expect(times).toHaveLength(n)
-      for (const t of times) expect(t >= '11:00' && t <= '18:00').toBe(true)
+      // The whole window he set, not cut to the middle of the day.
+      for (const t of times) expect(t >= '10:00' && t <= '21:50').toBe(true)
       for (let i = 1; i < times.length; i++) expect(minutes(times[i]) - minutes(times[i - 1])).toBeGreaterThanOrEqual(30)
     }
     const many = batchTimesOn(place, 'inflow', '2026-10-12', 25)
     expect(many).toHaveLength(25)
-    for (const t of many) expect(t >= '11:00' && t <= '18:00').toBe(true)
+    for (const t of many) expect(t >= '10:00' && t <= '21:50').toBe(true)
     for (let i = 1; i < many.length; i++) expect(minutes(many[i]) - minutes(many[i - 1])).toBeGreaterThanOrEqual(10)
     expect(batchTimesOn(place, 'inflow', '2026-10-12', 5)).not.toEqual(batchTimesOn(place, 'inflow', '2026-10-13', 5))
-    // No most a day: past 25, as many as the day holds 10 minutes apart.
-    const more = batchTimesOn(place, 'inflow', '2026-10-12', 35)
-    expect(more).toHaveLength(35)
-    for (let i = 1; i < more.length; i++) expect(minutes(more[i]) - minutes(more[i - 1])).toBeGreaterThanOrEqual(10)
+    // No most a day: as many as he wants, closer the more there are.
+    const more = batchTimesOn(place, 'inflow', '2026-10-12', 60)
+    expect(more).toHaveLength(60)
+    expect(new Set(more).size).toBe(60)
     expect(batchTimesOn({ accounts: [], times: ['18:00'] }, 'inflow', '2026-10-12', 35)).toHaveLength(35)
+  })
+
+  it('makes 125 a day on one account in a whole-day window, and keeps 30 minutes apart while that fits', () => {
+    const allDay = { accounts: [], times: [], window: { from: '01:00', to: '01:00', perDay: 3 } }
+    const lots = batchTimesOn(allDay, 'lovable', '2026-10-22', 125)
+    expect(lots).toHaveLength(125)
+    expect(new Set(lots).size).toBe(125)
+    for (let i = 1; i < lots.length; i++) expect(minutes(lots[i]) - minutes(lots[i - 1])).toBeGreaterThanOrEqual(8)
+    const fewer = batchTimesOn(allDay, 'lovable', '2026-10-22', 35)
+    expect(fewer).toHaveLength(35)
+    for (let i = 1; i < fewer.length; i++) expect(minutes(fewer[i]) - minutes(fewer[i - 1])).toBeGreaterThanOrEqual(30)
+    // 1 AM to 11:59 PM, the way it was set: its night hours used too.
+    const night = batchTimesOn({ accounts: [], times: [], window: { from: '01:00', to: '23:59', perDay: 3 } }, 'lovable', '2026-10-22', 40)
+    expect(night.some((t) => t < '11:00' || t > '18:00')).toBe(true)
   })
 
   it('keeps his own times and adds random ones, half an hour clear of his, when he wants more', () => {
@@ -158,12 +171,8 @@ describe('batchTimesOn', () => {
     expect(lots).toHaveLength(25)
     expect(lots).toContain('18:00')
     expect(batchTimesOn({ accounts: [], times: ['12:00', '15:00', '18:00'] }, 'inflow', '2026-10-12', 3)).toEqual(['12:00', '15:00', '18:00'])
-    // 9 AM is outside the day: skipped, and a random daytime one takes its place.
-    const early = batchTimesOn({ accounts: [], times: ['09:00', '12:00', '18:00'] }, 'inflow', '2026-10-12', 3)
-    expect(early).toHaveLength(3)
-    expect(early).toEqual(expect.arrayContaining(['12:00', '18:00']))
-    expect(early).not.toContain('09:00')
-    for (const t of early) expect(t >= '11:00' && t <= '18:00').toBe(true)
+    // His 9 AM is his: kept.
+    expect(batchTimesOn({ accounts: [], times: ['09:00', '12:00', '18:00'] }, 'inflow', '2026-10-12', 3)).toEqual(['09:00', '12:00', '18:00'])
   })
 })
 

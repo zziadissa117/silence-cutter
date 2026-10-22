@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { addDays, dayTimeFor, endOfDay, jitterMinutes, spreadEnd, lastTimeToday, localDate, localTime, nextSlot, normalTimes, pickTime, spreadDay, zoned } from './slots.ts'
+import { addDays, endOfDay, jitterMinutes, spreadEnd, spreadUntil, lastTimeToday, localDate, localTime, nextSlot, normalTimes, pickTime, spreadDay, zoned } from './slots.ts'
 
 const TZ = 'America/Toronto'
 
@@ -214,7 +214,7 @@ describe('spreadDay', () => {
   })
 })
 
-describe('posting in the middle of the day', () => {
+describe('when a late spread ends', () => {
   const at = (time: string) => zoned('2026-10-12', time, TZ).getTime()
   const local = (ms: number) => localTime(new Date(ms), TZ)
 
@@ -227,12 +227,12 @@ describe('posting in the middle of the day', () => {
     expect(spreadEnd(at('21:30'), '2026-10-12', TZ)).toBe(endOfDay('2026-10-12', TZ))
   })
 
-  it('moves a post to the middle of the next day rather than the same time at night', () => {
-    expect(dayTimeFor('14:30', 'p1')).toBe('14:30')
-    for (const id of ['p1', 'p2', 'p3', 'abc', 'zzz']) {
-      const time = dayTimeFor('21:29', id)
-      expect(time >= '12:00' && time < '14:00').toBe(true)
-      expect(dayTimeFor('21:29', id)).toBe(time)
-    }
+  it("ends it with the campaign's own window", () => {
+    expect(spreadUntil({ times: [], window: { from: '01:00', to: '23:00', perDay: 3 } })).toBe('23:00')
+    expect(spreadUntil({ times: [], window: { from: '22:00', to: '02:00', perDay: 3 } })).toBe('24:00')
+    expect(spreadUntil({ times: ['09:00'] })).toBe('18:00')
+    expect(spreadUntil(undefined)).toBe('18:00')
+    expect(local(spreadEnd(at('14:07'), '2026-10-12', TZ, '23:00'))).toBe('23:00')
+    expect(spreadEnd(at('14:07'), '2026-10-12', TZ, '24:00')).toBe(endOfDay('2026-10-12', TZ))
   })
 })
