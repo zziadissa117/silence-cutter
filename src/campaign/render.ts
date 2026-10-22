@@ -54,6 +54,7 @@ import { totalDuration, type Range } from '../media/silenceMath'
 import type { VideoLook } from './look'
 import { CAPTION_LEAD, captionAt, drawStyledCaption, captionRanges, type CaptionPosition, type CaptionSize, type CaptionStyle, type CaptionWord } from './captions'
 import { decoderGaveUp, eachSound, firstShown, openClip, pause, visibleAgain, wholeOf, writeWhole, type Clip } from './clipParts'
+import { traceRead, traceStart, traceStep, traceWritten } from './renderTrace'
 import type { ClipPlace } from './clips'
 import { framingAt, logoPop, placeFrame, planMotion } from './effects'
 import { ColourCheck } from './colourCheck'
@@ -224,6 +225,7 @@ export async function renderCampaignCut(
   }
 
   const report = throttled(onProgress)
+  traceStart()
   const input = new Input({ source: new BlobSource(file), formats: ALL_FORMATS })
   const sink = await createOutputSink()
   const output = new Output({ format: new Mp4OutputFormat({ fastStart: false }), target: sink.target })
@@ -343,6 +345,7 @@ export async function renderCampaignCut(
       }
     }
     let voice: Voice | null = null
+    traceStep('measuring the voice')
     if (boostVoice) {
       try {
         voice = await Voice.measure(sampleRate, channels, walkKeptAudio)
@@ -356,6 +359,7 @@ export async function renderCampaignCut(
     // it, or as recorded. A track that can't be read leaves the video
     // without music rather than without a video.
     let bed: MusicBed | null = null
+    traceStep('the music')
     if (music) {
       try {
         // Only as much of the track as the video uses is decoded (sounds.ts).
@@ -387,6 +391,7 @@ export async function renderCampaignCut(
         return 1
       }
     }
+    traceStep('the clips joined on')
     const beforeGain = await levelFor(beforeClip)
     const afterGain = await levelFor(afterClip)
     const middleGains: number[] = []
@@ -421,6 +426,7 @@ export async function renderCampaignCut(
     // no more than a small one. One that can't be read here is left out,
     // never the whole video.
     let popsLeftOut = 0
+    traceStep('the pop-up videos')
     const popClips: { seconds: number; layout: PopLayout; placer: MomentPlacer; open: () => AsyncIterator<WrappedCanvas> }[] = []
     for (const clip of pops?.clips ?? []) {
       try {
@@ -440,6 +446,7 @@ export async function renderCampaignCut(
     if (popClips.length > 0) popPlayer = new PopFrames((i) => popClips[i].open())
     let popsOn = popClips.length > 0
 
+    traceStep('starting the encoder')
     // What the colour went through, sent once (colourCheck.ts).
     const colour = new ColourCheck()
     await colour.noteSource(videoTrack)
@@ -495,6 +502,7 @@ export async function renderCampaignCut(
       })
     }
 
+    traceStep('making the frames')
     videoFrames = new RangeReader(inTimestampOrder(new VideoSampleSink(videoTrack).samples(spanStart, spanEnd)))
     audioFrames = new RangeReader(inTimestampOrder(new AudioSampleSink(audioTrack).samples(spanStart, spanEnd)))
     const audioReader = audioFrames
@@ -528,12 +536,14 @@ export async function renderCampaignCut(
         audioClock,
         maxRecoveries: MAX_RECOVERIES,
         onFrame: async (sample, timestamp) => {
+          traceRead()
           report(timestamp / total)
           ctx.fillStyle = '#000'
           ctx.fillRect(0, 0, width, height)
           sample.draw(ctx, place.x, place.y, place.width, place.height)
           const frame = new VideoSample(canvas, { timestamp, duration: sample.duration })
           await videoSource.add(frame)
+          traceWritten()
           frame.close()
         },
         onSound: async (planes, timestamp) => {
@@ -588,6 +598,7 @@ export async function renderCampaignCut(
                   sample.close()
                   continue
                 }
+                traceRead()
                 report((doneSoFar + (sample.timestamp - start)) / total)
                 if (videoShift === null) {
                   videoShift = cursor - sample.timestamp
@@ -695,6 +706,7 @@ export async function renderCampaignCut(
                 // The new sample copies the canvas, so one canvas does every frame.
                 const frame = new VideoSample(canvas, { timestamp, duration })
                 await videoSource.add(frame)
+                traceWritten()
                 frame.close()
                 lastWritten = sample.timestamp
               }
@@ -777,6 +789,7 @@ export async function renderCampaignCut(
     const afterStart = cursor
     if (afterClip) cursor = await writeClip(afterClip, afterStart, afterGain)
 
+    traceStep('finishing the file')
     await output.finalize()
     const blob = await sink.finish()
     if (blob.size === 0) throw new SilenceCutError('Rendering finished but produced no file. Try again.')

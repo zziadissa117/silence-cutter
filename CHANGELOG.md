@@ -3,6 +3,20 @@
 Newest first. Every change says what it does, how to use it, and how it works
 underneath. Kept up to date with each commit.
 
+## A video that stays stuck at 0% is let go, and says where it stopped
+Only ./deploy.sh is needed; then close the Cutter and open it again.
+**What the reports showed:** the phone was still on the build from 18:04, before the restart fix - and in that fresh
+page the same 191 MB video stopped at 0% again on its first try. So a fresh start doesn't free that one video: it is
+the video. Each stuck try cost 90 s, then another go and the plain cut (made the same way) waited 90 s each too, and
+the approved video behind it ("Approved") waited its turn the whole time.
+**Now:** a video stuck at 0% gets one fresh start of the Cutter; stuck again, it is marked failed straight away with
+what the video is (its format, size, length) and the videos behind it are made. The report says exactly where it
+stopped ("at 'making the frames' for 90 s, 0 frames read") and what the file is, so the next one can be fixed at the
+cause. In the Videos list, an approved video now says "Approved · waiting its turn to be made".
+**How:** `renderTrace.ts` (`traceStep`/`traceRead`/`traceWritten` from `render.ts`, `traceLine`, `describeVideo`);
+`CampaignApp` StallError: restart once (`firstRestartFor`), then failed at once - no in-page retry or plain cut.
+`JobRow` approved line. Test `renderTrace.test.ts`.
+
 ## A video stuck at 0% starts the Cutter again by itself
 Only ./deploy.sh is needed; then close the Cutter and open it again.
 **What was wrong:** "it's just at making it 0%". On 2026-10-22 two videos were made, then a 191 MB one stopped

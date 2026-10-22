@@ -18,6 +18,7 @@ import { type Range, PRESETS, type PresetName } from '../media/silenceMath'
 import { pageLeaving } from '../leaving'
 import { within } from '../media/within'
 import { StallError, firstRestartFor } from './stallRestart'
+import { describeVideo, traceLine, traceReset, traceStarted } from './renderTrace'
 import { ModeNav } from '../ModeNav'
 import { lostPick, pickArrived, pickQuiet, pickSaved, whenPickGoesWrong } from '../pickWatch'
 import { report } from '../report'
@@ -1297,6 +1298,7 @@ export function CampaignApp() {
     // with "Decoder failure". That is not the video's fault, so a video that
     // was hidden at any point goes back in line and starts again on return.
     let interrupted = document.visibilityState !== 'visible'
+    traceReset()
     const onVisibility = () => {
       if (document.visibilityState !== 'visible') interrupted = true
     }
@@ -1625,12 +1627,26 @@ export function CampaignApp() {
         // too - three tries of one video, then the next one (2026-10-22). A
         // fresh page gets it back, so the Cutter starts again by itself -
         // once per video - and carries on where it was.
-        if (err instanceof StallError && firstRestartFor(next.id)) {
-          patch({ status: next.status, progress: 0 })
-          await resetAttempts(next.id)
-          report({ page: 'campaign', kind: 'retried', phase, message: `${why} - the Cutter starts again by itself`, video: kept })
-          setNotice("The phone stopped making videos, so the Cutter is starting again to free it. Your videos carry on where they were.")
-          restartPage()
+        if (err instanceof StallError) {
+          // Where it stopped, and what the video is - so the next report says why.
+          const where = traceStarted() ? ` - ${traceLine()}` : ''
+          const what = kept ? await describeVideo(kept) : ''
+          const said = `${why}${where}${what ? ` - the video: ${what}` : ''}`
+          if (firstRestartFor(next.id)) {
+            patch({ status: next.status, progress: 0 })
+            await resetAttempts(next.id)
+            report({ page: 'campaign', kind: 'retried', phase, message: `${said} - the Cutter starts again by itself`, video: kept })
+            setNotice('The phone stopped making a video, so the Cutter is starting again to free it. Your videos carry on where they were.')
+            restartPage()
+            return
+          }
+          // Stuck again in a fresh page: it is this video, and another go -
+          // or the plain cut, made the same way - only waits again. It is
+          // let go at once, so the videos behind it are made.
+          const message = `The phone couldn't make this video - it stopped at the start every time, even after the Cutter started again. Try again later, or Remove it.${what ? ` (${what})` : ''}`
+          patch({ status: 'failed', error: message })
+          await recordFailure(next.id, message)
+          report({ page: 'campaign', kind: 'failed', phase, message: said, video: kept })
           return
         }
         if (!known && interrupted) {

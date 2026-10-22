@@ -146,7 +146,7 @@ export function JobRow({
             ? `Needs you · ${job.day?.guess?.why ?? ''}`
             : [label, job.headlineText && `"${job.headlineText}"`].filter(Boolean).join(' · ')
           : job.status === 'approved'
-            ? `Approved · ${label}`
+            ? `Approved · waiting its turn to be made · ${label}`
             : job.status === 'done' && result
               ? plain
                 ? `Plain cut · the look couldn't be added · ${formatTime(result.newDurationSec)}`
