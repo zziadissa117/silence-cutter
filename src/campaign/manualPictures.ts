@@ -1,33 +1,73 @@
-// A picture he puts on a video himself, at a moment he picks in the cuts
-// editor - from the picture bank or from his phone - instead of one that comes
-// up when a word is said. It is drawn by the same code as the angle's pictures
-// (same spots, same spring-in), so it looks like the others.
+// What he puts on a video himself in the edit screen, at a moment he picks,
+// the way TikTok's editor does: a picture (from the picture bank or his
+// phone), a video over him (from the video bank or his phone - muted, in its
+// own box), or words of his own. A picture is drawn by the same code as the
+// angle's pictures (same spots, same spring-in), so it looks like the others;
+// words are drawn as a headline is, in its three looks.
 
-import type { PictureCue } from './look'
+import type { HeadlinePlace, HeadlineStyle, PictureCue } from './look'
 import type { LogoPosition } from './look'
 import { cameUpTogether, layoutLogo, sideBySide } from './overlay'
 
 export interface ManualPicture {
   id: string
-  /** From the picture bank (kept on the phone, shared by every campaign), or a
-   *  picture he picked from the phone for this video alone. */
-  source: { kind: 'bank'; pictureId: string } | { kind: 'phone'; name: string; type: string }
+  /** From the picture bank (kept on the phone, shared by every campaign); a
+   *  picture or video he picked from the phone for this video alone (`type`
+   *  says which); a video from the video bank; or words he typed. */
+  source:
+    | { kind: 'bank'; pictureId: string }
+    | { kind: 'phone'; name: string; type: string }
+    | { kind: 'video'; videoId: string }
+    | { kind: 'text'; text: string; style: HeadlineStyle }
   /** When it comes up, in seconds on the raw recording. */
   at: number
   /** How long it stays up. */
   seconds: number
   position: LogoPosition
-  /** Width, as a percentage of the video's width. */
+  /** Width, as a percentage of the video's width - for words, how big they
+   *  are (TEXT_BASE_PCT is a medium headline's size). */
   widthPct: number
   /** Where he dragged it: its middle, as fractions of the frame. In place of
-   *  `position`; absent until he moves it. */
+   *  `position`; absent until he moves it. Words always have one. */
   center?: { x: number; y: number }
+  /** A video's own length: it stays up no longer. */
+  length?: number
 }
 
-/** How long a picture can stay up, and the step + and - take. */
+/** How long a picture or words can stay up, and the step + and - take. */
 export const PICTURE_SECONDS = { min: 0.5, max: 20, step: 0.5 } as const
+/** A video plays to its end, up to this long. */
+export const VIDEO_SECONDS_MAX = 60
 /** How small and big a picture can be made, % of the width. */
 export const PICTURE_WIDTH = { min: 8, max: 100 } as const
+/** The size words start at: a medium headline's. */
+export const TEXT_BASE_PCT = 40
+/** Where new words go: the middle, a little above, as TikTok puts them. */
+export const TEXT_START = { x: 0.5, y: 0.42 } as const
+
+export const isText = (m: ManualPicture): m is ManualPicture & { source: { kind: 'text' } } => m.source.kind === 'text'
+export const isVideo = (m: ManualPicture): boolean => m.source.kind === 'video' || (m.source.kind === 'phone' && m.source.type.startsWith('video/'))
+export const isPicture = (m: ManualPicture): boolean => !isText(m) && !isVideo(m)
+
+/** The longest a thing can stay up: a video its own length. */
+export function longestFor(m: ManualPicture): number {
+  if (!isVideo(m)) return PICTURE_SECONDS.max
+  return Math.max(PICTURE_SECONDS.min, Math.min(VIDEO_SECONDS_MAX, m.length ?? VIDEO_SECONDS_MAX))
+}
+
+/** Words he typed, as a headline to lay out and draw (overlay.ts): their
+ *  look, where he put them and how big. Null for none typed. */
+export function textHeadline(m: ManualPicture): {
+  text: string
+  style: HeadlineStyle
+  position: 'middle'
+  size: 'medium'
+  place: HeadlinePlace
+} | null {
+  if (m.source.kind !== 'text' || !m.source.text.trim()) return null
+  const center = m.center ?? TEXT_START
+  return { text: m.source.text, style: m.source.style, position: 'middle', size: 'medium', place: { x: center.x, y: center.y, scale: m.widthPct / TEXT_BASE_PCT } }
+}
 
 export const SIZES: { label: string; widthPct: number }[] = [
   { label: 'Small', widthPct: 25 },
@@ -56,6 +96,7 @@ export function manualCues(
   const at = new Map<string, number>()
   const missing: ManualPicture[] = []
   for (const m of manual) {
+    if (!isPicture(m)) continue
     const image = images.get(m.id)
     if (!image) {
       missing.push(m)

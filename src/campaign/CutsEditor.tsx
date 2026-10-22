@@ -13,6 +13,12 @@
 // is made until he is done, and the recording itself is never changed - see
 // cuts.ts.
 //
+// Over the video, as in TikTok's editor: the headline is where it will be -
+// drag it to move it, pinch it to size it - and + Text and + Overlay put his
+// own words, a picture or a video (from his phone or the banks) on at the
+// playhead, each dragged and pinched the same way, for as long as he sets.
+// Words and the headline are drawn by the render's own code (overlay.ts).
+//
 // Smooth on a phone because little moves while he scrolls: the timeline is
 // drawn once and only redrawn when the cuts or the zoom change; the timer
 // and buttons follow at most once a frame; and the video is asked for one
@@ -48,16 +54,25 @@ import {
   splitAt,
   trimPart,
 } from './cuts'
+import { headlineFontReady } from './headlineFont'
 import { ChevronLeft, PauseIcon, PlayIcon } from './icons'
-import type { BankPicture } from './look'
+import { HeadlineLook } from './JobRow'
+import { HEADLINE_SCALE, LIMITS, type BankPicture, type Headline, type HeadlinePlace, type HeadlineStyle } from './look'
 import {
   PICTURE_SECONDS,
   PICTURE_WIDTH,
+  TEXT_BASE_PCT,
+  TEXT_START,
   centerOf,
+  isText,
+  isVideo,
+  longestFor,
   newPictureId,
   previewBoxes,
+  textHeadline,
   type ManualPicture,
 } from './manualPictures'
+import { drawHeadline, layoutHeadline, type HeadlineLayout } from './overlay'
 
 /** How much timeline a second takes at first: room enough to read the words. */
 const START_PX = 110
@@ -78,6 +93,74 @@ const PART_H = 64
 const WORD_TOP = PART_TOP + PART_H + 8
 
 const clampPx = (px: number) => Math.min(MAX_PX, Math.max(MIN_PX, px))
+
+/** The same empty banks every time, so effects that follow them don't run
+ *  again on every render. */
+const NO_PICTURES: BankPicture[] = []
+const NO_VIDEOS: { id: string; name: string; seconds: number; loadStill: () => Promise<Blob | null> }[] = []
+
+/** The headline's id among the things on the video he can move. */
+const HEADLINE = 'headline'
+/** How small and big words can be pinched: a headline's range. */
+const TEXT_WIDTH = { min: TEXT_BASE_PCT * HEADLINE_SCALE.min, max: TEXT_BASE_PCT * HEADLINE_SCALE.max } as const
+
+/** The box a headline (or words of his) covers, as fractions of the frame -
+ *  where a finger can take hold of it. */
+function boxOfText(layout: HeadlineLayout, width: number, height: number): { left: number; top: number; width: number; height: number } {
+  const pad = layout.style === 'box' ? layout.fontPx * 0.3 : layout.fontPx * 0.1
+  const half = Math.max(...layout.lines.map((l) => l.width)) / 2 + pad
+  const tall = layout.lines.length * layout.lineHeight
+  const band = layout.style === 'snap'
+  return {
+    left: band ? 0 : (layout.centerX - half) / width,
+    top: (layout.top - (band ? layout.fontPx * 0.42 : 0)) / height,
+    width: band ? 1 : (half * 2) / width,
+    height: (tall + (band ? layout.fontPx * 0.84 : 0)) / height,
+  }
+}
+
+/** A box at least a fingertip big (44 x 88 px on a frame `width` x
+ *  `height`), grown about its middle. */
+function fingerSized(box: { left: number; top: number; width: number; height: number }, width: number, height: number) {
+  const w = Math.max(box.width, 88 / width)
+  const h = Math.max(box.height, 44 / height)
+  return { left: box.left - (w - box.width) / 2, top: box.top - (h - box.height) / 2, width: w, height: h }
+}
+
+/** Which row of the timeline each thing put on goes in: the first row free
+ *  by the time it comes up, so things up together don't cover each other. */
+export function overlayRows(items: readonly Pick<ManualPicture, 'id' | 'at' | 'seconds'>[]): { row: Map<string, number>; rows: number } {
+  const ends: number[] = []
+  const row = new Map<string, number>()
+  for (const o of [...items].sort((a, b) => a.at - b.at)) {
+    let r = ends.findIndex((end) => end <= o.at + 1e-6)
+    if (r < 0) r = ends.push(0) - 1
+    ends[r] = o.at + o.seconds
+    row.set(o.id, r)
+  }
+  return { row, rows: Math.max(1, ends.length) }
+}
+
+/** How long a video file plays, from the phone's own player; null when it
+ *  can't tell within a few seconds. */
+function lengthOf(file: Blob): Promise<number | null> {
+  return new Promise((resolve) => {
+    const v = document.createElement('video')
+    const url = URL.createObjectURL(file)
+    const done = (seconds: number | null) => {
+      window.clearTimeout(timer)
+      URL.revokeObjectURL(url)
+      v.removeAttribute('src')
+      resolve(seconds !== null && Number.isFinite(seconds) && seconds > 0 ? seconds : null)
+    }
+    const timer = window.setTimeout(() => done(null), 5000)
+    v.preload = 'metadata'
+    v.muted = true
+    v.onloadedmetadata = () => done(v.duration)
+    v.onerror = () => done(null)
+    v.src = url
+  })
+}
 
 /** What the page around the editor can do to it, when the captions are on
  *  the same page (EditScreen). */
@@ -271,6 +354,22 @@ function CheckRow({
   )
 }
 
+/** What is kept of the things put on: words with nothing typed are not. */
+const withWords = (list: ManualPicture[]) => list.filter((o) => o.source.kind !== 'text' || o.source.text.trim())
+
+/** What a thing put on the video is, in a word. */
+function kindOf(o: ManualPicture): 'Words' | 'Video' | 'Picture' {
+  return isText(o) ? 'Words' : isVideo(o) ? 'Video' : 'Picture'
+}
+
+/** A small look at a thing put on the video: a picture's image, a sign for
+ *  a video, the first of the words. */
+function Thumb({ o, url }: { o: ManualPicture; url?: string }) {
+  if (o.source.kind === 'text') return <span className="pic-glyph words">{o.source.text.trim().slice(0, 12) || 'Aa'}</span>
+  if (isVideo(o)) return <span className="pic-glyph">▶</span>
+  return url ? <img alt="" src={url} /> : <span className="pic-missing">?</span>
+}
+
 export function CutsEditor({
   name,
   file,
@@ -282,9 +381,12 @@ export function CutsEditor({
   peaks,
   noiseNote,
   overlays: initialOverlays = [],
-  bank = [],
+  bank = NO_PICTURES,
   defaults,
   loadImage,
+  videoBank = NO_VIDEOS,
+  loadVideo,
+  headline,
   onDone,
   onCaptions,
   onCancel,
@@ -315,8 +417,22 @@ export function CutsEditor({
   bank?: BankPicture[]
   /** Where and how big a new picture starts: the angle's bank placement. */
   defaults?: { position: ManualPicture['position']; widthPct: number; seconds: number }
-  /** The image of a picture picked from the phone, from storage. */
+  /** The file of a picture or video picked from the phone, from storage. */
   loadImage?: (picture: ManualPicture) => Promise<Blob | null>
+  /** The video bank, to put a video on from: each with its still. */
+  videoBank?: { id: string; name: string; seconds: number; loadStill: () => Promise<Blob | null> }[]
+  /** A bank video's file, to show it on the video once it is put on. */
+  loadVideo?: (videoId: string) => Promise<Blob | null>
+  /** The headline as it will be made, drawn on the video where it will be,
+   *  to drag and pinch. Absent when there is none to move. */
+  headline?: {
+    look: Pick<Headline, 'text' | 'position' | 'style' | 'size' | 'outlineColor' | 'outlineWidth'>
+    /** How long it is up, from his first kept moment. */
+    seconds: number
+    place: HeadlinePlace | null
+    /** Moved or sized (null: back to its spot) - once a finger lets go. */
+    onPlace: (place: HeadlinePlace | null) => void
+  }
   onDone: (keep: Range[], overlays: ManualPicture[], newFiles: Map<string, Blob>) => void
   /** Keeps the cuts as they are, like Done, and goes on to the captions.
    *  Absent when captions are off. */
@@ -349,16 +465,36 @@ export function CutsEditor({
   const [picking, setPicking] = useState(false)
   const [selectedPic, setSelectedPic] = useState<string | null>(null)
   const [picNote, setPicNote] = useState<string | null>(null)
-  /** Each picture's width over height, once its image has loaded - for the
-   *  preview to lay it out as the render will. */
+  /** Each picture's and video's width over height, once it has loaded - for
+   *  the preview to lay it out as the render will. */
   const [picAspect, setPicAspect] = useState<Record<string, number>>({})
-  /** The fingers on the picture being moved or pinched, and where it was
-   *  when they came down. */
+  /** The fingers on the thing being moved or pinched (a picture, a video,
+   *  words, the headline), where it was and how big when they came down. */
   const gesture = useRef<{
     id: string
     pointers: Map<number, { x: number; y: number }>
-    from: { center: { x: number; y: number }; widthPct: number; mid: { x: number; y: number }; spread: number }
+    from: { center: { x: number; y: number }; size: number; mid: { x: number; y: number }; spread: number }
+    moved: boolean
   } | null>(null)
+  /** When fingers last let go of something: the tap that ends a pinch
+   *  doesn't play the video. */
+  const lastGesture = useRef(0)
+  /** Where the headline is - kept (onPlace) once a finger lets go. */
+  const [headlinePlace, setHeadlinePlace] = useState<HeadlinePlace | null>(headline?.place ?? null)
+  const headlinePlaceRef = useRef(headlinePlace)
+  headlinePlaceRef.current = headlinePlace
+  /** The frame's size on screen, the words are laid out at; and the
+   *  headline's font, once it is here. */
+  const [frameSize, setFrameSize] = useState({ width: 0, height: 0 })
+  const [fontReady, setFontReady] = useState(false)
+  /** Words just put on: their box takes the keyboard. */
+  const [newText, setNewText] = useState<string | null>(null)
+  /** What the overlay canvas draws of its own, under the captions: his words
+   *  and the headline, laid out at the frame's size. */
+  const drawn = useRef<{ layouts: HeadlineLayout[]; width: number }>({ layouts: [], width: 0 })
+  const videoEls = useRef(new Map<string, HTMLVideoElement>())
+  const overlaysRef = useRef(overlays)
+  overlaysRef.current = overlays
   const frameBox = useRef<HTMLDivElement>(null)
   // Pictures picked from the phone in this visit, kept until he is done.
   const newFiles = useRef(new Map<string, Blob>())
@@ -388,7 +524,7 @@ export function CutsEditor({
   const repaint = useCallback(() => {
     const c = overCanvas.current
     const paint = paintRef.current
-    if (!c || !paint) return
+    if (!c) return
     const rect = c.getBoundingClientRect()
     const scale = window.devicePixelRatio || 1
     const w = Math.round(rect.width * scale)
@@ -401,7 +537,37 @@ export function CutsEditor({
     const ctx = c.getContext('2d')
     if (!ctx) return
     ctx.clearRect(0, 0, w, h)
-    paint(ctx, w, h, tRef.current, playingRef.current)
+    // His words and the headline first: the captions go over them, as in
+    // the render.
+    const own = drawn.current
+    if (own.layouts.length > 0 && own.width > 0) {
+      ctx.save()
+      const k = w / own.width
+      ctx.setTransform(k, 0, 0, k, 0, 0)
+      for (const layout of own.layouts) drawHeadline(ctx, layout)
+      ctx.restore()
+    }
+    paint?.(ctx, w, h, tRef.current, playingRef.current)
+  }, [])
+
+  // The frame's size, to lay the words out at; the headline font.
+  useEffect(() => {
+    const el = frameBox.current
+    if (!el) return
+    const measure = () =>
+      setFrameSize((s) => (s.width === el.clientWidth && s.height === el.clientHeight ? s : { width: el.clientWidth, height: el.clientHeight }))
+    measure()
+    if (typeof ResizeObserver === 'undefined') return
+    const watch = new ResizeObserver(measure)
+    watch.observe(el)
+    return () => watch.disconnect()
+  }, [])
+  useEffect(() => {
+    let alive = true
+    void headlineFontReady().then(() => alive && setFontReady(true))
+    return () => {
+      alive = false
+    }
   }, [])
 
   useEffect(() => {
@@ -474,7 +640,7 @@ export function CutsEditor({
   }, [t, playing, repaint, aspect, typing])
 
   useEffect(() => {
-    onState?.(keep, overlays, newFiles.current)
+    onState?.(keep, withWords(overlays), newFiles.current)
   }, [keep, overlays]) // eslint-disable-line react-hooks/exhaustive-deps
 
   /** Puts `to` under the playhead by scrolling the timeline there. */
@@ -511,31 +677,34 @@ export function CutsEditor({
     seek(to)
   }
 
-  // Images to show: bank pictures from the bank, the video's own from storage.
+  // What is shown on the video: bank pictures from the bank, bank videos from
+  // the video bank, the video's own from storage. Each looked for once.
+  const looked = useRef(new Set<string>())
   useEffect(() => {
     let alive = true
-    const want = overlays.filter((o) => !urls[o.id])
+    const want = overlays.filter((o) => !isText(o) && !urls[o.id] && !looked.current.has(o.id))
     if (want.length === 0) return
+    for (const o of want) looked.current.add(o.id)
     void (async () => {
       const next: Record<string, string> = {}
       for (const o of want) {
         let blob: Blob | null | undefined = null
-        if (o.source.kind === 'bank') {
-          const id = o.source.pictureId
-          blob = bank.find((b) => b.id === id)?.image
-        } else blob = newFiles.current.get(o.id) ?? (await loadImage?.(o).catch(() => null))
+        const source = o.source
+        if (source.kind === 'bank') blob = bank.find((b) => b.id === source.pictureId)?.image
+        else if (source.kind === 'video') blob = newFiles.current.get(o.id) ?? (await loadVideo?.(source.videoId).catch(() => null))
+        else blob = newFiles.current.get(o.id) ?? (await loadImage?.(o).catch(() => null))
         if (blob) {
           const url = URL.createObjectURL(blob)
           made.current.push(url)
           next[o.id] = url
-        }
+        } else looked.current.delete(o.id)
       }
       if (alive && Object.keys(next).length > 0) setUrls((u) => ({ ...u, ...next }))
     })()
     return () => {
       alive = false
     }
-  }, [overlays, bank, loadImage, urls])
+  }, [overlays, bank, loadImage, loadVideo, urls])
   useEffect(
     () => () => {
       for (const url of made.current) URL.revokeObjectURL(url)
@@ -543,22 +712,36 @@ export function CutsEditor({
     [],
   )
 
-  /** The bank's pictures as thumbnails, while choosing. */
+  /** The banks' pictures and videos as thumbnails, while choosing. */
   const [bankUrls, setBankUrls] = useState<Record<string, string>>({})
   useEffect(() => {
     if (!picking) return
+    let alive = true
     const next: Record<string, string> = {}
     for (const b of bank) next[b.id] = URL.createObjectURL(b.image)
-    setBankUrls(next)
+    setBankUrls({ ...next })
+    void (async () => {
+      for (const v of videoBank) {
+        const still = await v.loadStill().catch(() => null)
+        if (!alive) return
+        if (still) {
+          next[`video:${v.id}`] = URL.createObjectURL(still)
+          setBankUrls({ ...next })
+        }
+      }
+    })()
     return () => {
+      alive = false
       for (const url of Object.values(next)) URL.revokeObjectURL(url)
     }
+    // The video bank's list is read when the picker opens.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [picking, bank])
 
-  const onCutPart = 'Move the playhead onto a part of the video that is kept - a picture can only come up there.'
+  const onCutPart = 'Move the playhead onto a part of the video that is kept - what you put on comes up there.'
 
-  /** Opens the picture picker - or, with the playhead on a part that is cut
-   *  out, says so at once, not after a picture has been chosen. */
+  /** Opens the overlay picker - or, with the playhead on a part that is cut
+   *  out, says so at once, not after something has been chosen. */
   const togglePicker = () => {
     if (picking) {
       setPicking(false)
@@ -569,11 +752,12 @@ export function CutsEditor({
       return
     }
     setPicNote(null)
+    setSelectedPic(null)
     setPicking(true)
   }
 
   // The picker (or the note) opens under the buttons, which on a phone is
-  // below the bottom of the screen: + Picture looked as if it did nothing.
+  // below the bottom of the screen: + Overlay looked as if it did nothing.
   // Brought up to just under the video held at the top.
   useEffect(() => {
     const panel = notePanel.current ?? picPanel.current
@@ -584,9 +768,10 @@ export function CutsEditor({
     window.scrollBy({ top: box.top - held - 12, behavior: 'smooth' })
   }, [picking, picNote])
 
-  /** Puts a picture on the video at the playhead: it comes up there, so the
-   *  playhead has to be on a part of the video that is kept. */
-  const addPicture = (source: ManualPicture['source'], file?: Blob) => {
+  /** Puts a picture or a video on the video at the playhead: it comes up
+   *  there, so the playhead has to be on a part of the video that is kept.
+   *  A video stays up for its own length, at most a minute. */
+  const addOverlay = (source: ManualPicture['source'], file?: Blob, length?: number | null) => {
     if (partAt(keepRef.current, tRef.current) < 0) {
       setPicNote(onCutPart)
       return
@@ -601,18 +786,55 @@ export function CutsEditor({
       position: defaults?.position ?? 'top-right',
       widthPct: defaults?.widthPct ?? 40,
     }
-    setOverlays((list) => [...list, picture].sort((a, b) => a.at - b.at))
+    const placed = isVideo(picture)
+      ? { ...picture, position: 'middle' as const, widthPct: 70, ...(length ? { length, seconds: Math.round(Math.min(length, longestFor({ ...picture, length })) * 10) / 10 } : {}) }
+      : picture
+    setOverlays((list) => [...list, placed].sort((a, b) => a.at - b.at))
     setSelectedPic(id)
     setPicking(false)
     setPicNote(null)
   }
+
+  /** Words at the playhead, in the middle, in the headline's look: their box
+   *  opens to type in. */
+  const addText = () => {
+    if (partAt(keepRef.current, tRef.current) < 0) {
+      setPicNote(onCutPart)
+      return
+    }
+    const id = newPictureId()
+    const words: ManualPicture = {
+      id,
+      source: { kind: 'text', text: '', style: headline?.look.style ?? 'box' },
+      at: Math.round(tRef.current * 100) / 100,
+      seconds: defaults?.seconds ?? 3,
+      position: 'middle',
+      widthPct: TEXT_BASE_PCT,
+      center: { ...TEXT_START },
+    }
+    setOverlays((list) => [...list, words].sort((a, b) => a.at - b.at))
+    setSelectedPic(id)
+    setNewText(id)
+    setPicking(false)
+    setPicNote(null)
+  }
+
   const updatePicture = (id: string, patch: Partial<ManualPicture>) =>
     setOverlays((list) => list.map((o) => (o.id === id ? { ...o, ...patch } : o)).sort((a, b) => a.at - b.at))
+  const setWords = (id: string, patch: { text?: string; style?: HeadlineStyle }) =>
+    setOverlays((list) => list.map((o) => (o.id === id && o.source.kind === 'text' ? { ...o, source: { ...o.source, ...patch } } : o)))
   const removePicture = (id: string) => {
     newFiles.current.delete(id)
     setOverlays((list) => list.filter((o) => o.id !== id))
     setSelectedPic((s) => (s === id ? null : s))
   }
+  // Words left with nothing typed in them go once he moves on from them.
+  useEffect(() => {
+    setOverlays((list) => {
+      const kept = list.filter((o) => o.id === selectedPic || o.source.kind !== 'text' || o.source.text.trim())
+      return kept.length === list.length ? list : kept
+    })
+  }, [selectedPic])
   const goToPicture = (o: ManualPicture) => {
     stop()
     setSelectedPic(o.id)
@@ -620,14 +842,103 @@ export function CutsEditor({
     followTime(o.at)
     seek(o.at)
   }
-  // The pictures up at the playhead - and the one being edited, wherever
-  // the playhead is - laid out as the render will lay them out.
-  const shown = overlays.filter((o) => (t >= o.at && t < o.at + o.seconds) || o.id === selectedPic)
-  const boxes = previewBoxes(
-    shown.map((o) => ({ ...o, aspect: picAspect[o.id] })),
-    aspect,
-  )
+  const goToHeadline = () => {
+    stop()
+    setSelectedPic(HEADLINE)
+    const from = keepRef.current[0]?.start ?? 0
+    scrollTo(from)
+    followTime(from)
+    seek(from)
+  }
+
+  // What is up at the playhead - and the one being edited, wherever the
+  // playhead is - on the finished video's own clock, as the render times it.
+  const outT = outputTime(keep, t)
+  const upAt = (o: ManualPicture) => {
+    const from = outputTime(keep, o.at)
+    return outT >= from && outT < from + o.seconds
+  }
+  const shown = overlays.filter((o) => !isText(o) && (upAt(o) || o.id === selectedPic))
+  // Pictures laid out as the render lays them out (side by side when they
+  // come up together); each video in its own box.
+  const boxes: Record<string, { left: number; top: number; width: number; height: number }> = {
+    ...previewBoxes(
+      shown.filter((o) => !isVideo(o)).map((o) => ({ ...o, aspect: picAspect[o.id] })),
+      aspect,
+    ),
+  }
+  for (const o of shown.filter(isVideo)) Object.assign(boxes, previewBoxes([{ ...o, aspect: picAspect[o.id] ?? 16 / 9 }], aspect))
   const selectedPicture = overlays.find((o) => o.id === selectedPic) ?? null
+
+  // His words and the headline, laid out by the render's own code at the
+  // frame's size - only again when they or the frame change.
+  const measure = useMemo(() => (typeof document === 'undefined' ? null : document.createElement('canvas').getContext('2d')), [])
+  const lookKey = headline ? JSON.stringify(headline.look) : ''
+  const headlineLayout = useMemo(
+    () =>
+      headline && headline.look.text.trim() && measure && frameSize.width > 0
+        ? layoutHeadline(measure, frameSize.width, frameSize.height, { ...headline.look, place: headlinePlace })
+        : null,
+    // The look is compared by what it says.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [lookKey, headlinePlace, frameSize, fontReady, measure],
+  )
+  const textKey = JSON.stringify(overlays.filter(isText).map((o) => [o.id, o.source, o.center, o.widthPct]))
+  const textLayouts = useMemo(() => {
+    const out = new Map<string, HeadlineLayout>()
+    if (!measure || frameSize.width === 0) return out
+    for (const o of overlays) {
+      const words = textHeadline(o)
+      const layout = words ? layoutHeadline(measure, frameSize.width, frameSize.height, words) : null
+      if (layout) out.set(o.id, layout)
+    }
+    return out
+    // Only the words' own fields change their layout.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [textKey, frameSize, fontReady, measure])
+  const headlineOn = headlineLayout !== null && (outT < (headline?.seconds ?? 0) || selectedPic === HEADLINE)
+  const shownTexts = overlays.filter((o) => textLayouts.has(o.id) && (upAt(o) || o.id === selectedPic))
+  drawn.current = {
+    layouts: [...shownTexts.map((o) => textLayouts.get(o.id)!), ...(headlineOn && headlineLayout ? [headlineLayout] : [])],
+    width: frameSize.width,
+  }
+  const drawnKey = `${headlineOn}|${shownTexts.map((o) => o.id).join(',')}|${textKey}|${JSON.stringify(headlinePlace)}|${frameSize.width}x${frameSize.height}|${fontReady}|${lookKey}`
+  useEffect(() => {
+    repaint()
+  }, [drawnKey, repaint])
+  // Where a finger can take hold of the words and the headline.
+  const holds = frameSize.width > 0
+    ? [
+        ...shownTexts.map((o) => ({ id: o.id, layout: textLayouts.get(o.id)! })),
+        ...(headlineOn && headlineLayout ? [{ id: HEADLINE, layout: headlineLayout }] : []),
+      ].map(({ id, layout }) => ({ id, box: fingerSized(boxOfText(layout, frameSize.width, frameSize.height), frameSize.width, frameSize.height) }))
+    : []
+  const rows = useMemo(() => overlayRows(overlays), [overlays])
+
+  // The videos he put on play along with the video, on its clock, and sit
+  // on their frame while he scrolls.
+  useEffect(() => {
+    for (const o of overlays) {
+      if (!isVideo(o)) continue
+      const el = videoEls.current.get(o.id)
+      if (!el || el.readyState < 1) continue
+      const local = outT - outputTime(keep, o.at)
+      if (local < 0 || local >= o.seconds) {
+        if (!el.paused) el.pause()
+        if (o.id === selectedPic && Math.abs(el.currentTime - Math.max(0, local < 0 ? 0 : o.seconds - 0.05)) > 0.05) el.currentTime = local < 0 ? 0 : Math.max(0, o.seconds - 0.05)
+        continue
+      }
+      if (playing) {
+        if (el.paused) {
+          el.currentTime = local
+          void el.play().catch(() => {})
+        } else if (Math.abs(el.currentTime - local) > 0.3) el.currentTime = local
+      } else {
+        if (!el.paused) el.pause()
+        if (Math.abs(el.currentTime - local) > 0.04) el.currentTime = local
+      }
+    }
+  }, [outT, playing, overlays, keep, selectedPic])
 
   /** Two fingers' middle and spread, in the frame's pixels. */
   const fingers = (points: Map<number, { x: number; y: number }>) => {
@@ -636,21 +947,56 @@ export function CutsEditor({
     const spread = list.length > 1 ? Math.hypot(list[0].x - list[1].x, list[0].y - list[1].y) : 0
     return { mid, spread }
   }
-  /** A finger down on a picture: one moves it, two pinch it bigger or smaller. */
-  const onPicDown = (o: ManualPicture, e: ReactPointerEvent) => {
-    e.stopPropagation()
-    if (o.id !== selectedPic) {
-      setSelectedPic(o.id)
+  /** Where a thing on the video is and how big, to move it from. */
+  const holdOf = (id: string): { center: { x: number; y: number }; size: number } | null => {
+    if (id === HEADLINE) {
+      if (!headlineLayout || frameSize.width === 0) return null
+      const place = headlinePlaceRef.current
+      const middle = {
+        x: headlineLayout.centerX / frameSize.width,
+        y: (headlineLayout.top + (headlineLayout.lines.length * headlineLayout.lineHeight) / 2) / frameSize.height,
+      }
+      return { center: place ? { x: place.x, y: place.y } : middle, size: place?.scale ?? 1 }
+    }
+    const o = overlaysRef.current.find((x) => x.id === id)
+    if (!o) return null
+    const box = boxes[id]
+    return { center: o.center ?? (isText(o) ? TEXT_START : box ? centerOf(box) : { x: 0.5, y: 0.42 }), size: o.widthPct }
+  }
+  const limitsOf = (id: string): { min: number; max: number } => {
+    if (id === HEADLINE) return HEADLINE_SCALE
+    const o = overlaysRef.current.find((x) => x.id === id)
+    return o && isText(o) ? TEXT_WIDTH : PICTURE_WIDTH
+  }
+  const moveTo = (id: string, center: { x: number; y: number }, size: number) => {
+    if (id === HEADLINE) {
+      const next = { x: center.x, y: center.y, scale: Math.round(size * 100) / 100 }
+      headlinePlaceRef.current = next
+      setHeadlinePlace(next)
       return
     }
-    ;(e.currentTarget as HTMLElement).setPointerCapture?.(e.pointerId)
-    const points = gesture.current?.id === o.id ? gesture.current.pointers : new Map<number, { x: number; y: number }>()
-    points.set(e.pointerId, { x: e.clientX, y: e.clientY })
-    const box = boxes[o.id]
-    const { mid, spread } = fingers(points)
-    gesture.current = { id: o.id, pointers: points, from: { center: o.center ?? (box ? centerOf(box) : { x: 0.5, y: 0.42 }), widthPct: o.widthPct, mid, spread } }
+    setOverlays((list) => list.map((x) => (x.id === id ? { ...x, center, widthPct: Math.round(size) } : x)))
   }
-  const onPicMove = (e: ReactPointerEvent) => {
+  /** A finger down on something on the video: it is picked, one finger
+   *  moves it, two pinch it bigger or smaller. */
+  const onItemDown = (id: string, e: ReactPointerEvent) => {
+    e.stopPropagation()
+    if (id !== selectedPic) setSelectedPic(id)
+    ;(e.currentTarget as HTMLElement).setPointerCapture?.(e.pointerId)
+    const points = gesture.current?.id === id ? gesture.current.pointers : new Map<number, { x: number; y: number }>()
+    points.set(e.pointerId, { x: e.clientX, y: e.clientY })
+    const hold = holdOf(id)
+    if (!hold) return
+    const { mid, spread } = fingers(points)
+    gesture.current = { id, pointers: points, from: { ...hold, mid, spread }, moved: gesture.current?.id === id ? gesture.current.moved : false }
+  }
+  /** A second finger anywhere on the video pinches what the first holds. */
+  const onFrameDown = (e: ReactPointerEvent) => {
+    const g = gesture.current
+    if (!g || g.pointers.has(e.pointerId)) return
+    onItemDown(g.id, e)
+  }
+  const onItemMove = (e: ReactPointerEvent) => {
     const g = gesture.current
     const frameEl = frameBox.current
     if (!g || !g.pointers.has(e.pointerId) || !frameEl) return
@@ -658,28 +1004,37 @@ export function CutsEditor({
     g.pointers.set(e.pointerId, { x: e.clientX, y: e.clientY })
     const rect = frameEl.getBoundingClientRect()
     const { mid, spread } = fingers(g.pointers)
+    if (!g.moved && Math.hypot(mid.x - g.from.mid.x, mid.y - g.from.mid.y) < 3 && Math.abs(spread - g.from.spread) < 3) return
+    g.moved = true
     const center = {
       x: Math.min(1, Math.max(0, g.from.center.x + (mid.x - g.from.mid.x) / rect.width)),
       y: Math.min(1, Math.max(0, g.from.center.y + (mid.y - g.from.mid.y) / rect.height)),
     }
-    const widthPct =
-      g.pointers.size > 1 && g.from.spread > 0
-        ? Math.round(Math.min(PICTURE_WIDTH.max, Math.max(PICTURE_WIDTH.min, (g.from.widthPct * spread) / g.from.spread)))
-        : g.from.widthPct
-    setOverlays((list) => list.map((x) => (x.id === g.id ? { ...x, center, widthPct } : x)))
+    const limits = limitsOf(g.id)
+    const size = g.pointers.size > 1 && g.from.spread > 0 ? Math.min(limits.max, Math.max(limits.min, (g.from.size * spread) / g.from.spread)) : g.from.size
+    moveTo(g.id, center, size)
   }
-  const onPicUp = (e: ReactPointerEvent) => {
+  const onItemUp = (e: ReactPointerEvent) => {
     const g = gesture.current
-    if (!g) return
+    if (!g || !g.pointers.has(e.pointerId)) return
     e.stopPropagation()
     g.pointers.delete(e.pointerId)
-    if (g.pointers.size === 0) gesture.current = null
-    else {
-      // One finger left after a pinch: it moves on from here.
-      const picture = overlays.find((x) => x.id === g.id)
-      const { mid, spread } = fingers(g.pointers)
-      if (picture) g.from = { center: picture.center ?? g.from.center, widthPct: picture.widthPct, mid, spread }
+    lastGesture.current = performance.now()
+    if (g.pointers.size === 0) {
+      gesture.current = null
+      if (g.id === HEADLINE && g.moved) headline?.onPlace(headlinePlaceRef.current)
+      return
     }
+    // One finger left after a pinch: it moves on from here.
+    const hold = holdOf(g.id)
+    const { mid, spread } = fingers(g.pointers)
+    if (hold) g.from = { ...hold, mid, spread }
+  }
+  /** The headline back in its angle's spot, its own size. */
+  const headlineBack = () => {
+    headlinePlaceRef.current = null
+    setHeadlinePlace(null)
+    headline?.onPlace(null)
   }
 
   /** Plays just this stretch, with sound, a moment either side - the way to
@@ -896,18 +1251,30 @@ export function CutsEditor({
           </button>
           <div className="cuts-head-actions">
             {headActions !== undefined ? headActions : onCaptions ? (
-              <button type="button" className="btn small" onClick={() => onCaptions(keep, overlays, newFiles.current)}>
+              <button type="button" className="btn small" onClick={() => onCaptions(keep, withWords(overlays), newFiles.current)}>
                 Captions
               </button>
             ) : null}
             {headActions !== undefined ? null : (
-              <button type="button" className="btn small primary" onClick={() => onDone(keep, overlays, newFiles.current)}>
+              <button type="button" className="btn small primary" onClick={() => onDone(keep, withWords(overlays), newFiles.current)}>
                 Done
               </button>
             )}
           </div>
         </div>
-        <div className="review-frame" ref={frameBox} style={{ aspectRatio: String(aspect) }} onClick={play}>
+        <div
+          className="review-frame"
+          ref={frameBox}
+          style={{ aspectRatio: String(aspect) }}
+          onClick={() => {
+            // The finger that let go of a pinch isn't a tap to play.
+            if (performance.now() - lastGesture.current > 400) play()
+          }}
+          onPointerDown={onFrameDown}
+          onPointerMove={onItemMove}
+          onPointerUp={onItemUp}
+          onPointerCancel={onItemUp}
+        >
           {url ? (
             <video
               ref={video}
@@ -930,20 +1297,48 @@ export function CutsEditor({
               {missing ? "This video isn't on the phone any more, so there's nothing to cut." : 'Opening the video…'}
             </div>
           )}
-          {shown.map((o) =>
-            urls[o.id] && boxes[o.id] ? (
+          {shown.map((o) => {
+            const box = boxes[o.id]
+            if (!urls[o.id] || !box) return null
+            const style = { left: `${box.left * 100}%`, top: `${box.top * 100}%`, width: `${box.width * 100}%`, height: `${box.height * 100}%` }
+            const className = `cuts-pic-preview${o.id === selectedPic ? ' editing' : ''}`
+            const hold = {
+              onClick: (e: { stopPropagation: () => void }) => e.stopPropagation(),
+              onPointerDown: (e: ReactPointerEvent) => onItemDown(o.id, e),
+              onPointerMove: onItemMove,
+              onPointerUp: onItemUp,
+              onPointerCancel: onItemUp,
+            }
+            return isVideo(o) ? (
+              <video
+                key={o.id}
+                ref={(el) => {
+                  if (el) videoEls.current.set(o.id, el)
+                  else videoEls.current.delete(o.id)
+                }}
+                className={`${className} cuts-video-preview`}
+                src={urls[o.id]}
+                playsInline
+                muted
+                preload="auto"
+                style={style}
+                onLoadedMetadata={(e) => {
+                  const v = e.currentTarget
+                  if (v.videoWidth && v.videoHeight) {
+                    const ratio = v.videoWidth / v.videoHeight
+                    setPicAspect((a) => (a[o.id] === ratio ? a : { ...a, [o.id]: ratio }))
+                  }
+                }}
+                {...hold}
+              />
+            ) : (
               <img
                 key={o.id}
-                className={`cuts-pic-preview${o.id === selectedPic ? ' editing' : ''}`}
+                className={className}
                 alt=""
                 src={urls[o.id]}
                 draggable={false}
-                style={{
-                  left: `${boxes[o.id].left * 100}%`,
-                  top: `${boxes[o.id].top * 100}%`,
-                  width: `${boxes[o.id].width * 100}%`,
-                  height: `${boxes[o.id].height * 100}%`,
-                }}
+                style={style}
                 onLoad={(e) => {
                   const img = e.currentTarget
                   if (img.naturalWidth && img.naturalHeight) {
@@ -951,15 +1346,25 @@ export function CutsEditor({
                     setPicAspect((a) => (a[o.id] === ratio ? a : { ...a, [o.id]: ratio }))
                   }
                 }}
-                onClick={(e) => e.stopPropagation()}
-                onPointerDown={(e) => onPicDown(o, e)}
-                onPointerMove={onPicMove}
-                onPointerUp={onPicUp}
-                onPointerCancel={onPicUp}
+                {...hold}
               />
-            ) : null,
-          )}
-          {paintOver ? <canvas ref={overCanvas} aria-hidden /> : null}
+            )
+          })}
+          <canvas ref={overCanvas} aria-hidden />
+          {holds.map(({ id, box }) => (
+            <div
+              key={id}
+              role="button"
+              aria-label={id === HEADLINE ? 'The headline: drag to move it' : 'Your words: drag to move them'}
+              className={`cuts-text-hold${id === selectedPic ? ' editing' : ''}`}
+              style={{ left: `${box.left * 100}%`, top: `${box.top * 100}%`, width: `${box.width * 100}%`, height: `${box.height * 100}%` }}
+              onClick={(e) => e.stopPropagation()}
+              onPointerDown={(e) => onItemDown(id, e)}
+              onPointerMove={onItemMove}
+              onPointerUp={onItemUp}
+              onPointerCancel={onItemUp}
+            />
+          ))}
           {inPart < 0 ? <span className="cuts-out">Cut out</span> : null}
           {url ? (
             <span className="review-playing" aria-hidden>
@@ -972,7 +1377,7 @@ export function CutsEditor({
       <div className="cuts-strip-wrap">
         <div className="cuts-strip" ref={strip} onScroll={onScroll} onTouchStart={takeOver} onWheel={takeOver}>
           <div className="cuts-track">
-            <div className="cuts-ruler" ref={ruler} style={{ width: duration * px }} onClick={() => setSelected(null)}>
+            <div className="cuts-ruler" ref={ruler} style={{ width: duration * px, height: 164 + rows.rows * 24 }} onClick={() => setSelected(null)}>
               <Marks px={px} from={marksFrom} to={marksTo} />
               <Track
                 keep={keep}
@@ -991,15 +1396,15 @@ export function CutsEditor({
                 <button
                   key={o.id}
                   type="button"
-                  aria-label={`Picture at ${formatPrecise(o.at)}`}
-                  className={`cuts-pic${selectedPic === o.id ? ' on' : ''}`}
-                  style={{ left: o.at * px, width: Math.max(24, o.seconds * px) }}
+                  aria-label={`${kindOf(o)} at ${formatPrecise(o.at)}`}
+                  className={`cuts-pic${selectedPic === o.id ? ' on' : ''}${isText(o) ? ' words' : ''}`}
+                  style={{ left: o.at * px, width: Math.max(24, o.seconds * px), top: 162 + (rows.row.get(o.id) ?? 0) * 24 }}
                   onClick={(e) => {
                     e.stopPropagation()
                     goToPicture(o)
                   }}
                 >
-                  {urls[o.id] ? <img alt="" src={urls[o.id]} /> : null}
+                  <Thumb o={o} url={urls[o.id]} />
                 </button>
               ))}
             </div>
@@ -1040,20 +1445,81 @@ export function CutsEditor({
         <button type="button" className="btn" disabled={history.length === 0} onClick={undo}>
           Undo
         </button>
+      </div>
+      <div className="cuts-add">
+        <button type="button" className="btn" onClick={addText}>
+          + Text
+        </button>
         <button type="button" className={`btn${picking ? ' primary' : ''}`} aria-expanded={picking} onClick={togglePicker}>
-          + Picture
+          + Overlay
         </button>
       </div>
 
-      {selectedPicture ? (
-        <div className="pic-edit" aria-label="The picture you picked">
+      {selectedPic === HEADLINE && headline ? (
+        <div className="pic-edit" aria-label="The headline">
           <div className="pic-edit-head">
-            {urls[selectedPicture.id] ? <img alt="" src={urls[selectedPicture.id]} /> : <span className="pic-missing">?</span>}
-            <span className="pic-row-title">Picture at {formatPrecise(selectedPicture.at)}</span>
+            <span className="pic-row-title">Headline</span>
             <button type="button" className="linkbtn" onClick={() => setSelectedPic(null)}>
               Done
             </button>
           </div>
+          <label className="slider">
+            <span>Size</span>
+            <input
+              type="range"
+              min={Math.round(HEADLINE_SCALE.min * 100)}
+              max={Math.round(HEADLINE_SCALE.max * 100)}
+              step={5}
+              value={Math.round((headlinePlace?.scale ?? 1) * 100)}
+              aria-label="How big the headline is"
+              onChange={(e) => {
+                const hold = holdOf(HEADLINE)
+                if (hold) moveTo(HEADLINE, hold.center, Number(e.target.value) / 100)
+              }}
+              onPointerUp={() => headline.onPlace(headlinePlaceRef.current)}
+              onBlur={() => headline.onPlace(headlinePlaceRef.current)}
+            />
+            <output>{Math.round((headlinePlace?.scale ?? 1) * 100)}%</output>
+          </label>
+          <p className="hint">Drag it on the video to move it, pinch it to make it bigger or smaller. The next videos of this angle start with it here too.</p>
+          {headlinePlace ? (
+            <div className="actions-row">
+              <button type="button" className="btn small" onClick={headlineBack}>
+                Put back
+              </button>
+            </div>
+          ) : null}
+        </div>
+      ) : selectedPicture ? (
+        <div className="pic-edit" aria-label={`The ${kindOf(selectedPicture).toLowerCase()} you picked`}>
+          <div className="pic-edit-head">
+            {isText(selectedPicture) ? null : <Thumb o={selectedPicture} url={urls[selectedPicture.id]} />}
+            <span className="pic-row-title">
+              {kindOf(selectedPicture)} at {formatPrecise(selectedPicture.at)}
+            </span>
+            <button type="button" className="linkbtn" onClick={() => setSelectedPic(null)}>
+              Done
+            </button>
+          </div>
+          {selectedPicture.source.kind === 'text' ? (
+            <>
+              <input
+                type="text"
+                className="words-input"
+                value={selectedPicture.source.text}
+                maxLength={LIMITS.headlineChars}
+                placeholder="Type your words"
+                aria-label="Your words"
+                autoFocus={newText === selectedPicture.id}
+                onFocus={() => setNewText(null)}
+                onChange={(e) => setWords(selectedPicture.id, { text: e.target.value })}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') e.currentTarget.blur()
+                }}
+              />
+              <HeadlineLook value={selectedPicture.source.style} onPick={(style) => setWords(selectedPicture.id, { style })} />
+            </>
+          ) : null}
           <div className="pic-edit-row">
             <span className="label">On screen for</span>
             <div className="stepper">
@@ -1073,8 +1539,8 @@ export function CutsEditor({
                 type="button"
                 className="btn small icon-btn"
                 aria-label="Longer"
-                disabled={selectedPicture.seconds >= PICTURE_SECONDS.max}
-                onClick={() => updatePicture(selectedPicture.id, { seconds: Math.min(PICTURE_SECONDS.max, selectedPicture.seconds + PICTURE_SECONDS.step) })}
+                disabled={selectedPicture.seconds >= longestFor(selectedPicture)}
+                onClick={() => updatePicture(selectedPicture.id, { seconds: Math.min(longestFor(selectedPicture), selectedPicture.seconds + PICTURE_SECONDS.step) })}
               >
                 +
               </button>
@@ -1084,16 +1550,19 @@ export function CutsEditor({
             <span>Size</span>
             <input
               type="range"
-              min={PICTURE_WIDTH.min}
-              max={PICTURE_WIDTH.max}
+              min={isText(selectedPicture) ? TEXT_WIDTH.min : PICTURE_WIDTH.min}
+              max={isText(selectedPicture) ? TEXT_WIDTH.max : PICTURE_WIDTH.max}
               step={1}
               value={selectedPicture.widthPct}
-              aria-label="How big the picture is"
+              aria-label={`How big the ${kindOf(selectedPicture).toLowerCase()} is`}
               onChange={(e) => updatePicture(selectedPicture.id, { widthPct: Number(e.target.value) })}
             />
-            <output>{selectedPicture.widthPct}%</output>
+            <output>{isText(selectedPicture) ? Math.round((selectedPicture.widthPct / TEXT_BASE_PCT) * 100) : selectedPicture.widthPct}%</output>
           </label>
-          <p className="hint">Drag it on the video to move it, pinch it to make it bigger or smaller.</p>
+          <p className="hint">
+            {isText(selectedPicture) ? 'Drag them' : 'Drag it'} on the video to move {isText(selectedPicture) ? 'them' : 'it'}, pinch to make{' '}
+            {isText(selectedPicture) ? 'them' : 'it'} bigger or smaller.{isVideo(selectedPicture) ? ' Plays without its sound.' : ''}
+          </p>
           <div className="actions-row">
             <button
               type="button"
@@ -1106,22 +1575,28 @@ export function CutsEditor({
             >
               Start it here
             </button>
-            {selectedPicture.center ? (
+            {selectedPicture.center && !isText(selectedPicture) ? (
               <button type="button" className="btn small" onClick={() => updatePicture(selectedPicture.id, { center: undefined })}>
                 Put back
               </button>
             ) : null}
             <button type="button" className="btn small danger" onClick={() => removePicture(selectedPicture.id)}>
-              Delete picture
+              Delete {kindOf(selectedPicture).toLowerCase()}
             </button>
           </div>
         </div>
       ) : null}
-      {overlays.length > 0 ? (
-        <div className="pic-chips" aria-label="Pictures on this video">
+      {overlays.length > 0 || headlineLayout ? (
+        <div className="pic-chips" aria-label="On this video">
+          {headlineLayout ? (
+            <button type="button" aria-label="Headline" className={`pic-chip${selectedPic === HEADLINE ? ' on' : ''}`} onClick={goToHeadline}>
+              <span className="pic-glyph">H</span>
+              <span>Headline</span>
+            </button>
+          ) : null}
           {overlays.map((o) => (
             <button key={o.id} type="button" className={`pic-chip${selectedPic === o.id ? ' on' : ''}`} onClick={() => goToPicture(o)}>
-              {urls[o.id] ? <img alt="" src={urls[o.id]} /> : <span className="pic-missing">?</span>}
+              <Thumb o={o} url={urls[o.id]} />
               <span>{formatPrecise(o.at)}</span>
             </button>
           ))}
@@ -1134,19 +1609,22 @@ export function CutsEditor({
       ) : null}
       {picking ? (
         <div className="pic-picker" ref={picPanel}>
-          <div className="group-title">Put a picture on at {formatPrecise(t)}</div>
+          <div className="group-title">Put on at {formatPrecise(t)}</div>
           <button type="button" className="btn wide pic-phone" onClick={() => phonePicker.current?.click()}>
-            From my phone
+            A photo or video from my phone
           </button>
           <input
             ref={phonePicker}
             type="file"
-            accept="image/*"
+            accept="image/*,video/*"
             hidden
             onChange={(e) => {
               const file = e.target.files?.[0]
               e.target.value = ''
-              if (file) addPicture({ kind: 'phone', name: file.name, type: file.type || 'image/png' }, file)
+              if (!file) return
+              const type = file.type || (/\.(mov|mp4|m4v)$/i.test(file.name) ? 'video/mp4' : 'image/png')
+              if (type.startsWith('video/')) void lengthOf(file).then((length) => addOverlay({ kind: 'phone', name: file.name, type }, file, length))
+              else addOverlay({ kind: 'phone', name: file.name, type }, file)
             }}
           />
           {bank.length > 0 ? (
@@ -1154,16 +1632,30 @@ export function CutsEditor({
               <span className="hint">Or from the picture bank:</span>
               <div className="pic-grid">
                 {bank.map((b) => (
-                  <button key={b.id} type="button" className="pic-cell" onClick={() => addPicture({ kind: 'bank', pictureId: b.id })}>
+                  <button key={b.id} type="button" className="pic-cell" onClick={() => addOverlay({ kind: 'bank', pictureId: b.id })}>
                     {bankUrls[b.id] ? <img alt="" src={bankUrls[b.id]} /> : null}
                     <span>{b.words[0] ?? ''}</span>
                   </button>
                 ))}
               </div>
             </>
-          ) : (
-            <p className="hint">The picture bank is empty. Add pictures in the Pictures tab to pick from them here.</p>
-          )}
+          ) : null}
+          {videoBank.length > 0 ? (
+            <>
+              <span className="hint">Or from the video bank:</span>
+              <div className="pic-grid">
+                {videoBank.map((v) => (
+                  <button key={v.id} type="button" className="pic-cell" onClick={() => addOverlay({ kind: 'video', videoId: v.id }, undefined, v.seconds)}>
+                    {bankUrls[`video:${v.id}`] ? <img alt="" src={bankUrls[`video:${v.id}`]} /> : <span className="pic-glyph">▶</span>}
+                    <span>{v.name}</span>
+                  </button>
+                ))}
+              </div>
+            </>
+          ) : null}
+          {bank.length === 0 && videoBank.length === 0 ? (
+            <p className="hint">The banks are empty. Pictures and videos kept in the Bank tab can be picked here too.</p>
+          ) : null}
           <button type="button" className="linkbtn" onClick={() => setPicking(false)}>
             Cancel
           </button>

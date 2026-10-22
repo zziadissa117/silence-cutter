@@ -23,6 +23,7 @@ import {
   type Campaign,
   type CampaignPosting,
   type CampaignV1,
+  type HeadlinePlace,
   type HeadlineStyle,
   type PictureCue,
 } from './look'
@@ -90,6 +91,10 @@ interface StoredJob {
     /** This video's headline look - White box, Outline or Snapchat; absent =
      *  its angle's. */
     headlineStyle?: HeadlineStyle
+    /** Where he moved this video's headline in the edit screen; null = its
+     *  angle's spot; absent = where he last moved one of its angle's
+     *  (headlinePlace.ts). */
+    headlinePlace?: HeadlinePlace | null
     /** Where this video's captions sit; absent = the Settings default. */
     captionPosition?: CaptionPosition
     /** How big this video's captions are; absent = the Settings default. */

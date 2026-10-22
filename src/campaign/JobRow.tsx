@@ -291,6 +291,12 @@ export function JobRow({
                   No video in the middle for "{result.clips.notSaid.join('", "')}" - not said in this video.
                 </div>
               ) : null}
+              {result.overlaysLeftOut ? (
+                <div className="hint warn-text">
+                  Made without {result.overlaysLeftOut === 1 ? 'a video' : `${result.overlaysLeftOut} videos`} you put on - this phone couldn't play{' '}
+                  {result.overlaysLeftOut === 1 ? 'it' : 'them'} here.
+                </div>
+              ) : null}
               {result.clips?.middleLeftOut ? (
                 <div className="hint warn-text">Made without a video in the middle - it isn't on this phone any more, or couldn't be read.</div>
               ) : null}

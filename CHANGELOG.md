@@ -3,6 +3,29 @@
 Newest first. Every change says what it does, how to use it, and how it works
 underneath. Kept up to date with each commit.
 
+## The edit screen works like TikTok's editor: move the headline, add text, put a picture or video over you
+Only ./deploy.sh is needed; then close the Cutter and open it again.
+**Now, on the edit screen (Captions):**
+- The headline is on the video where it will be. Drag it anywhere, pinch it (or its Size slider) bigger or
+  smaller. Tap the Headline chip under the timeline to find it again; Put back returns it to the angle's spot.
+  The next videos of the same angle start with it where you last put it (on this phone), until you move or put
+  it back. A video keeps the spot it was approved with.
+- **+ Text** puts your own words on at the playhead, in the middle, in the headline's look (White box /
+  Outline / Snapchat to change). Type, drag, pinch, set how long it stays up, Start it here, Delete words.
+  Words left empty go away by themselves.
+- **+ Overlay** (was + Picture): a photo or video from your phone, a picture from the picture bank, or a video
+  from the video bank. A video plays over you, muted, in its own box, for its own length (up to a minute);
+  drag and pinch it like a picture. Pictures and videos are now dragged straight away, no first tap needed.
+- Things that are up at the same time get their own row on the timeline, so they no longer cover each other.
+- All of it is in the made video exactly as on the screen: same layout code for the preview and the render.
+**Checked here:** a real render in Chrome (H.264) with a moved, enlarged headline, words from 1-3 s and a video
+overlay from 2-4 s - each where it was put, gone after; the editor at 440x956 with a finger drag of the
+headline. Not checked on an iPhone: Safari playing a second video in the editor, and the render on the phone.
+**How:** `manualPictures.ts` (`source.kind` `text` / `video`, `isText`/`isVideo`, `textHeadline`, `longestFor`),
+`render.ts` (`texts`, `overlays`, `overlaysLeftOut`), `pipeline.make` (`byHand`), `overlay.layoutHeadline`
+(`place`), `look.withHeadlinePlace`, `headlinePlace.ts`, `CutsEditor.tsx` (`headline`, `videoBank`,
+`loadVideo`, `overlayRows`, `.cuts-text-hold`), `CampaignApp.headlineEditFor/setHeadlinePlace/byHandFor`.
+
 ## Videos screen: one Captions button asks everything, the row is clean
 Only ./deploy.sh is needed; then close the Cutter and open it again.
 **Now:**

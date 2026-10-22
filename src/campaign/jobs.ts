@@ -3,7 +3,7 @@
 
 import type { PopPosition } from './popVideo'
 import type { Range, SilenceSettings } from '../media/silenceMath'
-import type { Angle, Campaign, HeadlineStyle } from './look'
+import type { Angle, Campaign, HeadlinePlace, HeadlineStyle } from './look'
 import type { CampaignResult } from './pipeline'
 import type { BankFile } from './batch'
 import type { CaptionPosition, CaptionSize, CaptionStyle, CaptionWord } from './captions'
@@ -53,6 +53,10 @@ export type Job = {
     overlays?: ManualPicture[]
     /** This video's headline look; absent = its angle's. */
     headlineStyle?: HeadlineStyle
+    /** Where he moved this video's headline in the edit screen; null = its
+     *  angle's spot; absent = where he last moved one of its angle's
+     *  (headlinePlace.ts). */
+    headlinePlace?: HeadlinePlace | null
     /** Where this video's captions sit; absent = the Settings default. */
     captionPosition?: CaptionPosition
     /** How big this video's captions are; absent = the Settings default. */

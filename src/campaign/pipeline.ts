@@ -28,7 +28,7 @@ import {
   type PopCue,
   type Campaign,
 } from './look'
-import { manualCues, type ManualPicture } from './manualPictures'
+import { isText, isVideo, manualCues, textHeadline, type ManualPicture } from './manualPictures'
 import { wordMoments } from './moments'
 import { cutNoiseOn } from './noiseSetting'
 import { captionWords, type CaptionPosition, type CaptionSize, type CaptionStyle, type CaptionWord } from './captions'
@@ -103,6 +103,8 @@ export interface CampaignResult {
   popsAt?: number[]
   /** Bank videos he said that couldn't be played and were left out. */
   popsLeftOut?: number
+  /** Videos he put on in the edit screen that couldn't be played here. */
+  overlaysLeftOut?: number
 }
 
 /** The bank videos a talking video may pop up, and how they look on it. */
@@ -213,6 +215,9 @@ export async function make(
   captionStyle: CaptionStyle = 'word',
   /** Bank videos that pop up when their words are said. */
   pop: PopSettings = NO_POPS,
+  /** Words and videos he put on this video by hand in the edit screen -
+   *  each video with its file. */
+  byHand: { texts?: readonly ManualPicture[]; videos?: readonly { picture: ManualPicture; file: Blob }[] } = {},
 ): Promise<CampaignResult> {
   refuseBroken(campaign, angle)
   const base = videoLook(campaign, angle, bank, defaults, skipPictures, pop.videos)
@@ -267,6 +272,13 @@ export async function make(
       clips: { before: clips.before, after: clips.after },
       inserts: middle.placed.map((p) => ({ after: p.after, file: clips.cues![p.cue].file })),
       pops: { clips: popClips, sizePct: pop.sizePct, position: pop.position },
+      texts: (byHand.texts ?? []).filter(isText).flatMap((m) => {
+        const headline = textHeadline(m)
+        return headline ? [{ headline, at: m.at, seconds: m.seconds }] : []
+      }),
+      overlays: (byHand.videos ?? [])
+        .filter((v) => isVideo(v.picture))
+        .map(({ picture, file }) => ({ file, at: picture.at, seconds: picture.seconds, position: picture.position, widthPct: picture.widthPct, center: picture.center })),
     },
     onRenderProgress,
   )
@@ -294,6 +306,7 @@ export async function make(
     ...(track ? { music: track.name } : {}),
     ...(rendered.popsAt.length > 0 ? { popsAt: rendered.popsAt } : {}),
     ...(popsLeftOut > 0 ? { popsLeftOut } : {}),
+    ...(rendered.overlaysLeftOut > 0 ? { overlaysLeftOut: rendered.overlaysLeftOut } : {}),
     logoAt: rendered.logoAt,
     picturesAt: [...rendered.picturesAt.flat(), ...rendered.bankAt].sort((a, b) => a - b),
     headline: headlineText,

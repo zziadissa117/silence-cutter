@@ -61,7 +61,8 @@ import { ColourCheck } from './colourCheck'
 import { cutEdges, fadeAtCuts, nearCut } from './cutFades'
 import { headlineFontReady } from './headlineFont'
 import { framedSize, landscapeMode, makeBlurBackdrop, planFrame } from './framing916'
-import { TOGETHER_SEC, cameUpTogether, drawHeadline, drawLogo, drawPoppedLogo, layoutHeadline, layoutLogo, sideBySide } from './overlay'
+import { TOGETHER_SEC, cameUpTogether, drawHeadline, drawLogo, drawPoppedLogo, layoutHeadline, layoutLogo, sideBySide, type LogoLayout } from './overlay'
+import type { HeadlinePlace, HeadlineStyle, LogoPosition } from './look'
 import { dbToGain, mixInto, musicProblem, prepareMusic, prepareSound, type PlacedSound, type PreparedSound } from './sounds'
 import { MomentPlacer, inWindow } from './timeline'
 import { MusicBed, musicGain, trackLoudness, type MusicLevel } from './music'
@@ -169,6 +170,12 @@ export interface CampaignRenderInput {
     sizePct: number
     position: PopPosition
   }
+  /** Words he put on in the edit screen: each laid out as a headline where
+   *  he left it, up from `at` (on the raw video) for `seconds`. */
+  texts?: { headline: { text: string; style: HeadlineStyle; position: 'middle'; size: 'medium'; place: HeadlinePlace }; at: number; seconds: number }[]
+  /** Videos he put over himself in the edit screen: muted, each in its box
+   *  (laid out as a picture is), from `at` for `seconds` or to its end. */
+  overlays?: { file: Blob; at: number; seconds: number; position: LogoPosition; widthPct: number; center?: { x: number; y: number } }[]
 }
 
 export interface CampaignRenderResult {
@@ -190,6 +197,8 @@ export interface CampaignRenderResult {
   popsAt: number[]
   /** Pop-up videos that couldn't be played here and were left out. */
   popsLeftOut: number
+  /** Videos he put on that couldn't be played here and were left out. */
+  overlaysLeftOut: number
 }
 
 export async function renderCampaignCut(
@@ -215,6 +224,8 @@ export async function renderCampaignCut(
     clips: joining = {},
     inserts = [],
     pops,
+    texts: handTexts = [],
+    overlays: handVideos = [],
   }: CampaignRenderInput,
   onProgress?: (fraction: number) => void,
 ): Promise<CampaignRenderResult> {
@@ -240,6 +251,7 @@ export async function renderCampaignCut(
   const joined: Clip[] = []
   const popInputs: Input[] = []
   let popPlayer: PopFrames<WrappedCanvas> | null = null
+  let overlayPlayer: PopFrames<WrappedCanvas> | null = null
 
   try {
     const [videoTrack, audioTrack] = await Promise.all([input.getPrimaryVideoTrack(), input.getPrimaryAudioTrack()])
@@ -449,6 +461,38 @@ export async function renderCampaignCut(
     if (popClips.length > 0) popPlayer = new PopFrames((i) => popClips[i].open())
     let popsOn = popClips.length > 0
 
+    // His own words, laid out once, and his own videos over him - read
+    // already shrunk to their box, one decoder for all of them, like the
+    // pop-ups. One that can't be read here is left out, never the video.
+    const texts = handTexts.flatMap((t) => {
+      const layout = layoutHeadline(ctx, width, height, t.headline)
+      return layout ? [{ layout, seconds: t.seconds, placer: new MomentPlacer([t.at], keep) }] : []
+    })
+    let overlaysLeftOut = 0
+    if (handVideos.length > 0) traceStep('the videos put on by hand')
+    const overlayClips: { seconds: number; layout: LogoLayout; placer: MomentPlacer; open: () => AsyncIterator<WrappedCanvas> }[] = []
+    for (const clip of handVideos) {
+      try {
+        const clipInput = new Input({ source: new BlobSource(clip.file), formats: ALL_FORMATS })
+        popInputs.push(clipInput)
+        const track = await clipInput.getPrimaryVideoTrack()
+        if (!track || !(await track.canDecode())) throw new Error("this phone can't play it here")
+        const first = await firstShown(track)
+        const [shownWidth, shownHeight, end] = await Promise.all([track.getDisplayWidth(), track.getDisplayHeight(), track.computeDuration()])
+        const box = layoutLogo(width, height, { width: shownWidth, height: shownHeight }, clip)
+        const even = (n: number) => Math.max(2, Math.round(n / 2) * 2)
+        const layout = { x: Math.round(box.x), y: Math.round(box.y), width: even(box.width), height: even(box.height) }
+        const seconds = Math.max(0.1, Math.min(clip.seconds, end - first))
+        const sink = new CanvasSink(track, { width: layout.width, height: layout.height, fit: 'fill', poolSize: 3 })
+        overlayClips.push({ seconds, layout, placer: new MomentPlacer([clip.at], keep), open: () => fromStart(sink, first, seconds) })
+      } catch (error) {
+        overlaysLeftOut++
+        reportProblem({ kind: 'fallback', phase: 'video put on by hand', message: error instanceof Error ? error.message : String(error) })
+      }
+    }
+    if (overlayClips.length > 0) overlayPlayer = new PopFrames((i) => overlayClips[i].open())
+    let overlaysOn = overlayClips.length > 0
+
     traceStep('starting the encoder')
     // What the colour went through, sent once (colourCheck.ts).
     const colour = new ColourCheck()
@@ -611,6 +655,8 @@ export async function renderCampaignCut(
                   for (const p of pictures) p.placer.enterRange(index, videoShift)
                   for (const b of bank) b.placer.enterRange(index, videoShift)
                   for (const p of popClips) p.placer.enterRange(index, videoShift)
+                  for (const t of texts) t.placer.enterRange(index, videoShift)
+                  for (const o of overlayClips) o.placer.enterRange(index, videoShift)
                 }
                 const timestamp = videoClock(sample.timestamp + videoShift)
                 const duration = sample.duration
@@ -693,6 +739,24 @@ export async function renderCampaignCut(
                     reportProblem({ kind: 'fallback', phase: 'pop-up video', message: error instanceof Error ? error.message : String(error) })
                   }
                 }
+                // His own videos over everything of the look's, then his own
+                // words - under the headline, logo and captions, as TikTok's
+                // own text sits under its captions.
+                if (overlaysOn && overlayPlayer) {
+                  const on = popAt(occurrencesOf(overlayClips.map((o) => ({ seconds: o.seconds, times: o.placer.times }))), timestamp)
+                  try {
+                    if (on) {
+                      const frame = await overlayPlayer.at(on, timestamp - on.at)
+                      if (frame) drawLogo(ctx, frame.canvas, overlayClips[on.clip].layout)
+                    } else await overlayPlayer.stop()
+                  } catch (error) {
+                    overlaysOn = false
+                    overlaysLeftOut = Math.max(overlaysLeftOut, 1)
+                    await overlayPlayer.stop().catch(() => {})
+                    reportProblem({ kind: 'fallback', phase: 'video put on by hand', message: error instanceof Error ? error.message : String(error) })
+                  }
+                }
+                for (const t of texts) if (inWindow(timestamp, t.placer.times, t.seconds)) drawHeadline(ctx, t.layout)
                 if (headline && timestamp - talkStart < look.headline.seconds) drawHeadline(ctx, headline)
                 if (logo && logoImage && inWindow(timestamp, logoPlacer.times, look.logo.seconds)) {
                   if (look.effects.logoPop) {
@@ -808,6 +872,7 @@ export async function renderCampaignCut(
       clips: { beforeSec: talkStart, afterSec: afterClip ? cursor - afterStart : 0, leftOut, middleSec, middleLeftOut },
       popsAt: popClips.flatMap((p) => [...p.placer.times]).sort((a, b) => a - b),
       popsLeftOut,
+      overlaysLeftOut,
     }
   } finally {
     logoImage?.close()
@@ -815,6 +880,7 @@ export async function renderCampaignCut(
     await Promise.all([videoFrames?.dispose(), audioFrames?.dispose()]).catch(() => {})
     for (const clip of joined) clip.input.dispose()
     await popPlayer?.stop().catch(() => {})
+    await overlayPlayer?.stop().catch(() => {})
     for (const popInput of popInputs) popInput.dispose()
     input.dispose()
     if (!finished) {

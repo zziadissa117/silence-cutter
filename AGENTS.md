@@ -70,6 +70,7 @@ only, no Supabase); `./deploy-server.sh` ships the `postiz` and `cutter` functio
 - Render: `src/campaign/{pipeline,plan,render,reactionRender,montageRender,joinRender}.ts`
 - Audio: `voice.ts`, `music.ts`, `sounds.ts`; captions `captions.ts`; headline `overlay.ts`, `look.ts`; effects `effects.ts`
 - Music bank, shared by every phone that uses the Cutter: `musicBank.ts` (`syncSongs`, `ensureSong`), `MusicBankView.tsx`; server `cutter/songs.ts` (rows `song:<id>` in `cutter_config`, files `music/<sha>` in `cutter-files`)
+- Edit screen like TikTok's (drag/pinch the headline, + Text, + Overlay picture or video): `CutsEditor.tsx`, `manualPictures.ts` (`day.overlays`), `headlinePlace.ts`; drawn in `render.ts` (`texts`, `overlays`); questions before it: `CheckQuestions.tsx`
 - Videos before/after/in the middle (at a phrase): `clips.ts`, `cueClips.ts`, `ClipRow.tsx`, `ClipsField.tsx`
 - Green screen (Batch layout): `cutout.ts` (once per reaction), `greenScreenRender.ts`
 - Batch keeps going (Videos a day + Start, no days): `batchRun.ts` (`runSlots`, `planVideos`, `topUp`; Batch tab and `CampaignApp` top up); more each day: `perDayOn` (`growth`, `growthFrom`)

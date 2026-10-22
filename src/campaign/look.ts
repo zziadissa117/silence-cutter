@@ -37,6 +37,24 @@ export const HEADLINE_STYLES: { value: HeadlineStyle; label: string }[] = [
 export function withHeadlineStyle(angle: Angle, style: HeadlineStyle | undefined): Angle {
   return style && style !== angle.headline.style ? { ...angle, headline: { ...angle.headline, style } } : angle
 }
+
+/** Where he dragged a headline (or a text of his own) in the edit screen:
+ *  its middle, as fractions of the frame, and how much bigger or smaller
+ *  than its size it is. */
+export interface HeadlinePlace {
+  x: number
+  y: number
+  scale: number
+}
+
+/** How far a headline can be pinched smaller or bigger. */
+export const HEADLINE_SCALE = { min: 0.4, max: 2.5 } as const
+
+/** The angle with its headline where he put it on one video; the angle as
+ *  it is when he left it in its spot. */
+export function withHeadlinePlace(angle: Angle, place: HeadlinePlace | null | undefined): Angle {
+  return place ? { ...angle, headline: { ...angle.headline, place } } : angle
+}
 export type HeadlineSize = 'small' | 'medium' | 'large'
 export type LogoPosition = 'top' | 'top-left' | 'top-right' | 'middle' | 'bottom-left' | 'bottom-right'
 
@@ -116,6 +134,9 @@ export interface Headline {
   outlineColor?: string
   /** The outline's thickness: thin, normal or thick. Default normal. */
   outlineWidth?: OutlineWidth
+  /** Moved by hand on one video (withHeadlinePlace) - never saved on an
+   *  angle. */
+  place?: HeadlinePlace
 }
 
 export type OutlineWidth = 'thin' | 'normal' | 'thick'

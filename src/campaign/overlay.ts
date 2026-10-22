@@ -7,7 +7,7 @@
 // down the right, and the caption across the bottom.
 
 import { HEADLINE_FAMILY, headlineFontReady } from './headlineFont'
-import type { HeadlinePosition, HeadlineSize, HeadlineStyle, LogoPosition, OutlineWidth } from './look'
+import { HEADLINE_SCALE, type HeadlinePlace, type HeadlinePosition, type HeadlineSize, type HeadlineStyle, type LogoPosition, type OutlineWidth } from './look'
 
 // Start loading TikTok Sans as soon as anything that draws a headline is
 // around, so previews have it by the time they are looked at.
@@ -102,7 +102,17 @@ export function layoutHeadline(
   ctx: Ctx,
   width: number,
   height: number,
-  headline: { text: string; position: HeadlinePosition; style: HeadlineStyle; size: HeadlineSize; outlineColor?: string; outlineWidth?: OutlineWidth },
+  headline: {
+    text: string
+    position: HeadlinePosition
+    style: HeadlineStyle
+    size: HeadlineSize
+    outlineColor?: string
+    outlineWidth?: OutlineWidth
+    /** Where he dragged it, and how much he pinched it: in place of its
+     *  position, kept inside the frame. */
+    place?: HeadlinePlace | null
+  },
 ): HeadlineLayout | null {
   const text = headline.text.trim()
   if (!text) return null
@@ -134,7 +144,9 @@ export function layoutHeadline(
     })
     return { font, fontPx, maxWidth, lines }
   }
-  let laid = lay(Math.round(Math.min(width, height * (9 / 16)) * (snap ? SNAP_SIZE : SIZE_FACTOR)[headline.size]))
+  const place = headline.place
+  const scale = place ? Math.min(HEADLINE_SCALE.max, Math.max(HEADLINE_SCALE.min, place.scale || 1)) : 1
+  let laid = lay(Math.round(Math.min(width, height * (9 / 16)) * (snap ? SNAP_SIZE : SIZE_FACTOR)[headline.size] * scale))
   // A line that still can't fit (one long word, a row of emoji) makes the
   // whole headline a little smaller rather than spill off the sides.
   for (let tries = 0; tries < 3; tries++) {
@@ -156,7 +168,18 @@ export function layoutHeadline(
   const blockHeight = lineHeight * lines.length
   // Snapchat's band reaches a little above the words: it stays below TikTok's tabs too.
   const above = snap ? fontPx * SNAP.padY : 0
-  const top = Math.max(height * TIKTOK_ZONES.top + above, height * HEADLINE_Y[headline.position] - blockHeight / 2)
+  let top = Math.max(height * TIKTOK_ZONES.top + above, height * HEADLINE_Y[headline.position] - blockHeight / 2)
+  let centerX = width / 2
+  if (place) {
+    // Where he put it, all of it inside the frame - TikTok's bars are his call.
+    const below = snap ? fontPx * SNAP.padY : 0
+    top = Math.min(Math.max(above, place.y * height - blockHeight / 2), Math.max(above, height - blockHeight - below))
+    // Snapchat's band is the frame's width: only up and down.
+    if (!snap) {
+      const half = Math.max(...lines.map((l) => l.width)) / 2 + (boxed ? fontPx * BOX.padX : 0)
+      centerX = Math.min(Math.max(half, place.x * width), Math.max(half, width - half))
+    }
+  }
   // Each line's text centred on the font's own height, top of the tallest
   // letter to the bottom of a "g", as TikTok lays its text out - so a line
   // with descenders has as much room below as above.
@@ -167,7 +190,7 @@ export function layoutHeadline(
     lines,
     font,
     fontPx,
-    centerX: width / 2,
+    centerX,
     top,
     baselineOffset: lineHeight / 2 + (ascent - descent) / 2,
     lineHeight,

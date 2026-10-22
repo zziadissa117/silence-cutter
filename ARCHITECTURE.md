@@ -351,6 +351,30 @@ width); the bank's pictures do the same with the newest mention. A picture put o
 of its spot. The cuts editor previews with `previewBoxes` - the render's own layout - and edits
 the selected picture in `.pic-edit` (delete, seconds, size, start here, drag/pinch on the video).
 
+## The edit screen as TikTok's editor (headline, + Text, + Overlay)
+
+Everything he puts on a talking video in the edit screen is a `ManualPicture` in `day.overlays`,
+told apart by `source.kind`: `bank`/`phone` image (a picture, as above), `phone` with a `video/*`
+type or `video` (the video bank) - a video over him - and `text` (his words, `{ text, style }`).
+`isPicture`/`isVideo`/`isText` say which. Phone files (pictures and videos) are kept per job in
+`clipParts` (`store.saveOverlayFile`). The render (`pipeline.make` -> `renderCampaignCut`):
+- pictures as before (`manualCues` takes only pictures);
+- words (`texts`): `manualPictures.textHeadline` makes each a headline (`overlay.layoutHeadline`
+  with a `place`), drawn from `at` for `seconds`, under the headline, logo and captions;
+- videos (`overlays`): muted, read already sized to their box (`CanvasSink`, laid out by
+  `layoutLogo` like a picture), one decoder for all of them (`popVideo.PopFrames`), up for
+  `seconds` or to their end; one that can't be read is left out (`overlaysLeftOut`, said on the row).
+The headline itself can be moved: `Headline.place` (`{ x, y, scale }`, middle as fractions of the
+frame) put on the angle for one video only (`look.withHeadlinePlace`); `layoutHeadline` centres the
+block there, scaled, inside the frame (Snapchat's band only moves up and down). Each video keeps
+its own `day.headlinePlace` (null = the angle's spot); one never moved starts where he last moved
+one of its angle's (`headlinePlace.ts`, this phone's localStorage), and is fixed on approve.
+In `CutsEditor` the words and the headline are laid out at the frame's size and drawn on the
+overlay canvas under the captions; a clear `.cuts-text-hold` (finger-sized) over each takes the
+drag and pinch, as `.cuts-pic-preview` does for pictures and `<video>` overlays (played along on
+the finished video's clock, `outputTime`). Things up together get their own timeline row
+(`overlayRows`).
+
 ## Analytics (`analytics.ts`, `AnalyticsView.tsx`, server `postiz/views.ts`)
 
 Only campaigns with a batch bank (running or made before) are shown - his CPM campaigns.

@@ -49,7 +49,10 @@ export function EditScreen({
   file: Blob | null
   missing?: boolean
   /** The timeline: everything the cuts editor shows. */
-  cuts: Pick<CutsProps, 'duration' | 'initial' | 'words' | 'checks' | 'peaks' | 'noiseNote' | 'overlays' | 'bank' | 'defaults' | 'loadImage'>
+  cuts: Pick<
+    CutsProps,
+    'duration' | 'initial' | 'words' | 'checks' | 'peaks' | 'noiseNote' | 'overlays' | 'bank' | 'defaults' | 'loadImage' | 'videoBank' | 'loadVideo' | 'headline'
+  >
   /** The captions he checks, through the cut as it is now. */
   shown: CaptionWord[]
   /** How the captions look, the headline and the rest under the phrases. */
@@ -148,6 +151,9 @@ export function EditScreen({
       bank={cuts.bank}
       defaults={cuts.defaults}
       loadImage={cuts.loadImage}
+      videoBank={cuts.videoBank}
+      loadVideo={cuts.loadVideo}
+      headline={cuts.headline}
       onDone={() => finish(false, words.current)}
       onCancel={() => finish(false, words.current)}
       paintOver={paintOver}

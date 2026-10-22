@@ -101,7 +101,9 @@ import {
   type BankPicture,
   type Campaign,
   type CampaignPosting,
+  type HeadlinePlace,
   type HeadlineStyle,
+  withHeadlinePlace,
   withHeadlineStyle,
 } from './look'
 import { forgetSend, queueSend, sending, startSending, watchSending } from './outbox'
@@ -145,7 +147,8 @@ import {
 import { PostsView } from './PostsView'
 import { pushState, refreshPush, turnOnPush, type PushState } from './push'
 import { BatchEdit } from './BatchEdit'
-import type { ManualPicture } from './manualPictures'
+import { isPicture, isText, isVideo, type ManualPicture } from './manualPictures'
+import { headlinePlaceOf, rememberPlace } from './headlinePlace'
 import { WideAsk } from './WideAsk'
 import { defaultEffects } from './defaultEffects'
 import { picturesHeard, type PictureChoice } from './skipPictures'
@@ -777,6 +780,11 @@ export function CampaignApp() {
   const videoBank = useVideoBank()
   const videoBankRef = useRef<BankVideo[]>(videoBank)
   videoBankRef.current = videoBank
+  /** The video bank for the edit screen's + Overlay, each with its still. */
+  const videoBankChoices = useMemo(
+    () => videoBank.map((v) => ({ id: v.id, name: v.name, seconds: v.seconds, loadStill: () => posterOf(v) })),
+    [videoBank],
+  )
   bankRef.current = bank
 
   const campaign = useMemo(() => campaigns?.find((c) => c.id === campaignId) ?? null, [campaigns, campaignId])
@@ -1526,7 +1534,8 @@ export function CampaignApp() {
               file,
             plan,
             jobCampaign,
-            jobAngle,
+            // Where he moved the headline in the edit screen.
+            withHeadlinePlace(jobAngle, headlinePlaceOf(next.day, next.angleId)),
             bankRef.current,
             next.headlineText,
             next.id,
@@ -1544,6 +1553,7 @@ export function CampaignApp() {
               next.day?.captionSize ?? defaultCaptionSize(),
               next.day?.captionStyle ?? defaultCaptionStyle(),
               popsFor(next),
+              await byHandFor(next),
             ),
           )
         } else {
@@ -3154,6 +3164,17 @@ export function CampaignApp() {
     void recordDay(id, day, { campaignId: job.campaignId, angleId: job.angleId, headlineText: job.headlineText })
   }
 
+  /** Where he moved this video's headline (null: back to its angle's spot) -
+   *  and where the next videos of its angle start. */
+  const setHeadlinePlace = (id: string, place: HeadlinePlace | null) => {
+    const job = jobs.find((j) => j.id === id)
+    if (!job?.day) return
+    rememberPlace(job.angleId, place)
+    const day = { ...job.day, headlinePlace: place }
+    setJobs((js) => js.map((j) => (j.id === id ? { ...j, day } : j)))
+    void recordDay(id, day, { campaignId: job.campaignId, angleId: job.angleId, headlineText: job.headlineText })
+  }
+
   const setMusic = (id: string, choice: string) => {
     const job = jobs.find((j) => j.id === id)
     if (!job?.day) return
@@ -3175,17 +3196,61 @@ export function CampaignApp() {
   async function manualPicturesFor(job: Job): Promise<{ picture: ManualPicture; image: Blob }[]> {
     const found: { picture: ManualPicture; image: Blob }[] = []
     let lost = 0
-    for (const picture of job.day?.overlays ?? []) {
+    for (const picture of (job.day?.overlays ?? []).filter(isPicture)) {
       let image: Blob | null | undefined = null
       if (picture.source.kind === 'bank') {
         const id = picture.source.pictureId
         image = bankRef.current.find((b) => b.id === id)?.image
-      } else image = await loadOverlayFile(job.id, picture.id, picture.source.type).catch(() => null)
+      } else if (picture.source.kind === 'phone') image = await loadOverlayFile(job.id, picture.id, picture.source.type).catch(() => null)
       if (image) found.push({ picture, image })
       else lost++
     }
     if (lost > 0) setNotice(`${lost} picture${lost === 1 ? '' : 's'} you put on this video could not be found, so ${lost === 1 ? 'it was' : 'they were'} left off.`)
     return found
+  }
+
+  /** The words and videos he put on this video by hand in the edit screen,
+   *  each video with its file: one from the video bank from the bank, one
+   *  from his phone from storage. A video that is gone is left off - and he
+   *  is told. */
+  async function byHandFor(job: Job): Promise<{ texts: ManualPicture[]; videos: { picture: ManualPicture; file: Blob }[] }> {
+    const overlays = job.day?.overlays ?? []
+    const videos: { picture: ManualPicture; file: Blob }[] = []
+    let lost = 0
+    for (const picture of overlays.filter(isVideo)) {
+      const source = picture.source
+      const file =
+        source.kind === 'video'
+          ? await bankVideoFile(source.videoId)
+          : source.kind === 'phone'
+            ? await loadOverlayFile(job.id, picture.id, source.type).catch(() => null)
+            : null
+      if (file) videos.push({ picture, file })
+      else lost++
+    }
+    if (lost > 0) setNotice(`${lost} video${lost === 1 ? '' : 's'} you put on this video could not be found, so ${lost === 1 ? 'it was' : 'they were'} left off.`)
+    return { texts: overlays.filter(isText), videos }
+  }
+
+  /** A talking video's headline on the edit screen: as it will be made, at
+   *  its place, to drag. None for a reaction - its headline is on the
+   *  reaction, not the clip being edited. */
+  function headlineEditFor(job: Job) {
+    const angle = campaignsRef.current.find((c) => c.id === job.campaignId)?.angles.find((a) => a.id === job.angleId)
+    if (job.reaction || !angle || !job.headlineText.trim()) return undefined
+    const look = withHeadlineStyle(angle, job.day?.headlineStyle).headline
+    return {
+      look: { text: job.headlineText, position: look.position, style: look.style, size: look.size, outlineColor: look.outlineColor, outlineWidth: look.outlineWidth },
+      seconds: look.seconds,
+      place: headlinePlaceOf(job.day, job.angleId),
+      onPlace: (place: HeadlinePlace | null) => setHeadlinePlace(job.id, place),
+    }
+  }
+
+  /** A video from the video bank, read off the phone; null when it is gone. */
+  async function bankVideoFile(id: string): Promise<Blob | null> {
+    const video = videoBankRef.current.find((v) => v.id === id)
+    return video ? videoFile(video).catch(() => null) : null
   }
 
   /** The names this video's campaign uses - brand words, the words that bring
@@ -3327,6 +3392,9 @@ export function CampaignApp() {
       overlays: cuts.overlays.length > 0 ? cuts.overlays : undefined,
       captions: words,
       ...(approved ? { checked: true, approved: true, noCaptions: approved === 'without' } : {}),
+      // Approved where its headline is now: a headline moved on a later
+      // video of its angle doesn't move this one's.
+      ...(approved ? { headlinePlace: headlinePlaceOf(job.day, job.angleId) } : {}),
     }
     setJobs((js) => js.map((j) => (j.id === id ? { ...j, day, ...(approved ? { status: 'approved' as const } : {}) } : j)))
     void recordDay(id, day, { campaignId: job.campaignId, angleId: job.angleId, headlineText: job.headlineText })
@@ -3484,6 +3552,9 @@ export function CampaignApp() {
         bank={bankRef.current}
         defaults={angleBankDefaults(cutsJob)}
         loadImage={(m) => (m.source.kind === 'phone' ? loadOverlayFile(cutsJob.id, m.id, m.source.type) : Promise.resolve(null))}
+        videoBank={videoBankChoices}
+        loadVideo={bankVideoFile}
+        headline={headlineEditFor(cutsJob)}
         onDone={(keep, overlays, files) => {
           keepCuts(cutsJob.id, keep, overlays, files)
           setCutting(null)
@@ -3532,6 +3603,9 @@ export function CampaignApp() {
           bank: bankRef.current,
           defaults: angleBankDefaults(reviewJob),
           loadImage: (m) => (m.source.kind === 'phone' ? loadOverlayFile(reviewJob.id, m.id, m.source.type) : Promise.resolve(null)),
+          videoBank: videoBankChoices,
+          loadVideo: bankVideoFile,
+          headline: headlineEditFor(reviewJob),
         }}
         shown={review.shown.map((i) => review.all[i])}
         onKeep={(keep, before) => followCuts(reviewJob.id, keep, before)}
