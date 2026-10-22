@@ -3,6 +3,20 @@
 Newest first. Every change says what it does, how to use it, and how it works
 underneath. Kept up to date with each commit.
 
+## A video stuck at 0% starts the Cutter again by itself
+Only ./deploy.sh is needed; then close the Cutter and open it again.
+**What was wrong:** "it's just at making it 0%". On 2026-10-22 two videos were made, then a 191 MB one stopped
+moving: tried again three times (each 90 s at 0%), then marked failed - and the next one (673 MB) sat at 0% too. Once
+the phone's video maker goes quiet in a page (often after the Cutter was left for another app), it stays quiet until
+the Cutter is closed and opened again; trying again in the same page only waits.
+**Now:** the first time a video stops moving, the Cutter says so and starts again by itself - not while you type or
+pick videos, and only once a video being kept is safe - and every unfinished video carries on where it was. Once
+per video: if the same one gets stuck again after the fresh start, it is that video's problem and goes the usual
+way (another go, the plain cut, Try again).
+**How:** `stallRestart.ts` (`StallError`, `firstRestartFor`, remembered 6 h per video in localStorage);
+`CampaignApp` `watched` throws `StallError`, the catch path resets the video's attempts and calls `restartPage`
+(waits for `pickQuiet`, saves and outbox copies; nothing new starts meanwhile). Test `stallRestart.test.ts`.
+
 ## Instagram location on every Instagram post (waiting on Postiz)
 Needs deploying: run ./deploy-server.sh, then ./deploy.sh. No database change.
 **What it is:** Settings, Posting has **Instagram location**: paste a place's Facebook page link (or its Instagram

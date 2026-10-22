@@ -17,8 +17,9 @@ import { SilenceCutError, isSilenceCutSupported } from '../media/silenceCut'
 import { type Range, PRESETS, type PresetName } from '../media/silenceMath'
 import { pageLeaving } from '../leaving'
 import { within } from '../media/within'
+import { StallError, firstRestartFor } from './stallRestart'
 import { ModeNav } from '../ModeNav'
-import { lostPick, pickArrived, pickSaved, whenPickGoesWrong } from '../pickWatch'
+import { lostPick, pickArrived, pickQuiet, pickSaved, whenPickGoesWrong } from '../pickWatch'
 import { report } from '../report'
 import { typedBack } from './captionFixes'
 import { reportStorage } from './storageReport'
@@ -221,6 +222,7 @@ const LAST_KEY = 'campaign.last'
  *  stuck. Well past the slowest real step on a phone - a long window of
  *  listening, or finishing a big file. */
 const STALL_MS = 90_000
+
 
 /** The campaign and angle last used, so the page opens on them. */
 function remembered(): { campaignId?: string; angleId?: string } {
@@ -746,6 +748,24 @@ export function CampaignApp() {
   }, [])
   const processing = useRef(false)
   const persisting = useRef(new Map<string, Promise<unknown>>())
+  /** Starting the page again (restartPage): nothing new is begun meanwhile. */
+  const restarting = useRef(false)
+  /** The page again, fresh - once nothing would be lost: not while he types,
+   *  picks videos, or a video is still being kept on the phone. Every video
+   *  not finished is picked up again on the load. */
+  const restartPage = () => {
+    restarting.current = true
+    const go = async () => {
+      const active = document.activeElement as HTMLElement | null
+      const typing = active instanceof HTMLTextAreaElement || (active instanceof HTMLInputElement && active.type !== 'file') || Boolean(active?.isContentEditable)
+      if (document.visibilityState !== 'visible' || typing) return void window.setTimeout(() => void go(), 2000)
+      await pickQuiet()
+      await within(Promise.allSettled([...persisting.current.values(), ...copying.current.values()]), 60_000, undefined)
+      window.location.reload()
+    }
+    // A moment for him to read why, and for the report to be kept.
+    window.setTimeout(() => void go(), 2500)
+  }
   // Read by the queue when a video's turn comes, so an edit to an angle
   // reaches every video of it that has not started yet.
   const campaignsRef = useRef<Campaign[]>([])
@@ -1223,7 +1243,7 @@ export function CampaignApp() {
   useEffect(() => {
     // Nothing starts in the background: iOS takes the video decoder away
     // from a hidden page, so it would only fail.
-    if (processing.current || campaigns === null || !visible) return
+    if (processing.current || restarting.current || campaigns === null || !visible) return
     // While he checks captions, only listening goes on - that is sound
     // alone. Making a video would have the page's decoder and the player on
     // screen fighting over the phone's video hardware.
@@ -1251,7 +1271,7 @@ export function CampaignApp() {
           if (document.visibilityState !== 'visible') lastMoved = Date.now()
           else if (Date.now() - lastMoved > STALL_MS) {
             window.clearInterval(timer)
-            reject(new Error(`The phone stopped ${PHASE_LABEL[phase]} - nothing moved for ${STALL_MS / 1000} seconds`))
+            reject(new StallError(`The phone stopped ${PHASE_LABEL[phase]} - nothing moved for ${STALL_MS / 1000} seconds`))
           }
         }, 5000)
         work.then(
@@ -1600,6 +1620,19 @@ export function CampaignApp() {
         if (pageLeaving()) return
         const known = err instanceof SilenceCutError
         const why = err instanceof Error ? err.message : String(err)
+        // The phone's video maker went quiet. On an iPhone it then stays
+        // quiet for as long as the page is open: every go after it sat at 0%
+        // too - three tries of one video, then the next one (2026-10-22). A
+        // fresh page gets it back, so the Cutter starts again by itself -
+        // once per video - and carries on where it was.
+        if (err instanceof StallError && firstRestartFor(next.id)) {
+          patch({ status: next.status, progress: 0 })
+          await resetAttempts(next.id)
+          report({ page: 'campaign', kind: 'retried', phase, message: `${why} - the Cutter starts again by itself`, video: kept })
+          setNotice("The phone stopped making videos, so the Cutter is starting again to free it. Your videos carry on where they were.")
+          restartPage()
+          return
+        }
         if (!known && interrupted) {
           patch({ status: next.status, progress: 0 })
           await resetAttempts(next.id)

@@ -495,7 +495,10 @@ engine/                        the engine on Railway (Python): engine/ its code,
   a long list (Pause and daily limits) gets its own page opened from one row, not a block in Settings.
 
 - Only one page runs at a time; never add a long-running second queue.
-- Never auto-update the service worker (UpdateBanner owns reloads).
+- Never auto-update the service worker (UpdateBanner owns reloads). The one other reload: a video that stops
+  moving for 90 s (`CampaignApp` `watched` -> `StallError`) restarts the page once per video (`stallRestart.ts`
+  `firstRestartFor`; `restartPage` waits while he types or picks, and for saves and outbox copies) - on an iPhone
+  the video maker stays stuck for the page's life once it goes quiet, and unfinished videos are picked up on load.
 - The campaign page scrolls as the document and `.tabbar` is `position: fixed` to its bottom. Never size a
   container to the screen (a fixed `inset: 0` frame, `100%`, `100svh`/`100dvh`): on iOS 26 the home-screen
   app (viewport-fit=cover + black-translucent status bar, WebKit bug 301108 - the status bar is now plain black to avoid it) reports those a status bar's
