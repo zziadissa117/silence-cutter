@@ -15,7 +15,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, type ComponentProps 
 
 import type { Range } from '../media/silenceMath'
 import { CaptionReview, paintPopBox, usePopStills, type EmbeddedVideo } from './CaptionReview'
-import { CAPTION_LEAD, captionAt, captionRanges, drawStyledCaption, type CaptionWord } from './captions'
+import { CAPTION_LEAD, captionAt, captionRanges, drawStyledCaption, type CaptionWord, PHRASE_HOLD_SEC } from './captions'
 import { CutsEditor, type CutsControl } from './CutsEditor'
 import type { ManualPicture } from './manualPictures'
 
@@ -93,16 +93,17 @@ export function EditScreen({
     paintPopBox(ctx, w, h, t, r.pops, stills.current, false)
     const all = words.current
     const starts = all.map((x) => x.start)
-    const at = captionAt(starts, all, t)
-    if (at < 0) return
     const style = r.captionStyle ?? 'word'
+    const at = captionAt(starts, all, t, style === 'word' ? undefined : PHRASE_HOLD_SEC)
+    if (at < 0) return
     drawStyledCaption(ctx, w, h, all, captionRanges(all, style), at, playing ? t + CAPTION_LEAD - starts[at] : 1, r.bare ?? false, r.position ?? 'usual', r.size ?? 'normal', style)
   }, [])
 
   // A new look, or the stills arriving: drawn again.
   useEffect(() => {
     control.current?.repaint()
-  }, [review.captionStyle, review.position, review.size, review.bare, review.pops?.size, review.pops?.position, review.pops?.skipped, pops.ready])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [review.captionStyle, review.position, review.size, review.bare, review.pops?.size, review.pops?.position, review.pops?.skipped?.join('|'), pops.ready])
 
   useEffect(() => () => window.clearTimeout(settle.current), [])
 

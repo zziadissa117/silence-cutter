@@ -149,6 +149,11 @@ const EARLY_RUN_IN_SEC = 0.05
  *  word on some takes ("the captions cut off at the start of every
  *  sentence", 2026-10-19). */
 const EARLY_END_SEC = 0.25
+/** How far a word timed exactly (the letter model) may be moved ahead of
+ *  its sound to give the words after it their READ_SEC: a tenth of a second
+ *  reads as on the word; the old walk moved every word near a cut, up to
+ *  0.9 s early on a fast ending. */
+const MAX_EARLY_SEC = 0.1
 /** The least time each of a sentence's last words is up. Squeezed into the
  *  stretch's final 0.1 s, a last word heard late flashed for two or three
  *  frames and read as cut off ("...and finish of every sentence"); a
@@ -208,12 +213,14 @@ export function captionWords(words: WordChunk[], keep: Range[], { rough = false 
     }
   })
   // Each stretch's pulled-back words, the last of them ending with it.
+  const pulledBack = new Set<CaptionWord>()
   for (const [range, count] of rescued) {
     const at = captions.filter((c) => c.start === range.end && c.end === range.end)
     at.forEach((c, k) => {
       const start = Math.max(range.start, range.end - (count - k) * MIN_SHOW_SEC)
       c.start = start
       c.end = Math.max(start + MIN_SHOW_SEC * 0.999, Math.min(range.end, start + MIN_SHOW_SEC))
+      pulledBack.add(c)
     })
   }
   // In time order, always - each is placed on the cut video in turn - and
@@ -224,10 +231,13 @@ export function captionWords(words: WordChunk[], keep: Range[], { rough = false 
       captions[i] = { ...captions[i], start: earliest, end: Math.max(captions[i].end, earliest + MIN_SHOW_SEC) }
     }
   }
-  // Each stretch's last words up long enough to read: walked back from where
-  // the stretch is cut, each starts at least READ_SEC before the next - or
-  // the stretch's end - while there is room, the earlier ones moving up a
-  // little to make it. They are words the model times late anyway.
+  // Each stretch's pulled-back last words up long enough to read: walked
+  // back from where the stretch is cut, each starts at least READ_SEC
+  // before the next - or the stretch's end - while there is room, the
+  // earlier ones moving up a little to make it. Only the words heard late
+  // and pulled back, whose time was never known: a word timed exactly by
+  // the letter model stays on its word (this walk used to move every word
+  // near a cut earlier, up to 0.9 s ahead of its sound on a fast ending).
   // A word the in-order pass nudged to or past the cut still belongs to
   // this stretch - up to where the next one starts.
   const ordered = [...keep].sort((a, b) => a.start - b.start)
@@ -242,9 +252,18 @@ export function captionWords(words: WordChunk[], keep: Range[], { rough = false 
       const k = inside[j]
       const latest = nextStart - read
       if (captions[k].start <= latest) break
-      const start = Math.max(range.start, latest)
+      // A word timed exactly moves at most MAX_EARLY_SEC ahead of its sound.
+      const floor = rough || pulledBack.has(captions[k]) ? range.start : Math.max(range.start, captions[k].start - MAX_EARLY_SEC)
+      const start = Math.max(floor, latest)
       captions[k] = { ...captions[k], start, end: Math.max(start + read * 0.999, Math.min(captions[k].end, nextStart)) }
       nextStart = start
+    }
+    // In order again: a word that could not move far enough may now sit
+    // after the one that follows it.
+    for (let j = 1; j < inside.length; j++) {
+      const k = inside[j]
+      const earliest = captions[inside[j - 1]].start + MIN_SHOW_SEC
+      if (captions[k].start < earliest) captions[k] = { ...captions[k], start: earliest, end: Math.max(captions[k].end, earliest + MIN_SHOW_SEC) }
     }
   }
   // The video ends where the last kept stretch does: a word starting after
@@ -372,12 +391,16 @@ export function captionedIndices(words: CaptionWord[], keep: Range[], hookSec: n
 export const CAPTION_LEAD = 0.05
 /** Longest a word stays up past its own end when nothing follows soon. */
 const HOLD_SEC = 0.35
+/** The same for a phrase (Highlight, Phrase): up to the pause that starts a
+ *  new phrase (phrasesOf), so a breath inside a phrase never blanks it -
+ *  it used to go dark and come back on the next word. */
+export const PHRASE_HOLD_SEC = 0.5
 
 /** Which word is up at output time `t`, given each word's placed output
  *  start and its length, or -1 for none. A word stays until the next one
- *  comes in, or a little past its own end. Words with no text - taken out
+ *  comes in, or `hold` past its own end. Words with no text - taken out
  *  when checking - show nothing. */
-export function captionAt(starts: readonly number[], words: CaptionWord[], t: number): number {
+export function captionAt(starts: readonly number[], words: CaptionWord[], t: number, hold = HOLD_SEC): number {
   const at = t + CAPTION_LEAD
   let i = -1
   for (let k = 0; k < starts.length; k++) {
@@ -386,7 +409,7 @@ export function captionAt(starts: readonly number[], words: CaptionWord[], t: nu
   }
   if (i < 0) return -1
   const length = Math.max(0.05, words[i].end - words[i].start)
-  const until = Math.min(i + 1 < starts.length ? starts[i + 1] : Infinity, starts[i] + length + HOLD_SEC)
+  const until = Math.min(i + 1 < starts.length ? starts[i + 1] : Infinity, starts[i] + length + hold)
   if (at >= until) return -1
   return cleanWord(words[i].text) ? i : -1
 }

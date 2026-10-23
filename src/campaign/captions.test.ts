@@ -206,7 +206,7 @@ describe('captionWords', () => {
     expect(captions[1].start).toBe(2.8)
   })
 
-  it("gives each of a sentence's last words a quarter of a second, never a flash", () => {
+  it("gives each of a sentence's last words a quarter of a second, never a flash - with rough times", () => {
     const words = [
       { text: ' this', start: 1.0, end: 1.2 },
       { text: ' is', start: 1.9, end: 1.98 },
@@ -217,7 +217,7 @@ describe('captionWords', () => {
       { start: 0.5, end: 2.0 },
       { start: 3.9, end: 5 },
     ]
-    const captions = captionWords(words, keep)
+    const captions = captionWords(words, keep, { rough: true })
     expect(captions.map((w) => w.text)).toEqual(['this', 'is', 'it.', 'Next'])
     expect(2.0 - captions[2].start).toBeGreaterThanOrEqual(0.25 - 1e-9)
     expect(captions[2].start - captions[1].start).toBeGreaterThanOrEqual(0.25 - 1e-9)
@@ -226,6 +226,18 @@ describe('captionWords', () => {
     const frames = (k: number) => Array.from({ length: 150 }, (_, f) => f / 30).filter((t) => captionAt(starts, captions, t) === k).length
     expect(frames(1)).toBeGreaterThanOrEqual(7)
     expect(frames(2)).toBeGreaterThanOrEqual(7)
+  })
+
+  it('keeps a word timed exactly on its word: never more than a tenth of a second early', () => {
+    // Twelve quick words (0.18 s each) ending 0.15 s before the cut, timed
+    // by the letter model: the old walk moved the first of them 0.87 s early.
+    const words = Array.from({ length: 12 }, (_, i) => ({ text: ` w${i}`, start: 1 + i * 0.18, end: 1 + i * 0.18 + 0.15 }))
+    const keep = [{ start: 0.5, end: 1 + 11 * 0.18 + 0.3 }]
+    const captions = captionWords(words, keep)
+    captions.forEach((c, i) => {
+      expect(words[i].start - c.start, c.text).toBeLessThanOrEqual(0.1 + 1e-9)
+      if (i > 0) expect(c.start - captions[i - 1].start).toBeGreaterThanOrEqual(MIN_SHOW_SEC - 1e-9)
+    })
   })
 
   it('gives every word long enough to be seen', () => {

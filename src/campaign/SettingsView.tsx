@@ -13,14 +13,6 @@ import { cleanPlace } from '../../supabase/functions/postiz/place.ts'
 import { DEFAULT_WINDOW } from '../../supabase/functions/postiz/window.ts'
 import { onFixedTimes, saveInstagramPlace, switchToRandom, windowLabel, type LocalPosting, type Profile } from './posting'
 import {
-  CAPTION_POSITIONS,
-  CAPTION_SIZES,
-  defaultCaptionPosition,
-  defaultCaptionSize,
-  setDefaultCaptionPosition,
-  setDefaultCaptionSize,
-  type CaptionPosition,
-  type CaptionSize,
 } from './captions'
 import { PRESET_EFFECTS, defaultEffects, presetOf, setDefaultEffects, type DefaultPreset } from './defaultEffects'
 import type { AngleEffects, EffectLevel } from './effects'
@@ -142,50 +134,6 @@ function NoiseCutting() {
           </span>
         </span>
       </label>
-    </>
-  )
-}
-
-function CaptionPlace() {
-  const [position, setPosition] = useState<CaptionPosition>(defaultCaptionPosition)
-  const [size, setSize] = useState<CaptionSize>(defaultCaptionSize)
-  return (
-    <>
-      <div className="seg full" role="radiogroup" aria-label="Where captions sit">
-        {CAPTION_POSITIONS.map((p) => (
-          <button
-            key={p.id}
-            type="button"
-            role="radio"
-            aria-checked={position === p.id}
-            className={position === p.id ? 'active' : ''}
-            onClick={() => {
-              setDefaultCaptionPosition(p.id)
-              setPosition(p.id)
-            }}
-          >
-            {p.label}
-          </button>
-        ))}
-      </div>
-      <div className="seg full" role="radiogroup" aria-label="How big captions are" style={{ marginTop: 8 }}>
-        {CAPTION_SIZES.map((s) => (
-          <button
-            key={s.id}
-            type="button"
-            role="radio"
-            aria-checked={size === s.id}
-            className={size === s.id ? 'active' : ''}
-            onClick={() => {
-              setDefaultCaptionSize(s.id)
-              setSize(s.id)
-            }}
-          >
-            {s.label}
-          </button>
-        ))}
-      </div>
-      <p className="hint tip">Where and how big captions start on each video. You can change both for one video while checking its captions.</p>
     </>
   )
 }
@@ -400,7 +348,6 @@ export function SettingsView({
       <WideClips />
 
       <div className="list-title">Captions</div>
-      <CaptionPlace />
       <div className="card-group">
       <label className="toggle">
         <input type="checkbox" checked={captions} onChange={(e) => onCaptions(e.target.checked)} />

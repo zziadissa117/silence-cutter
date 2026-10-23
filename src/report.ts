@@ -176,6 +176,12 @@ if (typeof window !== 'undefined') {
   })
   window.addEventListener('unhandledrejection', (event) => {
     const reason: unknown = event.reason
+    // A request or stream cut off by the page going away (a restart, an
+    // update) is not the app falling over: counted, but not as a crash.
+    if (reason instanceof Error && reason.name === 'AbortError') {
+      report({ kind: 'check', phase: 'aborted', message: reason.message })
+      return
+    }
     reportUncaught(`Unhandled: ${reason instanceof Error ? `${reason.name}: ${reason.message}` : String(reason)}`)
   })
   window.addEventListener('online', () => void sendReports())

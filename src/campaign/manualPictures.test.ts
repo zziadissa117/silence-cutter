@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { manualCues, previewStyle, type ManualPicture } from './manualPictures'
+import { manualCues, type ManualPicture } from './manualPictures'
 
 const pic = (id: string): ManualPicture => ({
   id,
@@ -23,12 +23,5 @@ describe('manualCues', () => {
     const out = manualCues([pic('a'), pic('b')], new Map([['a', new Blob(['x'])]]))
     expect(out.cues).toHaveLength(1)
     expect(out.missing.map((m) => m.id)).toEqual(['b'])
-  })
-})
-
-describe('previewStyle', () => {
-  it('keeps right-hand pictures clear of the button column', () => {
-    expect(previewStyle('bottom-right', 40).right).toBe('15%')
-    expect(previewStyle('top-right', 40).right).toBe('6%')
   })
 })

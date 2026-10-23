@@ -61,6 +61,8 @@ import {
   type CaptionSize,
   type CaptionStyle,
   type CaptionWord,
+  setDefaultCaptionPosition,
+  setDefaultCaptionSize,
 } from './captions'
 import {
   CLIP_PLACES,
@@ -227,6 +229,12 @@ const LAST_KEY = 'campaign.last'
  *  stuck. Well past the slowest real step on a phone - a long window of
  *  listening, or finishing a big file. */
 const STALL_MS = 90_000
+/** The models say nothing while they load from the phone's storage, and
+ *  the letter model has taken over a minute to on a phone that had just run
+ *  the speech model (plan.ts ALIGN_LOADING_MS): more patience there, or a
+ *  slow load counted as the phone stuck and restarted the page for nothing. */
+const MODEL_STALL_MS = 180_000
+const stallLimit = (phase: JobPhase) => (phase === 'model' || phase === 'listening' ? MODEL_STALL_MS : STALL_MS)
 
 
 /** The campaign and angle last used, so the page opens on them. */
@@ -662,6 +670,9 @@ export function CampaignApp() {
   // The video whose cuts are being fixed by hand - over the list, or over
   // the caption check it was opened from.
   const [cutting, setCutting] = useState<{ id: string } | null>(null)
+  /** An edit screen, cuts editor or campaign editor is open (restartPage waits). */
+  const inEditor = useRef(false)
+  inEditor.current = reviewing !== null || cutting !== null || editing !== null
   // Videos about to be checked, waiting on whether the hook gets captions.
   const [asking, setAsking] = useState<string[] | null>(null)
   // Dropped videos that are not 9:16, waiting for: cut them too, or only 9:16?
@@ -766,7 +777,9 @@ export function CampaignApp() {
     const go = async () => {
       const active = document.activeElement as HTMLElement | null
       const typing = active instanceof HTMLTextAreaElement || (active instanceof HTMLInputElement && active.type !== 'file') || Boolean(active?.isContentEditable)
-      if (document.visibilityState !== 'visible' || typing) return void window.setTimeout(() => void go(), 2000)
+      // Nor over an open edit screen or editor: what he has done there is
+      // written only when he finishes, and a reload would lose it.
+      if (document.visibilityState !== 'visible' || typing || inEditor.current) return void window.setTimeout(() => void go(), 2000)
       await pickQuiet()
       await within(Promise.allSettled([...persisting.current.values(), ...copying.current.values()]), 60_000, undefined)
       window.location.reload()
@@ -1282,9 +1295,9 @@ export function CampaignApp() {
         const timer = window.setInterval(() => {
           // Hidden, the work waits on purpose; that is not stalling.
           if (document.visibilityState !== 'visible') lastMoved = Date.now()
-          else if (Date.now() - lastMoved > STALL_MS) {
+          else if (Date.now() - lastMoved > stallLimit(phase)) {
             window.clearInterval(timer)
-            reject(new StallError(`The phone stopped ${PHASE_LABEL[phase]} - nothing moved for ${STALL_MS / 1000} seconds`))
+            reject(new StallError(`The phone stopped ${PHASE_LABEL[phase]} - nothing moved for ${stallLimit(phase) / 1000} seconds`))
           }
         }, 5000)
         work.then(
@@ -2815,6 +2828,29 @@ export function CampaignApp() {
     return () => sendToPostiz(job, owner, job.result!, true)
   }
 
+  /** What he has to know now - a video that stopped, the phone not
+   *  answering - shown on whichever tab he is on, not only Videos. */
+  const notices = (
+    <>
+      {phoneProblem ? (
+        <div className="notice">
+          <span className="warn-text">{phoneProblem}</span>
+          <button type="button" className="linkbtn" onClick={() => setPhoneProblem(null)}>
+            Dismiss
+          </button>
+        </div>
+      ) : null}
+      {notice ? (
+        <div className="notice">
+          <span>{notice}</span>
+          <button type="button" className="linkbtn" onClick={() => setNotice(null)}>
+            Dismiss
+          </button>
+        </div>
+      ) : null}
+    </>
+  )
+
   const videos = (
     <section className="screen">
       <div className="screen-head">
@@ -2824,23 +2860,7 @@ export function CampaignApp() {
         </button>
       </div>
 
-      {phoneProblem ? (
-        <div className="notice">
-          <span className="warn-text">{phoneProblem}</span>
-          <button type="button" className="linkbtn" onClick={() => setPhoneProblem(null)}>
-            Dismiss
-          </button>
-        </div>
-      ) : null}
-
-      {notice ? (
-        <div className="notice">
-          <span>{notice}</span>
-          <button type="button" className="linkbtn" onClick={() => setNotice(null)}>
-            Dismiss
-          </button>
-        </div>
-      ) : null}
+      {notices}
 
       {posting ? (
         <button type="button" className="callout posts-link" onClick={() => setShowPosts(true)}>
@@ -3323,8 +3343,10 @@ export function CampaignApp() {
     void recordDay(id, day, { campaignId: job.campaignId, angleId: job.angleId, headlineText: job.headlineText })
   }
 
-  /** Makes this video's captions bigger or smaller. */
+  /** Makes this video's captions bigger or smaller - and the next ones
+   *  start that size, like the style. */
   const setCaptionSize = (id: string, captionSize: CaptionSize) => {
+    setDefaultCaptionSize(captionSize)
     const job = jobs.find((j) => j.id === id)
     if (!job?.day) return
     const day = { ...job.day, captionSize }
@@ -3341,8 +3363,10 @@ export function CampaignApp() {
     void recordDay(id, day, { campaignId: job.campaignId, angleId: job.angleId, headlineText: job.headlineText })
   }
 
-  /** Moves this video's captions (top, middle, usual, bottom). */
+  /** Moves this video's captions (top, middle, usual, bottom) - and the
+   *  next ones start there. */
   const setCaptionPosition = (id: string, captionPosition: CaptionPosition) => {
+    setDefaultCaptionPosition(captionPosition)
     const job = jobs.find((j) => j.id === id)
     if (!job?.day) return
     const day = { ...job.day, captionPosition }
@@ -3801,6 +3825,7 @@ export function CampaignApp() {
       {inFlow ? null : <ModeNav current="campaign" workToLose={workToLose} />}
       <main className={inFlow ? 'flow' : 'tabbed'}>
         <UpdateBanner safeToReload={jobs.every((j) => j.status === 'held' || j.status === 'failed')} />
+        {!inFlow && tab !== 'videos' ? notices : null}
         {screen}
       </main>
       {inFlow ? null : <TabBar tab={tab} onTab={setTab} dots={{ analytics: analyticsRows.some((r) => r.suggestion) }} />}

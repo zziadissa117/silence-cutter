@@ -3,6 +3,36 @@
 Newest first. Every change says what it does, how to use it, and how it works
 underneath. Kept up to date with each commit.
 
+## Captions on the word, phrases that stay up, and three taps gone from every video
+Only ./deploy.sh is needed; then close the Cutter and open it again.
+**Changed for you (say if you want any of it back):**
+- Captions screen: "Captions on the hook?" is no longer two buttons to choose between on every video. It is a switch,
+  set the way you set it last, under the video's questions; Next keeps it. One tap instead of two, 25 times a day.
+- Edit screen: the caption size and position you pick are remembered for the next videos, like the style already
+  was. The same two picks in Settings are gone - they were the second place for one thing.
+- Videos: an approved video waiting its turn can be opened and removed from the list (it could not be touched until
+  it was made).
+**Captions:**
+- A word timed by the letter model stays on its word: the pass that gave a sentence's last words a quarter of a
+  second to read used to move every word near a cut earlier - up to 0.9 s ahead of its sound on a fast ending. Now
+  only words heard late (whose time was never known) are moved freely; a word timed exactly moves at most a tenth
+  of a second.
+- Highlight and Phrase styles: a breath inside a phrase no longer blanks it - the phrase stays up to the pause that
+  starts the next one (half a second), as the style's own description said.
+**Also:**
+- A video is given three minutes, not 90 seconds, while the speech or letter model loads: a slow load on a phone
+  that had just run the other model counted as the phone stuck, and restarted the page for nothing.
+- The page never restarts itself over an open edit screen or editor (what you did there is written when you
+  finish, and a restart would have lost it); it waits until you leave.
+- A video whose "copy to send" could not be kept is said on screen; the edit screen repaints only when something
+  changed; the three phone checks run together (the "restart the iPhone" advice came after up to 18 s); a request cut
+  off by the page going away is no longer counted as a crash in the reports.
+**How:** `CheckQuestions` (`hookOn` switch, `lastHookChoice`), `CampaignApp.setCaptionSize/Position` call the
+default setters, `SettingsView` `CaptionPlace` gone; `captions.captionWords` (`pulledBack`, `MAX_EARLY_SEC`, in-order
+pass), `captionAt(..., hold)` + `PHRASE_HOLD_SEC` (render, reactionRender, CaptionReview, EditScreen); `JobRow`
+`expandable`; `CampaignApp` `stallLimit`, `inEditor`; `mediaProbe.mediaHealth`; `report.ts` AbortError;
+`manualPictures` dead exports gone.
+
 ## Screens cleaned up at phone size: nothing runs off the edge, nothing cut short
 Only ./deploy.sh is needed; then close the Cutter and open it again.
 **Now** (checked on screenshots at 440x956 and 402x874, dark and light):

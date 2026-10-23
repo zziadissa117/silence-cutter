@@ -11,6 +11,8 @@
 // videos at once asks for each of them here, and the hook once for all.
 // The hook answer given last on this phone is the one offered first.
 
+import { useState } from 'react'
+
 import { ChevronLeft } from './icons'
 import type { Job } from './jobs'
 import { PictureToggles, VideoFields } from './JobRow'
@@ -67,16 +69,15 @@ export function CheckQuestions({
   onNext: (hookCaptions?: boolean) => void
   onCancel: () => void
 }) {
-  const last = lastHookChoice()
   const hook = videos.some(hasHook)
-  const next = (on?: boolean) => {
-    if (on !== undefined) rememberHookChoice(on)
-    onNext(on)
+  // Set as it was last time; one tap on Next keeps it. It was two buttons to
+  // choose between on every video, 25 times a day, for an answer that is
+  // nearly always the last one.
+  const [hookOn, setHookOn] = useState(lastHookChoice)
+  const next = () => {
+    if (hook) rememberHookChoice(hookOn)
+    onNext(hook ? hookOn : undefined)
   }
-  const options = [
-    { on: false, label: 'No - start after the headline' },
-    { on: true, label: 'Yes - caption the hook too' },
-  ].sort((a, b) => Number(b.on === last) - Number(a.on === last))
   return (
     <section className="screen check-questions">
       <button type="button" className="back" onClick={onCancel}>
@@ -104,23 +105,22 @@ export function CheckQuestions({
         </div>
       ))}
       {hook ? (
-        <div className="check-hook">
-          <div className="group-title">Captions on the hook?</div>
-          <p className="hint">
-            The hook is the start of the video, while the headline is up.
-            {videos.length > 1 ? ` This goes for all ${videos.length} videos.` : ''}
-          </p>
-          {options.map(({ on, label }, i) => (
-            <button key={label} type="button" className={`btn wide${i === 0 ? ' primary' : ''}`} onClick={() => next(on)}>
-              {label}
-            </button>
-          ))}
+        <div className="check-hook group">
+          <label className="toggle">
+            <input type="checkbox" checked={hookOn} onChange={(e) => setHookOn(e.target.checked)} />
+            <span>
+              <span className="label">Captions on the hook too</span>
+              <span className="hint" style={{ display: 'block' }}>
+                The hook is the start of the video, while the headline is up. Off, the captions start after it.
+                {videos.length > 1 ? ` This goes for all ${videos.length} videos.` : ''}
+              </span>
+            </span>
+          </label>
         </div>
-      ) : (
-        <button type="button" className="btn primary wide" onClick={() => next()}>
-          Next
-        </button>
-      )}
+      ) : null}
+      <button type="button" className="btn primary wide" onClick={next}>
+        Next
+      </button>
     </section>
   )
 }

@@ -31,6 +31,7 @@ import {
   type CaptionSize,
   type CaptionStyle,
   type CaptionWord,
+  PHRASE_HOLD_SEC,
 } from './captions'
 import { centsLabel, estimateRecheckCents, flaggedPhrases, type Span } from './captionFlags'
 import { headlineFontReady } from './headlineFont'
@@ -352,7 +353,7 @@ export function CaptionReview({
     let following = k
     const tick = () => {
       const t = v.currentTime
-      const shown = captionAt(starts, wordsRef.current, t)
+      const shown = captionAt(starts, wordsRef.current, t, styleRef.current === 'word' ? undefined : PHRASE_HOLD_SEC)
       paint(shown, shown >= 0 ? t + CAPTION_LEAD - starts[shown] : 0)
       const now = shown >= 0 ? ownerRef.current[shown] : following
       if (now !== following) {

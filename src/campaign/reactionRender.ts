@@ -28,7 +28,7 @@ import { createOutputSink } from '../media/outputSink'
 import { RangeReader, inTimestampOrder } from '../media/rangeReader'
 import { isSilenceCutSupported } from '../media/silenceCut'
 import type { Range } from '../media/silenceMath'
-import { CAPTION_LEAD, captionAt, drawStyledCaption, captionRanges, type CaptionPosition, type CaptionSize, type CaptionStyle, type CaptionWord } from './captions'
+import { CAPTION_LEAD, captionAt, drawStyledCaption, captionRanges, type CaptionPosition, type CaptionSize, type CaptionStyle, type CaptionWord, PHRASE_HOLD_SEC } from './captions'
 import { framingAt, planMotion, reactionZoom, zoomPlace } from './effects'
 import { eachSound, openClip, type Clip } from './clipParts'
 import { headlineFontReady } from './headlineFont'
@@ -199,7 +199,7 @@ export async function renderReaction(
                 ctx.fillRect(0, 0, width, height)
                 const spot = zoomPlace(productPlace, framingAt(motion, 1, timestamp - switchAt, []), width, height)
                 sample.draw(ctx, spot.x, spot.y, spot.width, spot.height)
-                const word = captionAt(captionTimes, captionWords, timestamp)
+                const word = captionAt(captionTimes, captionWords, timestamp, captionStyle === 'word' ? undefined : PHRASE_HOLD_SEC)
                 if (word >= 0) {
                   const since = timestamp + CAPTION_LEAD - captionTimes[word]
                   drawStyledCaption(ctx, width, height, captionWords, captionPhrases, word, since, false, captionPosition, captionSize, captionStyle)

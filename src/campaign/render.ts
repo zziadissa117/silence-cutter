@@ -52,7 +52,7 @@ import { RangeReader, inTimestampOrder } from '../media/rangeReader'
 import { isSilenceCutSupported } from '../media/silenceCut'
 import { totalDuration, type Range } from '../media/silenceMath'
 import type { VideoLook } from './look'
-import { CAPTION_LEAD, captionAt, drawStyledCaption, captionRanges, type CaptionPosition, type CaptionSize, type CaptionStyle, type CaptionWord } from './captions'
+import { CAPTION_LEAD, captionAt, drawStyledCaption, captionRanges, type CaptionPosition, type CaptionSize, type CaptionStyle, type CaptionWord, PHRASE_HOLD_SEC } from './captions'
 import { decoderGaveUp, eachSound, firstShown, openClip, pause, visibleAgain, wholeOf, writeWhole, type Clip } from './clipParts'
 import { traceRead, traceStart, traceStep, traceWritten } from './renderTrace'
 import type { ClipPlace } from './clips'
@@ -765,7 +765,7 @@ export async function renderCampaignCut(
                   } else drawLogo(ctx, logoImage, logo)
                 }
                 // The caption on top of everything: it is what is being said.
-                const word = captionAt(captionPlacer.times, captions, timestamp)
+                const word = captionAt(captionPlacer.times, captions, timestamp, captionStyle === 'word' ? undefined : PHRASE_HOLD_SEC)
                 if (word >= 0) {
                   const since = timestamp + CAPTION_LEAD - captionPlacer.times[word]
                   drawStyledCaption(ctx, width, height, captions, captionPhrases, word, since, false, captionPosition, captionSize, captionStyle)

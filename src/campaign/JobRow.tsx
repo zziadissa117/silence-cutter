@@ -194,7 +194,7 @@ export function JobRow({
       </button>
     ) : null
 
-  const expandable = job.status !== 'working' && job.status !== 'approved'
+  const expandable = job.status !== 'working'
 
   return (
     <li className={`vrow${open ? ' open' : ''}`}>
@@ -358,7 +358,7 @@ export function JobRow({
 
           {job.status === 'failed' || job.status === 'held' ? <div className="error">{job.error}</div> : null}
 
-          {job.status === 'queued' || job.status === 'sorted' || job.status === 'held' || job.status === 'failed' ? (
+          {job.status === 'queued' || job.status === 'sorted' || job.status === 'held' || job.status === 'failed' || job.status === 'approved' ? (
             <button type="button" className="linkbtn" onClick={onRemove}>
               Remove from the list
             </button>

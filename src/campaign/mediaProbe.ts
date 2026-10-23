@@ -120,8 +120,8 @@ async function codecProbe(): Promise<{ encoder: Probe; decoder: Probe }> {
 
 /** How the three are, each given a few seconds. */
 export async function mediaHealth(): Promise<MediaHealth> {
-  const storage = await storageProbe()
-  const { encoder, decoder } = await codecProbe()
+  // Together: one after another, the advice took up to 18 s to come.
+  const [storage, { encoder, decoder }] = await Promise.all([storageProbe(), codecProbe()])
   return { storage, encoder, decoder }
 }
 

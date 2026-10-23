@@ -84,8 +84,6 @@ export const POSITIONS: { id: LogoPosition; label: string }[] = [
   { id: 'bottom-right', label: 'Bottom right' },
 ]
 
-export const DURATIONS = [1, 2, 3, 4, 5, 6, 8]
-
 /** The picture cues for the render, and the moment each comes up. Pictures
  *  whose image could not be found are left out (and named, so he can be told). */
 export function manualCues(
@@ -106,26 +104,6 @@ export function manualCues(
     at.set(m.id, m.at)
   }
   return { cues, at, missing }
-}
-
-/** Where a CSS box puts a picture so the preview matches the render (see
- *  overlay.ts layoutLogo): inside TikTok's safe zones. */
-export function previewStyle(position: LogoPosition, widthPct: number): Record<string, string> {
-  const base = { position: 'absolute', width: `${widthPct}%` }
-  switch (position) {
-    case 'top':
-      return { ...base, left: '50%', top: '13%', transform: 'translateX(-50%)' }
-    case 'top-left':
-      return { ...base, left: '6%', top: '13%' }
-    case 'top-right':
-      return { ...base, right: '6%', top: '13%' }
-    case 'bottom-left':
-      return { ...base, left: '6%', bottom: '23%' }
-    case 'bottom-right':
-      return { ...base, right: '15%', bottom: '23%' }
-    default:
-      return { ...base, left: '50%', top: '42%', transform: 'translate(-50%, -50%)' }
-  }
 }
 
 /** A short unique id for a picture on a video. */

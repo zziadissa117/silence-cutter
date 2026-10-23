@@ -85,7 +85,10 @@ describe('the questions Captions asks', () => {
     await act(async () => button('Snapchat')!.click())
     expect(calls.onHeadlineStyle).toHaveBeenCalledWith('j1', 'snap')
 
-    await act(async () => button('Yes - caption the hook')!.click())
+    const hook = host.querySelector('.check-hook input[type=checkbox]') as HTMLInputElement
+    expect(hook.checked).toBe(false)
+    await act(async () => hook.click())
+    await act(async () => button('Next')!.click())
     expect(calls.onNext).toHaveBeenCalledWith(true)
   })
 
@@ -107,11 +110,14 @@ describe('the questions Captions asks', () => {
     expect(host.textContent).toContain('No pictures come up in this video.')
   })
 
-  it('offers the hook answer given last first', async () => {
+  it('starts the hook switch the way it was set last, so Next alone keeps it', async () => {
     await ask([sorted()])
-    await act(async () => button('Yes - caption the hook')!.click())
-    await ask([sorted('j2')])
-    expect(host.querySelector('.check-hook .btn.primary')?.textContent).toContain('Yes')
+    await act(async () => (host.querySelector('.check-hook input[type=checkbox]') as HTMLInputElement).click())
+    await act(async () => button('Next')!.click())
+    const calls = await ask([sorted('j2')])
+    expect((host.querySelector('.check-hook input[type=checkbox]') as HTMLInputElement).checked).toBe(true)
+    await act(async () => button('Next')!.click())
+    expect(calls.onNext).toHaveBeenCalledWith(true)
   })
 
   it('asks no hook question for a video with no headline - just Next', async () => {
