@@ -3,6 +3,13 @@
 Newest first. Every change says what it does, how to use it, and how it works
 underneath. Kept up to date with each commit.
 
+## A plan for the whole line and for students, written down (nothing built)
+No deploy. `docs/PLAN_AUTOMATION_AND_STUDENTS.md`: how a campaign could go from the Reddit bot to the planner to the
+Cutter to posted with as little of him as possible (A1-A7, in the order worth building), and how a few students
+could get the tools privately - invite only, locked to their phones, paused or removed by him, their data and keys
+apart, a first-run that walks them through, and what each would cost (B1-B8). Logins stay uncreatable until he OKs
+part B.
+
 ## Captions on the word, phrases that stay up, and three taps gone from every video
 Only ./deploy.sh is needed; then close the Cutter and open it again.
 **Changed for you (say if you want any of it back):**

@@ -1,4 +1,18 @@
-# Handoff - state on 2026-10-20 (evening)
+# Handoff - state on 2026-10-20 (evening), with a note from 2026-10-23
+
+**2026-10-23, one session (commits bd80abf..):** "Cut ums" works now (see the CHANGELOG entry: whisper never wrote the
+fillers; a short filler prompt, a second listen for a looping window, fillers the letter model hears between words,
+and an exact-time cut between the neighbours; real-recording check in `umsFixture.test.ts`). The two crashes of
+10-22 and the hidden-posts bug are fixed; status changes on the server are guarded; the Batch number box applies on
+blur; posting through midnight takes its times; screens were cleaned up from screenshots at 440x956 / 402x874
+(the scripts that take them are described in the UI entry - a seeded page driven by Playwright); captions stay on the
+word; the hook question is a remembered switch. Not verified on an iPhone: all of it - ask him for one video with
+"um"s with the switch on, and read the `check`/`ums` reports. Open: `docs/PLAN_AUTOMATION_AND_STUDENTS.md` waits
+for his OK (part B is login creation). Left undone from the audits: per-row work on every progress tick in
+`CampaignApp` (memoise `picturesFor`/`cuesOf`/`joinWith`), the "Post today / next days" switch could be automatic,
+WideAsk could remember per campaign, headline/picture seconds and sound levels could come from the footage,
+posting windows from when posts get views, three music pickers could be one, `tick()` could be time-boxed.
+
 
 Read this with `CLAUDE.md`/`AGENTS.md` and the newest `CHANGELOG.md` entries. Branch
 `claude/cutter-lockdown-and-map`; he ships with `cd ~/Projects/silence-cutter && git pull && ./deploy.sh`.
