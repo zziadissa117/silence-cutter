@@ -60,10 +60,14 @@ export function JobRow({
   onJoin,
   suggestJoin,
   parts,
+  behind = null,
 }: {
   job: Job
   label: string
   campaigns: Campaign[]
+  /** Why a waiting video has not started: what is being made before it
+   *  ("after the batch video being made"). */
+  behind?: string | null
   onApprove: () => void
   /** With captions on, a sorted video is approved by checking its captions. */
   onCheck?: () => void
@@ -135,8 +139,8 @@ export function JobRow({
       ? job.prejoin || (job.day?.parts && !job.day.plan)
         ? 'Waiting to be put together'
         : job.day
-        ? 'Waiting to be listened to'
-        : `Waiting · ${label}`
+        ? `Waiting to be listened to${behind ? ` · ${behind}` : ''}`
+        : `Waiting · ${label}${behind ? ` · ${behind}` : ''}`
       : job.status === 'working'
         ? `${WORKING[job.phase]}… ${Math.round(job.progress * 100)}%`
         : job.status === 'sorted'

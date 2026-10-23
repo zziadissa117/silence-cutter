@@ -3,6 +3,19 @@
 Newest first. Every change says what it does, how to use it, and how it works
 underneath. Kept up to date with each commit.
 
+## A video you add is listened to next, not after the whole batch
+Only ./deploy.sh is needed; then close the Cutter and open it again.
+**What was wrong:** the queue made "videos for a chosen angle" before "the day's videos to listen to" - and the
+batch's own videos count as the former. With a batch topping itself up (25 a day, a few minutes each), a video you
+had just added sat at "Waiting to be listened to" until every batch video ahead of it was made, with nothing on the
+Videos screen to say why (batch videos live on the Batch tab).
+**Now:** approved videos first (as before), then the videos you added, to be listened to, then anything else you
+added by hand (a reaction, clips and music), and the batch and format videos last - they make themselves whenever
+the app is open anyway. The batch video already being made finishes first (one at a time); the row says so:
+"Waiting to be listened to · after the batch video being made".
+**How:** `CampaignApp` queue order (`approved` -> `queued && day` -> `queued && !day && !batch && !forFormat` ->
+the rest), `behindLine` -> `JobRow` `behind`.
+
 ## A plan for the whole line and for students, written down (nothing built)
 No deploy. `docs/PLAN_AUTOMATION_AND_STUDENTS.md`: how a campaign could go from the Reddit bot to the planner to the
 Cutter to posted with as little of him as possible (A1-A7, in the order worth building), and how a few students

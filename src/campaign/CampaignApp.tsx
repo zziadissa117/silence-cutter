@@ -1264,8 +1264,12 @@ export function CampaignApp() {
 
   // One at a time, as in the plain cutter: two renders at once on a phone
   // makes both slower and gets the tab killed for memory. Videos he has
-  // approved go first - he is waiting on those - then videos for a chosen
-  // angle, then the day's videos still to be listened to.
+  // approved go first - he is waiting on those - then the videos he just
+  // added, to be listened to (he is waiting to check them), then anything
+  // else he added by hand (a reaction, clips and music), and last the batch
+  // and format videos the app makes by itself: those used to come before
+  // the listening, and a batch topping itself up kept a video he had just
+  // added at "Waiting to be listened to" for as long as the batch took.
   useEffect(() => {
     // Nothing starts in the background: iOS takes the video decoder away
     // from a hidden page, so it would only fail.
@@ -1276,8 +1280,9 @@ export function CampaignApp() {
     const next = reviewing
       ? jobs.find((j) => j.status === 'queued' && j.day && !j.day.parts && !j.prejoin)
       : (jobs.find((j) => j.status === 'approved') ??
-        jobs.find((j) => j.status === 'queued' && !j.day) ??
-        jobs.find((j) => j.status === 'queued' && j.day))
+        jobs.find((j) => j.status === 'queued' && j.day) ??
+        jobs.find((j) => j.status === 'queued' && !j.day && !j.batch && !j.forFormat) ??
+        jobs.find((j) => j.status === 'queued' && !j.day))
     if (!next) return
     processing.current = true
 
@@ -2851,6 +2856,11 @@ export function CampaignApp() {
     </>
   )
 
+  // What a waiting video is waiting behind - a batch video the app is making
+  // by itself is not on this list, so the row says so.
+  const making = jobs.find((j) => j.status === 'working')
+  const behindLine = !making ? null : making.batch ? 'after the batch video being made' : making.forFormat ? 'after the format video being made' : `after ${making.name}`
+
   const videos = (
     <section className="screen">
       <div className="screen-head">
@@ -3056,6 +3066,7 @@ export function CampaignApp() {
                 label={job.label || labelFor(campaigns ?? [], job)}
                 campaigns={campaigns ?? []}
                 onApprove={() => approve([job.id])}
+                behind={job.status === 'queued' ? behindLine : null}
                 onCheck={captionsOn && talkingIn(job) ? () => startCheck([job.id]) : undefined}
                 onCuts={talkingIn(job) && !captionsOn ? () => setCutting({ id: job.id }) : undefined}
                 onMusic={(choice) => setMusic(job.id, choice)}
