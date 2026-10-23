@@ -19,7 +19,16 @@ export interface CaptionWord {
   /** When he starts saying it, on the raw video's timeline. */
   start: number
   end: number
+  /** When it was heard, before captionWords fitted it to the cut. Each pass
+   *  through the cut starts again from here: started from the fitted times,
+   *  every pass moved the last words before a cut another 0.1 s early, and
+   *  the captions are put through it on every keystroke while he fixes one
+   *  (2026-10-23, "captions sometimes go out of sync"). */
+  heard?: { start: number; end: number }
 }
+
+/** When a caption was heard: its own times before it was fitted to a cut. */
+export const heardTime = (w: { start: number; end: number; heard?: { start: number; end: number } }) => w.heard ?? { start: w.start, end: w.end }
 
 /** A word as a caption shows it: no surrounding spaces, and no commas or
  *  full stops trailing it - TikTok's word captions drop them - while ? and !
@@ -164,7 +173,10 @@ const READ_SEC = 0.25
  *  captions leave them off, and one left in reads as a mistake. Punctuation
  *  stays - it is what the phrases are split on when he checks them - and
  *  comes off only as a word is drawn. */
-export function captionWords(words: WordChunk[], keep: Range[], { rough = false }: { rough?: boolean } = {}): CaptionWord[] {
+export function captionWords(given: (WordChunk | CaptionWord)[], keep: Range[], { rough = false }: { rough?: boolean } = {}): CaptionWord[] {
+  // Always from when each word was heard, so going through again changes
+  // nothing; every caption keeps that time with it.
+  const words = given.map((w) => ({ ...w, ...heardTime(w) }))
   const bare = (w: WordChunk | undefined) => (w ? cleanWord(w.text).toLowerCase() : '')
   const endsSentence = (w: WordChunk | undefined) => Boolean(w && /[.?!…]["”')]*$/.test(w.text.trim()))
   const captions: CaptionWord[] = []
@@ -177,14 +189,15 @@ export function captionWords(words: WordChunk[], keep: Range[], { rough = false 
     // moment of a stretch is in it too (the shifted check used to push those
     // past the end, where nothing caught them, and the sentence lost its
     // last word).
+    const heard = { start: w.start, end: w.end }
     if (keep.some((r) => w.start + EARLY_SEC >= r.start && w.start < r.end)) {
-      captions.push({ text, start: w.start, end: w.end })
+      captions.push({ text, start: w.start, end: w.end, heard })
       return
     }
     const repeated = bare(w) === bare(words[i - 1]) || bare(w) === bare(words[i + 1])
     const into = keep.find((r) => w.start < r.start && r.start - w.start <= EARLY_RUN_SEC && w.end >= r.start + EARLY_RUN_IN_SEC)
     if (into && !repeated) {
-      captions.push({ text, start: into.start, end: Math.max(w.end, into.start + MIN_SHOW_SEC) })
+      captions.push({ text, start: into.start, end: Math.max(w.end, into.start + MIN_SHOW_SEC), heard })
       return
     }
     // A sentence's first word that ends just before its stretch: kept when it
@@ -194,7 +207,7 @@ export function captionWords(words: WordChunk[], keep: Range[], { rough = false 
     const previousRange = keep.filter((r) => r.end <= w.start).reduce<Range | undefined>((a, r) => (!a || r.end > a.end ? r : a), undefined)
     const belongsBefore = previousRange && w.start - previousRange.end <= LATE_SEC && !endsSentence(words[i - 1])
     if (next && !belongsBefore && !repeated) {
-      captions.push({ text, start: next.start, end: Math.max(w.end, next.start + MIN_SHOW_SEC) })
+      captions.push({ text, start: next.start, end: Math.max(w.end, next.start + MIN_SHOW_SEC), heard })
       return
     }
     // A last word heard late: half a second when it carries on a sentence
@@ -209,7 +222,7 @@ export function captionWords(words: WordChunk[], keep: Range[], { rough = false 
       // back too, so two or three heard late each still get their moment.
       const pulled = (rescued.get(before) ?? 0) + 1
       rescued.set(before, pulled)
-      captions.push({ text, start: before.end, end: before.end })
+      captions.push({ text, start: before.end, end: before.end, heard })
     }
   })
   // Each stretch's pulled-back words, the last of them ending with it.
@@ -289,7 +302,7 @@ export function withRestored(captions: CaptionWord[], heard: WordChunk[], before
   const back = heard.filter((w) => cleanWord(w.text) && !isFillerWord(w.text) && !overlaps(w, before) && overlaps(w, after))
   if (back.length === 0) return captions
   const fresh = back
-    .filter((w) => !captions.some((c) => Math.abs(c.start - w.start) < 0.05 && bareWord(c.text).toLowerCase() === bareWord(w.text).toLowerCase()))
+    .filter((w) => !captions.some((c) => Math.abs(heardTime(c).start - w.start) < 0.05 && bareWord(c.text).toLowerCase() === bareWord(w.text).toLowerCase()))
     .map((w) => ({ text: w.text.trim(), start: w.start, end: w.end }))
   return [...captions, ...fresh].sort((a, b) => a.start - b.start)
 }
@@ -340,8 +353,10 @@ export function retimePhrase(phrase: CaptionWord[], text: string): CaptionWord[]
   if (phrase.length === 0) return []
   if (typed.length === 0) return phrase.map((w) => ({ ...w, text: '' }))
   if (typed.length === phrase.length) return phrase.map((w, i) => ({ ...w, text: typed[i] }))
-  const from = phrase[0].start
-  const to = Math.max(phrase[phrase.length - 1].end, from + typed.length * MIN_SHOW_SEC)
+  // Shared out over when the phrase was heard, so the next pass through the
+  // cut fits the new words the way it fitted the old ones.
+  const from = heardTime(phrase[0]).start
+  const to = Math.max(heardTime(phrase[phrase.length - 1]).end, from + typed.length * MIN_SHOW_SEC)
   const weights = typed.map((t) => t.length + 2)
   const total = weights.reduce((a, b) => a + b, 0)
   let at = from

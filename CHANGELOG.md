@@ -3,6 +3,19 @@
 Newest first. Every change says what it does, how to use it, and how it works
 underneath. Kept up to date with each commit.
 
+## Captions stay on the words: fixing them by hand no longer slides them early
+Only ./deploy.sh is needed; then close the Cutter and open it again.
+**What was wrong:** the captions are fitted to the cut (`captionWords`) every time they are shown - opening Captions,
+every keystroke while fixing a word, the edit screen, and again when the video is made. Each pass started from the
+times the last pass had fitted, and moved the last words before each cut up to 0.1 s earlier again. A video
+checked quickly was fine; one where he typed fixes came out with words before each cut running well ahead of his
+voice - "sometimes out of sync".
+**Now:** each caption keeps when it was heard (`CaptionWord.heard`) and every pass starts from that, so going
+through again changes nothing. A phrase retyped with more or fewer words is shared out over when it was heard.
+Videos whose captions were already checked before this update keep the times they had.
+**How:** `captions.ts` (`heard`, `heardTime`; `captionWords`, `retimePhrase`, `withRestored` use it);
+test `captionSync.test.ts` (10 passes and a word typed a letter at a time land where one pass did).
+
 ## Batch: see how each hook does, stop one or change its words, and the batch remakes those videos
 Needs deploying: run ./deploy-server.sh, then ./deploy.sh; then close the Cutter and open it again. No database change.
 **Now, in the Batch tab, under Headlines - "How each hook is doing":**
