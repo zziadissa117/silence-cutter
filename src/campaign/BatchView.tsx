@@ -7,7 +7,7 @@
 // for one of the campaign's posting times - to wait for his approval.
 
 import { TrackName, TrackPlayer } from './TrackPlayer'
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 
 import { VideoPicker } from '../VideoPicker'
 import { pickArrived, pickSaved } from '../pickWatch'
@@ -26,6 +26,7 @@ import {
   stepTitle,
   BATCH_LOOKS,
   looksOf,
+  looksToMix,
   type BatchLook,
   type LookShare,
   todayHere,
@@ -40,6 +41,24 @@ import { ClipViewer } from './ClipViewer'
 import { describeClip } from './clipCheck'
 import { report as reportProblem } from '../report'
 import { filmingOf } from './filming'
+import { shortNumber } from './analytics'
+import {
+  WEAK_AFTER,
+  changeHeadline,
+  dropHook,
+  dropLook,
+  groupHooks,
+  hookLabel,
+  hookOfJob,
+  hookOfPost,
+  hookStats,
+  sameHook,
+  sameLook,
+  weakHooks,
+  wordsKey,
+  type HookKey,
+  type HookStat,
+} from './batchHooks'
 import { fingerprint, skippedNotice } from './fingerprint'
 import { formatTime, labelOf, type Job } from './jobs'
 import type { Angle, Campaign } from './look'
@@ -73,6 +92,7 @@ import {
   runSlots,
   settled,
   startOver,
+  takeOutHook,
   takenBy,
   topUp,
   trimDown,
@@ -685,6 +705,80 @@ export function BatchView({
   const aheadCount = bank ? dayVideos(posts, jobs, campaign.id).filter((v) => v.date < aheadEnd).length : 0
   /** Start over: every video of the batch not out yet comes out and can be
    *  made again with what he has set now (batchRun.startOver); then Start. */
+  /** How each hook is doing, from the campaign's posts and the videos still
+   *  to be made here (batchHooks.ts). */
+  const mixedLooks = bank ? looksToMix(bank) : []
+  const hookStats_ = useMemo(() => (bank ? hookStats(posts, jobs, bank, mixedLooks) : []), [posts, jobs, bank]) // eslint-disable-line react-hooks/exhaustive-deps
+  const hookRows = useMemo(() => groupHooks(hookStats_, 'words'), [hookStats_])
+
+  /** Takes one hook's videos not out yet out of the batch and changes the
+   *  bank (the hook dropped, or its words changed); a running batch then
+   *  tops the days up with the other hooks. */
+  const runTakeOut = (hook: HookKey, change: (b: BatchBank) => BatchBank, said: string, look?: BatchLook) => {
+    const current = bankRef.current
+    if (!current || onServer) return
+    setTopping(true)
+    setProblem(null)
+    setSaving('Taking its videos out…')
+    void oneAtATime(campaign.id, () =>
+      takeOutHook({
+        bank: current,
+        campaignId: campaign.id,
+        jobs,
+        matches: ({ post, job }) => {
+          const of = post ? hookOfPost(post) : job ? hookOfJob(job) : null
+          return look ? sameLook(of, look) : sameHook(of, hook)
+        },
+        change,
+        removeJob: onRemove,
+        save: async (next) => {
+          setBank(next)
+          bankRef.current = next
+          await saveBatchBank(next)
+        },
+        latest: () => bankRef.current ?? current,
+      }),
+    )
+      .then((done) => {
+        if (!done) return
+        setPosts(done.posts)
+        const n = done.taken
+        setNotice(`${said} Took out ${n} video${n === 1 ? '' : 's'} not out yet${done.bank.running ? ' - the batch makes others in their place' : ''}.`)
+        if (done.failed > 0) setProblem(`${done.failed} couldn't be taken out: ${done.reason}`)
+        void listPosts(true).then(setPosts).catch(() => {})
+        if (done.bank.running) runTopUp(done.bank)
+      })
+      .catch((error: unknown) => setProblem(error instanceof Error ? error.message : String(error)))
+      .finally(() => {
+        setSaving(null)
+        setTopping(false)
+      })
+  }
+
+  // Dropping a weak hook by itself, when he asked for that: one at a time,
+  // once its videos' views say so (batchHooks.weakHooks), and said here.
+  const weak = bank?.dropWeakHooks && !onServer ? weakHooks(hookRows)[0] : undefined
+  const weakKey = weak ? `${weak.look ?? ''}|${weak.words}` : ''
+  useEffect(() => {
+    const current = bankRef.current
+    if (!weak || !current || busyMaking || saving !== null || topping) return
+    const others = groupHooks(
+      hookStats_.filter((s) => !sameHook(s, weak)),
+      'words',
+    )
+    const theirRead = others.reduce((n, o) => n + o.read, 0)
+    const theirViews = theirRead > 0 ? Math.round(others.reduce((n, o) => n + (o.views ?? 0) * o.read, 0) / theirRead) : 0
+    const label = hookLabel(weak, current)
+    runTakeOut(
+      weak,
+      (b) => ({
+        ...dropHook(b, weak, mixedLooks),
+        droppedHooks: [{ label, views: weak.views ?? 0, others: theirViews, at: new Date().toISOString() }, ...(b.droppedHooks ?? [])].slice(0, 10),
+      }),
+      `Dropped ${label} by itself: ${shortNumber(weak.views)} views a video against ${shortNumber(theirViews)} for the others.`,
+    )
+  }, [weakKey]) // eslint-disable-line react-hooks/exhaustive-deps
+
   const runStartOver = () => {
     if (!bank) return
     const confirmText = `Take out the ${outAhead} video${outAhead === 1 ? '' : 's'} of this batch that haven't gone out yet, to make them again with your latest settings? Your clips, headlines and songs stay - tap Start after to make them.`
@@ -1145,6 +1239,26 @@ export function BatchView({
             ) : null}
           </div>
           ) : null}
+          {hookRows.length > 0 ? (
+            <HookResults
+              bank={bank}
+              byWords={hookRows}
+              byLook={mixedLooks.length > 1 ? groupHooks(hookStats_, 'look') : []}
+              busy={busyMaking || saving !== null}
+              onServer={onServer}
+              onStopWords={(hook) => runTakeOut(hook, (b) => dropHook(b, hook, mixedLooks), `Stopped using ${hookLabel(hook, bank)}.`)}
+              onStopLook={(look) =>
+                runTakeOut(
+                  { look, words: '' },
+                  (b) => (look === 'formula' ? dropHook(b, { look, words: '' }, mixedLooks) : dropLook(b, look, mixedLooks)),
+                  `Stopped using ${LOOK_LABEL[look]}.`,
+                  look,
+                )
+              }
+              onChangeWords={(hook, words) => runTakeOut(hook, (b) => changeHeadline(b, hook.words, words), `Changed "${hook.words}" to "${words}".`)}
+              onAuto={(on) => keep({ ...bank, dropWeakHooks: on })}
+            />
+          ) : null}
           {green
             ? null
             : onEngine
@@ -1447,6 +1561,142 @@ export function BatchView({
 }
 
 const LOOK_LABEL: Record<BatchLook, string> = { box: 'White box', outline: 'Outline', snap: 'Snapchat', formula: 'Claude + X' }
+
+/** How each hook is doing, and what to do about one that does badly: stop
+ *  using it, or change its words - its videos not out yet come out and
+ *  the batch makes others in their place. */
+function HookResults({
+  bank,
+  byWords,
+  byLook,
+  busy,
+  onServer,
+  onStopWords,
+  onStopLook,
+  onChangeWords,
+  onAuto,
+}: {
+  bank: BatchBank
+  byWords: HookStat[]
+  byLook: HookStat[]
+  busy: boolean
+  onServer: boolean
+  onStopWords: (hook: HookKey) => void
+  onStopLook: (look: BatchLook) => void
+  onChangeWords: (hook: HookKey, words: string) => void
+  onAuto: (on: boolean) => void
+}) {
+  const [editing, setEditing] = useState<{ words: string; draft: string } | null>(null)
+  const line = (s: HookStat) =>
+    [
+      `${s.posted} posted`,
+      s.views !== null ? `${shortNumber(s.views)} views a video${s.read < s.posted ? ` (${s.read} read)` : ''}` : s.posted > 0 ? 'views not read yet' : null,
+      s.waiting > 0 ? `${s.waiting} to go` : null,
+      !s.inMix ? 'no longer in the mix' : null,
+    ]
+      .filter(Boolean)
+      .join(' · ')
+  const confirmStop = (what: string, waiting: number) =>
+    window.confirm(`Stop using ${what}?${waiting > 0 ? ` The ${waiting} video${waiting === 1 ? '' : 's'} with it not out yet come${waiting === 1 ? 's' : ''} out, and the batch makes others instead.` : ''}`)
+  return (
+    <div className="group hook-results">
+      <div className="group-title">How each hook is doing</div>
+      <p className="hint bank-hint">
+        Views are read a day, three days and a week after a video goes out. Stop a hook that does badly, or change its
+        words: its videos not out yet come out and the batch makes others in their place.
+        {onServer ? ' Bring the batch back to this phone first (Settings) to change hooks.' : ''}
+      </p>
+      {byLook.some((s) => s.look) ? (
+        <ul className="hook-list">
+          {byLook.map((s) => (
+            <li key={`look-${s.look ?? 'angle'}`} className="hook-row">
+              <div className="hook-text">
+                <span className="hook-name">{s.look ? LOOK_LABEL[s.look] : 'Made before looks were counted'}</span>
+                <span className="hint">{line(s)}</span>
+              </div>
+              {s.look && s.inMix ? (
+                <button type="button" className="linkbtn" disabled={busy || onServer} onClick={() => confirmStop(LOOK_LABEL[s.look!], s.waiting) && onStopLook(s.look!)}>
+                  Stop using it
+                </button>
+              ) : null}
+            </li>
+          ))}
+        </ul>
+      ) : null}
+      <ul className="hook-list">
+        {byWords.map((s) => {
+          const label = hookLabel(s, bank)
+          const open = editing && s.look !== 'formula' && editing.words === s.words
+          return (
+            <li key={s.look === 'formula' ? 'formula' : `w-${wordsKey(s.words)}`} className="hook-row">
+              <div className="hook-text">
+                <span className="hook-name">{label}</span>
+                <span className="hint">{line(s)}</span>
+                {open ? (
+                  <div className="hook-edit">
+                    <input
+                      type="text"
+                      className="find"
+                      value={editing.draft}
+                      aria-label={`New words for ${s.words}`}
+                      onChange={(e) => setEditing({ words: s.words, draft: e.target.value })}
+                    />
+                    <button
+                      type="button"
+                      className="btn small primary"
+                      disabled={busy || !editing.draft.trim() || wordsKey(editing.draft) === wordsKey(s.words)}
+                      onClick={() => {
+                        const words = editing.draft.trim()
+                        setEditing(null)
+                        if (window.confirm(`Change "${s.words}" to "${words}"?${s.waiting > 0 ? ` The ${s.waiting} video${s.waiting === 1 ? '' : 's'} with the old words not out yet come${s.waiting === 1 ? 's' : ''} out, and the batch makes them again with the new ones.` : ''}`)) onChangeWords(s, words)
+                      }}
+                    >
+                      Change
+                    </button>
+                    <button type="button" className="linkbtn" onClick={() => setEditing(null)}>
+                      Cancel
+                    </button>
+                  </div>
+                ) : null}
+              </div>
+              {s.inMix && !open ? (
+                <div className="hook-actions">
+                  {s.look !== 'formula' ? (
+                    <button type="button" className="linkbtn" disabled={busy || onServer} onClick={() => setEditing({ words: s.words, draft: s.words })}>
+                      Change words
+                    </button>
+                  ) : null}
+                  <button type="button" className="linkbtn danger" disabled={busy || onServer} onClick={() => confirmStop(label, s.waiting) && onStopWords(s)}>
+                    Stop using it
+                  </button>
+                </div>
+              ) : null}
+            </li>
+          )
+        })}
+      </ul>
+      <label className="toggle">
+        <input type="checkbox" checked={bank.dropWeakHooks ?? false} disabled={onServer} onChange={(e) => onAuto(e.target.checked)} />
+        <span>
+          <span className="label">Drop a hook that does badly by itself</span>
+          <span className="hint" style={{ display: 'block' }}>
+            Once {WEAK_AFTER} of its videos have their views read, a hook averaging under half of what the other hooks get is stopped
+            and its videos not out yet are made again with the others. It says so here.
+          </span>
+        </span>
+      </label>
+      {bank.droppedHooks?.length ? (
+        <ul className="hook-list dropped">
+          {bank.droppedHooks.map((d) => (
+            <li key={`${d.label}-${d.at}`} className="hint">
+              {dayLabel(d.at.slice(0, 10))}: dropped {d.label} - {shortNumber(d.views)} views a video against {shortNumber(d.others)} for the others.
+            </li>
+          ))}
+        </ul>
+      ) : null}
+    </div>
+  )
+}
 
 /** The hooks a batch's videos take turns between: tap to add one or take it
  *  out - one always stays. With more than one, each gets a share, even until

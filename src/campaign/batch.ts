@@ -57,6 +57,11 @@ export interface BatchBank {
   /** Views a video at which Analytics suggests more a day (analytics.ts);
    *  none: it goes by the trend only. */
   viewTarget?: number
+  /** Drop a hook that does badly by itself (batchHooks.weakHooks): its
+   *  videos not out yet come out and the others are made instead. */
+  dropWeakHooks?: boolean
+  /** What was dropped that way, newest first, to say so. */
+  droppedHooks?: { label: string; views: number; others: number; at: string }[]
   /** The hooks his videos take turns between, each with its share: headlines
    *  in the three looks (the step names follow) and Claude + X (looksOf,
    *  looksToMix). None: headlines in the angle's look. */

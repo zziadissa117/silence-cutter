@@ -121,8 +121,12 @@ export interface ServerPost {
   byHand?: boolean
   /** Approved with "post later": it waits until he taps Post. */
   ready?: boolean
-  /** Made from the Batch tab, for this day and time. */
-  batch?: { id: string; date: string; time: string; size: number } | null
+  /** Made from the Batch tab, for this day and time - and with this hook
+   *  look, on videos made since looks were carried. */
+  batch?: { id: string; date: string; time: string; size: number; look?: 'box' | 'outline' | 'snap' | 'formula' } | null
+  /** Its views on each account it went to (by account name), as the server
+   *  last read them from Postiz; absent until read. */
+  views?: Record<string, number> | null
 }
 
 /** This phone's posting: whose profile, and whether it sends its finished

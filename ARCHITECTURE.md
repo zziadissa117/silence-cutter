@@ -274,6 +274,16 @@ already holding some (`stackTimesOn`, given only the number still needed and tod
 ones, so it keeps 20 minutes clear when there is room), are one from each stretch of the free
 candidates (`batch.spreadPick`, seeded by campaign and day) - never the first free minutes.
 
+How each hook does (`batchHooks.ts`, the Batch tab's `HookResults`): a video's hook is its look (`JobBatch.look`,
+set in `addBatch`, kept by the server's `batchInfo`, back on `ServerPost.batch.look`) and its headline's words
+(Claude + X told by its headline on older videos). `hookStats` counts posted / views read (`ServerPost.views`, the
+server's per-post reads) / to go per hook from the campaign's posts and the jobs here; `groupHooks` by words or by
+look; `weakHooks` names one averaging under `WEAK_SHARE` of the others after `WEAK_AFTER` reads each side.
+`batchRun.takeOutHook` is `startOver` for one hook: its removable videos out (`stopPostsNow`, jobs dropped), their
+mixes unmade, the days recounted, the bank changed (`dropHook` / `dropLook` / `changeHeadline`), running kept so the
+next top-up fills with the other hooks. `BatchBank.dropWeakHooks` does that by itself from the Batch tab, one hook
+at a time, writing `droppedHooks`.
+
 Hooks in shares: `BatchBank.looks` - `{ look, parts }` for White box / Outline / Snapchat
 headlines and Claude + X (`BatchLook`), picked in the Batch tab's Hook section (`HookLooks`,
 − / + per look as a %). Older banks read through `looksOf` (`hook: 'formula'` alone, or

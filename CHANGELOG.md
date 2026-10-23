@@ -3,6 +3,29 @@
 Newest first. Every change says what it does, how to use it, and how it works
 underneath. Kept up to date with each commit.
 
+## Batch: see how each hook does, stop one or change its words, and the batch remakes those videos
+Needs deploying: run ./deploy-server.sh, then ./deploy.sh; then close the Cutter and open it again. No database change.
+**Now, in the Batch tab, under Headlines - "How each hook is doing":**
+- One line per hook: each headline (its words) and Claude + X, with how many went out, their views a video (read a
+  day, three days and a week after posting; "views not read yet" until then) and how many are still to go. When the
+  batch mixes looks, a line per look too (White box / Outline / Snapchat / Claude + X).
+- **Stop using it** on any line: the videos with that hook not out yet come out (scheduled ones taken out of Postiz,
+  queued ones dropped), their mixes are free again, and a running batch makes others in their place at once. Posted
+  videos and one being made stay.
+- **Change words** on a headline: type the new words; the videos with the old words not out yet come out and are
+  made again with the new ones. The old words leave the list, the new ones start fresh.
+- **Drop a hook that does badly by itself** (a switch, off until you turn it on): once 5 of a hook's videos have their
+  views read, one averaging under half of what the other hooks get (over 5 of theirs) is stopped the same way, and
+  the card says what was dropped and the numbers. Nothing to type.
+- Videos made from now on carry their look, so the per-look lines count them; videos from before count by their
+  words only. On a batch handed to the server, the lines show but the actions wait until the batch is back on the
+  phone.
+**How:** `batchHooks.ts` (`hookOfPost/Job`, `hookStats`, `groupHooks`, `weakHooks` with `WEAK_AFTER`/`WEAK_SHARE`,
+`dropHook`, `dropLook`, `changeHeadline`), `batchRun.takeOutHook` (next to `startOver`: stops and unmakes only the
+matching videos, recounts the days, keeps running), `BatchView` `HookResults` + `runTakeOut` + the automatic effect;
+`JobBatch.look` set in `CampaignApp.addBatch`, server `batchInfo` keeps `look`, `postView` sends `batch.look` and the
+post's `views`; `BatchBank.dropWeakHooks`, `droppedHooks`. Tests: `batchHooks.test.ts`, `batchRun.test.ts`.
+
 ## A video you add is listened to next, not after the whole batch
 Only ./deploy.sh is needed; then close the Cutter and open it again.
 **What was wrong:** the queue made "videos for a chosen angle" before "the day's videos to listen to" - and the

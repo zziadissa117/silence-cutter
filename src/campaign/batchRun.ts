@@ -529,6 +529,64 @@ export async function startOver({
   return { bank: next, taken: gone.length, failed: outcome.failed.length, reason: outcome.failed[0]?.reason, posts }
 }
 
+/** Taking one hook's videos out - a headline that does badly, or Claude + X
+ *  - while the batch keeps going: its videos not out yet come out (jobs
+ *  not started dropped, posts not out stopped), their mixes can be made
+ *  again, the days are counted again from what is left, and the bank is
+ *  changed as asked (`change`: the hook dropped, or its words changed) so
+ *  the next top-up fills those days with the other hooks. Posted videos
+ *  and ones being made stay. */
+export async function takeOutHook({
+  bank,
+  campaignId,
+  jobs,
+  matches,
+  change,
+  removeJob,
+  save,
+  latest = () => bank,
+}: {
+  bank: BatchBank
+  campaignId: string
+  jobs: readonly Job[]
+  /** Whether a video (a post, or a job here) has the hook. */
+  matches: (video: { post?: ServerPost; job?: Job }) => boolean
+  /** The bank as it should be once they are out. */
+  change: (bank: BatchBank) => BatchBank
+  removeJob: (id: string) => void
+  save: (bank: BatchBank) => Promise<void>
+  latest?: () => BatchBank
+}): Promise<{ bank: BatchBank; taken: number; failed: number; reason?: string; posts: ServerPost[] }> {
+  const posts = await listPosts(true)
+  const videos = dayVideos(posts, jobs, campaignId)
+  const jobOf = (v: DayVideo) => (v.kind === 'job' ? jobs.find((j) => j.id === v.id) : undefined)
+  const going = videos.filter((v) => v.removable && matches({ post: v.post, job: jobOf(v) }))
+  for (const v of going) if (v.kind === 'job') removeJob(v.id)
+  const outcome = await stopPostsNow(going.flatMap((v) => (v.post ? [v.post] : [])))
+  const stuck = new Set(outcome.failed.map((f) => f.post.id))
+  const gone = going.filter((v) => !(v.post && stuck.has(v.post.id)))
+  const goneIds = new Set(gone.map((v) => v.id))
+  const current = latest()
+  const prefixes = (fileName: string | null, headline: string | null) => (fileName ? mixPrefixes(current, fileName, headline ?? '') : [])
+  const ofVideo = (v: DayVideo) => {
+    const job = jobOf(v)
+    return v.post ? prefixes(v.post.fileName, v.post.headline) : job ? prefixes(job.name, job.headlineText) : []
+  }
+  const kept = [
+    ...posts
+      .filter((p) => p.campaignId === campaignId && p.batch && p.status !== 'rejected' && p.status !== 'failed' && !goneIds.has(p.id))
+      .flatMap((p) => prefixes(p.fileName, p.headline)),
+    ...videos.filter((v) => !goneIds.has(v.id) && v.kind === 'job').flatMap(ofVideo),
+  ]
+  const next = change({
+    ...current,
+    made: unmake(current.made ?? [], gone.flatMap(ofVideo), kept),
+    filled: countedDays(videos.filter((v) => !goneIds.has(v.id))),
+  })
+  await save(next)
+  return { bank: next, taken: gone.length, failed: outcome.failed.length, reason: outcome.failed[0]?.reason, posts }
+}
+
 /** A batch changing hands between this phone and the Cutter server
  *  (serverLink.ts, serverMode.ts): the videos this side has queued and not
  *  started are dropped - the other side makes them, their mixes freed for it

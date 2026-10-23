@@ -19,7 +19,12 @@ export interface BatchInfo {
   /** The last different videos his clips could make: the batch stops after
    *  them until he films new ones. */
   last?: boolean
+  /** The hook's look it was made with, for the phone to count how each
+   *  hook does. */
+  look?: 'box' | 'outline' | 'snap' | 'formula'
 }
+
+const LOOKS = new Set(['box', 'outline', 'snap', 'formula'])
 
 /** The batch a video says it belongs to, or null when what came is not one. */
 export function batchInfo(value: unknown): BatchInfo | null {
@@ -30,7 +35,8 @@ export function batchInfo(value: unknown): BatchInfo | null {
   const time = typeof v.time === 'string' && normalTimes([v.time]).length === 1 ? v.time.trim() : null
   const size = Number(v.size)
   if (!id || !date || !time || !Number.isInteger(size) || size < 1 || size > 500) return null
-  return { id, date, time, size, ...(v.last === true ? { last: true } : {}) }
+  const look = typeof v.look === 'string' && LOOKS.has(v.look) ? (v.look as BatchInfo['look']) : undefined
+  return { id, date, time, size, ...(v.last === true ? { last: true } : {}), ...(look ? { look } : {}) }
 }
 
 /** Where a batch video goes: its own time first, then the day's other

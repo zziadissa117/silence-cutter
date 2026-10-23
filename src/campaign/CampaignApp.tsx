@@ -2475,7 +2475,8 @@ export function CampaignApp() {
         clips: [],
         music: 'bank',
       },
-      batch: v.batch,
+      // Its look goes with it, for how each hook does (batchHooks.ts).
+      batch: { ...v.batch, ...(v.formula ? { look: 'formula' as const } : v.headlineStyle ? { look: v.headlineStyle } : {}) },
     }))
     setJobs((current) => [...current, ...added])
     for (const job of added) {

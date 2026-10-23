@@ -13,7 +13,7 @@ vi.mock('./posting', async (original) => ({
 }))
 
 import { emptyBank, type BankFile, type BatchBank } from './batch'
-import { AHEAD_DAYS, countedDays, dayVideos, daysToMake, filledOn, growthSummary, leftToMake, missingFor, overfull, perDayOn, planVideos, runSlots, startOver, takenBy, topUp, trimPlan, variationParts, withGrowth, withPerDay } from './batchRun'
+import { AHEAD_DAYS, countedDays, dayVideos, daysToMake, filledOn, growthSummary, leftToMake, missingFor, overfull, perDayOn, planVideos, runSlots, startOver, takeOutHook, takenBy, topUp, trimPlan, variationParts, withGrowth, withPerDay } from './batchRun'
 import { makeOnEngine } from './engine'
 import type { Job } from './jobs'
 import { listPosts, stopPostsNow, type CampaignPlace, type ServerPost } from './posting'
@@ -354,6 +354,55 @@ describe('starting the batch over', () => {
     expect(saved).toHaveLength(1)
     // So Start makes the week again.
     expect(runSlots({ bank: done.bank, place, campaignId: 'c1' }).length).toBeGreaterThanOrEqual(3 * (AHEAD_DAYS - 1))
+  })
+})
+
+describe('taking one hook out', () => {
+  it("takes out only that hook's videos not out yet, frees their mixes, keeps the batch running and changes the bank", async () => {
+    const today = new Date()
+    const day = (offset: number) => {
+      const d = new Date(today)
+      d.setDate(d.getDate() + offset)
+      return d.toLocaleDateString('en-CA')
+    }
+    const post = (id: string, status: string, offset: number, fileName: string, headline: string) =>
+      ({
+        id,
+        key: id,
+        campaignId: 'c1',
+        status,
+        fileName,
+        headline,
+        postAt: new Date(Date.now() + (offset + 1) * 86400000).toISOString(),
+        batch: { id: 'b1', date: day(offset), time: '12:00', size: 3 },
+      }) as unknown as ServerPost
+    const posts = [
+      post('p1', 'scheduled', 1, 'r1 + p1.mp4', 'h1'),
+      post('p2', 'scheduled', 2, 'r2 + p2.mp4', 'h2'),
+      post('old', 'posted', -3, 'r1 + p2.mp4', 'h2'),
+    ]
+    vi.mocked(listPosts).mockResolvedValueOnce(posts)
+    const jobs = [{ id: 'j1', campaignId: 'c1', status: 'queued', name: 'r2 + p1.mp4', headlineText: 'h2', batch: { id: 'b1', date: day(3), time: '12:00', size: 3 } }] as unknown as Job[]
+    const made = ['r1|p1|h:h1|', 'r2|p2|h:h2|', 'r1|p2|h:h2|', 'r2|p1|h:h2|']
+    const b = bank({ made, filled: { [day(1)]: 1, [day(2)]: 1, [day(3)]: 1 }, madeThrough: day(6) })
+    const removed: string[] = []
+    const done = await takeOutHook({
+      bank: b,
+      campaignId: 'c1',
+      jobs,
+      matches: ({ post, job }) => (post?.headline ?? job?.headlineText) === 'h2',
+      change: (next) => ({ ...next, headlines: ['h1', 'h3'] }),
+      removeJob: (id) => removed.push(id),
+      save: async () => {},
+    })
+    expect(done.taken).toBe(2)
+    expect(removed).toEqual(['j1'])
+    expect(vi.mocked(stopPostsNow).mock.calls.at(-1)![0].map((p) => p.id)).toEqual(['p2'])
+    // The posted h2 video and the untouched h1 one stay made; the two taken out can be made again.
+    expect(done.bank.made).toEqual(['r1|p1|h:h1|', 'r1|p2|h:h2|'])
+    expect(done.bank.running).toBe(true)
+    expect(done.bank.headlines).toEqual(['h1', 'h3'])
+    expect([day(1), day(2), day(3)].map((d) => done.bank.filled?.[d])).toEqual([1, 0, 0])
   })
 })
 

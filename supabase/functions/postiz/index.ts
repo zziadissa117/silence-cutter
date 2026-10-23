@@ -532,7 +532,8 @@ function postView(post: Post) {
     createdAt: post.created_at,
     byHand: post.by_hand,
     ready: Boolean(post.ready_at),
-    batch: post.batch ? { id: post.batch.id, date: post.batch.date, time: post.batch.time, size: post.batch.size } : null,
+    batch: post.batch ? { id: post.batch.id, date: post.batch.date, time: post.batch.time, size: post.batch.size, ...(post.batch.look ? { look: post.batch.look } : {}) } : null,
+    ...(post.views ? { views: post.views } : {}),
   }
 }
 

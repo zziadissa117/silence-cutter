@@ -581,6 +581,17 @@ input.stepper-value::-webkit-inner-spin-button, input.stepper-value::-webkit-out
 /* Four looks across a phone: each label on one line, the longer ones wider. */
 .headline-look button { flex: 1 1 auto; white-space: nowrap; padding: 0 6px; font-size: 14px; }
 /* Each hook's share of a batch's videos: − 50% +. */
+/* How each hook is doing: a line per hook, its actions beside it. */
+.hook-list { list-style: none; margin: 8px 0 0; padding: 0; display: flex; flex-direction: column; }
+.hook-row { display: flex; align-items: center; justify-content: space-between; gap: 8px 12px; padding: 8px 0; border-bottom: 1px solid var(--rule); }
+.hook-row:last-child { border-bottom: 0; }
+.hook-text { display: flex; flex-direction: column; gap: 2px; min-width: 0; flex: 1; }
+.hook-name { font-weight: 600; overflow-wrap: anywhere; }
+.hook-actions { display: flex; flex-direction: column; align-items: flex-end; gap: 6px; flex: none; }
+.hook-edit { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 6px; }
+.hook-edit input.find { flex: 1 1 12em; min-height: 40px; }
+.hook-results .toggle { margin-top: 12px; }
+.hook-list.dropped li { padding: 4px 0; }
 .look-shares { list-style: none; margin: 10px 0 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
 .look-share { display: flex; align-items: center; gap: 10px; }
 .look-share-name { flex: 1; }

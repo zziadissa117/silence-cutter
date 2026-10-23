@@ -520,3 +520,98 @@ describe('starting the batch over', () => {
     confirm.mockRestore()
   })
 })
+
+describe('how each hook is doing', () => {
+  const week = (n: number) => Object.fromEntries([0, 1, 2, 3, 4, 5, 6].map((d) => [iso(d), n]))
+  const post = (id: string, status: string, offset: number, headline: string, views?: Record<string, number>) => {
+    const at = new Date(`${iso(offset)}T12:00:00`)
+    return { id, key: `k-${id}`, campaignId: 'inflow', status, fileName: `r1 + p1.mp4`, headline, postAt: at.toISOString(), batch: { id: 'b', date: iso(offset), time: '12:00', size: 4 }, ...(views ? { views } : {}) }
+  }
+  const posts = [
+    post('a1', 'posted', -2, 'one', { tt: 900 }),
+    post('a2', 'posted', -1, 'one', { tt: 700 }),
+    post('b1', 'posted', -2, 'two', { tt: 80 }),
+    post('b2', 'scheduled', 1, 'two'),
+    post('b3', 'scheduled', 2, 'two'),
+    post('c1', 'posted', -1, 'Claude + Lovable = $800 a day', { tt: 40 }),
+  ]
+
+  beforeEach(async () => {
+    localStorage.setItem('cutter.posts', JSON.stringify(posts))
+    const { stopPostsNow, listPosts } = await import('./posting')
+    vi.mocked(stopPostsNow).mockClear()
+    vi.mocked(listPosts).mockResolvedValue(posts as never)
+    vi.spyOn(window, 'confirm').mockReturnValue(true)
+  })
+
+  it('lists each hook with what went out, its views a video and what is still to go', async () => {
+    storedBank = { ...bank, running: true, filled: week(2) }
+    await show({})
+    const card = host.querySelector('.hook-results')!
+    expect(card).not.toBeNull()
+    const rows = [...card.querySelectorAll('.hook-row')].map((r) => r.textContent)
+    expect(rows[0]).toContain('"one"')
+    expect(rows[0]).toContain('2 posted · 800 views a video')
+    expect(rows[1]).toContain('"two"')
+    expect(rows[1]).toContain('1 posted · 80 views a video · 2 to go')
+    expect(rows[2]).toContain('Claude + X')
+    expect(rows[2]).toContain('no longer in the mix')
+  })
+
+  it('stops a hook: its videos not out yet come out, it leaves the headlines, the batch keeps running', async () => {
+    storedBank = { ...bank, running: true, filled: week(2) }
+    await show({})
+    const row = [...host.querySelectorAll('.hook-row')].find((r) => r.textContent?.includes('"two"'))!
+    const stop = [...row.querySelectorAll('button')].find((b) => b.textContent?.includes('Stop using it'))!
+    await act(async () => stop.click())
+    await settle()
+    const { stopPostsNow } = await import('./posting')
+    expect(vi.mocked(stopPostsNow).mock.calls[0][0].map((p) => p.id).sort()).toEqual(['b2', 'b3'])
+    // The bank as the take-out saved it: still running, so the top-up that
+    // follows fills those days with the other hooks (it may then stop the
+    // batch itself, once every different video is made).
+    const { saveBatchBank } = await import('./store')
+    const taken = vi.mocked(saveBatchBank).mock.calls.map((c) => c[0] as BatchBank).find((b) => b.headlines.length === 2)!
+    expect(taken.headlines).toEqual(['one', 'three'])
+    expect(taken.running).toBe(true)
+    expect(host.textContent).toContain('Stopped using "two". Took out 2 videos not out yet')
+  })
+
+  it('changes the words of a hook: the old ones out, the new ones in', async () => {
+    storedBank = { ...bank, running: true, filled: week(2) }
+    await show({})
+    const row = [...host.querySelectorAll('.hook-row')].find((r) => r.textContent?.includes('"two"'))!
+    await act(async () => [...row.querySelectorAll('button')].find((b) => b.textContent?.includes('Change words'))!.click())
+    const input = row.querySelector('input[type=text]') as HTMLInputElement
+    const set = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!
+    await act(async () => {
+      set.call(input, 'two, but better')
+      input.dispatchEvent(new Event('input', { bubbles: true }))
+    })
+    await act(async () => [...row.querySelectorAll('button')].find((b) => b.textContent === 'Change')!.click())
+    await settle()
+    const { stopPostsNow } = await import('./posting')
+    expect(vi.mocked(stopPostsNow).mock.calls[0][0].map((p) => p.id).sort()).toEqual(['b2', 'b3'])
+    expect((await savedBank()).headlines).toEqual(['one', 'two, but better', 'three'])
+  })
+
+  it('drops a weak hook by itself only when asked to, and says so', async () => {
+    const many = (id: string, headline: string, views: number, n: number) => Array.from({ length: n }, (_, i) => post(`${id}${i}`, 'posted', -3, headline, { tt: views }))
+    const lots = [...many('x', 'one', 900, 6), ...many('y', 'two', 100, 5), post('z', 'scheduled', 1, 'two')]
+    localStorage.setItem('cutter.posts', JSON.stringify(lots))
+    const { listPosts, stopPostsNow } = await import('./posting')
+    vi.mocked(listPosts).mockResolvedValue(lots as never)
+    storedBank = { ...bank, running: true, filled: week(2) }
+    await show({})
+    await settle()
+    expect(vi.mocked(stopPostsNow)).not.toHaveBeenCalled()
+    const auto = host.querySelector('.hook-results input[type=checkbox]') as HTMLInputElement
+    await act(async () => auto.click())
+    await settle()
+    expect(vi.mocked(stopPostsNow).mock.calls[0][0].map((p) => p.id)).toEqual(['z'])
+    const saved = await savedBank()
+    expect(saved.headlines).toEqual(['one', 'three'])
+    expect(saved.droppedHooks?.[0]).toMatchObject({ label: '"two"', views: 100, others: 900 })
+    expect(host.textContent).toContain('Dropped "two" by itself')
+  })
+})

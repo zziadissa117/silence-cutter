@@ -225,6 +225,9 @@ export interface JobBatch {
   /** The last different videos the bank could make (batchRun.planVideos):
    *  the server's notification tells him to film new clips. */
   last?: true
+  /** The hook's look it was made with (batch.BatchLook), so how each hook
+   *  does can be counted (batchHooks.ts). Absent on videos from before. */
+  look?: 'box' | 'outline' | 'snap' | 'formula'
 }
 
 /** A clips-and-music video's other files, by name and type: the clips after
