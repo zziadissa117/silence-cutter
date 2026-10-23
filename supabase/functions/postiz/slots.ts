@@ -34,6 +34,16 @@ export function timesFor(place: { times?: string[]; window?: unknown } | undefin
   return (date: string) => windowTimes(window, campaignId, date)
 }
 
+/** A campaign posting through midnight (its window ends after it starts):
+ *  a day's session is tonight's times from `from` on, and the early ones
+ *  before `to` are the next date's - this morning's early times were last
+ *  night's. Null for a window within the day, or his own times. */
+export function sessionOf(place: { times?: string[]; window?: unknown } | undefined): { from: string; to: string } | null {
+  if (normalTimes(place?.times ?? []).length > 0) return null
+  const window = cleanWindow(place?.window) ?? DEFAULT_WINDOW
+  return pastMidnight(window) ? { from: window.from, to: window.to } : null
+}
+
 /** Until when a campaign's day's spread can go: the end of its window
  *  (midnight for one that runs past it), or of the default window when it
  *  posts at times of its own. */
@@ -214,6 +224,7 @@ export function pickTime({
   tz,
   later = false,
   leadMinutes = 10,
+  session = null,
 }: {
   times: Times
   /** The campaign's other videos that have a time. */
@@ -223,6 +234,8 @@ export function pickTime({
   /** Made for the next days: normal times from tomorrow. */
   later?: boolean
   leadMinutes?: number
+  /** A window past midnight (sessionOf): today's session runs into tomorrow. */
+  session?: { from: string; to: string } | null
 }): TimeChoice | null {
   if (timesOn(times, localDate(now, tz)).length === 0) return null
   const taken = new Set(others.map((o) => o.slot))
@@ -233,7 +246,18 @@ export function pickTime({
   }
   const date = localDate(now, tz)
   const earliest = now.getTime() + leadMinutes * MINUTE
-  const today = todaysTimes(times, date, tz)
+  let today = todaysTimes(times, date, tz)
+  if (session) {
+    // Through midnight: this morning's early times belonged to last night,
+    // so they are not missed; tonight's run on into tomorrow's early ones.
+    // Judged by the date alone, every video of such a campaign came in
+    // "late" and was spread until midnight instead of taking its times.
+    const timeOf = (slot: string) => slot.slice(date.length + 1)
+    today = [
+      ...today.filter((t) => timeOf(t.slot) >= session.from),
+      ...todaysTimes(times, addDays(date, 1), tz).filter((t) => timeOf(t.slot) < session.to),
+    ]
+  }
   const missed = today.some((t) => t.at < earliest && !taken.has(t.slot))
   const spreadToday = others.filter((o) => o.spread && o.slot.startsWith(`${date} +`))
   const lateAlready = spreadToday.some((o) => o.spread === 'late')

@@ -147,7 +147,14 @@ function BankRow({
         onChange={(e) => setText(e.target.value)}
         onBlur={save}
       />
-      <button type="button" className="linkbtn" aria-label="Remove this picture" onClick={onRemove}>
+      <button
+        type="button"
+        className="linkbtn"
+        aria-label="Remove this picture"
+        onClick={() => {
+          if (window.confirm('Take this picture out of the bank? Videos already made keep it.')) onRemove()
+        }}
+      >
         Remove
       </button>
     </div>

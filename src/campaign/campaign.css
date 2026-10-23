@@ -58,7 +58,6 @@
 .preview .hint { max-width: 360px; font-size: 13px; }
 
 .sound { display: flex; flex-direction: column; gap: 10px; padding-bottom: 14px; border-bottom: 1px solid var(--rule); }
-.sound-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
 
 .editor-foot { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding-top: 8px; }
 .linkbtn.danger { color: var(--bad); text-decoration-color: currentColor; }
@@ -93,12 +92,6 @@
 .example-caption { min-height: 1.4em; }
 .seg button:disabled { color: var(--muted); opacity: 0.5; cursor: default; }
 
-/* Signed in or not, and whether the shared setups are up to date. */
-.sync-row { margin-bottom: 14px; }
-
-/* How videos are added: one angle, or the whole day sorted. */
-.mode-row { margin-bottom: 14px; }
-
 /* A day's video waiting for approval. Unsure ones say so in amber - a
    choice to look at, not a failure. */
 .day { display: flex; flex-direction: column; gap: 10px; margin-top: 10px; }
@@ -126,10 +119,6 @@
 /* Something in a finished video to know about - amber, not red: the video
    was made, one part of the look just did not fire. */
 .notice.missed { margin: 10px 0 0; }
-
-@media (max-width: 560px) {
-  .sound-grid { grid-template-columns: 1fr; }
-}
 
 
 /* === The tabbed layout ======================================================
@@ -645,18 +634,14 @@ input.bank-name { background: transparent; border: 0; border-bottom: 1px solid c
 .cuts-pic img { height: 100%; width: auto; object-fit: cover; display: block; }
 .cuts-pic.on { background: color-mix(in srgb, var(--now) 30%, transparent); }
 .cuts-pic-preview { pointer-events: none; z-index: 2; border-radius: 6px; }
-.pic-picker, .pic-list { display: flex; flex-direction: column; gap: 10px; }
+.pic-picker { display: flex; flex-direction: column; gap: 10px; }
 .pic-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(84px, 1fr)); gap: 8px; }
 .pic-cell { display: flex; flex-direction: column; gap: 4px; align-items: center; padding: 6px; border: 1px solid var(--edge); border-radius: 10px; background: var(--surface); color: inherit; font: inherit; font-size: 12px; cursor: pointer; }
 .pic-cell img { width: 100%; height: 64px; object-fit: contain; }
 .pic-row { display: flex; flex-direction: column; gap: 8px; padding: 10px; border: 1px solid var(--edge); border-radius: 10px; background: var(--surface); }
 .pic-row.on { border-color: var(--now); }
-.pic-row-main { display: flex; align-items: center; gap: 10px; background: none; border: 0; padding: 0; color: inherit; font: inherit; text-align: left; cursor: pointer; }
-.pic-row-main img { width: 44px; height: 44px; object-fit: contain; border-radius: 6px; background: color-mix(in srgb, var(--text) 6%, transparent); }
 .pic-missing { display: inline-flex; width: 44px; height: 44px; align-items: center; justify-content: center; border: 1px dashed var(--warn); border-radius: 6px; color: var(--warn); }
 .pic-row-title { font-weight: 600; }
-.pic-row-controls { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
-.pic-row-controls select { min-height: 36px; }
 
 /* Posts: picking posts to stop. */
 .stop-picker { display: flex; flex-direction: column; gap: 12px; }

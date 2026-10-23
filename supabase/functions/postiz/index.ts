@@ -73,7 +73,7 @@ import { carryOver, cleanCaptions, cleanRepost, repostDueAt, textFor, variationN
 import { FAKE_CLAUDE, FakeError, fakeCaption, fakePostiz, isFakePostiz } from './fake.ts'
 import { approvalFor, batchChoices, batchInfo, batchReady, type BatchInfo } from './batch.ts'
 import { handFields } from './hand.ts'
-import { lastTimeToday, nextSlot, normalTimes, pickTime, spreadDay, spreadEnd, spreadUntil, timesFor, type OtherPost, type Spread, addDays, localDate, localTime, zoned } from './slots.ts'
+import { lastTimeToday, nextSlot, normalTimes, pickTime, sessionOf, spreadDay, spreadEnd, spreadUntil, timesFor, type OtherPost, type Spread, addDays, localDate, localTime, zoned } from './slots.ts'
 import { cleanWindow, type PostingWindow } from './window.ts'
 import { cleanPlace, instagramPlace, type Place } from './place.ts'
 import { attachMove, summarise, type AttachMove } from './attach.ts'
@@ -1533,7 +1533,7 @@ async function takeSlot(post: Post, profile: Profile, { leadMinutes, todayOnly =
       const choice = nextSlot({ times, taken: new Set(others.map((o) => o.slot)), now, tz: profile.timezone, leadMinutes, todayOnly })
       fields = choice ? { slot: choice.slot, post_at: choice.at.toISOString(), spread: null } : { slot: null, post_at: null, spread: null }
     } else {
-      const choice = pickTime({ times, others, now, tz: profile.timezone, later: post.later, leadMinutes })
+      const choice = pickTime({ times, others, now, tz: profile.timezone, later: post.later, leadMinutes, session: sessionOf(profile.settings.campaigns?.[post.campaign_id]) })
       fields = !choice
         ? { slot: null, post_at: null, spread: null }
         : choice.kind === 'fixed'

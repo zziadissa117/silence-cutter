@@ -463,12 +463,16 @@ function FormatPage({
       setBusy(null)
     }
   }
+  // Keyed on what the place says, not the object: the parent builds a new
+  // one every render, and each plan spreads a month of videos.
+  const placeKey = JSON.stringify(place)
   const plans = useMemo(
     () =>
       place && ready.length > 0
         ? Object.fromEntries(SCHEDULE_DAYS.map((days) => [days, spreadOver({ count: ready.length, days, place, campaignId: campaign.id })]))
         : {},
-    [place, ready.length, campaign.id],
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [placeKey, ready.length, campaign.id],
   )
   const waiting = (() => {
     if (!script || lines.length === 0 || mixes.length > 0) return null

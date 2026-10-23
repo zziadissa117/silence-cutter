@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { addDays, endOfDay, jitterMinutes, spreadEnd, spreadUntil, lastTimeToday, localDate, localTime, nextSlot, normalTimes, pickTime, spreadDay, zoned } from './slots.ts'
+import { addDays, endOfDay, jitterMinutes, spreadEnd, spreadUntil, lastTimeToday, localDate, localTime, nextSlot, normalTimes, pickTime, sessionOf, spreadDay, timesFor, timesOn, zoned } from './slots.ts'
 
 const TZ = 'America/Toronto'
 
@@ -143,6 +143,42 @@ describe('pickTime', () => {
 
   it('no times at all: none', () => {
     expect(pickTime({ times: [], others: [], now: at('09:00'), tz: TZ })).toBeNull()
+  })
+
+  describe('a window through midnight (10 PM to 2 AM)', () => {
+    const place = { window: { from: '22:00', to: '02:00', perDay: 3 } }
+    const times = timesFor(place, 'night-campaign')
+    const session = sessionOf(place)
+    const tomorrow = addDays(DATE, 1)
+    const timeOf = (slot: string) => slot.slice(DATE.length + 1)
+
+    it('is a session, not two half days', () => {
+      expect(session).toEqual({ from: '22:00', to: '02:00' })
+      expect(sessionOf({ window: { from: '11:00', to: '18:00', perDay: 3 } })).toBeNull()
+      expect(sessionOf({ times: ['09:00'], window: { from: '22:00', to: '02:00', perDay: 3 } })).toBeNull()
+    })
+
+    it('a video in the morning takes a time tonight - this morning\'s early times were last night\'s', () => {
+      const choice = pickTime({ times, others: [], now: at('09:00'), tz: TZ, session })
+      expect(choice?.kind).toBe('fixed')
+      const slot = (choice as { slot: string }).slot
+      expect(slot.startsWith(DATE)).toBe(true)
+      expect(timeOf(slot) >= '22:00').toBe(true)
+    })
+
+    it('in the evening, with tonight\'s times all gone with their videos, the next is tomorrow\'s early one', () => {
+      const evening = timesOn(times, DATE).filter((t) => t >= '22:00')
+      const early = timesOn(times, tomorrow).filter((t) => t < '02:00')
+      expect(evening.length + early.length).toBeGreaterThan(0)
+      const others = evening.map((t) => ({ slot: `${DATE} ${t}`, spread: null }))
+      const choice = pickTime({ times, others, now: at('23:00'), tz: TZ, session })
+      if (early.length > 0) expect(choice).toMatchObject({ kind: 'fixed', slot: `${tomorrow} ${early[0]}` })
+      else expect(choice).toMatchObject({ kind: 'spread', spread: 'extra' })
+    })
+
+    it('without the session, the same morning video wrongly ran late', () => {
+      expect(pickTime({ times, others: [], now: at('09:00'), tz: TZ })).toMatchObject({ kind: 'spread', spread: 'late' })
+    })
   })
 })
 

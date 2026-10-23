@@ -285,6 +285,12 @@ describe('changing the number while it runs', () => {
       field().dispatchEvent(new Event('input', { bubbles: true }))
     })
   }
+  /** He leaves the box: a typed number applies then, not on each keystroke. */
+  const leave = async () => {
+    await act(async () => {
+      field().dispatchEvent(new FocusEvent('focusout', { bubbles: true }))
+    })
+  }
 
   beforeEach(async () => {
     localStorage.setItem('cutter.posts', JSON.stringify(posts))
@@ -296,6 +302,7 @@ describe('changing the number while it runs', () => {
     storedBank = { ...bank, perDay: 5, running: true, filled: { ...week(5), [iso(0)]: 0 } }
     const { onMake } = await show({})
     await type('2')
+    await leave()
     await settle()
     const { stopPostsNow } = await import('./posting')
     const stopped = vi.mocked(stopPostsNow).mock.calls[0][0] as { batch: { date: string } }[]
@@ -310,6 +317,7 @@ describe('changing the number while it runs', () => {
     storedBank = { ...bank, perDay: 5, running: true, filled: { ...week(5), [iso(0)]: 0 } }
     const { onMake } = await show({})
     await type('0')
+    await leave()
     await settle()
     const { stopPostsNow } = await import('./posting')
     expect(vi.mocked(stopPostsNow).mock.calls[0][0]).toHaveLength(30)
@@ -324,11 +332,13 @@ describe('changing the number while it runs', () => {
     const { onMake } = await show({})
     await type('2')
     await type('25')
+    await leave()
     await settle()
     expect(field().value).toBe('25')
     expect((await savedBank()).perDay).toBe(25)
     expect(onMake).toHaveBeenCalledTimes(1)
-    // Typing 2 then 5 made one top-up, for 25 a day.
+    // Typing 2 then 5 and leaving the box made one top-up, for 25 a day -
+    // never a trim to 2 on the way.
     const videos = onMake.mock.calls[0][2] as { batch: { date: string } }[]
     expect(videos.filter((v) => v.batch.date === iso(6)).length).toBe(23)
   })

@@ -223,14 +223,24 @@ export function BatchView({
   useEffect(() => {
     if (!posting) return
     let alive = true
-    void listPosts()
-      .then((list) => {
-        if (!alive) return
-        setPosts(list)
-      })
-      .catch(() => {})
+    const read = () => {
+      void listPosts()
+        .then((list) => {
+          if (alive) setPosts(list)
+        })
+        .catch(() => {})
+    }
+    read()
+    // Kept fresh while the tab is open (the shared list costs one read a
+    // minute at most): the counts ahead and the Start over note read a stale
+    // list for the whole session otherwise.
+    const onVisible = () => document.visibilityState === 'visible' && read()
+    const timer = window.setInterval(onVisible, 60_000)
+    document.addEventListener('visibilitychange', onVisible)
     return () => {
       alive = false
+      window.clearInterval(timer)
+      document.removeEventListener('visibilitychange', onVisible)
     }
   }, [posting, campaignId])
   /** Fingerprints being kept right now, so two picks that overlap cannot both
@@ -1163,11 +1173,17 @@ export function BatchView({
                   min={0}
                   value={perDayDraft ?? String(perDay)}
                   onFocus={(e) => e.target.select()}
-                  onChange={(e) => {
-                    setPerDayDraft(e.target.value)
-                    if (e.target.value.trim() !== '') setPerDay(Number(e.target.value))
+                  onChange={(e) => setPerDayDraft(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') e.currentTarget.blur()
                   }}
-                  onBlur={() => setPerDayDraft(null)}
+                  onBlur={() => {
+                    // Applied once he has finished typing: applied on every
+                    // keystroke, the "3" of "30" trimmed the week's posts
+                    // (stopped in Postiz, remade) before the "0" arrived.
+                    if (perDayDraft !== null && perDayDraft.trim() !== '') setPerDay(Number(perDayDraft))
+                    setPerDayDraft(null)
+                  }}
                 />
                 <button
                   type="button"

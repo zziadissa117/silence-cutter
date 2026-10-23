@@ -3,6 +3,25 @@
 Newest first. Every change says what it does, how to use it, and how it works
 underneath. Kept up to date with each commit.
 
+## Batch: a typed "Videos a day" applies when you leave the box; posting through midnight takes its times
+Needs deploying: run ./deploy-server.sh, then ./deploy.sh; then close the Cutter and open it again. No database change.
+**Now:**
+- Batch: the "Videos a day" number applies when you leave the box (or press Enter), not on every keystroke. Typing
+  "30" used to apply "3" first: a pause of a second over it stopped the week's posts in Postiz and made them all again.
+  − and + still act at once.
+- Batch: the tab's list of posts is kept fresh (every minute, and when you come back to it), so "Next 7 days: X of Y"
+  and the Start over note no longer read a list from when the tab was opened.
+- Posting: a campaign whose random times run past midnight (say 10 PM to 2 AM) now takes its own times for a video
+  made today. Judged by the date alone, this morning's early times (last night's) always looked missed, so every such
+  video was spread "late" until midnight instead; and late in the evening, with tonight's times gone, the next is
+  tomorrow's early one, not a day later.
+- Bank: taking a picture out asks first, like videos and songs do.
+- Formats: a format's page no longer re-plans the month's schedule on every tap.
+- Unused styles taken out.
+**How:** `BatchView` number box (`perDayDraft` applied on blur/Enter), posts read on a timer; `slots.sessionOf` +
+`pickTime({ session })` (`takeSlot` passes it), tests in `slots.test.ts`; `BankView` confirm; `FormatsView` `placeKey`;
+`campaign.css` (`.sound-grid`, `.sync-row`, `.mode-row`, `.pic-list`, `.pic-row-main`, `.pic-row-controls` gone).
+
 ## Two crashes fixed, every post shown, nothing goes out after a Stop, and posts stop coming back to approve
 Needs deploying: run ./deploy-server.sh, then ./deploy.sh; then close the Cutter and open it again. No database change.
 **What the reports showed:**
