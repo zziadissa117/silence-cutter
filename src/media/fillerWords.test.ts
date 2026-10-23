@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { alignToAudio, fillerWordRanges } from './fillerWords'
+import { alignToAudio, fillerWordRanges, isFillerWord, stutterRanges } from './fillerWords'
 import type { Level } from './silenceMath'
 
 /** A level curve at 20ms steps from [fromSec, toSec, dB] spans. */
@@ -203,5 +203,96 @@ describe('alignToAudio', () => {
     // lined up, the pause before the "um" is plain to see.
     const late = exact.map((w) => ({ ...w, start: w.start + 0.3, end: w.end + 0.3 }))
     expect(fillerWordRanges(alignToAudio(late, spacedOut), spacedOut)).toHaveLength(1)
+  })
+})
+
+describe('isFillerWord', () => {
+  it('knows every spelling the model uses, whatever the case and punctuation', () => {
+    for (const text of [' um,', 'Um...', ' uh', 'Uhh,', ' UHM', ' er,', ' erm', ' Hmm.', ' ah,']) expect(isFillerWord(text), text).toBe(true)
+  })
+  it('leaves words that only start like one, and sounds said on purpose', () => {
+    for (const text of [' umbrella', ' her', ' mm-hmm', ' oh', ' eh?', ' a', ' I']) expect(isFillerWord(text), text).toBe(false)
+  })
+})
+
+/** "least" running straight into "um" and "um" straight into "you" - no
+ *  pause anywhere, the ordinary way an "um" is said mid-sentence. The
+ *  curve is the real one from a phone call (fixtures/ums-call.json, 24.2 s
+ *  on), moved to start at 0. */
+const connected = curve([
+  [0, 0.36, -27],
+  [0.36, 0.4, -27],
+  [0.4, 0.48, -30],
+  [0.48, 0.62, -33],
+  [0.62, 0.66, -39],
+  [0.66, 0.76, -46],
+  [0.76, 0.78, -42],
+  [0.78, 1.2, -37],
+])
+const connectedWords = [
+  { text: ' least,', start: 0, end: 0.36 },
+  { text: ' um,', start: 0.36, end: 0.76 },
+  { text: ' you', start: 0.76, end: 1.2 },
+]
+
+describe('fillerWordRanges with exact times', () => {
+  it('cuts an "um" said straight on from the word before it, right up against both words', () => {
+    const [cut] = fillerWordRanges(connectedWords, connected, { quietBelowDb: -50, exact: true })
+    expect(cut).toBeDefined()
+    expect(cut.start).toBeGreaterThanOrEqual(0.36)
+    expect(cut.start).toBeLessThanOrEqual(0.44)
+    expect(cut.end).toBeGreaterThanOrEqual(0.68)
+    expect(cut.end).toBeLessThanOrEqual(0.76)
+  })
+
+  it('is the same "um" the rough times leave in, for want of a pause', () => {
+    expect(fillerWordRanges(connectedWords, connected, { quietBelowDb: -50 })).toEqual([])
+  })
+
+  it('takes the pause either side along with the "um"', () => {
+    const [cut] = fillerWordRanges(spacedWords, spacedOut, { exact: true })
+    expect(cut.start).toBeCloseTo(0.64, 1)
+    expect(cut.end).toBeCloseTo(1.56, 1)
+  })
+
+  it('still refuses a cut that would hold a second, separate sound', () => {
+    // "um" then a real word the model missed, then "then".
+    const levels = curve([
+      [0, 0.6, -12],
+      [0.6, 0.7, -60],
+      [0.7, 1.0, -20],
+      [1.0, 1.1, -60],
+      [1.1, 1.5, -20],
+      [1.5, 1.6, -60],
+      [1.6, 2.4, -12],
+    ])
+    const words = [
+      { text: ' so', start: 0, end: 0.6 },
+      { text: ' um', start: 0.7, end: 1.0 },
+      { text: ' then', start: 1.6, end: 2.4 },
+    ]
+    expect(fillerWordRanges(words, levels, { exact: true })).toEqual([])
+  })
+
+  it('leaves a heard "um" marked as a real word (the letters said so)', () => {
+    const words = connectedWords.map((w, i) => (i === 1 ? { ...w, keep: true } : w))
+    expect(fillerWordRanges(words, connected, { quietBelowDb: -50, exact: true })).toEqual([])
+  })
+
+  it('cuts a stumble between its neighbours the same way', () => {
+    const levels = curve([
+      [0, 0.4, -12],
+      [0.4, 0.6, -14],
+      [0.6, 0.8, -14],
+      [0.8, 1.4, -12],
+    ])
+    const words = [
+      { text: ' so', start: 0, end: 0.4 },
+      { text: ' I', start: 0.4, end: 0.6 },
+      { text: ' I', start: 0.6, end: 0.8 },
+      { text: ' want', start: 0.8, end: 1.4 },
+    ]
+    expect(stutterRanges(words, levels, { exact: true })).toHaveLength(1)
+    expect(stutterRanges(words, levels, {})).toEqual([])
   })
 })

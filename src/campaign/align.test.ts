@@ -3,8 +3,10 @@ import { describe, expect, it } from 'vitest'
 import {
   ALIGN_PIECE_SEC,
   CTC_LETTERS,
+  fillersBetween,
   forceAlign,
   joinPieces,
+  lettersBetween,
   logSoftmax,
   numberWords,
   pieceCuts,
@@ -162,5 +164,48 @@ describe('joinPieces', () => {
       expect(w.start).toBeCloseTo(asWhole[i].start, 6)
       expect(w.end).toBeCloseTo(asWhole[i].end, 6)
     })
+  })
+})
+
+describe('the letters between the words', () => {
+  it('reads what the model heard, repeats and blanks folded', () => {
+    //                        0123456789
+    const { scores } = heard('__UUMM__|T')
+    expect(lettersBetween(scores, CTC_LETTERS.length, 0, 7)).toBe('UM')
+    expect(lettersBetween(scores, CTC_LETTERS.length, 0, 1)).toBe('')
+    expect(lettersBetween(scores, CTC_LETTERS.length, 8, 9)).toBe('T')
+  })
+
+  it('finds an "um" the speech model left out between two words it placed', () => {
+    //                                 0         1         2
+    //                                 0123456789012345678901234
+    const { scores, frames } = heard('_HHII__UUUMMMM__|YYOO____')
+    const spans = forceAlign(scores, frames, CTC_LETTERS.length, ['HI', 'YO'])
+    const starts = Array.from({ length: frames }, (_, f) => 10 + f * 0.02)
+    const ends = starts.map((t) => t + 0.02)
+    const found = fillersBetween(spans, scores, frames, CTC_LETTERS.length, starts, ends)
+    expect(found).toHaveLength(1)
+    expect(found[0].letters).toBe('UM')
+    expect(found[0].start).toBeCloseTo(10 + 7 * 0.02)
+    expect(found[0].end).toBeCloseTo(10 + 14 * 0.02)
+  })
+
+  it('leaves a gap that spells a word, a breath, or is too short', () => {
+    const starts = Array.from({ length: 30 }, (_, f) => f * 0.02)
+    const ends = starts.map((t) => t + 0.02)
+    for (const sequence of ['_HHII__TTHHEE__|YYOO____', '_HHII__________|YYOO____', '_HHII__UM______|YYOO____', '_HHII__AAA_____|YYOO____']) {
+      const { scores, frames } = heard(sequence)
+      const spans = forceAlign(scores, frames, CTC_LETTERS.length, ['HI', 'YO'])
+      expect(fillersBetween(spans, scores, frames, CTC_LETTERS.length, starts, ends), sequence).toEqual([])
+    }
+  })
+
+  it('hears an "um" before the first word and after the last', () => {
+    const { scores, frames } = heard('UUUMMMM__HHII__|YYOO__AAHHHMM')
+    const spans = forceAlign(scores, frames, CTC_LETTERS.length, ['HI', 'YO'])
+    const starts = Array.from({ length: frames }, (_, f) => f * 0.02)
+    const ends = starts.map((t) => t + 0.02)
+    const found = fillersBetween(spans, scores, frames, CTC_LETTERS.length, starts, ends)
+    expect(found.map((f) => f.letters)).toEqual(['UM', 'AHM'])
   })
 })

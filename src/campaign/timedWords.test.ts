@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { keepInWindow, padWithQuiet, timedWords } from './timedWords'
+import { isNonSpeech, keepInWindow, padWithQuiet, stuckOn, timedWords, unstuck } from './timedWords'
 
 describe('the words of a window', () => {
   it('puts them on the video\'s timeline', () => {
@@ -66,5 +66,56 @@ describe('a stretch heard with quiet either side', () => {
       { text: ' So', start: 10, end: 10.3 },
       { text: ' done.', start: 12.9, end: 13 },
     ])
+  })
+})
+
+describe('what is not a word', () => {
+  it('drops the model\'s notes for sounds that are not words', () => {
+    const words = timedWords(
+      [
+        { text: ' [Music]', timestamp: [0, 1] },
+        { text: ' Hi', timestamp: [1, 1.2] },
+        { text: ' (laughs)', timestamp: [1.2, 1.6] },
+        { text: ' ♪', timestamp: [1.6, 1.8] },
+        { text: ' [inaudible].', timestamp: [1.8, 2] },
+      ],
+      0,
+      2,
+    )
+    expect(words.map((w) => w.text)).toEqual([' Hi'])
+  })
+
+  it('keeps a word in brackets inside a sentence as a word', () => {
+    expect(isNonSpeech(' (really)')).toBe(true)
+    expect(isNonSpeech(' [Music]')).toBe(true)
+    expect(isNonSpeech(' link')).toBe(false)
+    expect(isNonSpeech(' (a')).toBe(false)
+  })
+})
+
+describe('a window the model got stuck on', () => {
+  const word = (text: string, i: number) => ({ text, start: i * 0.3, end: i * 0.3 + 0.2 })
+  it('is told apart from him repeating a word a few times', () => {
+    expect(stuckOn(['no,', 'no,', 'no,', 'that', 'is', 'it'])).toBe(0)
+    expect(stuckOn(['okay,', 'okay,', 'okay,', 'okay,', 'okay,', 'okay,', 'okay,'])).toBe(1)
+    expect(stuckOn(['I', "'ll", 'take', 'that.', "I'll", 'take', 'that.', "I'll", 'take', 'that.', "I'll", 'take', 'that.', "I'll", 'take', 'that.', "I'll", 'take', 'that.'])).toBe(3)
+    expect(stuckOn(['all', 'right.', 'Okay.', 'Okay.', 'Okay.'])).toBe(0)
+  })
+
+  it('is folded to the phrase said twice, the rest of the window kept', () => {
+    const texts = ['So', 'that', 'is', 'okay,', 'okay,', 'okay,', 'okay,', 'okay,', 'okay,', 'okay,', 'okay,', 'then.']
+    const words = unstuck(texts.map(word))
+    expect(words.map((w) => w.text)).toEqual(['So', 'that', 'is', 'okay,', 'okay,', 'then.'])
+  })
+
+  it('folds a looping phrase of several words too', () => {
+    const texts = ['Right.', ...Array(6).fill(["I'll", 'take', 'that.']).flat(), 'Over.']
+    const words = unstuck(texts.map(word))
+    expect(words.map((w) => w.text)).toEqual(['Right.', "I'll", 'take', 'that.', "I'll", 'take', 'that.', 'Over.'])
+  })
+
+  it('leaves a window that is not stuck exactly as it is', () => {
+    const words = ['very', 'very', 'good,', 'no,', 'no,', 'no.'].map(word)
+    expect(unstuck(words)).toEqual(words)
   })
 })

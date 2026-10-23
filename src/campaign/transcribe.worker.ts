@@ -9,7 +9,7 @@ import { env, pipeline } from '@huggingface/transformers'
 
 import type { WordChunk } from '../media/fillerWords'
 import type { Range } from '../media/silenceMath'
-import { QUIET_PAD_SEC, keepInWindow, padWithQuiet, timedWords, type TimestampedChunk } from './timedWords'
+import { QUIET_PAD_SEC, keepInWindow, padWithQuiet, stuckOn, timedWords, unstuck, type TimestampedChunk } from './timedWords'
 
 export interface TranscribeRequest {
   samples: Float32Array
@@ -18,6 +18,10 @@ export interface TranscribeRequest {
   /** Text the model takes as having come just before, e.g. "Vertus." Empty
    *  for none. */
   prompt: string
+  /** Told instead when a stretch comes back with the model stuck on a
+   *  phrase (timedWords.stuckOn) - the names alone, without the fillers.
+   *  Absent: the stretch is heard again with no prompt at all. */
+  fallbackPrompt?: string
 }
 
 export type TranscribeMessage =
@@ -71,7 +75,7 @@ function promptIds(tokenizer: Tokens, prompt: string): number[] | null {
 const post = (message: TranscribeMessage) => self.postMessage(message)
 
 self.onmessage = async (event: MessageEvent<TranscribeRequest>) => {
-  const { samples, sampleRate, windows, prompt } = event.data
+  const { samples, sampleRate, windows, prompt, fallbackPrompt = '' } = event.data
   try {
     const transcriber = await pipeline('automatic-speech-recognition', MODEL_ID, {
       progress_callback: (data: { status: string; progress?: number }) => {
@@ -81,7 +85,19 @@ self.onmessage = async (event: MessageEvent<TranscribeRequest>) => {
       },
     })
     post({ type: 'loaded' })
-    const primed = promptIds(transcriber.tokenizer as unknown as Tokens, prompt)
+    const tokenizer = transcriber.tokenizer as unknown as Tokens
+    const primed = promptIds(tokenizer, prompt)
+    const fallback = promptIds(tokenizer, fallbackPrompt)
+
+    const hear = async (heardSlice: Float32Array, start: number, length: number, ids: number[] | null) => {
+      const result = await transcriber(heardSlice, {
+        return_timestamps: 'word',
+        ...(ids ? { decoder_input_ids: ids } : {}),
+      } as Parameters<typeof transcriber>[1])
+      const output = Array.isArray(result) ? result[0] : result
+      const timed = timedWords((output.chunks ?? []) as TimestampedChunk[], start - QUIET_PAD_SEC, heardSlice.length / sampleRate)
+      return keepInWindow(timed, start, start + length)
+    }
 
     const words: WordChunk[] = []
     for (let i = 0; i < windows.length; i++) {
@@ -92,13 +108,15 @@ self.onmessage = async (event: MessageEvent<TranscribeRequest>) => {
         continue
       }
       const heardSlice = padWithQuiet(slice, sampleRate)
-      const result = await transcriber(heardSlice, {
-        return_timestamps: 'word',
-        ...(primed ? { decoder_input_ids: primed } : {}),
-      } as Parameters<typeof transcriber>[1])
-      const output = Array.isArray(result) ? result[0] : result
-      const timed = timedWords((output.chunks ?? []) as TimestampedChunk[], start - QUIET_PAD_SEC, heardSlice.length / sampleRate)
-      words.push(...keepInWindow(timed, start, start + slice.length / sampleRate))
+      const length = slice.length / sampleRate
+      let heard = await hear(heardSlice, start, length, primed)
+      // Stuck on a phrase ("okay, okay, okay, ..."): once more with less of
+      // a prompt, and failing that the loop is folded (timedWords.unstuck).
+      if (stuckOn(heard.map((w) => w.text)) && primed) {
+        const again = await hear(heardSlice, start, length, fallback)
+        heard = stuckOn(again.map((w) => w.text)) ? unstuck(again.length < heard.length ? again : heard) : again
+      } else if (stuckOn(heard.map((w) => w.text))) heard = unstuck(heard)
+      words.push(...heard)
       post({ type: 'progress', fraction: (i + 1) / windows.length })
       if (i < windows.length - 1) await new Promise((r) => setTimeout(r, PAUSE_BETWEEN_WINDOWS_MS))
     }

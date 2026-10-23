@@ -7,7 +7,8 @@
 
 import { AutoModelForCTC, AutoProcessor, env } from '@huggingface/transformers'
 
-import { forceAlign, joinPieces, logSoftmax, placeWordsAt, spellForAlignment, type TimedWord } from './align'
+import { isFillerWord } from '../media/fillerWords'
+import { fillersBetween, forceAlign, joinPieces, lettersBetween, logSoftmax, placeWordsAt, spellForAlignment, type HeardFiller, type TimedWord } from './align'
 
 export interface AlignRequest {
   /** 16 kHz mono. */
@@ -21,7 +22,7 @@ export interface AlignRequest {
 export type AlignMessage =
   | { type: 'download'; fraction: number }
   | { type: 'progress'; fraction: number }
-  | { type: 'done'; words: TimedWord[] }
+  | { type: 'done'; words: TimedWord[]; fillers: HeardFiller[] }
   | { type: 'error'; message: string }
 
 const MODEL_ID = 'Xenova/wav2vec2-base-960h'
@@ -54,6 +55,7 @@ self.onmessage = async (event: MessageEvent<AlignRequest>) => {
     // Loaded: said, so the wait for the first piece starts from here.
     post({ type: 'progress', fraction: 0 })
     const words: TimedWord[] = []
+    const fillers: HeardFiller[] = []
     for (let i = 0; i < windows.length; i++) {
       const { start, end, words: heard, cuts = [] } = windows[i]
       const from = Math.floor(start * SAMPLE_RATE)
@@ -81,11 +83,17 @@ self.onmessage = async (event: MessageEvent<AlignRequest>) => {
         }
         const joined = joinPieces(pieces, letters)
         const spans = forceAlign(joined.logProbs, joined.frames, letters, heard.map((w) => spellForAlignment(w.text)))
-        words.push(...placeWordsAt(heard, spans, joined.starts, joined.ends))
+        const placed = placeWordsAt(heard, spans, joined.starts, joined.ends)
+        placed.forEach((w, k) => {
+          const span = spans[k]
+          if (span && isFillerWord(w.text)) w.letters = lettersBetween(joined.logProbs, letters, span.first, span.last)
+        })
+        words.push(...placed)
+        fillers.push(...fillersBetween(spans, joined.logProbs, joined.frames, letters, joined.starts, joined.ends))
       } else words.push(...heard)
       post({ type: 'progress', fraction: (i + 1) / windows.length })
     }
-    post({ type: 'done', words })
+    post({ type: 'done', words, fillers })
   } catch (err) {
     post({ type: 'error', message: err instanceof Error ? err.message : String(err) })
   }

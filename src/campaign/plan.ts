@@ -15,6 +15,7 @@ import {
   alignToAudio,
   concatFloat32,
   fillerWordRanges,
+  isFillerWord,
   isFillerWordDetectionSupported,
   resampleToMono16k,
   stutterRanges,
@@ -31,7 +32,7 @@ import {
   type SilenceSettings,
 } from '../media/silenceMath'
 import { report } from '../report'
-import { pieceCuts, type TimedWord } from './align'
+import { pieceCuts, type HeardFiller, type TimedWord } from './align'
 import type { AlignMessage, AlignRequest } from './align.worker'
 import { ALIGNED_LATE_SEC, snapToOnsets, spokenWords } from './captions'
 import { LONG_SEC, TINY_SEC, cutNoise, loneSounds, peakDbIn, peaksOf, protectWords, type CutCheck, type WordSpan } from './noiseCuts'
@@ -91,7 +92,7 @@ async function transcribe(
   samples: Float32Array,
   windows: Range[],
   prompt: string,
-  { onModelDownload, onProgress }: { onModelDownload?: (f: number) => void; onProgress?: (f: number) => void },
+  { onModelDownload, onProgress, fallbackPrompt }: { onModelDownload?: (f: number) => void; onProgress?: (f: number) => void; fallbackPrompt?: string },
 ): Promise<WordChunk[]> {
   if (windows.length === 0) return []
   const worker = new Worker(new URL('./transcribe.worker.ts', import.meta.url), { type: 'module' })
@@ -116,7 +117,7 @@ async function transcribe(
               ),
         )
       }
-      const request: TranscribeRequest = { samples, sampleRate: WHISPER_SAMPLE_RATE, windows, prompt }
+      const request: TranscribeRequest = { samples, sampleRate: WHISPER_SAMPLE_RATE, windows, prompt, fallbackPrompt }
       worker.postMessage(request, [samples.buffer])
     })
   } finally {
@@ -147,7 +148,7 @@ async function alignWords(
   words: WordChunk[],
   silences: Range[],
   { onModelDownload, onProgress }: { onModelDownload?: (f: number) => void; onProgress?: (f: number) => void },
-): Promise<TimedWord[]> {
+): Promise<{ words: TimedWord[]; fillers: HeardFiller[] }> {
   // Each word goes with the stretch it was heard in, which the letter model
   // hears a piece at a time, cut in its pauses.
   const grouped = windows.map((w) => ({ ...w, words: [] as TimedWord[], cuts: pieceCuts(w, silences) }))
@@ -157,7 +158,7 @@ async function alignWords(
   }
   const worker = new Worker(new URL('./align.worker.ts', import.meta.url), { type: 'module' })
   try {
-    return await new Promise<TimedWord[]>((resolve, reject) => {
+    return await new Promise<{ words: TimedWord[]; fillers: HeardFiller[] }>((resolve, reject) => {
       let quiet = 0
       let loaded = false
       const stillThere = () => {
@@ -173,7 +174,7 @@ async function alignWords(
         else if (message.type === 'progress') onProgress?.(message.fraction)
         else if (message.type === 'done') {
           window.clearTimeout(quiet)
-          resolve(message.words)
+          resolve({ words: message.words, fillers: message.fillers ?? [] })
         } else {
           window.clearTimeout(quiet)
           reject(new Error(message.message))
@@ -206,6 +207,10 @@ export interface CampaignPlan {
   aligned?: boolean
   /** Whether "um"s and stumbles were cut too. */
   cleanSpeech: boolean
+  /** With cleanSpeech: how many "um"s were heard - by the speech model, and
+   *  by the letter model between its words - against how many were cut
+   *  (`fillerWords`). The rest ran straight into a word and stayed. */
+  fillersHeard?: { spoken: number; letters: number }
   /** Sounds with no speech in them that were cut or are worth a listen - see
    *  noiseCuts.ts. Absent when noise cutting was off. */
   checks?: CutCheck[]
@@ -230,6 +235,8 @@ export async function planCampaignCut(
     listen: boolean
     /** Told to the model before it listens; see keywords.listeningPrompt. */
     prompt: string
+    /** Told instead to a stretch the model got stuck on (the names alone). */
+    fallbackPrompt?: string
     /** Time every word exactly, for captions - see align.ts. */
     align?: boolean
     /** A reaction's product clip: silent, or with no sound at all, is how a
@@ -277,6 +284,7 @@ export async function planCampaignCut(
   let words: WordChunk[] = []
   let spoken: WordChunk[] | undefined
   let aligned = false
+  let fillersHeard: CampaignPlan['fillersHeard']
   let forRecheck: Float32Array | null = null
   let audibleSec = duration
   if (wantWords && mono16k) {
@@ -293,8 +301,10 @@ export async function planCampaignCut(
     const heard = await transcribe(mono16k, windows, options.prompt, {
       onModelDownload: options.onModelDownload,
       onProgress: (p) => options.onTranscribeProgress?.(p * share),
+      fallbackPrompt: options.fallbackPrompt,
     })
     ;({ words, fillerWords, stutters, spoken } = fromHeard(heard, levels, settings, duration, options.cleanSpeech))
+    if (options.cleanSpeech) fillersHeard = { spoken: heard.filter((w) => isFillerWord(w.text)).length, letters: 0 }
     if (forAligning && heard.length > 0) {
       const align = (samples: Float32Array) =>
         alignWords(samples, windows, spokenWords(heard, 0), silences, {
@@ -309,7 +319,7 @@ export async function planCampaignCut(
         // and has one more go if it still could not start for memory.
         const spare = forAligning.slice()
         await new Promise((resolve) => setTimeout(resolve, ALIGN_AFTER_MS))
-        let timed: TimedWord[]
+        let timed: { words: TimedWord[]; fillers: HeardFiller[] }
         try {
           timed = await align(forAligning)
         } catch (error) {
@@ -321,8 +331,25 @@ export async function planCampaignCut(
           await new Promise((resolve) => setTimeout(resolve, ALIGN_RETRY_MS))
           timed = await align(spare)
         }
-        spoken = spokenWords(timed, ALIGNED_LATE_SEC)
+        spoken = spokenWords(timed.words, ALIGNED_LATE_SEC)
         aligned = true
+        if (options.cleanSpeech) {
+          // The cuts again from the exact times - an "um" placed to the frame
+          // gets a corridor that is really between its neighbours - with the
+          // "um"s the speech model left out but the letters heard, each a
+          // word of its own for the cut to check against the sound.
+          const fromLetters = timed.fillers
+            .filter((f) => !spoken!.some((w) => f.start < w.end && f.end > w.start))
+            .map((f) => ({ text: ' um', start: f.start, end: f.end }))
+          // A heard "um" the letter model heard a real word in ("THE",
+          // "ABOUT") was a word misheard as a filler: kept.
+          const checked = spoken.map((w) => {
+            const heardAs = timed.words.find((t) => t.start === w.start)?.letters
+            return heardAs !== undefined && isFillerWord(w.text) && !soundsLikeFiller(heardAs) ? { ...w, keep: true } : w
+          })
+          fillersHeard = { spoken: checked.filter((w) => isFillerWord(w.text) && !w.keep).length, letters: fromLetters.length }
+          ;({ fillerWords, stutters } = speechCuts([...checked, ...fromLetters].sort((a, b) => a.start - b.start), levels, settings, duration, true))
+        }
       } catch (error) {
         // The speech model's own times, shifted, as before: rougher, but
         // the video is never held up for it.
@@ -332,6 +359,9 @@ export async function planCampaignCut(
   }
 
   const peaks = peaksOf(levels, duration)
+  if (fillersHeard && (fillersHeard.spoken > 0 || fillersHeard.letters > 0 || stutters.length > 0)) {
+    report({ page: 'campaign', kind: 'check', phase: 'ums', message: fillersLine(fillersHeard, fillerWords.length, stutters.length, aligned) })
+  }
   if (options.keepWhole) {
     return {
       keep: [{ start: 0, end: duration }],
@@ -403,10 +433,18 @@ export async function planCampaignCut(
     fillerWords: fillerWords.length,
     stutters: stutters.length,
     cleanSpeech: options.cleanSpeech,
+    ...(fillersHeard ? { fillersHeard } : {}),
     peaks,
     ...(checks ? { checks } : {}),
     ...(noiseNote ? { noiseNote } : {}),
   }
+}
+
+/** One line for the report: what was heard and what was cut. */
+export function fillersLine(heard: { spoken: number; letters: number }, cut: number, stutters: number, aligned: boolean): string {
+  const total = heard.spoken + heard.letters
+  const by = heard.letters > 0 ? ` (${heard.spoken} by the speech model, ${heard.letters} by the letters)` : ''
+  return `${total} "um" heard${by}, ${cut} cut, ${Math.max(0, total - cut)} left in; ${stutters} stumble cut; ${aligned ? 'exact times' : 'rough times'}`
 }
 
 /** What the words heard decide, from the speech model's words and the
@@ -424,28 +462,43 @@ export function fromHeard(
   let words = alignToAudio(heard, levels, settings.thresholdDb)
   let fillerWords: Range[] = []
   let stutters: Range[] = []
-  if (cleanSpeech) {
-    const uncramp = (range: Range) => ({
-      start: Math.max(0, range.start - settings.paddingSec),
-      end: Math.min(duration, range.end + settings.paddingSec),
-    })
-    // What counts as quiet for the "um" checks: this take's own line between
-    // a pause and speech (silenceLineDb), the one the pauses are found with -
-    // never above the slider's number. In a quiet take the words sit under
-    // that number (-35 to -39 dB on a real one), and judged by it a word
-    // looked like silence: the check that refuses a cut holding more sound
-    // than the "um" could make did not see a quiet word inside the cut, and
-    // took it out with the "um". The line only ever makes the check stricter.
-    const cutOptions = { guardSec: 0.04, quietBelowDb: silenceLineDb(levels, settings) }
-    fillerWords = fillerWordRanges(words, levels, cutOptions).map(uncramp)
-    stutters = stutterRanges(words, levels, cutOptions).map(uncramp)
-  }
+  if (cleanSpeech) ({ fillerWords, stutters } = speechCuts(words, levels, settings, duration))
   // Starts pulled onto the moment his voice starts, for the logo and the
   // pictures. After the "um"s are found, so what is cut never moves.
   words = snapToOnsets(words, levels, settings.thresholdDb)
   // The captions' own timing, straight from what was heard: the shift the
   // cut's alignment finds moves some takes the wrong way for a caption.
   return { words, fillerWords, stutters, spoken: spokenWords(heard) }
+}
+
+/** The "um"s and stumbles to cut, from timed words - the speech model's
+ *  (fromHeard) or, better, the letter model's exact ones - each checked
+ *  against the sound (fillerWords.ts) and padded like a pause. */
+export function speechCuts(words: WordChunk[], levels: Level[], settings: SilenceSettings, duration: number, exact = false): { fillerWords: Range[]; stutters: Range[] } {
+  const uncramp = (range: Range) => ({
+    start: Math.max(0, range.start - settings.paddingSec),
+    end: Math.min(duration, range.end + settings.paddingSec),
+  })
+  // What counts as quiet for the "um" checks: this take's own line between
+  // a pause and speech (silenceLineDb), the one the pauses are found with -
+  // never above the slider's number. In a quiet take the words sit under
+  // that number (-35 to -39 dB on a real one), and judged by it a word
+  // looked like silence: the check that refuses a cut holding more sound
+  // than the "um" could make did not see a quiet word inside the cut, and
+  // took it out with the "um". The line only ever makes the check stricter.
+  const cutOptions = { guardSec: 0.04, quietBelowDb: silenceLineDb(levels, settings), exact }
+  return {
+    fillerWords: fillerWordRanges(words, levels, cutOptions).map(uncramp),
+    stutters: stutterRanges(words, levels, cutOptions).map(uncramp),
+  }
+}
+
+/** Whether the letters the letter model heard over a word the speech model
+ *  wrote as "um"/"uh" are a filler's: vowels, H, M, N, R and nothing else
+ *  ("UM", "AH", "UHM", "" when it heard nothing in particular). "THE" or
+ *  "ABOUT" is a word the speech model misheard. */
+export function soundsLikeFiller(letters: string): boolean {
+  return /^[AUEOHMNR]*$/.test(letters)
 }
 
 /** What is kept: everything but the pauses, "um"s and stumbles, padded. This
@@ -487,5 +540,13 @@ export function joinPlans(plans: CampaignPlan[], offsets: number[], duration: nu
     ...(plans.every((p) => p.aligned) ? { aligned: true } : {}),
     ...(plans.some((p) => p.checks) ? { checks: plans.flatMap((p, i) => moved(p.checks ?? [], offsets[i])) } : {}),
     cleanSpeech: plans[0]?.cleanSpeech ?? false,
+    ...(plans.some((p) => p.fillersHeard)
+      ? {
+          fillersHeard: {
+            spoken: plans.reduce((n, p) => n + (p.fillersHeard?.spoken ?? 0), 0),
+            letters: plans.reduce((n, p) => n + (p.fillersHeard?.letters ?? 0), 0),
+          },
+        }
+      : {}),
   }
 }

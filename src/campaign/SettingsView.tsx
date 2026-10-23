@@ -438,7 +438,8 @@ export function SettingsView({
         <span>
           <span className="label">Also cut "um"s and stumbles</span>
           <span className="hint tip" style={{ display: 'block' }}>
-            Uses more memory. If a video keeps stopping the page, turn it off.
+            Each one is cut only where the sound agrees it is on its own; one said straight into a word stays. The
+            edit screen shows every cut.
           </span>
         </span>
       </label>

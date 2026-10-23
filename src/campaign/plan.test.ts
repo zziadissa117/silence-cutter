@@ -15,7 +15,7 @@ import { describe, expect, it } from 'vitest'
 import type { WordChunk } from '../media/fillerWords'
 import { PRESETS, findSilentRanges, type Level, type Range } from '../media/silenceMath'
 import { cutNoise } from './noiseCuts'
-import { fromHeard, noiseCandidates, plainKeep } from './plan'
+import { fillersLine, fromHeard, noiseCandidates, plainKeep, soundsLikeFiller } from './plan'
 
 const STEP = 0.02
 
@@ -260,5 +260,21 @@ describe('cutting "um"s in a quiet take', () => {
     const { fillerWords } = fromHeard(take.heard, take.levels, settings, take.duration, true)
     const missed = take.said.find((w) => w.text === 'this')!
     for (const cut of fillerWords) expect(overlap(cut, missed), 'the cut holds "this"').toBeLessThan(0.05)
+  })
+})
+
+describe('what the letter model heard over an "um"', () => {
+  it('sounds like a filler when it is vowels, H, M, N or R - or nothing', () => {
+    for (const letters of ['UM', 'UHM', 'AH', 'UH', 'HM', 'MM', 'ER', 'ERM', 'UN', 'M', '']) expect(soundsLikeFiller(letters), letters).toBe(true)
+  })
+  it('is a real word misheard as a filler when it has other letters', () => {
+    for (const letters of ['THE', 'ABOUT', 'AT', 'US', 'OF']) expect(soundsLikeFiller(letters), letters).toBe(false)
+  })
+})
+
+describe('the "um" report line', () => {
+  it('says what was heard, by whom, and what was cut', () => {
+    expect(fillersLine({ spoken: 3, letters: 1 }, 3, 1, true)).toBe('4 "um" heard (3 by the speech model, 1 by the letters), 3 cut, 1 left in; 1 stumble cut; exact times')
+    expect(fillersLine({ spoken: 2, letters: 0 }, 2, 0, false)).toBe('2 "um" heard, 2 cut, 0 left in; 0 stumble cut; rough times')
   })
 })

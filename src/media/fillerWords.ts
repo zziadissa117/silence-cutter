@@ -14,15 +14,25 @@ export const WHISPER_SAMPLE_RATE = 16000
 
 /** English fillers, lowercased, punctuation stripped. Whisper sometimes
  *  spells these a few different ways ("umm" vs "um"), so this is a small set
- *  rather than one exact string. */
+ *  rather than one exact string. Not here on purpose: "mm"/"mhm" (agreeing),
+ *  "eh" (a question), "oh" (a word) - said on purpose, and kept. */
 const FILLER_WORDS = new Set([
-  'um', 'umm', 'ummm', 'uh', 'uhh', 'uhm', 'er', 'err', 'erm', 'hmm', 'hmmm', 'mhm',
+  'um', 'umm', 'ummm', 'uh', 'uhh', 'uhhh', 'uhm', 'uhmm', 'er', 'err', 'erm', 'hmm', 'hmmm', 'hm', 'ah', 'ahh', 'ahm',
 ])
+
+/** Whether a heard word is a filler ("um", "uh"...), whatever its case and
+ *  punctuation. One place for every part of the app that asks. */
+export function isFillerWord(text: string): boolean {
+  return FILLER_WORDS.has(normalize(text))
+}
 
 export interface WordChunk {
   text: string
   start: number
   end: number
+  /** Set on a heard "um" the letter model heard real letters in (plan.ts):
+   *  a word the speech model misheard as a filler, kept like any word. */
+  keep?: boolean
 }
 
 /** True when this browser can run the speech model: WebAssembly for the
@@ -122,6 +132,15 @@ interface CutOptions {
   /** Below this loudness counts as quiet - the same threshold the silence
    *  cut uses, so "quiet" means the same thing everywhere in the tool. */
   quietBelowDb?: number
+  /** The words were timed exactly (the letter model, align.ts: within about
+   *  30 ms of the sound), so the words either side really are where the cut
+   *  may reach. The cut then goes from the end of the word before to the
+   *  start of the word after, each edge at the quietest moment it can find
+   *  near there, with no need for a true pause: an "um" said straight on
+   *  from the word before it ("at least, um, you know") is still cut.
+   *  Without this - the speech model's rough times - a cut needs a pause at
+   *  both edges, since a rough corridor can reach into a real word. */
+  exact?: boolean
 }
 
 /** Words a stutter actually repeats. Deliberately only the small ones -
@@ -148,6 +167,18 @@ const MAX_STUTTER_GAP_SEC = 0.45
 /** The longest a single "um" is allowed to sound. A cut holding more sound
  *  than this per filler has almost certainly caught part of a real word. */
 const MAX_FILLER_SEC = 0.9
+/** With exact times the words either side are known, so a drawn-out
+ *  "ummm" may be longer. */
+const MAX_EXACT_FILLER_SEC = 1.3
+
+/** With exact times, how far from the word either side an edge may move to
+ *  find a quieter moment - into the pause before or after the "um", or a
+ *  frame or two into the "um" itself. */
+const EDGE_SEC = 0.1
+/** An edge takes the earliest (start) or latest (end) moment within this
+ *  much of the quietest one, so it sits against the word rather than a few
+ *  frames into the "um" over a dB of difference. */
+const EDGE_DB = 3
 
 /** The ranges to cut for stutters - a small word said twice or more in a row.
  *
@@ -156,7 +187,7 @@ const MAX_FILLER_SEC = 0.9
  *  cut never reaches past the real word before the run or into the repeat
  *  being kept. Same guard rails as the filler cuts, for the same reason. */
 export function stutterRanges(chunks: WordChunk[], levels: Level[], options: CutOptions = {}): Range[] {
-  const { guardSec = 0.04, quietBelowDb = -35 } = options
+  const { guardSec = 0.04, quietBelowDb = -35, exact = false } = options
   const ranges: Range[] = []
   let i = 0
 
@@ -197,6 +228,7 @@ export function stutterRanges(chunks: WordChunk[], levels: Level[], options: Cut
             quietEnd: true,
             maxSounds: attempts,
             maxSoundSec: MAX_STUTTER_SEC * attempts,
+            exact,
           })
           if (cut) ranges.push(cut)
         }
@@ -223,8 +255,8 @@ export function stutterRanges(chunks: WordChunk[], levels: Level[], options: Cut
  *  - see checkedCut. An "um" left in costs a second with the trimmer. A
  *  syllable taken off "connections" costs the take. */
 export function fillerWordRanges(chunks: WordChunk[], levels: Level[], options: CutOptions = {}): Range[] {
-  const { guardSec = 0.04, quietBelowDb = -35 } = options
-  const isFiller = (c: WordChunk) => FILLER_WORDS.has(normalize(c.text))
+  const { guardSec = 0.04, quietBelowDb = -35, exact = false } = options
+  const isFiller = (c: WordChunk) => !c.keep && FILLER_WORDS.has(normalize(c.text))
   const ranges: Range[] = []
 
   chunks.forEach((chunk, i) => {
@@ -259,7 +291,8 @@ export function fillerWordRanges(chunks: WordChunk[], levels: Level[], options: 
       quietStart: before >= 0,
       quietEnd: after < chunks.length,
       maxSounds: fillersHere,
-      maxSoundSec: MAX_FILLER_SEC * fillersHere,
+      maxSoundSec: (exact ? MAX_EXACT_FILLER_SEC : MAX_FILLER_SEC) * fillersHere,
+      exact,
     })
     if (cut) ranges.push(cut)
   })
@@ -282,13 +315,25 @@ export function fillerWordRanges(chunks: WordChunk[], levels: Level[], options: 
 function checkedCut(
   levels: Level[],
   { low, start, end, high }: { low: number; start: number; end: number; high: number },
-  rules: { quietBelowDb: number; quietStart: boolean; quietEnd: boolean; maxSounds: number; maxSoundSec: number },
+  rules: { quietBelowDb: number; quietStart: boolean; quietEnd: boolean; maxSounds: number; maxSoundSec: number; exact?: boolean },
 ): Range | null {
-  const from = quietestBetween(levels, low, start, 'earliest')
-  const to = quietestBetween(levels, end, high, 'latest')
-  if (!from || !to) return null
-  if (rules.quietStart && from.db >= rules.quietBelowDb) return null
-  if (rules.quietEnd && to.db >= rules.quietBelowDb) return null
+  let from: Level | null
+  let to: Level | null
+  if (rules.exact) {
+    // The edges sit against the words either side (low and high are those
+    // words' edges, a guard away), each moved only to a clearly quieter
+    // moment close by: the pause before or after the "um", if there is one.
+    const mid = (Math.max(low, start) + Math.min(high, end)) / 2
+    from = edgeNear(levels, low, Math.min(mid, start + EDGE_SEC), 'earliest')
+    to = edgeNear(levels, Math.max(mid, end - EDGE_SEC), high, 'latest')
+    if (!from || !to || !(to.time > from.time)) return null
+  } else {
+    from = quietestBetween(levels, low, start, 'earliest')
+    to = quietestBetween(levels, end, high, 'latest')
+    if (!from || !to) return null
+    if (rules.quietStart && from.db >= rules.quietBelowDb) return null
+    if (rules.quietEnd && to.db >= rules.quietBelowDb) return null
+  }
 
   const step = levels.length > 1 ? levels[1].time - levels[0].time : 0.02
   let sounds = 0
@@ -305,6 +350,22 @@ function checkedCut(
   if (sounds > rules.maxSounds || soundSec > rules.maxSoundSec) return null
 
   return { start: from.time, end: to.time }
+}
+
+/** Where to cut near a word's edge, given exact times: the earliest (or
+ *  latest) moment in [from, to] within EDGE_DB of the quietest one there. A
+ *  flat stretch - an "um" said straight on from the word - gives the moment
+ *  right by the word; a pause gives its far side. */
+function edgeNear(levels: Level[], from: number, to: number, side: 'earliest' | 'latest'): Level | null {
+  const within = levels.filter((l) => l.time >= from && l.time <= to)
+  if (within.length === 0) {
+    // Nothing between: the span is shorter than a frame. Take the nearest.
+    const nearest = levels.find((l) => l.time >= from) ?? null
+    return nearest && nearest.time <= to + 0.02 ? nearest : null
+  }
+  const quietest = Math.min(...within.map((l) => l.db))
+  const close = within.filter((l) => l.db <= quietest + EDGE_DB)
+  return side === 'earliest' ? close[0] : close[close.length - 1]
 }
 
 /** The quietest level in [from, to], or null when the curve has nothing in

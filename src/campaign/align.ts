@@ -159,6 +159,10 @@ export interface TimedWord {
   text: string
   start: number
   end: number
+  /** For a word the speech model wrote as a filler: the letters the letter
+   *  model heard over its span (lettersBetween), for plan.ts to check it
+   *  really sounds like one. */
+  letters?: string
 }
 
 /** The words with their aligned times, `offset` seconds being frame 0 and
@@ -261,4 +265,77 @@ export function joinPieces(
     at += piece.frames
   }
   return { logProbs, frames, starts, ends }
+}
+
+/** What the letter model heard in frames [from, to] of a window, read the
+ *  plain way (the likeliest letter of each frame, repeats and blanks
+ *  folded): "UM", "THE", "". */
+export function lettersBetween(logProbs: Float32Array, letters: number, from: number, to: number): string {
+  let out = ''
+  let last = BLANK
+  for (let t = Math.max(0, from); t <= to; t++) {
+    const row = t * letters
+    let best = 0
+    for (let v = 1; v < letters; v++) if (logProbs[row + v] > logProbs[row + best]) best = v
+    if (best !== last && best !== BLANK && best !== SPACE) out += CTC_LETTERS[best] ?? ''
+    last = best
+  }
+  return out
+}
+
+/** How a filler sounds to the letter model: "UM", "UHM", "UH", "HM", "ER",
+ *  "AH" and their drawn-out spellings. Not "A", "I", "AM", "EM", "OH" - words
+ *  the speech model does drop now and then. */
+const FILLER_LETTERS = /^(?:U+H*M*|U*H+M+|H+M+|M{2,}|E+R+M*|U+R+M*|A+H+M*)$/
+
+/** The least a filler lasts, in frames of 20 ms: shorter sounds are a breath
+ *  or a click, not an "um". */
+const FILLER_FRAMES = 6
+
+export interface HeardFiller {
+  start: number
+  end: number
+  /** What the letters spelled, for the report. */
+  letters: string
+}
+
+/** Fillers the speech model left out but the letter model heard: between
+ *  two words it placed (and before the first, after the last) the letters
+ *  spell nothing but "um", "uh", "hm" for long enough to be one. The words
+ *  themselves are never touched; what comes back is only where an "um"
+ *  seems to be, for the cut to check against the sound (fillerWordRanges). */
+export function fillersBetween(
+  spans: readonly Span[],
+  logProbs: Float32Array,
+  frames: number,
+  letters: number,
+  starts: readonly number[],
+  ends: readonly number[],
+): HeardFiller[] {
+  const placed = spans.filter((s): s is NonNullable<Span> => s !== null).sort((a, b) => a.first - b.first)
+  if (placed.length === 0 || frames === 0) return []
+  const gaps: [number, number][] = []
+  if (placed[0].first > 0) gaps.push([0, placed[0].first - 1])
+  for (let i = 0; i + 1 < placed.length; i++) gaps.push([placed[i].last + 1, placed[i + 1].first - 1])
+  if (placed[placed.length - 1].last < frames - 1) gaps.push([placed[placed.length - 1].last + 1, frames - 1])
+  const found: HeardFiller[] = []
+  for (const [from, to] of gaps) {
+    if (to - from + 1 < FILLER_FRAMES) continue
+    const said = lettersBetween(logProbs, letters, from, to)
+    if (said.length < 2 || !FILLER_LETTERS.test(said)) continue
+    // Only the frames that say something: the quiet around them is not the um.
+    let first = from
+    let last = to
+    const loud = (t: number) => {
+      const row = t * letters
+      let best = 0
+      for (let v = 1; v < letters; v++) if (logProbs[row + v] > logProbs[row + best]) best = v
+      return best !== BLANK && best !== SPACE
+    }
+    while (first < last && !loud(first)) first++
+    while (last > first && !loud(last)) last--
+    if (last - first + 1 < FILLER_FRAMES) continue
+    found.push({ start: starts[first], end: ends[last], letters: said })
+  }
+  return found
 }

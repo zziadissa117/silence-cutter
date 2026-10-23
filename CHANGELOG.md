@@ -3,6 +3,45 @@
 Newest first. Every change says what it does, how to use it, and how it works
 underneath. Kept up to date with each commit.
 
+## "Cut "um"s and stumbles" works: the model is told to write them down, and each is cut between its neighbours
+Only ./deploy.sh is needed; then close the Cutter and open it again. Settings, Speech, "Also cut "um"s and stumbles"
+is the same switch as before (off unless you turned it on).
+**Why it never worked, with the proof:**
+- The speech model never wrote the "um"s down. Whisper was trained on transcripts with them taken out, so left to
+  itself it leaves them out: across the 219 videos posted from the Cutter (29,650 words) its transcript has "um"
+  once. Run here with the phone's own model (whisper-tiny.en, the OpenAI weights) on 89 s of radio talk, it wrote 0
+  "uh"s; a model trained on word-for-word transcripts (NeMo conformer) heard 14 in the same clip. A cut can only
+  remove a word that was heard, so nothing was ever cut.
+- Even when one was heard, the cut asked for a true pause on both sides of it, and an "um" is said straight on
+  from the word before ("at least, um, you know"): on the recordings here not one heard "uh" passed that check.
+**Now:**
+- When the switch is on, the model is told "So, um, I think, uh, yeah." after the brand names before it listens,
+  and writes down the fillers it hears. Measured here: 7 of the 14 "uh"s in the radio clip, the "um" in a phone
+  call; none invented on read speech, laughter or French. A longer prompt got the model stuck repeating itself, so
+  the prompt is short - and any stretch the model does get stuck on ("okay, okay, okay..." - it happens with the
+  names alone too) is heard again with the names only, and failing that the loop is folded to two.
+- The letter model that times the captions now also listens between the words it placed: a stretch that spells
+  "um", "uh", "hm" and nothing else, for long enough, is an "um" the speech model left out. And an "um" the speech
+  model wrote where the letters say a real word ("THE") is kept as the word it was.
+- Each "um" and stumble is cut between the word before and the word after it, at the quietest moment near each,
+  no pause needed - with the words timed exactly by the letter model. The sound still has the last word: a cut
+  holding a second separate sound, or more sound than an "um" makes, stays in. With rough times only (the letter
+  model could not run) the old careful rule stays, so a rough corridor never reaches into a word.
+- Checked here on two real recordings run through the app's own cut (`umsFixture.test.ts`, fixtures in
+  `fixtures/ums-*.json`): every "uh" the model heard is cut, each between its neighbours, no real word touched.
+  Not checked on an iPhone: the word-level times the phone's model gives with the longer prompt, and what the
+  letter model hears over an "um" there - each video with the switch on now sends a `check`/`ums` report ("4 "um"
+  heard (3 by the speech model, 1 by the letters), 3 cut, 1 left in; 0 stumble cut; exact times") to see.
+- Captions never show an "um" or an "uh" - cut or not - as TikTok's don't; the model's notes for sounds that aren't
+  words ("[Music]", "(laughs)", "♪") are no longer words either. The caption written for the post leaves them out
+  too. The edit screen shows every cut as before, so an "um" cut wrongly can be put back.
+**How:** `keywords.FILLER_PROMPT` + `listeningPrompt(names, { fillers })`, `pipeline.listen` (`fallbackPrompt`),
+`transcribe.worker` (second listen, `timedWords.stuckOn/unstuck`, `isNonSpeech`), `align.lettersBetween/fillersBetween`
++ `TimedWord.letters` (align.worker), `plan.speechCuts(..., exact)` after alignment, `soundsLikeFiller`,
+`plan.fillersHeard` + `fillersLine` report, `fillerWords.isFillerWord`, `CutOptions.exact` (`edgeNear`),
+`WordChunk.keep`; `captions.captionWords/withRestored` skip fillers (`CUT_ON_PURPOSE` gone); `sort.firstLineHeadline`
+uses the shared check. The plain cutter's path is untouched (no prompt, no `exact`).
+
 ## Captions also shows the pictures that come up in the video
 Only ./deploy.sh is needed; then close the Cutter and open it again.
 **Now:** the screen Captions opens lists "Pictures in this video" under each video's headline and music - every

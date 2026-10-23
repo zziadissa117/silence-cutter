@@ -151,6 +151,15 @@ attempt before it starts (a video that kills the tab cannot loop).
   the whole cut when noise cutting is off, the default) and, with noise cutting on,
   `noiseCandidates` + `noiseCuts.cutNoise`. `plan.test.ts` runs them on a synthetic
   talking-head take (stretched word ends, a cough): pauses cut, words whole.
+- "Um"s and stumbles (Settings, `cleanSpeech`): whisper leaves fillers out unless told they were just said, so the
+  listening prompt gets `keywords.FILLER_PROMPT` after the names (`listeningPrompt(names, { fillers })`); a window
+  the model loops on (`timedWords.stuckOn`) is heard again with the names alone (`fallbackPrompt`), else folded
+  (`unstuck`). The letter model also reports "um"s between the words it placed (`align.fillersBetween`, letters
+  only of a filler) and what it heard over each heard filler (`TimedWord.letters`; a real word's letters keep it,
+  `plan.soundsLikeFiller`). Once the words are timed exactly, `plan.speechCuts(..., exact)` cuts each filler between
+  its neighbours at the quietest moment near each (`fillerWords.CutOptions.exact`, `edgeNear`), no pause needed;
+  with rough times the old pause-at-both-edges rule holds. Captions never show a filler (`captionWords`). Every
+  listen with the switch on reports `check`/`ums` (`fillersLine`). Real-recording check: `umsFixture.test.ts`.
 - Effects: `campaign/effects.ts`, `EffectsSection.tsx` (opt-in, with examples).
 
 **Duplicates (Phase 1.1).** `campaign/fingerprint.ts` = size + SHA-256 of three

@@ -18,7 +18,7 @@ export interface TimestampedChunk {
 export function timedWords(chunks: TimestampedChunk[], offset: number, length: number): WordChunk[] {
   const out: WordChunk[] = []
   chunks.forEach((chunk, i) => {
-    if (!chunk.text.trim()) return
+    if (!chunk.text.trim() || isNonSpeech(chunk.text)) return
     const previousEnd = out.length > 0 ? out[out.length - 1].end - offset : 0
     const from = chunk.timestamp[0] ?? previousEnd
     const nextStart = chunks.slice(i + 1).find((c) => c.timestamp[0] != null)?.timestamp[0] ?? null
@@ -51,4 +51,59 @@ export function keepInWindow(words: WordChunk[], start: number, end: number): Wo
     const from = Math.min(Math.max(w.start, start), end)
     return { ...w, start: from, end: Math.max(from, Math.min(w.end, end)) }
   })
+}
+
+/** What the model writes for a sound that is not a word: "[Music]",
+ *  "[inaudible]", "(laughs)", "♪". Not a word he said, so never a caption
+ *  and never a word to cut around. */
+export function isNonSpeech(text: string): boolean {
+  const t = text.trim()
+  return /^[([][^)\]]*[)\]][.,!?]*$/.test(t) || /^♪+$/.test(t)
+}
+
+/** How many times in a row a phrase has to come back before it is the model
+ *  stuck, not him repeating himself ("no, no, no" is three). */
+const STUCK_REPEATS = 5
+
+const bareWords = (words: readonly string[]) => words.map((w) => w.toLowerCase().replace(/[^a-z0-9']/g, ''))
+
+/** A run of the same word or short phrase this many times is the model gone
+ *  round in a loop ("okay, okay, okay, okay, ..." over a whole stretch): it
+ *  happens with a prompt and without, on noisy sound, and the window is then
+ *  heard again. Returns the length of the phrase that loops, or 0. */
+export function stuckOn(words: readonly string[]): number {
+  const bare = bareWords(words)
+  for (let n = 1; n <= 3; n++) {
+    let run = 1
+    for (let i = n; i + n <= bare.length; i++) {
+      const same = bare.slice(i, i + n).every((b, k) => b === bare[i - n + k])
+      run = same ? run + 1 : 1
+      if (run >= STUCK_REPEATS) return n
+    }
+  }
+  return 0
+}
+
+/** The words with a loop folded: a phrase that repeats STUCK_REPEATS times
+ *  or more in a row is kept twice (he may really have said it twice), the
+ *  rest dropped. The last resort when hearing a window again still loops. */
+export function unstuck(words: WordChunk[]): WordChunk[] {
+  const n = stuckOn(words.map((w) => w.text))
+  if (n === 0) return words
+  const bare = bareWords(words.map((w) => w.text))
+  const copyAt = (i: number) => i >= n && i + n <= bare.length && bare.slice(i, i + n).every((b, k) => b === bare[i - n + k])
+  const out: WordChunk[] = []
+  let i = 0
+  while (i < words.length) {
+    let copies = 1
+    while (copyAt(i + copies * n)) copies++
+    if (copies < STUCK_REPEATS) {
+      out.push(words[i])
+      i++
+      continue
+    }
+    out.push(...words.slice(i, i + 2 * n))
+    i += copies * n
+  }
+  return out
 }

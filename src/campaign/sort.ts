@@ -5,7 +5,7 @@
 // "Sure" only decides what is preselected and what is flagged; he has said
 // he will say when it may go ahead on its own.
 
-import type { WordChunk } from '../media/fillerWords'
+import { isFillerWord, type WordChunk } from '../media/fillerWords'
 import { findMentions, squash } from './keywords'
 import { GENERAL_ID, type Angle, type Campaign } from './look'
 
@@ -105,7 +105,8 @@ export function sortVideo(heard: WordChunk[], campaigns: Campaign[]): Guess {
   return fallback
 }
 
-const FILLERS = new Set(['um', 'umm', 'uh', 'uhh', 'er', 'erm', 'hmm', 'like'])
+/** Not the start of a headline: a filler, or a "like" he leads in with. */
+const skipsLeadIn = (text: string) => isFillerWord(text) || squash(text) === 'like'
 const MAX_HEADLINE_WORDS = 8
 
 /** A headline from the first thing he says: his hook, as said, cut to its
@@ -116,7 +117,7 @@ export function firstLineHeadline(heard: WordChunk[]): string {
   for (const chunk of heard) {
     const text = chunk.text.trim()
     if (!text) continue
-    if (words.length === 0 && FILLERS.has(squash(text))) continue
+    if (words.length === 0 && skipsLeadIn(text)) continue
     words.push(text)
     if (/[.!?]$/.test(text) || words.length >= MAX_HEADLINE_WORDS) break
   }

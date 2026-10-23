@@ -141,12 +141,26 @@ export function firing(mentions: number[], which: 'first' | 'every'): number[] {
 /** What the speech model is told before it listens: the names, spelled the
  *  way he typed them. Whisper takes this as text that came just before, and
  *  writes those names the same way when it hears them. */
-export function listeningPrompt(words: string[]): string {
+export function listeningPrompt(words: string[], { fillers = false }: { fillers?: boolean } = {}): string {
   // The first spelling of each wins - the campaign's brand name comes first.
   const names = new Map<string, string>()
   for (const word of words) {
     const key = squash(word)
     if (key && !names.has(key)) names.set(key, word.trim())
   }
-  return names.size > 0 ? `${[...names.values()].join(', ')}.` : ''
+  const parts = names.size > 0 ? [`${[...names.values()].join(', ')}.`] : []
+  if (fillers) parts.push(FILLER_PROMPT)
+  return parts.join(' ')
 }
+
+/** Told after the names when "um"s are to be cut. Whisper was trained on
+ *  transcripts with the "um"s and "uh"s taken out, so left to itself it
+ *  leaves them out too - on 219 of his posted videos (29,650 words) it
+ *  wrote "um" once. It writes them down when the text it is told came just
+ *  before has them in it. Measured here with tiny.en (the phone's model) on
+ *  89 s of radio talk: 0 fillers with no prompt or the names alone, 7 of the
+ *  14 that a model trained on word-for-word transcripts heard with this;
+ *  and none invented on read speech, laughter or French. A longer prompt
+ *  ("Umm, let me think like, hmm...") got the model stuck repeating itself
+ *  on one stretch; this short, plain one did not. */
+export const FILLER_PROMPT = 'So, um, I think, uh, yeah.'

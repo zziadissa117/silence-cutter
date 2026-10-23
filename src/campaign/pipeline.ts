@@ -13,7 +13,7 @@
 import { DEFAULT_POP_POSITION, POP_SIZE, type PopPosition } from './popVideo'
 import type { AngleEffects } from './effects'
 import { SilenceCutError } from '../media/errors'
-import { isFillerWordDetectionSupported } from '../media/fillerWords'
+import { isFillerWord, isFillerWordDetectionSupported } from '../media/fillerWords'
 import { cutSilence, cutSilenceFromFile } from '../media/silenceCut'
 import { totalDuration, type SilenceSettings } from '../media/silenceMath'
 import { listeningPrompt } from './keywords'
@@ -154,7 +154,11 @@ export async function listen(
   return planCampaignCut(file, settings, {
     cleanSpeech,
     listen: hear || wantNoise,
-    prompt: listeningPrompt(names),
+    // With the "um"s to cut, the model is told to write them down (see
+    // keywords.FILLER_PROMPT); a stretch it gets stuck on is heard again
+    // with the names alone.
+    prompt: listeningPrompt(names, { fillers: cleanSpeech }),
+    fallbackPrompt: listeningPrompt(names),
     align,
     quietIsFine,
     keepWhole,
@@ -291,7 +295,10 @@ export async function make(
   }
 
   const missed = [...new Map(notHeard.map((w) => [w.toLowerCase(), w])).values()]
-  const heard = plan.words.map((w) => w.text.trim()).join(' ')
+  const heard = plan.words
+    .filter((w) => !isFillerWord(w.text))
+    .map((w) => w.text.trim())
+    .join(' ')
   return {
     blob: rendered.blob,
     storedAs: rendered.storedAs,

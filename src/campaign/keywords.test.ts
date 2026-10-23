@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { findMentions, firing, listeningPrompt, soundKey, squash } from './keywords'
+import { FILLER_PROMPT, findMentions, firing, listeningPrompt, soundKey, squash } from './keywords'
 
 const heard = (...words: [string, number][]) => words.map(([text, start]) => ({ text, start, end: start + 0.3 }))
 
@@ -90,5 +90,12 @@ describe('listeningPrompt', () => {
   it('names each word once, as he typed it', () => {
     expect(listeningPrompt(['Vertus', 'vertus', ' Sydney '])).toBe('Vertus, Sydney.')
     expect(listeningPrompt([])).toBe('')
+  })
+
+  it('adds the fillers after the names when the "um"s are to be cut, and alone when there are no names', () => {
+    expect(listeningPrompt(['Vertus'], { fillers: true })).toBe(`Vertus. ${FILLER_PROMPT}`)
+    expect(listeningPrompt([], { fillers: true })).toBe(FILLER_PROMPT)
+    expect(FILLER_PROMPT).toMatch(/\bum\b/)
+    expect(FILLER_PROMPT).toMatch(/\buh\b/)
   })
 })

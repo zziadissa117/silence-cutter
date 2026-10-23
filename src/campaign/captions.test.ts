@@ -88,6 +88,19 @@ describe('captionWords', () => {
     expect(captionWords([{ text: ' I', start: 0.8, end: 1.2 }, { text: ' I', start: 1.3, end: 1.5 }], keep).map((w) => w.text)).toEqual(['I'])
   })
 
+  it('never captions an "um", even one still in the video', () => {
+    const keep = [{ start: 0, end: 3 }]
+    const words = [
+      { text: ' So,', start: 0.1, end: 0.3 },
+      { text: ' um,', start: 0.5, end: 0.8 },
+      { text: ' Uh', start: 1.0, end: 1.2 },
+      { text: ' listen.', start: 2.0, end: 2.4 },
+    ]
+    expect(captionWords(words, keep).map((w) => w.text)).toEqual(['So,', 'listen.'])
+    // Nor does one come back when a cut is undone.
+    expect(withRestored([], words, [{ start: 1.5, end: 3 }], keep).map((w) => w.text)).toEqual(['So,'])
+  })
+
   it('keeps only the words still in the video, punctuation and all', () => {
     const words = [
       { text: ' So,', start: 0.1, end: 0.3 },
@@ -504,10 +517,11 @@ describe('withRestored', () => {
     { text: ' um', start: 1.0, end: 1.2 },
     { text: ' listen.', start: 2.0, end: 2.4 },
   ]
-  it('brings back the words of a part he has put back, keeping his fixes', () => {
+  it('brings back the words of a part he has put back, keeping his fixes - never an "um"', () => {
     const fixed = [{ text: 'So,', start: 0.2, end: 0.5 }, { text: 'LISTEN.', start: 2.0, end: 2.4 }]
-    const out = withRestored(fixed, heard, [{ start: 0, end: 0.9 }, { start: 1.8, end: 3 }], [{ start: 0, end: 3 }])
-    expect(out.map((w) => w.text)).toEqual(['So,', 'um', 'LISTEN.'])
+    const back = [...heard.slice(0, 2), { text: ' really', start: 1.3, end: 1.6 }, ...heard.slice(2)]
+    const out = withRestored(fixed, back, [{ start: 0, end: 0.9 }, { start: 1.8, end: 3 }], [{ start: 0, end: 3 }])
+    expect(out.map((w) => w.text)).toEqual(['So,', 'really', 'LISTEN.'])
   })
   it('changes nothing when no part came back', () => {
     const fixed = [{ text: 'So,', start: 0.2, end: 0.5 }]
