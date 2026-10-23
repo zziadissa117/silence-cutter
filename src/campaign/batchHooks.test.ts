@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 
 import { emptyBank, type BatchBank } from './batch'
-import { changeHeadline, dropHook, dropLook, groupHooks, hookOfJob, hookOfPost, hookStats, sameHook, weakHooks, type HookStat } from './batchHooks'
+import { assumedLook, changeHeadline, dropHook, dropLook, groupHooks, hookOfJob, hookOfPost, hookStats, lookChoices, sameHook, swapLook, weakHooks, type HookStat } from './batchHooks'
 import type { Job } from './jobs'
 import type { ServerPost } from './posting'
 
@@ -95,5 +95,28 @@ describe('the lines the Batch tab shows', () => {
       ['box', 3, 300],
       [null, 1, null],
     ])
+  })
+})
+
+describe('changing a look', () => {
+  it('moves its share to the new look and takes it out of the mix', () => {
+    const b = bank({ looks: [{ look: 'snap', parts: 2 }, { look: 'formula', parts: 1 }, { look: 'box', parts: 1 }] })
+    expect(swapLook(b, 'formula', 'snap').looks).toEqual([{ look: 'snap', parts: 3 }, { look: 'box', parts: 1 }])
+    expect(swapLook(b, 'box', 'outline').looks).toEqual([{ look: 'snap', parts: 2 }, { look: 'formula', parts: 1 }, { look: 'outline', parts: 1 }])
+  })
+
+  it('offers the looks that can make videos', () => {
+    const logo = { id: 'l', name: 'l.png', type: 'image/png', size: 1 }
+    expect(lookChoices(bank(), 'snap', ['box', 'outline', 'snap', 'formula'])).toEqual(['box', 'outline'])
+    expect(lookChoices(bank({ formula: { left: logo, right: logo, min: 1, max: 2 } }), 'snap', ['box', 'outline', 'snap', 'formula'])).toEqual(['box', 'outline', 'formula'])
+    expect(lookChoices(bank({ headlines: [] }), 'formula', ['box', 'outline', 'snap', 'formula'])).toEqual([])
+  })
+
+  it('counts a video from before looks were kept in the batch\'s one headline look', () => {
+    const b = bank({ looks: [{ look: 'snap', parts: 1 }, { look: 'formula', parts: 1 }] })
+    expect(assumedLook(b)).toBe('snap')
+    expect(hookOfPost(post({ headline: 'POV: it works', status: 'scheduled' }), assumedLook(b))).toEqual({ look: 'snap', words: 'POV: it works' })
+    expect(hookOfPost(post({ headline: '$650 a day', status: 'scheduled' }), assumedLook(b))).toEqual({ look: 'formula', words: '' })
+    expect(assumedLook(bank({ looks: [{ look: 'snap', parts: 1 }, { look: 'box', parts: 1 }] }))).toBeNull()
   })
 })

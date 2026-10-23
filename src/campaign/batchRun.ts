@@ -33,9 +33,15 @@ import {
   todayHere,
   unmake,
   usesSteps,
+  recastPicks,
+  recipeOf,
+  stylesOf,
   type BankFile,
   type BatchBank,
+  type BatchLook,
+  type BatchPick,
   type BatchSlot,
+  type RecastFrom,
 } from './batch'
 import { engineJob, makeOnEngine, saveEngineSeries, sendFootage, stopEngineJob } from './engine'
 import { DEFAULT_CORNER } from './greenScreenRender'
@@ -247,6 +253,33 @@ function fill(bank: BatchBank, slots: readonly BatchSlot[], now: Date): BatchBan
  *  the bank after them. Never more than the different videos left; when that
  *  was the last of them, the footage goes (batch.spend) and the batch stops.
  *  On the engine it only counts the days - the engine does its own mixing. */
+/** One batch video from a pick, for its day and time. */
+function videoOf(bank: BatchBank, pick: BatchPick, slot: BatchSlot, { id, seed, size, ending }: { id: string; seed: string; size: number; ending: boolean }): BatchVideo {
+  const green = bank.layout === 'greenscreen'
+  const formulaOnly = !green && hookOf(bank) === 'formula'
+  const formula = !green && hasFormula(bank) ? (bank.formula ?? DEFAULT_FORMULA) : undefined
+  const byId = (list: BankFile[], fileId: string | null) => list.find((f) => f.id === fileId) ?? null
+  const steps = pick.steps && bank.steps ? pick.steps.map((fileId, s) => ({ file: byId(bank.steps![s].files, fileId)!, name: bank.steps![s].name })) : undefined
+  // Claude + X: every video, or those it takes turns on - at their amount.
+  const onFormula = formula && (formulaOnly || pick.look === 'formula') ? formula : undefined
+  const line = onFormula ? formulaLine(onFormula, seed, pick.amount) : ''
+  // Its look, always - the one it was mixed with, or the bank's one look -
+  // so how each look does can be told, and its videos changed later.
+  const style = pick.look && pick.look !== 'formula' ? pick.look : onFormula ? undefined : stylesOf(bank)[0]
+  return {
+    reaction: byId(bank.reactions, pick.reaction)!,
+    product: steps ? steps[0].file : byId(bank.products, pick.product)!,
+    ...(steps ? { steps } : {}),
+    music: green ? null : byId(bank.music, pick.music),
+    ...(green ? { greenScreen: bank.corner ?? DEFAULT_CORNER } : {}),
+    ...(onFormula
+      ? { headline: formulaText(onFormula, line), formula: { left: onFormula.left, right: onFormula.right, line } }
+      : { headline: pick.headline }),
+    ...(style ? { headlineStyle: style } : {}),
+    batch: { id, date: slot.date, time: slot.time, size, ...(ending ? { last: true as const } : {}) },
+  }
+}
+
 export function planVideos(
   bank: BatchBank,
   slots: BatchSlot[],
@@ -254,9 +287,6 @@ export function planVideos(
 ): { videos: BatchVideo[]; slots: BatchSlot[]; bank: BatchBank; retire: string[] } {
   if (bank.layout === 'engine') return { videos: [], slots, bank: fill(bank, slots, now), retire: [] }
   const green = bank.layout === 'greenscreen'
-  const formulaOnly = !green && hookOf(bank) === 'formula'
-  const formula = !green && hasFormula(bank) ? (bank.formula ?? DEFAULT_FORMULA) : undefined
-  const corner = bank.corner ?? DEFAULT_CORNER
   const mixable = mixFrom(bank, green ? bank.headlines : headlinesToMix(bank))
   const { left } = combos(mixable)
   const taking = Number.isFinite(left) ? slots.slice(0, left) : slots
@@ -265,25 +295,7 @@ export function planVideos(
   const { picks, used, lastPair, made } = pickBatch(mixable, taking.length, rand)
   // That is every different video left: the footage goes after these.
   const ending = Number.isFinite(left) && taking.length >= left
-  const byId = (list: BankFile[], fileId: string | null) => list.find((f) => f.id === fileId) ?? null
-  const videos: BatchVideo[] = picks.map((pick, i) => {
-    const steps = pick.steps && bank.steps ? pick.steps.map((fileId, s) => ({ file: byId(bank.steps![s].files, fileId)!, name: bank.steps![s].name })) : undefined
-    // Claude + X: every video, or those it takes turns on - at their amount.
-    const onFormula = formula && (formulaOnly || pick.look === 'formula') ? formula : undefined
-    const line = onFormula ? formulaLine(onFormula, `${id}-${i}`, pick.amount) : ''
-    return {
-      reaction: byId(bank.reactions, pick.reaction)!,
-      product: steps ? steps[0].file : byId(bank.products, pick.product)!,
-      ...(steps ? { steps } : {}),
-      music: green ? null : byId(bank.music, pick.music),
-      ...(green ? { greenScreen: corner } : {}),
-      ...(onFormula
-        ? { headline: formulaText(onFormula, line), formula: { left: onFormula.left, right: onFormula.right, line } }
-        : { headline: pick.headline }),
-      ...(pick.look && pick.look !== 'formula' ? { headlineStyle: pick.look } : {}),
-      batch: { id, date: taking[i].date, time: taking[i].time, size: taking.length, ...(ending ? { last: true as const } : {}) },
-    }
-  })
+  const videos = picks.map((pick, i) => videoOf(bank, pick, taking[i], { id, seed: `${id}-${i}`, size: taking.length, ending }))
   let next = fill({ ...bank, used, lastPair, made }, taking, now)
   let retire: string[] = []
   if (ending) {
@@ -556,7 +568,7 @@ export async function takeOutHook({
   removeJob: (id: string) => void
   save: (bank: BatchBank) => Promise<void>
   latest?: () => BatchBank
-}): Promise<{ bank: BatchBank; taken: number; failed: number; reason?: string; posts: ServerPost[] }> {
+}): Promise<{ bank: BatchBank; taken: number; failed: number; reason?: string; posts: ServerPost[]; gone: { date: string; time: string; post?: ServerPost; job?: Job }[] }> {
   const posts = await listPosts(true)
   const videos = dayVideos(posts, jobs, campaignId)
   const jobOf = (v: DayVideo) => (v.kind === 'job' ? jobs.find((j) => j.id === v.id) : undefined)
@@ -584,7 +596,96 @@ export async function takeOutHook({
     filled: countedDays(videos.filter((v) => !goneIds.has(v.id))),
   })
   await save(next)
-  return { bank: next, taken: gone.length, failed: outcome.failed.length, reason: outcome.failed[0]?.reason, posts }
+  return {
+    bank: next,
+    taken: gone.length,
+    failed: outcome.failed.length,
+    reason: outcome.failed[0]?.reason,
+    posts,
+    gone: gone.map((v) => ({ date: v.date, time: v.time, post: v.post, job: jobOf(v) })),
+  }
+}
+
+/** What a video taken out was made of, to make it again (changeLook): a job
+ *  here knows its clips and song; a post is read off its file name. */
+function recipeOfGone(bank: BatchBank, video: { post?: ServerPost; job?: Job }, formula: boolean): RecastFrom | null {
+  const made = video.job?.montage?.bank
+  if (made) {
+    return {
+      reaction: made.reaction.id,
+      products: made.steps ? made.steps.map((s) => s.file.id) : [made.product.id],
+      music: made.music?.id ?? null,
+      headline: formula ? '' : (video.job?.headlineText ?? ''),
+    }
+  }
+  const post = video.post
+  return post?.fileName ? recipeOf(bank, post.fileName, formula ? '' : (post.headline ?? '')) : null
+}
+
+/**
+ * One look's videos not out yet made again in another look ("Claude + X
+ * doesn't work - change those to Snapchat"): they come out the way Stop
+ * using it takes them out (takeOutHook), the look leaves the mix with its
+ * share going to the new one (`change`), and each is made again at once at
+ * its own day and time - the same reaction and clips, in the new look
+ * (batch.recastPicks). Every other video stays as it is. A time too soon to
+ * make it for, or one whose clips have left the bank, is left to the
+ * batch's top-up. Returns what takeOutHook does, and how many were made again.
+ */
+export async function changeLook({
+  bank,
+  campaignId,
+  jobs,
+  matches,
+  from,
+  to,
+  change,
+  removeJob,
+  save,
+  make,
+  latest = () => bank,
+  now = new Date(),
+  rand = Math.random,
+}: {
+  bank: BatchBank
+  campaignId: string
+  jobs: readonly Job[]
+  matches: (video: { post?: ServerPost; job?: Job }) => boolean
+  from: BatchLook
+  to: BatchLook
+  change: (bank: BatchBank) => BatchBank
+  removeJob: (id: string) => void
+  save: (bank: BatchBank) => Promise<void>
+  make: (videos: BatchVideo[]) => void
+  latest?: () => BatchBank
+  now?: Date
+  rand?: () => number
+}): Promise<Awaited<ReturnType<typeof takeOutHook>> & { remade: number }> {
+  const out = await takeOutHook({ bank, campaignId, jobs, matches, change, removeJob, save, latest })
+  const today = todayHere(now)
+  const soonest = now.getHours() * 60 + now.getMinutes() + LEAD_MINUTES
+  const later = out.gone
+    .filter((v) => v.date > today || (v.date === today && minutes(v.time) >= soonest))
+    .sort((a, b) => a.date.localeCompare(b.date) || a.time.localeCompare(b.time))
+  const current = out.bank
+  const recipes = later.map((v) => recipeOfGone(current, v, from === 'formula'))
+  const asked = recipes.flatMap((r, i) => (r ? [{ recipe: r, slot: { date: later[i].date, time: later[i].time } }] : []))
+  const { picks, used, made } = recastPicks(
+    current,
+    asked.map((a) => a.recipe),
+    to,
+    rand,
+  )
+  const id = `b-${now.getTime().toString(36)}`
+  const ready = asked.flatMap((a, i) => (picks[i] ? [{ pick: picks[i]!, slot: a.slot }] : []))
+  const videos = ready.map(({ pick, slot }, i) => videoOf(current, pick, slot, { id, seed: `${id}-${i}`, size: ready.length, ending: false }))
+  if (videos.length === 0) return { ...out, remade: 0 }
+  const filled = { ...current.filled }
+  for (const { slot } of ready) filled[slot.date] = (filled[slot.date] ?? 0) + 1
+  const next = { ...current, used, made, filled }
+  await save(next)
+  make(videos)
+  return { ...out, bank: next, remade: videos.length }
 }
 
 /** A batch changing hands between this phone and the Cutter server

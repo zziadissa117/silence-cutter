@@ -3,6 +3,23 @@
 Newest first. Every change says what it does, how to use it, and how it works
 underneath. Kept up to date with each commit.
 
+## Batch: change a look's scheduled videos to another look - only those are made again
+Only ./deploy.sh is needed; then close the Cutter and open it again.
+**How to use it:** Batch tab, "How each hook is doing": each look has a line (Snapchat, Outline, White box, Claude +
+X). Tap **Change to…** on the one that doesn't work, then the look you want - say Claude + X to Snapchat. Every
+Claude + X video not out yet (scheduled in Postiz, waiting, or still to be made) comes out and is made again in
+Snapchat, at its own day and time, with the same reaction and clips; one from Claude + X takes one of his
+headlines. Claude + X stops being made and its share goes to Snapchat. Every other video stays exactly as it is.
+**Which videos it can find:** a Claude + X video is told by its words, so all of them, old or new. A headline video
+made before today doesn't record its look: when the batch has one headline look picked now, those count as that
+look; with several, they show as "made before looks were counted" and can't be picked by look. From now on every
+batch video records its look, one look or several, so any look can be changed later.
+**How:** `batchRun.changeLook` (takeOutHook, then `batch.recastPicks` remakes each at its slot - never a combination
+already made, next headline or amount instead; a slot too soon, or a clip no longer in the bank, is left to the
+top-up), `batchHooks.swapLook`/`lookChoices`/`assumedLook`, `batchRun.videoOf` (shared with `planVideos`; a one-look
+batch's videos now carry that look), `CampaignApp.addBatch` (`batch.look` always), `BatchView` `runChangeLook` and
+the look lines in `HookResults`. Tests in `batchRun.test.ts`, `batchHooks.test.ts`, `batchView.test.tsx`.
+
 ## Captions stay on the words: fixing them by hand no longer slides them early
 Only ./deploy.sh is needed; then close the Cutter and open it again.
 **What was wrong:** the captions are fitted to the cut (`captionWords`) every time they are shown - opening Captions,

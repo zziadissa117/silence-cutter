@@ -8,7 +8,7 @@
 // "the angle's look", and a Claude + X post is told by its headline
 // ("Claude + Lovable = $800 a day").
 
-import { formulaText, headlinesFrom, type BatchBank, type BatchLook, type LookShare } from './batch'
+import { DEFAULT_FORMULA, formulaText, headlinesFrom, looksOf, type BatchBank, type BatchLook, type LookShare } from './batch'
 import type { Job } from './jobs'
 import type { ServerPost } from './posting'
 
@@ -33,13 +33,24 @@ function hookOf(headline: string | null, look: string | null | undefined): HookK
   return { look: look === 'box' || look === 'outline' || look === 'snap' ? look : null, words }
 }
 
-export function hookOfPost(post: Pick<ServerPost, 'headline' | 'batch'>): HookKey | null {
-  return hookOf(post.headline, post.batch?.look)
+/** A headline video made before its look was kept: in the batch's one
+ *  headline look, when it has just one picked now - every headline video of
+ *  it was then made in that look (unless he changed it since). */
+export function assumedLook(bank: Parameters<typeof looksOf>[0]): BatchLook | null {
+  const headlineLooks = looksOf(bank).filter((l) => l.look !== 'formula')
+  return headlineLooks.length === 1 ? headlineLooks[0].look : null
 }
 
-export function hookOfJob(job: Pick<Job, 'headlineText' | 'batch' | 'montage'>): HookKey | null {
+const withAssumed = (hook: HookKey | null, assumed: BatchLook | null | undefined): HookKey | null =>
+  hook && hook.look === null && assumed ? { ...hook, look: assumed } : hook
+
+export function hookOfPost(post: Pick<ServerPost, 'headline' | 'batch'>, assumed?: BatchLook | null): HookKey | null {
+  return withAssumed(hookOf(post.headline, post.batch?.look), assumed)
+}
+
+export function hookOfJob(job: Pick<Job, 'headlineText' | 'batch' | 'montage'>, assumed?: BatchLook | null): HookKey | null {
   const bank = job.montage?.bank
-  return hookOf(job.headlineText, job.batch?.look ?? (bank?.formula ? 'formula' : bank?.headlineStyle))
+  return withAssumed(hookOf(job.headlineText, job.batch?.look ?? (bank?.formula ? 'formula' : bank?.headlineStyle)), assumed)
 }
 
 /** Whether a video's hook is the one meant: Claude + X as a whole; a
@@ -96,9 +107,10 @@ export function hookStats(
     return r
   }
   const sums = new Map<string, number>()
+  const assumed = assumedLook(bank)
   for (const post of posts) {
     if (post.campaignId !== bank.campaignId || !post.batch) continue
-    const hook = hookOfPost(post)
+    const hook = hookOfPost(post, assumed)
     if (!hook) continue
     const r = row(hook)
     if (post.status === 'posted') {
@@ -113,7 +125,7 @@ export function hookStats(
   const sent = new Set(posts.map((p) => p.key))
   for (const job of jobs) {
     if (job.campaignId !== bank.campaignId || !job.batch || sent.has(job.id) || job.status === 'done') continue
-    const hook = hookOfJob(job)
+    const hook = hookOfJob(job, assumed)
     if (hook) row(hook).waiting++
   }
   for (const [key, r] of rows) {
@@ -162,6 +174,35 @@ export function dropHook(bank: BatchBank, hook: HookKey, mixed: readonly LookSha
 export function dropLook(bank: BatchBank, look: BatchLook, mixed: readonly LookShare[]): BatchBank {
   const looks = mixed.filter((l) => l.look !== look)
   return looks.length > 0 ? { ...bank, looks } : bank
+}
+
+/** The bank with one look changed for another: `from` leaves the mix and
+ *  its share goes to `to` (added, or with its own share grown). Claude + X
+ *  brings the logos he last set, if this bank has none yet. */
+export function swapLook(bank: BatchBank, from: BatchLook, to: BatchLook): BatchBank {
+  const picked = looksOf(bank)
+  const parts = picked.find((l) => l.look === from)?.parts ?? 1
+  const rest = picked.filter((l) => l.look !== from)
+  const looks = rest.some((l) => l.look === to) ? rest.map((l) => (l.look === to ? { ...l, parts: l.parts + parts } : l)) : [...rest, { look: to, parts }]
+  return {
+    ...bank,
+    looks,
+    hook: undefined,
+    headlineStyles: undefined,
+    headlineStyle: undefined,
+    ...(to === 'formula' && !bank.formula ? { formula: DEFAULT_FORMULA } : {}),
+  }
+}
+
+/** The looks a look's videos can be changed to: the others - a headline look
+ *  only with headlines written, Claude + X only with both logos and never in
+ *  green screen. */
+export function lookChoices(bank: Pick<BatchBank, 'headlines' | 'formula' | 'layout'>, from: BatchLook, all: readonly BatchLook[]): BatchLook[] {
+  return all.filter((look) => {
+    if (look === from) return false
+    if (look === 'formula') return bank.layout !== 'greenscreen' && Boolean(bank.formula?.left && bank.formula?.right)
+    return bank.headlines.some((h) => h.trim())
+  })
 }
 
 /** The bank with a headline's words changed: the new words in its place,

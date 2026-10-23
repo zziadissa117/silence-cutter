@@ -778,3 +778,97 @@ export function madeWith(
   }
   return { made, rejected }
 }
+
+/** A batch video to be made again in another look (batchRun.changeLook): its
+ *  clips as they were, and its song when it is known. */
+export interface RecastFrom {
+  reaction: string
+  /** The product clip - or, in steps, each step's clip in order. */
+  products: string[]
+  /** Its song when known (a video still on this phone); otherwise his
+   *  least-used one is taken. */
+  music?: string | null
+  /** Its headline's words; '' for Claude + X. */
+  headline: string
+}
+
+/** The clips a batch video was made of, read off its file name ("IMG_0249 +
+ *  IMG_0330.mp4", the reaction first - CampaignApp.addBatch), or null when one
+ *  of them is no longer in the bank. */
+export function recipeOf(bank: Pick<BatchBank, 'reactions' | 'products' | 'steps' | 'layout'>, fileName: string, headline: string): RecastFrom | null {
+  const names = fileName.replace(/\.[^./]+$/, '').split(' + ')
+  const first = (list: readonly BankFile[], name: string | undefined) => list.find((f) => f.name.replace(/\.[^./]+$/, '') === name)?.id
+  const reaction = first(bank.reactions, names[0])
+  const products = usesSteps(bank) ? bank.steps!.map((step, k) => first(step.files, names[k + 1])) : [first(bank.products, names[1])]
+  if (!reaction || products.some((p) => !p)) return null
+  return { reaction, products: products as string[], headline }
+}
+
+/**
+ * Picks that make `videos` again in `look` - a look already in the bank's
+ * mix: the same reaction and clips (and song, when known); a headline keeps
+ * its words while they are still his, else takes his least-used one; Claude +
+ * X its least-used amount. Never a combination already made: the next
+ * headline or amount is taken instead, and a video with none left in that
+ * look is null (the batch fills its day with another). The used counts and
+ * made list after them, kept the way pickBatch keeps them.
+ */
+export function recastPicks(
+  bank: BatchBank,
+  videos: readonly RecastFrom[],
+  look: BatchLook,
+  rand: () => number = Math.random,
+): { picks: (BatchPick | null)[]; used: Record<string, number>; made: string[] } {
+  const mixable = mixFrom(bank, bank.layout === 'greenscreen' ? bank.headlines : headlinesToMix(bank))
+  const dims = dimensions(mixable)
+  const mixing = dims.parts.size > 0
+  const used = { ...bank.used }
+  const made = new Set(bank.made ?? [])
+  const usedOf = (key: string | null) => (key ? (used[key] ?? 0) : 0)
+  /** Least used first, ties in a random order. */
+  const byUse = <T>(items: readonly T[], key: (item: T) => string | null): T[] =>
+    items
+      .map((item) => ({ item, score: usedOf(key(item)), tie: rand() }))
+      .sort((a, b) => a.score - b.score || a.tie - b.tie)
+      .map(({ item }) => item)
+  const headlineHooks = mixable.headlines.map((text) => ({ text, key: headlineKey(text), amount: undefined as number | undefined }))
+  const picks = videos.map((v): BatchPick | null => {
+    if (!dims.reactions.includes(v.reaction) || v.products.length !== dims.products.length) return null
+    if (v.products.some((id, k) => !dims.products[k].includes(id))) return null
+    const known = v.music !== undefined && dims.tracks.includes(v.music)
+    const tracks = known ? [v.music as string | null] : byUse(dims.tracks, (m) => m)
+    const hooks =
+      mixing && look === 'formula'
+        ? byUse(
+            formulaAmounts(bank.formula ?? DEFAULT_FORMULA).map((amount) => ({ text: '', key: `a:${amount}`, amount })),
+            (h) => h.key,
+          )
+        : [
+            ...headlineHooks.filter((h) => v.headline && h.key === headlineKey(v.headline)),
+            ...byUse(
+              headlineHooks.filter((h) => !v.headline || h.key !== headlineKey(v.headline)),
+              (h) => h.key,
+            ),
+          ]
+    for (const h of hooks) {
+      for (const m of tracks) {
+        const key = comboKey(v.reaction, v.products, h.key, m, mixing ? look : null)
+        if (made.has(key)) continue
+        made.add(key)
+        for (const k of [v.reaction, ...v.products, h.key, m, mixing ? lookKey(look) : null]) if (k) used[k] = usedOf(k) + 1
+        return {
+          reaction: v.reaction,
+          product: v.products[0],
+          ...(usesSteps(bank) ? { steps: v.products } : {}),
+          headline: h.text,
+          music: m,
+          look,
+          ...(h.amount !== undefined ? { amount: h.amount } : {}),
+        }
+      }
+    }
+    return null
+  })
+  const kept = [...made]
+  return { picks, used, made: totalOf(dims) <= MAX_COMBOS ? kept : kept.slice(-REMEMBERED) }
+}

@@ -6,6 +6,7 @@ import { createRoot, type Root } from 'react-dom/client'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import type { BatchBank } from './batch'
+import type { BatchVideo } from './batchRun'
 
 const bank: BatchBank = {
   campaignId: 'inflow',
@@ -613,5 +614,39 @@ describe('how each hook is doing', () => {
     expect(saved.headlines).toEqual(['one', 'three'])
     expect(saved.droppedHooks?.[0]).toMatchObject({ label: '"two"', views: 100, others: 900 })
     expect(host.textContent).toContain('Dropped "two" by itself')
+  })
+
+  it("changes a look's videos not out yet to another: only those, remade for the same days and times", async () => {
+    const logo = { id: 'l', name: 'claude.png', type: 'image/png', size: 1 }
+    const formulaPost = (id: string, offset: number) => ({ ...post(id, 'scheduled', offset, 'Claude + Lovable = $800 a day'), fileName: 'r2 + p3.mp4' })
+    const mixed = [...posts, formulaPost('f1', 1), formulaPost('f2', 2)]
+    const { listPosts, stopPostsNow } = await import('./posting')
+    vi.mocked(listPosts).mockResolvedValue(mixed as never)
+    localStorage.setItem('cutter.posts', JSON.stringify(mixed))
+    storedBank = {
+      ...bank,
+      running: true,
+      filled: week(2),
+      looks: [
+        { look: 'snap', parts: 1 },
+        { look: 'formula', parts: 1 },
+      ],
+      formula: { left: logo, right: { ...logo, id: 'l2', name: 'lovable.png' }, min: 500, max: 1000 },
+    }
+    const { onMake } = await show({})
+    const row = [...host.querySelectorAll('.hook-row')].find((r) => r.textContent?.startsWith('Claude + X'))!
+    await act(async () => [...row.querySelectorAll('button')].find((b) => b.textContent?.includes('Change to'))!.click())
+    await act(async () => [...row.querySelectorAll('button')].find((b) => b.textContent === 'Snapchat')!.click())
+    await settle()
+    expect(vi.mocked(stopPostsNow).mock.calls[0][0].map((p) => p.id).sort()).toEqual(['f1', 'f2'])
+    const remade = onMake.mock.calls.find((c) => (c[2] as BatchVideo[]).some((v) => v.reaction.id === 'r2'))![2] as BatchVideo[]
+    expect(remade.map((v) => [v.reaction.id, v.product.id, v.batch.date, v.headlineStyle])).toEqual([
+      ['r2', 'p3', iso(1), 'snap'],
+      ['r2', 'p3', iso(2), 'snap'],
+    ])
+    expect(host.textContent).toContain('Changed Claude + X to Snapchat: 2 videos being made again in Snapchat')
+    const { saveBatchBank } = await import('./store')
+    const saved = vi.mocked(saveBatchBank).mock.calls.map((c) => c[0] as BatchBank).at(-1)!
+    expect(saved.looks).toEqual([{ look: 'snap', parts: 2 }])
   })
 })

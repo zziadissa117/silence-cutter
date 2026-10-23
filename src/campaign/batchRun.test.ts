@@ -12,8 +12,9 @@ vi.mock('./posting', async (original) => ({
   stopPostsNow: vi.fn(async (posts: unknown[]) => ({ stopped: posts.length, unposting: 0, failed: [] })),
 }))
 
-import { emptyBank, type BankFile, type BatchBank } from './batch'
-import { AHEAD_DAYS, countedDays, dayVideos, daysToMake, filledOn, growthSummary, leftToMake, missingFor, overfull, perDayOn, planVideos, runSlots, startOver, takeOutHook, takenBy, topUp, trimPlan, variationParts, withGrowth, withPerDay } from './batchRun'
+import { emptyBank, recastPicks, type BankFile, type BatchBank } from './batch'
+import { AHEAD_DAYS, changeLook, countedDays, dayVideos, daysToMake, filledOn, growthSummary, leftToMake, missingFor, overfull, perDayOn, planVideos, runSlots, startOver, takeOutHook, takenBy, topUp, trimPlan, variationParts, withGrowth, withPerDay, type BatchVideo } from './batchRun'
+import { hookOfJob, hookOfPost, swapLook } from './batchHooks'
 import { makeOnEngine } from './engine'
 import type { Job } from './jobs'
 import { listPosts, stopPostsNow, type CampaignPlace, type ServerPost } from './posting'
@@ -244,10 +245,12 @@ describe('headlines in several looks, planned', () => {
     expect(plan.videos.map((v) => v.headlineStyle).sort()).toEqual(['box', 'box', 'snap', 'snap'])
   })
 
-  it('leaves the look to the angle when one is picked', () => {
+  it('with one look picked, each video carries it (the same look it is made in) - none picked: the angle\'s', () => {
     const b = bank({ headlineStyles: ['snap'] })
     const plan = planVideos(b, runSlots({ bank: b, place, campaignId: 'c1', now: NOON }).slice(0, 2), { now: NOON })
-    expect(plan.videos.every((v) => v.headlineStyle === undefined)).toBe(true)
+    expect(plan.videos.every((v) => v.headlineStyle === 'snap')).toBe(true)
+    const none = planVideos(bank(), runSlots({ bank: bank(), place, campaignId: 'c1', now: NOON }).slice(0, 2), { now: NOON })
+    expect(none.videos.every((v) => v.headlineStyle === undefined)).toBe(true)
   })
 })
 
@@ -455,5 +458,95 @@ describe('a batch that grows each day ("start with 4 and add +1 per day")', () =
     expect(tight).toBe(true)
     expect(text).toMatch(/only fits 12 a day/)
     expect(daysToMake(growing(), 15, '2026-09-30')).toBe(3)
+  })
+})
+
+describe('changing one look for another ("Claude + X doesn\'t work - make those Snapchat")', () => {
+  const today = new Date()
+  const day = (offset: number) => {
+    const d = new Date(today)
+    d.setDate(d.getDate() + offset)
+    return d.toLocaleDateString('en-CA')
+  }
+  const post = (id: string, status: string, offset: number, fileName: string, headline: string, look?: string) =>
+    ({
+      id,
+      key: id,
+      campaignId: 'c1',
+      status,
+      fileName,
+      headline,
+      postAt: new Date(Date.now() + (offset + 1) * 86400000).toISOString(),
+      batch: { id: 'b1', date: day(offset), time: '12:00', size: 3, ...(look ? { look } : {}) },
+    }) as unknown as ServerPost
+
+  it('makes only that look\'s videos not out yet again, same clips and slots, in the new look', async () => {
+    const posts = [
+      post('f1', 'scheduled', 1, 'r1 + p1.mp4', 'Claude + Lovable = $800 a day'),
+      post('s1', 'scheduled', 2, 'r2 + p2.mp4', 'h1', 'snap'),
+      post('f0', 'posted', -2, 'r2 + p2.mp4', 'Claude + Lovable = $650 a day'),
+    ]
+    vi.mocked(listPosts).mockResolvedValueOnce(posts)
+    const files2 = files('r', 2)
+    const prods = files('p', 2)
+    const jobs = [
+      {
+        id: 'j1',
+        campaignId: 'c1',
+        status: 'queued',
+        name: 'r2 + p1.mp4',
+        headlineText: 'Claude + Lovable = $900 a day',
+        montage: { bank: { reaction: files2[1], product: prods[0], music: null, formula: { left: null, right: null, line: '$900 a day' } } },
+        batch: { id: 'b1', date: day(3), time: '15:00', size: 3, look: 'formula' },
+      },
+    ] as unknown as Job[]
+    const logo = { id: 'l', name: 'claude.png', type: 'image/png', size: 1 }
+    const b = bank({
+      looks: [
+        { look: 'snap', parts: 1 },
+        { look: 'formula', parts: 1 },
+      ],
+      formula: { left: logo, right: { ...logo, id: 'l2', name: 'lovable.png' }, min: 500, max: 1000 },
+      filled: { [day(1)]: 1, [day(2)]: 1, [day(3)]: 1 },
+    })
+    const removed: string[] = []
+    const made: BatchVideo[] = []
+    const done = await changeLook({
+      bank: b,
+      campaignId: 'c1',
+      jobs,
+      from: 'formula',
+      to: 'snap',
+      matches: ({ post, job }) => (post ? hookOfPost(post) : job ? hookOfJob(job) : null)?.look === 'formula',
+      change: (next) => swapLook(next, 'formula', 'snap'),
+      removeJob: (id) => removed.push(id),
+      save: async () => {},
+      make: (videos) => made.push(...videos),
+    })
+    expect(removed).toEqual(['j1'])
+    expect(vi.mocked(stopPostsNow).mock.calls.at(-1)![0].map((p) => p.id)).toEqual(['f1'])
+    expect(done.remade).toBe(2)
+    expect(made.map((v) => [v.reaction.id, v.product.id, v.batch.date, v.batch.time, v.headlineStyle, v.formula ? 'formula' : 'words'])).toEqual([
+      ['r1', 'p1', day(1), '12:00', 'snap', 'words'],
+      ['r2', 'p1', day(3), '15:00', 'snap', 'words'],
+    ])
+    expect(made.every((v) => ['h1', 'h2'].includes(v.headline))).toBe(true)
+    // Snapchat takes Claude + X's share; nothing else is touched.
+    expect(done.bank.looks).toEqual([{ look: 'snap', parts: 2 }])
+    expect([day(1), day(2), day(3)].map((d) => done.bank.filled?.[d])).toEqual([1, 1, 1])
+  })
+
+  it('a headline keeps its words when only its look changes', () => {
+    const b = bank({
+      looks: [
+        { look: 'outline', parts: 1 },
+        { look: 'box', parts: 1 },
+      ],
+    })
+    const { picks } = recastPicks(b, [{ reaction: 'r1', products: ['p2'], headline: 'h2', music: null }], 'box', () => 0.5)
+    expect(picks[0]).toMatchObject({ reaction: 'r1', product: 'p2', headline: 'h2', look: 'box' })
+    // Already made in that look: the next headline instead.
+    const again = recastPicks({ ...b, made: ['r1|p2|h:h2||box'] }, [{ reaction: 'r1', products: ['p2'], headline: 'h2', music: null }], 'box', () => 0.5)
+    expect(again.picks[0]?.headline).toBe('h1')
   })
 })
