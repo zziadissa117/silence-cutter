@@ -198,6 +198,9 @@ export function FormatsView({
         </div>
       ) : null}
 
+      {formats.length === 0 && naming === null ? (
+        <p className="hint">No format yet. A format is a script you film again and again; its takes are mixed into a month of videos.</p>
+      ) : null}
       {naming === null ? (
         <button type="button" className="btn" onClick={() => setNaming('')}>
           + New format

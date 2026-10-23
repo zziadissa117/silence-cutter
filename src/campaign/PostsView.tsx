@@ -157,7 +157,8 @@ function Watch({ post }: { post: ServerPost }) {
     return () => URL.revokeObjectURL(next)
   }, [copy])
   const src = url ?? post.videoUrl
-  return src ? <video className="post-video" src={src} controls playsInline preload="metadata" /> : null
+  if (src) return <video className="post-video" src={src} controls playsInline preload="metadata" />
+  return <div className="hint">No copy of this video on the phone, and Postiz has none yet.</div>
 }
 
 /** One post waiting for him: its caption to read (or paste), its time, and
@@ -376,7 +377,7 @@ function OtherPost({
       <button type="button" className="post-head as-button" onClick={() => setOpen((o) => !o)} aria-expanded={open}>
         {waitingForTime(post) ? <ScheduledIcon /> : <span className={`dot ${tone}`} aria-hidden />}
         <span className="post-title">{post.campaignName}</span>
-        <span className={`post-when${waitingForTime(post) ? ' scheduled' : ''}`}>{whenLabel(post.postAt)}</span>
+        <span className={`post-when${waitingForTime(post) ? ' scheduled' : ''}`}>{post.status === 'failed' ? 'Not posted' : whenLabel(post.postAt)}</span>
       </button>
       <div className={`post-line${tone === 'bad' ? ' bad' : tone === 'warn' ? ' warn' : ''}`}>{line}</div>
       {open ? (

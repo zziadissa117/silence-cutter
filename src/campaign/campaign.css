@@ -234,7 +234,9 @@ html, body { overscroll-behavior-y: none; }
 .vrow-open:disabled { cursor: default; }
 .vrow-text { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
 .vrow-name { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.vrow-line { font-size: 14px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* Up to two lines: the reason a video needs him, or its headline, was cut
+   to one. */
+.vrow-line { font-size: 14px; color: var(--muted); overflow: hidden; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow-wrap: anywhere; }
 .vrow-line.warn { color: var(--warn); }
 .vrow-line.bad { color: var(--bad); }
 .vrow-chevron { color: var(--muted); display: flex; transition: transform 200ms var(--ease-press); }
@@ -262,7 +264,7 @@ html, body { overscroll-behavior-y: none; }
 .row-link > svg { color: var(--muted); flex: none; }
 .row-text { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
 .row-name { font-weight: 600; font-size: 17px; }
-.row-line { font-size: 14px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.row-line { font-size: 14px; color: var(--muted); overflow: hidden; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow-wrap: anywhere; }
 .mark { flex: none; width: 44px; height: 44px; border-radius: 11px; object-fit: contain; background: var(--surface); }
 .mark.letter { display: flex; align-items: center; justify-content: center; font-weight: 700; color: var(--dim); border: 1px solid var(--edge); }
 .actions-row { display: flex; gap: 8px; }
@@ -472,9 +474,12 @@ html, body { overscroll-behavior-y: none; }
 .post-video { width: 160px; max-width: calc(100% - 20px); aspect-ratio: 9 / 16; border-radius: 10px; background: #000; }
 .post-links { display: flex; flex-wrap: wrap; gap: 4px 14px; }
 .post-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 14px; }
-.time-add { display: flex; gap: 8px; }
-.time-add input[type=time] { flex: 1; }
-.row-line.wrap { white-space: normal; overflow: visible; }
+.time-add { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.time-add input[type=time] { flex: 1 1 6em; width: auto; min-width: 0; }
+.time-add .label { flex: none; }
+/* The "a day" pick, styled like every other select. */
+.time-add select { min-height: 44px; padding: 0 36px 0 12px; border: 1px solid transparent; border-radius: 10px; background: var(--field); color: var(--text); font: inherit; font-size: 16px; }
+.row-line.wrap { display: block; overflow: visible; }
 .product-row { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px 12px; }
 .product-text { flex: 1; display: flex; flex-direction: column; gap: 2px; min-width: 0; }
 /* The picker's own tip goes under the row, full width. */
@@ -505,7 +510,7 @@ html, body { overscroll-behavior-y: none; }
 .clip-line .pick-tip, .clip-line .error { flex-basis: 100%; margin: 0; text-align: left; }
 /* On the caption check: the label beside the clip, and less height. */
 .clips-field.compact { gap: 6px; }
-.clips-field.compact .clip-label { flex: 0 0 96px; font-weight: 400; color: var(--dim); font-size: 14px; }
+.clips-field.compact .clip-label { flex: 0 0 auto; min-width: 96px; font-weight: 400; color: var(--dim); font-size: 14px; }
 .clips-field.compact .clip-line select, .clips-field.compact .clip-add { min-height: 36px; }
 .clip-watch { width: 160px; max-width: 100%; aspect-ratio: 9 / 16; border-radius: 10px; background: #000; }
 
@@ -553,7 +558,8 @@ html, body { overscroll-behavior-y: none; }
 .bank-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; }
 .bank-text { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
 .bank-text .hint { overflow: hidden; text-overflow: ellipsis; }
-.bank-item .hint { flex: none; }
+.bank-item .hint { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.bank-item .btn, .bank-item .linkbtn { flex: none; }
 .bank-text .hint { flex: initial; }
 .batch .post-caption.bank-headlines { margin: 8px 0 0; width: 100%; }
 .stepper { display: flex; align-items: center; gap: 14px; }
@@ -645,6 +651,8 @@ input.bank-name { background: transparent; border: 0; border-bottom: 1px solid c
 
 /* Posts: picking posts to stop. */
 .stop-picker { display: flex; flex-direction: column; gap: 12px; }
+.stop-picker .post { padding: 10px 0; border-bottom: 1px solid var(--rule); }
+.stop-picker .post:last-child { border-bottom: 0; }
 .stop-picker .seg.chips { flex-wrap: wrap; }
 .stop-picker .editor-foot.sticky { display: flex; flex-direction: column; align-items: center; gap: 8px; }
 
@@ -666,7 +674,8 @@ input.bank-name { background: transparent; border: 0; border-bottom: 1px solid c
 
 /* A music picker with the play button beside it, to hear the track picked. */
 .music-pick { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
-.music-pick select { flex: 1 1 auto; min-width: 0; }
+.music-pick select { flex: 1 1 0; width: auto; min-width: 0; }
+.music-pick .btn { flex: none; }
 .music-pick .hint { margin: 0; }
 
 /* The video bank's rows: the still (or the clip playing), its name and
@@ -701,7 +710,9 @@ input.find,
   background-color: var(--field);
   border-color: transparent;
 }
-.chooser select, .chooser > input[type=text], input.find { background-color: var(--surface); }
+.chooser select, .chooser > input[type=text] { background-color: var(--surface); }
+/* On a card (Settings, a campaign's posting) the box is the field colour, or it vanishes into the card. */
+input.find { background-color: var(--field); min-width: 0; }
 
 .group { padding: 14px 16px; border-top: 0; border-radius: 14px; background: var(--surface); }
 .group .group, .review-look .group { padding: 0; border-radius: 0; background: none; }
@@ -738,7 +749,7 @@ html:not(.tips-on) .tip { display: none !important; }
 .list-title { margin-top: 14px; font-size: 13px; font-weight: 500; text-transform: uppercase; letter-spacing: 0.02em; color: var(--muted); padding-left: 16px; }
 .engine-setting { align-items: flex-start; }
 .engine-setting .setting-text { flex: 1; gap: 6px; }
-.engine-setting input.find { min-height: 40px; background-color: var(--field); }
+.engine-setting input.find { min-height: 40px; }
 
 /* A section's rows on one card with hairlines between them, like the iPhone's
    Settings - instead of a card for every row. */
@@ -813,7 +824,7 @@ input[type='color']::-webkit-color-swatch { border: 0.5px solid var(--edge); bor
 .trend.down { color: var(--warn); }
 .analytics-target { margin-top: 12px; }
 .analytics-target-row { display: flex; align-items: center; gap: 10px; }
-.analytics-target-row input { width: 7.5em; min-height: 40px; font-size: 16px; }
+.analytics-target-row input { width: 7.5em; min-height: 40px; padding: 0 12px; border: 1px solid transparent; border-radius: 10px; background: var(--field); color: var(--text); font: inherit; font-size: 16px; }
 
 /* Formats tab (FormatsView) */
 .format-list { padding-top: 4px; padding-bottom: 4px; }
@@ -825,7 +836,9 @@ input[type='color']::-webkit-color-swatch { border: 0.5px solid var(--edge); bor
 .format-video { display: block; width: 100%; max-height: 70vh; margin: 8px 0 4px; border-radius: 12px; background: #000; }
 .format-schedule .btn { flex: 1 1 10rem; }
 .format-script .step-list { margin-bottom: 12px; }
-.format-takes { display: flex; flex-basis: 100%; align-items: center; justify-content: space-between; gap: 8px; padding-left: 2em; }
+.format-takes { display: flex; flex-wrap: wrap; flex-basis: 100%; min-width: 0; align-items: center; justify-content: space-between; gap: 8px; padding-left: 2em; }
+.format-takes > .linkbtn { flex: 1 1 10em; min-width: 0; text-align: left; white-space: normal; }
+.format-takes .step-tools { flex: none; }
 .format-line textarea.step-name { flex: 1 1 calc(100% - 2.5rem); }
 .format-takes .linkbtn:disabled { color: var(--muted); cursor: default; text-decoration: none; }
 .format-take-list { flex-basis: 100%; padding-left: 2em; }

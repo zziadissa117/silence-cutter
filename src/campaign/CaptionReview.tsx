@@ -484,7 +484,13 @@ export function CaptionReview({
       {onRecheck ? (
         <div className="recheck">
           <button type="button" className="btn wide recheck-btn" disabled={checking} onClick={() => void recheck()}>
-            {checking ? 'Claude is checking…' : `Use Claude to re-check captions · costs credits · ${centsLabel(estimateRecheckCents(texts, vocabulary))}`}
+            {checking ? (
+              'Claude is checking…'
+            ) : (
+              <>
+                Use Claude to re-check captions <span style={{ whiteSpace: 'nowrap', fontWeight: 400 }}>· about {centsLabel(estimateRecheckCents(texts, vocabulary))} of credits</span>
+              </>
+            )}
           </button>
           {rechecked ? (
             <p className={`hint${rechecked.error ? ' warn-text' : ''}`}>

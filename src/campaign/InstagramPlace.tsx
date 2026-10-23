@@ -73,7 +73,7 @@ export function PlaceField({
           className="find"
           inputMode="url"
           aria-label={`${label}: the place's Facebook page`}
-          placeholder={place ? 'Another place - its Facebook page link' : "The place's Facebook page link"}
+          placeholder={place ? 'Another place (Facebook link)' : 'Facebook page link'}
           value={text}
           onChange={(e) => setText(e.target.value)}
         />

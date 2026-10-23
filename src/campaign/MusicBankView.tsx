@@ -72,13 +72,13 @@ export function MusicBankView() {
             <span className="hint">{mb(song.size)}</span>
             <button
               type="button"
-              className="btn small icon-btn"
+              className="linkbtn"
               aria-label={`Take out ${song.name}`}
               onClick={() => {
                 if (window.confirm(`Take ${song.name} out of the music bank - on every phone? Videos already made keep it.`)) void removeSong(song.id)
               }}
             >
-              ✕
+              Remove
             </button>
           </li>
         ))}

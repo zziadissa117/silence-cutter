@@ -3487,7 +3487,11 @@ export function CampaignApp() {
         options={batchEditing.options}
         posted={batchEditing.posted}
         onMake={(fields) => void makeBatchAgain(batchEditing, fields)}
-        onCancel={() => setBatchEditing(null)}
+        onCancel={() => {
+          // Back to Posts, where Edit again was tapped.
+          setBatchEditing(null)
+          setShowPosts(true)
+        }}
       />
     ) : editing?.kind === 'campaign' ? (
       <CampaignEditor
@@ -3786,6 +3790,7 @@ export function CampaignApp() {
 
   const inFlow =
     editing !== null ||
+    batchEditing !== null ||
     showSignIn ||
     settingUpPosting ||
     (showPosts && posting !== null) ||

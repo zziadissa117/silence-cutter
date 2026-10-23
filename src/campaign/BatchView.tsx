@@ -392,6 +392,8 @@ export function BatchView({
   const times = batchTimesOn(place, campaign.id, today, perDay)
   const random = ownDayTimes(place).length === 0
   const angle = campaign.angles.find((a) => a.id === bank?.angleId) ?? campaign.angles[0]
+  // A format (Formats tab) is an angle too, but not a look for a batch.
+  const batchAngles = campaign.angles.filter((a) => !a.isFormat)
 
   /** Files into a bank. `again`: he tapped Add anyway - clips already in
    *  videos made before are taken in again, each as a clip of its own
@@ -910,9 +912,9 @@ export function BatchView({
           </button>
         ) : null}
         </div>
-        {campaign.angles.length > 1 && bank ? (
+        {batchAngles.length > 1 && bank ? (
           <div className="seg chips" role="radiogroup" aria-label="Headline look">
-            {campaign.angles.map((a) => (
+            {batchAngles.map((a) => (
               <button
                 key={a.id}
                 type="button"
@@ -1311,23 +1313,21 @@ export function BatchView({
             {running
               ? `${bank.madeThrough ? `Made through ${dayLabel(bank.madeThrough)}. ` : ''}It makes the next days on its own ${onServer ? 'on the server, day and night' : 'whenever the app is open'}${onEngine ? '' : ' - until every different video is made'}.`
               : `Makes the next ${AHEAD_DAYS} days now, then keeps going on its own ${onServer ? 'on the server, day and night' : 'whenever the app is open'}${onEngine ? '' : ', until every different video is made'}.`}
-            {running ? (
-              <>
-                {' '}
-                <button type="button" className="linkbtn" onClick={stop}>
+          </p>
+          {running || outAhead > 0 ? (
+            <div className="actions-row">
+              {running ? (
+                <button type="button" className="btn small" onClick={stop}>
                   Stop
                 </button>
-              </>
-            ) : null}
-            {outAhead > 0 ? (
-              <>
-                {' '}
-                <button type="button" className="linkbtn" disabled={busyMaking || saving !== null} onClick={runStartOver}>
+              ) : null}
+              {outAhead > 0 ? (
+                <button type="button" className="btn small" disabled={busyMaking || saving !== null} onClick={runStartOver}>
                   Start over
                 </button>
-              </>
-            ) : null}
-          </p>
+              ) : null}
+            </div>
+          ) : null}
           {onEngine && engineState ? (
             <div className="batch-progress">
               <div className={`label${engineState.status === 'failed' ? ' warn-text' : ''}`}>

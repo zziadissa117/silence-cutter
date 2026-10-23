@@ -381,7 +381,9 @@ input[type=range] { width: 100%; accent-color: var(--now); }
 
 @media (max-width: 560px) {
   .seg { width: 100%; }
-  .seg button { flex: 1; padding: 0 8px; }
+  /* A label of two words may take two lines ("Brand approves") rather than
+     be cut. */
+  .seg button { flex: 1; padding: 4px 6px; white-space: normal; line-height: 1.15; }
   .slider { grid-template-columns: 1fr 76px; }
   .slider input { grid-column: 1 / -1; }
 }

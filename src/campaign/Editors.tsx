@@ -403,7 +403,8 @@ export function AngleEditor({
       }
     >
       {copiedFrom ? <div className="hint">Starts as a copy of {copiedFrom} - change what's different.</div> : null}
-      {part === 'effects' || part === 'clips' ? null : <LookPreview look={look} compact />}
+      {/* On every part, so the part tabs under it stay put. */}
+      <LookPreview look={look} compact />
 
       <div className="seg parts" role="tablist" aria-label="Parts of the angle">
         {PARTS.filter((p) => p.value !== 'clips' || onAddClip).map((p) => (

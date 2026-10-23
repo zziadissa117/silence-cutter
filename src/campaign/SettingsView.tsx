@@ -538,7 +538,7 @@ function ServerSetting({ campaignIds }: { campaignIds: string[] }) {
             inputMode="url"
             autoCapitalize="off"
             autoCorrect="off"
-            placeholder="https://your-cutter.up.railway.app"
+            placeholder="The server's address"
             aria-label="Server address"
             value={url}
             onChange={(e) => setUrl(e.target.value)}

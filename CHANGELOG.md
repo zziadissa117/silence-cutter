@@ -3,6 +3,33 @@
 Newest first. Every change says what it does, how to use it, and how it works
 underneath. Kept up to date with each commit.
 
+## Screens cleaned up at phone size: nothing runs off the edge, nothing cut short
+Only ./deploy.sh is needed; then close the Cutter and open it again.
+**Now** (checked on screenshots at 440x956 and 402x874, dark and light):
+- Formats: a format's page no longer scrolls sideways - each line's "2 takes · 1 made" and its + Takes ↑ ✕ buttons
+  stay on the card. The tab says "No format yet" and what one is, instead of only a button.
+- Posting (a campaign's times): "Between 11:00 AM and 6:00 PM" keeps both time boxes on screen; "3 a day" is a
+  proper select; the Instagram place and Buffer key boxes are boxes again (they had the card's own colour, so only
+  the words floated); long placeholders shortened so they aren't cut mid-word.
+- Videos: the status line under a video shows up to two lines, so the reason it needs you and the headline are
+  read whole; "Made, not sent" keeps its Remove on the card. Campaigns and Settings lines the same.
+- Captions screen, Batch edit, a row's details: the music ▶ sits beside the pick instead of under it.
+- Edit screen: "Video in the middle" on one line; the Claude re-check button keeps its cost on one line.
+- Two-word choices ("Brand approves", "Straight away", "On the engine", "Reaction, then video") take two lines
+  instead of being cut.
+- Batch: Stop and Start over are buttons under the sentence, not links inside it; a format is no longer offered as a
+  batch look.
+- Posts: a failed post says "Not posted" instead of "As soon as it goes"; Watch says so when there is no copy to
+  watch; the Select (stop) list has a line between posts. Edit again on a batch video: no tab bar or Cut only /
+  Campaign videos switch over the editor, and Back goes to Posts.
+- Bank: songs have Remove like pictures and videos; Analytics' number box looks like every other.
+- Angle editor: the preview stays on every part, so the Look / Pictures / Sound / Effects / Clips tabs don't jump.
+**How:** `campaign.css` (`.vrow-line`/`.row-line` two-line clamp, `.time-add`, `.bank-item .hint`, `input.find`,
+`.music-pick`, `.format-takes`, `.clip-label`, `.analytics-target-row`, `.stop-picker .post`), `index.css` (`.seg button`
+on phones), `BatchView` (`batchAngles`, actions row), `Editors` (preview on every part), `CampaignApp` (`inFlow`,
+batch edit Back), `PostsView` (failed label, `Watch`), `FormatsView`, `MusicBankView`, `InstagramPlace`, `SettingsView`,
+`CaptionReview`.
+
 ## Batch: a typed "Videos a day" applies when you leave the box; posting through midnight takes its times
 Needs deploying: run ./deploy-server.sh, then ./deploy.sh; then close the Cutter and open it again. No database change.
 **Now:**
