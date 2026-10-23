@@ -11,6 +11,7 @@ import { CheckQuestions } from './CheckQuestions'
 import type { Job } from './jobs'
 import { JobRow } from './JobRow'
 import type { Angle, Campaign } from './look'
+import type { PictureChoice } from './skipPictures'
 
 ;(globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true
 
@@ -50,8 +51,9 @@ const sorted = (id = 'j1', headlineText = 'wait for it') =>
 const buttons = () => [...host.querySelectorAll('button')]
 const button = (text: string) => buttons().find((b) => b.textContent?.includes(text)) as HTMLButtonElement | undefined
 
-async function ask(videos: Job[], hasHook = (job: Job) => job.headlineText.trim() !== '') {
+async function ask(videos: Job[], hasHook = (job: Job) => job.headlineText.trim() !== '', pictures = (_job: Job): PictureChoice[] => []) {
   const calls = {
+    onSkipPicture: vi.fn(),
     onChoose: vi.fn(),
     onHeadline: vi.fn(),
     onHeadlineDone: vi.fn(),
@@ -60,7 +62,7 @@ async function ask(videos: Job[], hasHook = (job: Job) => job.headlineText.trim(
     onNext: vi.fn(),
     onCancel: vi.fn(),
   }
-  await act(async () => root.render(<CheckQuestions videos={videos} campaigns={[campaign]} hasHook={hasHook} {...calls} />))
+  await act(async () => root.render(<CheckQuestions videos={videos} campaigns={[campaign]} hasHook={hasHook} pictures={pictures} {...calls} />))
   return calls
 }
 
@@ -85,6 +87,24 @@ describe('the questions Captions asks', () => {
 
     await act(async () => button('Yes - caption the hook')!.click())
     expect(calls.onNext).toHaveBeenCalledWith(true)
+  })
+
+  it('shows the pictures that come up in the video, each to keep or leave out', async () => {
+    URL.createObjectURL = vi.fn(() => 'blob:picture')
+    URL.revokeObjectURL = vi.fn()
+    const logo = { id: 'p1', words: 'lovable', image: new Blob(['png'], { type: 'image/png' }) }
+    const calls = await ask([sorted()], undefined, () => [logo])
+    expect(host.textContent).toContain('Pictures in this video')
+    expect(host.textContent).toContain('lovable')
+    const tick = host.querySelector('.toggle input[type=checkbox]') as HTMLInputElement
+    expect(tick.checked).toBe(true)
+    await act(async () => tick.click())
+    expect(calls.onSkipPicture).toHaveBeenCalledWith('j1', 'p1', true)
+  })
+
+  it('says so when no picture comes up', async () => {
+    await ask([sorted()])
+    expect(host.textContent).toContain('No pictures come up in this video.')
   })
 
   it('offers the hook answer given last first', async () => {

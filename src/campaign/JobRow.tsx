@@ -1,9 +1,9 @@
 // One video in the list: a dot for its state, its name, one line saying
 // where it is, and the one thing to do next - approve it, send it, try it
 // again. The rest (what it heard, what is joined on) opens on a tap, and
-// opens by itself when it needs him. Where it goes, its headline and music
-// are asked on its Captions screen (CheckQuestions) - in the row only for a
-// video that has none.
+// opens by itself when it needs him. Where it goes, its headline and music,
+// and the pictures it shows are asked on its Captions screen
+// (CheckQuestions) - in the row only for a video that has none.
 //
 // Rows never move: the list stays in the order the videos were added, so
 // approving one does not slide the next under his thumb.
@@ -383,6 +383,31 @@ export function musicTracks(campaigns: Campaign[]): { value: string; name: strin
   return out
 }
 
+/** The pictures that come up in a video when their words are said, each with
+ *  a tick to keep or drop it - on the Captions screen, or in the row of a
+ *  video that has none. With `sayNone`, a video with no pictures says so. */
+export function PictureToggles({
+  pictures,
+  skipped,
+  onSkip,
+  sayNone = false,
+}: {
+  pictures: PictureChoice[]
+  skipped?: readonly string[]
+  onSkip: (pictureId: string, skip: boolean) => void
+  sayNone?: boolean
+}) {
+  if (pictures.length === 0) return sayNone ? <div className="hint">No pictures come up in this video.</div> : null
+  return (
+    <div className="field">
+      <span className="label">Pictures in this video</span>
+      {pictures.map((p) => (
+        <PictureToggle key={p.id} picture={p} shown={!skipped?.includes(p.id)} onChange={(shown) => onSkip(p.id, !shown)} />
+      ))}
+    </div>
+  )
+}
+
 /** One picture that comes up in the video, with a tick to keep or drop it. */
 function PictureToggle({ picture, shown, onChange }: { picture: PictureChoice; shown: boolean; onChange: (shown: boolean) => void }) {
   const [url, setUrl] = useState<string | null>(null)
@@ -457,14 +482,7 @@ function SortedDetails({
           onMusic={onMusic}
         />
       )}
-      {pictures.length > 0 ? (
-        <div className="field">
-          <span className="label">Pictures in this video</span>
-          {pictures.map((p) => (
-            <PictureToggle key={p.id} picture={p} shown={!job.day?.skipPictures?.includes(p.id)} onChange={(shown) => onSkipPicture(p.id, !shown)} />
-          ))}
-        </div>
-      ) : null}
+      {asked ? null : <PictureToggles pictures={pictures} skipped={job.day?.skipPictures} onSkip={onSkipPicture} />}
       {clips}
       {parts ? (
         <div className="cuts-row">

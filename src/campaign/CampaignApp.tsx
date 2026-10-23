@@ -3582,6 +3582,8 @@ export function CampaignApp() {
         onHeadlineDone={saveHeadline}
         onHeadlineStyle={setHeadlineStyle}
         onMusic={setMusic}
+        pictures={picturesFor}
+        onSkipPicture={setSkipPicture}
         onNext={(hookCaptions) => answerQuestions(asking, hookCaptions)}
         onCancel={() => setAsking(null)}
       />

@@ -1,7 +1,8 @@
 // What Captions asks before a video's edit screen opens, all on one screen:
-// where it goes, its headline and how it looks, its music - and, when it has
-// a headline, whether the hook (the first seconds, while the headline is up)
-// gets captions too. He sets them here, then goes on to the edit screen.
+// where it goes, its headline and how it looks, its music, the pictures that
+// come up in it (each to keep or leave out) - and, when it has a headline,
+// whether the hook (the first seconds, while the headline is up) gets
+// captions too. He sets them here, then goes on to the edit screen.
 // They used to sit in each video's row as well; there they were one more
 // thing to scroll past on every video.
 //
@@ -12,8 +13,9 @@
 
 import { ChevronLeft } from './icons'
 import type { Job } from './jobs'
-import { VideoFields } from './JobRow'
+import { PictureToggles, VideoFields } from './JobRow'
 import type { Campaign, HeadlineStyle } from './look'
+import type { PictureChoice } from './skipPictures'
 
 const LAST_KEY = 'campaign.hookCaptions'
 
@@ -43,6 +45,8 @@ export function CheckQuestions({
   onHeadlineDone,
   onHeadlineStyle,
   onMusic,
+  pictures,
+  onSkipPicture,
   onNext,
   onCancel,
 }: {
@@ -56,6 +60,9 @@ export function CheckQuestions({
   onHeadlineDone: (id: string) => void
   onHeadlineStyle: (id: string, style: HeadlineStyle) => void
   onMusic: (id: string, choice: string) => void
+  /** The pictures a video shows when their words are said. */
+  pictures: (job: Job) => PictureChoice[]
+  onSkipPicture: (id: string, pictureId: string, skip: boolean) => void
   /** On to the edit screen - with the hook answer when it was asked. */
   onNext: (hookCaptions?: boolean) => void
   onCancel: () => void
@@ -87,6 +94,12 @@ export function CheckQuestions({
             onHeadlineDone={() => onHeadlineDone(job.id)}
             onHeadlineStyle={(style) => onHeadlineStyle(job.id, style)}
             onMusic={(choice) => onMusic(job.id, choice)}
+          />
+          <PictureToggles
+            pictures={pictures(job)}
+            skipped={job.day?.skipPictures}
+            onSkip={(pictureId, skip) => onSkipPicture(job.id, pictureId, skip)}
+            sayNone
           />
         </div>
       ))}

@@ -3,6 +3,15 @@
 Newest first. Every change says what it does, how to use it, and how it works
 underneath. Kept up to date with each commit.
 
+## Captions also shows the pictures that come up in the video
+Only ./deploy.sh is needed; then close the Cutter and open it again.
+**Now:** the screen Captions opens lists "Pictures in this video" under each video's headline and music - every
+picture that comes up when its words are said, each with a tick to keep it or leave it out of that video. A video
+with none says "No pictures come up in this video." They left the row in the list like the other questions (a
+video with no Captions screen still has them in its row).
+**How:** `JobRow.PictureToggles`, shown by `CheckQuestions` (`pictures`, `onSkipPicture` = `CampaignApp.picturesFor`,
+`setSkipPicture`) and by `SortedDetails` only without Captions.
+
 ## The edit screen works like TikTok's editor: move the headline, add text, put a picture or video over you
 Only ./deploy.sh is needed; then close the Cutter and open it again.
 **Now, on the edit screen (Captions):**
