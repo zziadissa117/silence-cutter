@@ -102,7 +102,18 @@ async function storageNumbers(): Promise<{ usedMB: number; quotaMB: number } | n
 }
 
 /** Records what went wrong and sends it when it can. Never throws. */
+/** The same report (kind, phase and message) is sent once in this long: a
+ *  bank file gone made every queued batch video fail in turn, 200 reports
+ *  in seven seconds saying the same thing. */
+const SAME_REPORT_MS = 10 * 60 * 1000
+const lastSent = new Map<string, number>()
+
 export function report(details: Report): void {
+  const key = `${details.kind}|${details.phase ?? ''}|${details.message}`
+  const now = Date.now()
+  const before = lastSent.get(key)
+  if (before !== undefined && now - before < SAME_REPORT_MS) return
+  lastSent.set(key, now)
   void storageNumbers()
     .catch(() => null)
     .then((storage) => record(details, storage))

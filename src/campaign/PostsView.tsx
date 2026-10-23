@@ -10,7 +10,7 @@
 // Rows never move under his thumb: each list keeps its order while he is on
 // the screen, and a post only changes list when he acts on it.
 
-import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react'
+import { type ReactNode, useCallback, useEffect, useMemo, useState } from 'react'
 
 import { dayLabel } from './batch'
 import { canShareFiles, share } from './jobs'
@@ -22,7 +22,7 @@ import { jobOfPostKey, EDIT_WINDOW_MS } from './store'
 import { MusicAfter } from './MusicAfter'
 import { campaignsIn, foldBatches, rememberShown, shownCampaign, type ListItem } from './postsList'
 import { canAddMusic } from './musicAfterSend'
-import { copyKind, forgetSend, kick, localVideo, sending, tidySends, watchSending, type Sending } from './outbox'
+import { copyKind, forgetSend, localVideo, retryStuck, sending, tidySends, watchSending, type Sending } from './outbox'
 import {
   PostingError,
   accountLabel,
@@ -208,7 +208,15 @@ function WaitingPost({
   onChanged: (message: string) => void
   onAct: (action: PostAction, fields?: { caption?: string; at?: string; captions?: Record<string, { caption?: string }> }) => void
 }) {
-  const [caption, setCaption] = useState(post.caption ?? '')
+  // His own words while he types; null means the box shows the caption as
+  // the server has it - so a caption the server rewrites or re-tags
+  // meanwhile shows up, instead of the old one going back on the next tap.
+  const [typed, setTyped] = useState<string | null>(null)
+  const caption = typed ?? post.caption ?? ''
+  const setCaption = setTyped
+  useEffect(() => {
+    if (typed !== null && typed === (post.caption ?? '')) setTyped(null)
+  }, [post.caption, typed])
   const [own, setOwn] = useState<Record<string, string>>(() =>
     Object.fromEntries(Object.entries(post.captions ?? {}).map(([id, t]) => [id, t.caption ?? ''])),
   )
@@ -220,7 +228,7 @@ function WaitingPost({
   const [watching, setWatching] = useState(false)
   const brand = post.approval === 'brand'
   const paste = post.captionBy === 'paste'
-  const edited = caption !== (post.caption ?? '')
+  const edited = typed !== null && typed !== (post.caption ?? '')
   const fields = () => ({
     ...(edited ? { caption } : {}),
     ...(ownEdited ? { captions: ownCaptions() } : {}),
@@ -412,7 +420,7 @@ function OtherPost({
             {busy ? 'Trying…' : post.status === 'error' ? 'Post again' : 'Post again to the missing ones'}
           </button>
         ) : null}
-        {(post.status === 'scheduled' || post.status === 'approved') && post.postAt && new Date(post.postAt).getTime() > Date.now() ? (
+        {post.status === 'approved' || (post.status === 'scheduled' && post.postAt && new Date(post.postAt).getTime() > Date.now()) ? (
           <button type="button" className="linkbtn" disabled={busy} onClick={() => onAct('unschedule')}>
             Take back
           </button>
@@ -497,7 +505,7 @@ function SendingRow({ item, onRemove }: { item: Sending; onRemove: () => void })
         {entry.meta.fileName}: {entry.error}
       </div>
       <div className="post-actions">
-        <button type="button" className="btn small" onClick={kick}>
+        <button type="button" className="btn small" onClick={() => void retryStuck(entry.key)}>
           Try again
         </button>
         <button
@@ -742,7 +750,13 @@ export function PostsView({
 
   const approveAll = async () => {
     setApprovingAll(true)
-    for (const post of approvable) await act(post, 'approve')
+    // Three at a time: each approval waits on the server putting the post
+    // into Postiz, and 25 one after another kept the screen on for minutes.
+    const queue = [...approvable]
+    const worker = async () => {
+      for (let post = queue.shift(); post; post = queue.shift()) await act(post, 'approve')
+    }
+    await Promise.all([worker(), worker(), worker()])
     setApprovingAll(false)
   }
 

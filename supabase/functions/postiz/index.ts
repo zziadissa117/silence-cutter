@@ -113,6 +113,9 @@ const PART_BYTES = 8 * 1024 * 1024
 const MAX_BYTES = 2 * 1024 * 1024 * 1024
 /** Tries before a post that keeps failing on its own is left for him. */
 const MAX_ATTEMPTS = 6
+/** After MAX_ATTEMPTS quick tries, how many half-hourly ones an approved post
+ *  gets for a passing problem before it comes back to him: about a day. */
+const LATER_GIVE_UP = MAX_ATTEMPTS + 48
 const MINUTE = 60_000
 
 const CORS = {
@@ -472,6 +475,20 @@ async function profileView(profile: Profile) {
         }
       : null,
   }
+}
+
+/** Like update, but only while the post is still in `status` - null when it
+ *  moved on meanwhile (he stopped it, took it back). */
+async function updateIf(id: string, status: Post['status'], fields: Partial<Post>): Promise<Post | null> {
+  const { data, error } = await db
+    .from('cutter_posts')
+    .update({ ...fields, updated_at: new Date().toISOString() })
+    .eq('id', id)
+    .eq('status', status)
+    .select('*')
+    .maybeSingle()
+  if (error) throw new Problem(`The post could not be saved (${error.message}).`, true)
+  return (data as Post | null) ?? null
 }
 
 async function update(id: string, fields: Partial<Post>): Promise<Post> {
@@ -1751,8 +1768,8 @@ async function schedule(start: Post): Promise<Post> {
   if (send.length === 0) {
     return update(post.id, { accounts: held, error: heldNote(held), retry_at: new Date(Date.now() + 30 * MINUTE).toISOString(), attempts: 0 })
   }
-  const scheduled = (fields: Partial<Post>) =>
-    update(post.id, {
+  const scheduled = async (fields: Partial<Post>) => {
+    const row = await updateIf(post.id, 'approved', {
       status: 'scheduled',
       accounts: [...send, ...held],
       post_at: date,
@@ -1764,6 +1781,15 @@ async function schedule(start: Post): Promise<Post> {
       checked_at: null,
       ...fields,
     })
+    if (row) return row
+    // He stopped it, took it back or replaced it (Add music) while it was
+    // being put into Postiz: it stays as he left it, and what this run just
+    // created in Postiz goes again - or it would have gone out anyway.
+    const current = await reload(post.id)
+    const made = fields.postiz_ids ?? []
+    if (made.length > 0 && current.status !== 'scheduled') await deleteScheduled(keys.postiz, { ...current, postiz_ids: made }).catch(() => {})
+    return current
+  }
   // The accounts already sent through Buffer stay there.
   const toPostiz = send.filter((account) => !post.buffer_ids?.[account.id])
   if (toPostiz.length === 0) return scheduled({})
@@ -1808,6 +1834,7 @@ async function schedule(start: Post): Promise<Post> {
         error: `${POSTIZ_WAIT} (${error.message})`,
         retry_at: new Date(at - HAND_AHEAD_MS).toISOString(),
         attempts: 0,
+        creating_at: null,
       })
     }
     const handed = await toBuffer(profile, post, covered, now ? null : at, await bufferRoom(profile))
@@ -1828,7 +1855,7 @@ async function schedule(start: Post): Promise<Post> {
     // Buffer has turned it down MAX_ATTEMPTS times.
     const attempts = handed.problems.length > 0 ? post.attempts + 1 : post.attempts
     if (covered.some((a) => !post.buffer_ids?.[a.id]) && attempts < MAX_ATTEMPTS) {
-      return update(post.id, { error: note, retry_at: new Date(Date.now() + 10 * MINUTE).toISOString(), attempts })
+      return update(post.id, { error: note, retry_at: new Date(Date.now() + 10 * MINUTE).toISOString(), attempts, creating_at: null })
     }
     throw new PostizProblem(note, error.later, error.status)
   }
@@ -1872,7 +1899,22 @@ async function failed(post: Post, error: unknown): Promise<void> {
   const busy = problem.status === 429
   if (problem.later && attempts < (busy ? MAX_ATTEMPTS * 2 : MAX_ATTEMPTS)) {
     const wait = busy ? 15 * MINUTE : [2, 5, 10, 20, 30][Math.min(attempts - 1, 4)] * MINUTE
-    await update(post.id, { error: `${problem.message} Trying again by itself.`, attempts, retry_at: new Date(Date.now() + wait).toISOString() })
+    // creating_at cleared: while it is set, Take back says the post is going
+    // to Postiz this moment, and it could stay set through a whole outage.
+    await update(post.id, { error: `${problem.message} Trying again by itself.`, attempts, retry_at: new Date(Date.now() + wait).toISOString(), creating_at: null })
+    return
+  }
+  if (problem.later && post.status === 'approved' && attempts < LATER_GIVE_UP) {
+    // Postiz (or the network) still not answering after an hour of tries:
+    // an approved post stays approved and is tried every half hour, for a
+    // day. Sent back to To approve, 25 posts came back for nothing in every
+    // outage, and again an hour after he approved them again.
+    await update(post.id, {
+      error: `${problem.message} Trying again every half hour.`,
+      attempts,
+      retry_at: new Date(Date.now() + 30 * MINUTE).toISOString(),
+      creating_at: null,
+    })
     return
   }
   if (post.status === 'approved') {
@@ -1915,15 +1957,33 @@ function edits(post: Post, body: Record<string, unknown>): Partial<Post> {
 
 async function listPosts(profile: Profile): Promise<Response> {
   const since = new Date(Date.now() - 3 * 24 * 60 * MINUTE).toISOString()
-  const { data, error } = await db
-    .from('cutter_posts')
-    .select('*')
-    .eq('profile_id', profile.id)
-    .or(`created_at.gt.${since},post_at.gt.${since},status.in.(uploading,writing,waiting,approved,failed)`)
-    .order('created_at', { ascending: false })
-    .limit(300)
-  if (error) throw new Problem('The posts could not be read.', true, 500)
-  const posts = (data ?? []) as Post[]
+  // Every post still to go, whatever else there is - then the recent
+  // finished ones. In one list, newest first and cut at 300, a Stop or a
+  // Start over (hundreds of rejected rows at once) pushed scheduled and
+  // waiting posts off the end: 15 scheduled and 3 waiting were missing from
+  // the friend's Posts screen on 2026-10-23.
+  const [live, done] = await Promise.all([
+    db
+      .from('cutter_posts')
+      .select('*')
+      .eq('profile_id', profile.id)
+      .or(`status.in.(uploading,writing,waiting,approved,failed),and(status.eq.scheduled,post_at.gt.${since})`)
+      .order('created_at', { ascending: false })
+      .limit(1000),
+    db
+      .from('cutter_posts')
+      .select('*')
+      .eq('profile_id', profile.id)
+      .in('status', ['posted', 'rejected', 'error', 'scheduled'])
+      .or(`created_at.gt.${since},post_at.gt.${since}`)
+      .order('created_at', { ascending: false })
+      .limit(300),
+  ])
+  if (live.error || done.error) throw new Problem('The posts could not be read.', true, 500)
+  const seen = new Set<string>()
+  const posts = [...((live.data ?? []) as Post[]), ...((done.data ?? []) as Post[])]
+    .filter((p) => !seen.has(p.id) && seen.add(p.id))
+    .sort((a, b) => b.created_at.localeCompare(a.created_at))
   // Anything stuck mid-way gets a nudge, without waiting for the scheduler.
   const stuck = posts.filter(
     (p) =>
@@ -1998,7 +2058,7 @@ async function act(profile: Profile, action: string, body: Record<string, unknow
       // Approved is scheduled to him (the Posts screen lists them together):
       // either comes back to To approve.
       if (post.status !== 'scheduled' && post.status !== 'approved') return reply({ post: postView(post) })
-      if (post.post_at && new Date(post.post_at).getTime() < Date.now()) throw new Problem('It has already gone out.')
+      if (post.status === 'scheduled' && post.post_at && new Date(post.post_at).getTime() < Date.now()) throw new Problem('It has already gone out.')
       // Not while a run is handing it to Postiz: that run would put it there
       // anyway. Held (claimed) until it is back in To approve.
       if (post.status === 'approved' && (post.creating_at || !(await claim(post.id)))) {
@@ -2591,6 +2651,7 @@ async function tick(): Promise<void> {
   // Captions marked to be written again with a campaign's new rules.
   await rewriteMarked()
   await checkPosted(now)
+  await giveUpUnconfirmed(now)
   // Buffer, the backup: what Postiz holds while "Postiz is down" is on, what
   // Buffer has posted, and Postiz's copies of what went through Buffer.
   await handOver(now).catch((error) => console.error('handing over to Buffer failed', error))
@@ -2732,13 +2793,18 @@ async function views(profile: Profile): Promise<Response> {
 /** Asks Postiz how the posts that were due went: posted (with links), or
  *  failed on the platform. One question per person, a few times at most. */
 async function checkPosted(now: number): Promise<void> {
+  // Every 8 minutes for the first six looks, then hourly, for three days:
+  // a post Postiz publishes late used to stay "Scheduled" for ever once
+  // the six looks were spent (one from 2026-10-16 still was a week on).
   const { data } = await db
     .from('cutter_posts')
     .select('*')
     .eq('status', 'scheduled')
     .lt('post_at', new Date(now - 2 * MINUTE).toISOString())
-    .lt('checks', 6)
-    .or(`checked_at.is.null,checked_at.lt.${new Date(now - 8 * MINUTE).toISOString()}`)
+    .gt('post_at', new Date(now - UNCONFIRMED_MS).toISOString())
+    .or(
+      `checked_at.is.null,and(checks.lt.6,checked_at.lt.${new Date(now - 8 * MINUTE).toISOString()}),checked_at.lt.${new Date(now - 60 * MINUTE).toISOString()}`,
+    )
     .limit(100)
   const byProfile = new Map<string, Post[]>()
   // Gone through Buffer on every account: checkBuffer follows those.
@@ -2784,6 +2850,29 @@ async function checkPosted(now: number): Promise<void> {
     } catch (error) {
       console.error('check failed', profileId, error instanceof Error ? error.message : String(error))
     }
+  }
+}
+
+/** How long a scheduled post is asked after before it is given up on. */
+const UNCONFIRMED_MS = 3 * 24 * 60 * MINUTE
+
+/** A post Postiz never confirmed in three days of asking is marked so,
+ *  instead of sitting in Scheduled with nothing to do about it. */
+async function giveUpUnconfirmed(now: number): Promise<void> {
+  const { data } = await db
+    .from('cutter_posts')
+    .select('*')
+    .eq('status', 'scheduled')
+    .lt('post_at', new Date(now - UNCONFIRMED_MS).toISOString())
+    .gte('checks', 6)
+    .limit(50)
+  for (const post of (data ?? []) as Post[]) {
+    const saved = await update(post.id, {
+      status: 'error',
+      error: 'Postiz never said whether it went out. Open Postiz to see; Post again sends it again.',
+      checked_at: new Date(now).toISOString(),
+    })
+    await removeParts(saved).catch(() => {})
   }
 }
 

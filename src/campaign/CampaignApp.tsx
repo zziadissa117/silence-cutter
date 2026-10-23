@@ -647,7 +647,9 @@ export function CampaignApp() {
       },
       result.blob,
     )).catch((error: unknown) => {
-      report({ page: 'campaign', kind: 'failed', phase: 'posting', message: `Could not keep a copy to send: ${error instanceof Error ? error.message : String(error)}` })
+      const why = error instanceof Error ? error.message : String(error)
+      report({ page: 'campaign', kind: 'failed', phase: 'posting', message: `Could not keep a copy to send: ${why}` })
+      setNotice(`${job.name} is made but not on its way: a copy to send couldn't be kept (${why}). Open it and tap Send to Postiz to try again.`)
     })
     copying.current.set(job.id, queued)
     void queued.finally(() => copying.current.delete(job.id))
@@ -2809,7 +2811,7 @@ export function CampaignApp() {
     const owner = campaigns?.find((c) => c.id === job.campaignId)
     if (job.status !== 'done' || !job.result || !posting || !owner) return undefined
     if (placeFor(posting.profile, owner.id).accounts.length === 0) return undefined
-    if (outgoing.some((o) => o.entry.key === job.id)) return undefined
+    if (outgoing.some((o) => jobOfPostKey(o.entry.key) === job.id)) return undefined
     return () => sendToPostiz(job, owner, job.result!, true)
   }
 

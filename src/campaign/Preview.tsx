@@ -40,23 +40,34 @@ export function LookPreview({ look, headlineText, compact = false }: { look: Vid
     }
   }, [look.pictures])
 
+  // The old bitmap is closed only once the new one (or none) is in place -
+  // closing it in this effect's cleanup left the draw below, run in the same
+  // commit with the old state, drawing a closed bitmap ("The object is in an
+  // invalid state", five crashes across builds when the logo was switched).
+  const logoRef = useRef<ImageBitmap | null>(null)
   useEffect(() => {
     let cancelled = false
-    let bitmap: ImageBitmap | null = null
+    const previous = logoRef.current
+    const take = (b: ImageBitmap | null) => {
+      logoRef.current = b
+      setLogo(b)
+      if (previous && previous !== b) previous.close()
+    }
     if (look.logo.image) {
       void createImageBitmap(look.logo.image)
         .then((b) => {
-          bitmap = b
           if (cancelled) b.close()
-          else setLogo(b)
+          else take(b)
         })
-        .catch(() => setLogo(null))
-    } else setLogo(null)
+        .catch(() => {
+          if (!cancelled) take(null)
+        })
+    } else take(null)
     return () => {
       cancelled = true
-      bitmap?.close()
     }
   }, [look.logo.image])
+  useEffect(() => () => logoRef.current?.close(), [])
 
   useEffect(() => {
     const canvas = canvasRef.current
@@ -77,13 +88,14 @@ export function LookPreview({ look, headlineText, compact = false }: { look: Vid
     ctx.fillRect(0, 0, width, height * TIKTOK_ZONES.top * 0.7)
     ctx.restore()
 
+    // A closed bitmap has no width: never drawn.
     for (const picture of look.pictures) {
       const bitmap = pictureBitmaps.current.get(picture.image)
-      if (bitmap) drawLogo(ctx, bitmap, layoutLogo(width, height, bitmap, picture))
+      if (bitmap && bitmap.width > 0) drawLogo(ctx, bitmap, layoutLogo(width, height, bitmap, picture))
     }
     const headline = layoutHeadline(ctx, width, height, { ...look.headline, text: headlineText ?? look.headline.text })
     if (headline) drawHeadline(ctx, headline)
-    if (logo) drawLogo(ctx, logo, layoutLogo(width, height, logo, look.logo))
+    if (logo && logo.width > 0) drawLogo(ctx, logo, layoutLogo(width, height, logo, look.logo))
   }, [look.headline, look.logo, look.pictures, logo, decoded, headlineText, fontReady])
 
   return (

@@ -177,6 +177,13 @@ let again = false
 let retryTimer = 0
 
 /** Sends whatever is waiting, one video at a time. */
+/** Try again on a video that got stuck: it goes back in line and the queue
+ *  is kicked. */
+export async function retryStuck(key: string): Promise<void> {
+  await updateSend(key, { stuck: undefined, error: undefined })
+  kick()
+}
+
 export function kick(): void {
   if (running) {
     again = true
@@ -192,7 +199,9 @@ async function pump(): Promise<void> {
     do {
       again = false
       await refresh()
-      for (const entry of entries.filter((e) => e.state === 'sending')) {
+      // A stuck one (its copy gone, the server said no) waits for Try again:
+      // tried every five minutes it only read its copy back for nothing.
+      for (const entry of entries.filter((e) => e.state === 'sending' && !e.stuck)) {
         if (document.visibilityState !== 'visible' || !navigator.onLine) return
         current = entry.key
         emit()

@@ -185,7 +185,16 @@ async function call<T>(action: string, body: Record<string, unknown> = {}): Prom
     }
   }
   if (response.status === 429) throw new PostingError('The server is busy for a moment. Trying again by itself.', true)
-  const json = (await response.json().catch(() => ({}))) as T & { error?: string; later?: boolean }
+  let json: T & { error?: string; later?: boolean }
+  try {
+    json = (await response.json()) as T & { error?: string; later?: boolean }
+  } catch {
+    // A good status with a body that can't be read: the connection dropped
+    // mid-answer. An empty answer here once stood for "no posts" and took
+    // the Posts screen down (posts.filter on undefined, 2026-10-22).
+    if (response.ok) throw new PostingError('The answer was cut off. Trying again by itself.', true)
+    json = {} as T & { error?: string; later?: boolean }
+  }
   if (!response.ok) {
     if (json.error === 'no-profile') {
       keepPosting(null)
@@ -505,7 +514,8 @@ export function shared<T>(ask: () => Promise<T>, freshMs = 4000): (fresh?: boole
 }
 
 const askPosts = shared(async () => {
-  const { posts } = await call<{ posts: ServerPost[] }>('posts', { profile: profileId() })
+  const { posts } = await call<{ posts?: ServerPost[] }>('posts', { profile: profileId() })
+  if (!Array.isArray(posts)) throw new PostingError('The answer was cut off. Trying again by itself.', true)
   try {
     localStorage.setItem(POSTS_KEY, JSON.stringify(posts))
   } catch {

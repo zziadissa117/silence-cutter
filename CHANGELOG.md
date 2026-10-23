@@ -3,6 +3,42 @@
 Newest first. Every change says what it does, how to use it, and how it works
 underneath. Kept up to date with each commit.
 
+## Two crashes fixed, every post shown, nothing goes out after a Stop, and posts stop coming back to approve
+Needs deploying: run ./deploy-server.sh, then ./deploy.sh; then close the Cutter and open it again. No database change.
+**What the reports showed:**
+- The two crashes of 2026-10-22 19:22 ("undefined is not an object (evaluating 'o.filter')" and "'e.map'") were one
+  answer from the server cut off mid-way: the phone took an unreadable answer for "no posts" and the Posts screen fell
+  over on it. The crash "The object is in an invalid state" (five times across builds) was the angle preview drawing a
+  logo picture it had just let go of, when the logo was switched off or changed.
+- 15 scheduled and 3 waiting posts were missing from the friend's Posts screen: the server sends the newest 300 rows,
+  and a Stop or a Start over (hundreds of rejected rows at once) pushed live posts off the end.
+**Now:**
+- Posts: an answer cut off is tried again by itself, never shown as an empty list. The angle preview never draws a
+  picture it has let go of.
+- Posts: every post still to go is always in the list, whatever happened lately; the finished ones of the last three
+  days after them.
+- Posts: a post stopped, taken back or replaced (Add music) in the very moment the server was putting it into Postiz
+  stays stopped - the server takes what it just created out of Postiz again. Before, it went out anyway, and with Add
+  music both versions did.
+- Posts: during a Postiz outage an approved post stays approved and is tried every half hour for a day, instead of
+  coming back to To approve after an hour (25 to approve again, every hour). Take back works on it all the while.
+- Posts: a post Postiz publishes late is still seen as posted - the server keeps asking (every 8 minutes, then hourly)
+  for three days, and only then says "Postiz never said whether it went out", with Post again. One from 2026-10-16
+  had sat in Scheduled for a week.
+- Posts: a caption the server rewrites or re-tags while the screen is open shows up in the box, instead of the old
+  words going back on the next tap. Take back is there on every approved post (one with no time yet had no way back).
+  Approve all approves three at a time instead of one after another.
+- Videos: a made video whose copy to send couldn't be kept says so on screen (it used to look sent). "Send to Postiz"
+  no longer shows on a remade video already in line.
+- A video that can't be sent until you act (its copy gone) is no longer retried every five minutes; Try again puts it
+  back in line. The same report within ten minutes is sent once (one missing bank file sent 200 reports in 7 s).
+**How:** `posting.call` (unreadable body -> retry), `askPosts` (`posts ?? throw`); `Preview.tsx` (`logoRef`, closed
+bitmaps never drawn); server `listPosts` (live + recent, two reads), `updateIf` + `scheduled()` guarded on
+`approved` (and `deleteScheduled` when not), `failed()` `LATER_GIVE_UP`, `creating_at: null` on every retry,
+`checkPosted` (`UNCONFIRMED_MS`, hourly after six looks) + `giveUpUnconfirmed` in the tick, `unschedule` past check
+only when scheduled; `PostsView` `typed` caption state, Take back, `approveAll` three workers; `CampaignApp.sendToPostiz`
+notice, `postByHand` via `jobOfPostKey`; `outbox.pump` skips `stuck`, `retryStuck`; `report.ts` `SAME_REPORT_MS`.
+
 ## "Cut "um"s and stumbles" works: the model is told to write them down, and each is cut between its neighbours
 Only ./deploy.sh is needed; then close the Cutter and open it again. Settings, Speech, "Also cut "um"s and stumbles"
 is the same switch as before (off unless you turned it on).
