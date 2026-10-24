@@ -319,6 +319,16 @@ export function oneAtATime<T>(campaignId: string, work: () => Promise<T>): Promi
   return running
 }
 
+/** Runs `work` for the campaign after any top-up of it that is running -
+ *  never instead of it, never dropped: a change he taps while the batch is
+ *  making waits its turn (a top-up only plans, so the wait is short). */
+export async function nextInLine<T>(campaignId: string, work: () => Promise<T>): Promise<T> {
+  while (busy.has(campaignId)) await settled(campaignId)
+  const running = work().finally(() => busy.delete(campaignId))
+  busy.set(campaignId, running)
+  return running
+}
+
 /** Waits for a top-up of the campaign that is running, if any. */
 export async function settled(campaignId: string): Promise<void> {
   await busy.get(campaignId)?.catch(() => {})
@@ -568,11 +578,22 @@ export async function takeOutHook({
   removeJob: (id: string) => void
   save: (bank: BatchBank) => Promise<void>
   latest?: () => BatchBank
-}): Promise<{ bank: BatchBank; taken: number; failed: number; reason?: string; posts: ServerPost[]; gone: { date: string; time: string; post?: ServerPost; job?: Job }[] }> {
+}): Promise<{
+  bank: BatchBank
+  taken: number
+  failed: number
+  reason?: string
+  posts: ServerPost[]
+  gone: { date: string; time: string; post?: ServerPost; job?: Job }[]
+  /** Videos with the hook being made right now: they are finished as they are. */
+  making: number
+}> {
   const posts = await listPosts(true)
   const videos = dayVideos(posts, jobs, campaignId)
   const jobOf = (v: DayVideo) => (v.kind === 'job' ? jobs.find((j) => j.id === v.id) : undefined)
-  const going = videos.filter((v) => v.removable && matches({ post: v.post, job: jobOf(v) }))
+  const withHook = videos.filter((v) => matches({ post: v.post, job: jobOf(v) }))
+  const going = withHook.filter((v) => v.removable)
+  const making = withHook.filter((v) => v.kind === 'job' && !v.removable).length
   for (const v of going) if (v.kind === 'job') removeJob(v.id)
   const outcome = await stopPostsNow(going.flatMap((v) => (v.post ? [v.post] : [])))
   const stuck = new Set(outcome.failed.map((f) => f.post.id))
@@ -603,6 +624,7 @@ export async function takeOutHook({
     reason: outcome.failed[0]?.reason,
     posts,
     gone: gone.map((v) => ({ date: v.date, time: v.time, post: v.post, job: jobOf(v) })),
+    making,
   }
 }
 
@@ -730,6 +752,17 @@ export function handOver({
     madeThrough: undefined,
     lastPerDay: undefined,
   }
+}
+
+/** Stop: nothing more of the batch is made on this phone - no more top-ups,
+ *  and its videos waiting to be made (queued, not started) are dropped, their
+ *  mixes freed and the days counted again from what is left, the way a
+ *  hand-over does it. What is made stays: the posts in Posts keep their
+ *  times, and a video being made right now is finished. Before this, Stop
+ *  only stopped the next top-up, and the days already queued - dozens of
+ *  videos - went on being made one after another. */
+export function stopBatch(args: Parameters<typeof handOver>[0]): BatchBank {
+  return { ...handOver(args), running: false }
 }
 
 /** The days from today on as they really are: how many of the batch's

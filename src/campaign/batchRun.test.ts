@@ -13,7 +13,7 @@ vi.mock('./posting', async (original) => ({
 }))
 
 import { emptyBank, recastPicks, type BankFile, type BatchBank } from './batch'
-import { AHEAD_DAYS, changeLook, countedDays, dayVideos, daysToMake, filledOn, growthSummary, leftToMake, missingFor, overfull, perDayOn, planVideos, runSlots, startOver, takeOutHook, takenBy, topUp, trimPlan, variationParts, withGrowth, withPerDay, type BatchVideo } from './batchRun'
+import { AHEAD_DAYS, changeLook, countedDays, dayVideos, daysToMake, filledOn, growthSummary, leftToMake, missingFor, nextInLine, oneAtATime, overfull, perDayOn, planVideos, runSlots, startOver, takeOutHook, takenBy, topUp, trimPlan, variationParts, withGrowth, withPerDay, type BatchVideo } from './batchRun'
 import { hookOfJob, hookOfPost, swapLook } from './batchHooks'
 import { makeOnEngine } from './engine'
 import type { Job } from './jobs'
@@ -548,5 +548,21 @@ describe('changing one look for another ("Claude + X doesn\'t work - make those 
     // Already made in that look: the next headline instead.
     const again = recastPicks({ ...b, made: ['r1|p2|h:h2||box'] }, [{ reaction: 'r1', products: ['p2'], headline: 'h2', music: null }], 'box', () => 0.5)
     expect(again.picks[0]?.headline).toBe('h1')
+  })
+})
+
+describe('nextInLine', () => {
+  it('runs after a top-up that is running, never dropped (oneAtATime drops it)', async () => {
+    const order: string[] = []
+    let finish = () => {}
+    const topUp = oneAtATime('cx', () => new Promise<void>((resolve) => (finish = () => (order.push('top-up'), resolve()))))
+    expect(await oneAtATime('cx', async () => order.push('dropped'))).toBeNull()
+    const change = nextInLine('cx', async () => (order.push('change'), 'done'))
+    await Promise.resolve()
+    expect(order).toEqual([])
+    finish()
+    await topUp
+    expect(await change).toBe('done')
+    expect(order).toEqual(['top-up', 'change'])
   })
 })

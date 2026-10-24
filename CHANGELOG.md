@@ -3,6 +3,22 @@
 Newest first. Every change says what it does, how to use it, and how it works
 underneath. Kept up to date with each commit.
 
+## Fix: Stop now stops the batch, and the hook buttons work while it is making
+Only ./deploy.sh is needed; then close the Cutter and open it again.
+**What happened (his friend, 2026-10-24):** Stop only stopped the next days from being planned. A top-up queues up
+to a week of videos at once, so after Stop the phone went on making every one already queued, video after video:
+"it never wants to stop". And every button of "How each hook is doing" ("Change to...", "Stop using it", "Change
+words") and Start over were greyed out while any video of the campaign was being made - with a batch running, that
+is all the time, so they never worked.
+**Now:** Stop takes the videos waiting to be made out of the queue at once (`batchRun.stopBatch`: as a hand-over
+does it - their mixes freed, the days counted again from what is left). Videos already in Posts keep their times;
+the one being made that minute is finished. A batch stopped on an older version with videos still waiting shows
+"Stop the N waiting to be made". The hook card's buttons and Start over work while the batch is making: a tap
+waits for a top-up that is running (`batchRun.nextInLine`, instead of `oneAtATime`, which dropped it), then reads
+the jobs as of the next draw so the ones that top-up queued are included. The video being made at that moment is
+finished as it was, and the message says so. "Drop a hook that does badly by itself" is no longer skipped while
+the batch is making either.
+
 ## Fix: "How each hook is doing" and "Change to..." missing on a batch with no look picked
 Only ./deploy.sh is needed; then close the Cutter and open it again.
 **What happened (his friend, 2026-10-24):** on a batch where no headline look was ever picked in the Batch tab, the

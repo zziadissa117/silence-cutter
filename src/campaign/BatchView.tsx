@@ -90,8 +90,10 @@ import {
   withPerDay,
   leftToMake,
   missingFor,
+  nextInLine,
   oneAtATime,
   overfull,
+  stopBatch,
   runSlots,
   settled,
   startOver,
@@ -120,6 +122,18 @@ const LAST_KEY = 'batch.campaign'
 const MAX_SONG_MB = 30
 
 export type { BatchVideo } from './batchRun'
+
+/** A moment for the tab to draw once more: the videos a top-up just queued
+ *  reach it (`jobs`) on its next draw, not the moment the top-up ends. */
+const nextDraw = () => new Promise<void>((resolve) => setTimeout(resolve, 150))
+
+/** What a change says of the videos it left alone because they were being made. */
+function makingNote(making: number): string {
+  if (making === 0) return ''
+  return making === 1
+    ? ' The one being made right now is finished as it was - change it too once it is in Posts, if you want.'
+    : ` The ${making} being made right now are finished as they were - change them too once they are in Posts, if you want.`
+}
 
 /** Calls `run` when it first shows and whenever `signal` changes - a hook of
  *  its own, so the tab's code below its early returns can use one. */
@@ -281,6 +295,10 @@ export function BatchView({
   const adding = useRef(new Set<string>())
   const bankRef = useRef(bank)
   bankRef.current = bank
+  // The jobs as of the last draw: a change that waited for a top-up reads
+  // the videos that top-up queued from here, not from its tap.
+  const jobsRef = useRef(jobs)
+  jobsRef.current = jobs
   /** A top-up of this campaign's batch is being worked out or handed over. */
   const [topping, setTopping] = useState(false)
   /** What he is typing as videos a day, until it is a number. */
@@ -615,6 +633,10 @@ export function BatchView({
   const missing = bank ? missingFor(bank) : []
   const inProgress = jobs.filter((j) => j.status !== 'failed' && j.status !== 'held')
   const makingHere = inProgress.filter((j) => j.campaignId === campaign.id)
+  // Batch videos queued here and not started: Stop takes them out, even
+  // with the batch stopped already (on a version whose Stop left them).
+  const waitingHere = makingHere.filter((j) => j.batch && j.status === 'queued').length
+  const stoppable = waitingHere > 0 && !onServer && !onEngine
   const engineBusy = onEngine && (engineState?.status === 'waiting' || engineState?.status === 'making')
   const busyMaking = topping || makingHere.length > 0 || engineBusy
   const madeHereTotal = [...new Map(jobs.filter((j) => j.campaignId === campaign.id).map((j) => [j.batch!.id, j.batch!.size])).values()].reduce(
@@ -677,8 +699,45 @@ export function BatchView({
     runTopUp(next)
   }
 
+  /** Stop: at once, nothing more is made - the next days aren't planned, and
+   *  the videos queued for the days already planned come out (stopBatch).
+   *  What is in Posts stays scheduled; the video being made now is finished. */
   const stop = () => {
-    if (bank) keep({ ...bank, running: false })
+    const current = bankRef.current
+    if (!current) return
+    setProblem(null)
+    keep({ ...current, running: false })
+    // On the server or the engine, the bank going there says it.
+    if (onServer || onEngine) return
+    const before = jobsRef.current
+    const waiting = before.filter((j) => j.campaignId === campaign.id && j.batch && j.status === 'queued')
+    // Out of the queue now, so the phone starts none of them.
+    for (const j of waiting) onRemove(j.id)
+    setSaving('Stopping…')
+    void nextInLine(campaign.id, async () => {
+      await nextDraw()
+      const latest = bankRef.current ?? current
+      // Start tapped again since: that wins.
+      if (latest.running && latest.startedAt !== current.startedAt) return null
+      const fresh = await listPosts(true).catch(() => posts)
+      // Any queued by a top-up that was running at the tap come out too.
+      const all = [...new Map([...before, ...jobsRef.current].map((j) => [j.id, j])).values()]
+      const late = jobsRef.current.filter((j) => j.campaignId === campaign.id && j.batch && j.status === 'queued' && !waiting.some((w) => w.id === j.id))
+      const next = stopBatch({ bank: latest, campaignId: campaign.id, jobs: all, posts: fresh, removeJob: onRemove })
+      setBank(next)
+      bankRef.current = next
+      await saveBatchBank(next)
+      setPosts(fresh)
+      return waiting.length + late.length
+    })
+      .then((n) => {
+        if (n === null) return
+        setNotice(
+          `Stopped.${n > 0 ? ` ${n} video${n === 1 ? '' : 's'} waiting to be made ${n === 1 ? 'was' : 'were'} taken out.` : ''} The ones in Posts keep their times${makingHere.some((j) => j.status === 'working') ? '; the one being made now is finished first' : ''}. Tap Start to go on.`,
+        )
+      })
+      .catch((error: unknown) => setProblem(error instanceof Error ? error.message : String(error)))
+      .finally(() => setSaving(null))
   }
 
   /** He lowered the number: the extra videos come back out of the days
@@ -740,13 +799,16 @@ export function BatchView({
     setTopping(true)
     setProblem(null)
     setSaving('Taking its videos out…')
-    void oneAtATime(campaign.id, () =>
-      takeOutHook({
-        bank: current,
+    // After a top-up that is running, while the batch goes on making.
+    void nextInLine(campaign.id, async () => {
+      await nextDraw()
+      const now = bankRef.current ?? current
+      return takeOutHook({
+        bank: now,
         campaignId: campaign.id,
-        jobs,
+        jobs: jobsRef.current,
         matches: ({ post, job }) => {
-          const assumed = assumedLook(current, angle.headline.style)
+          const assumed = assumedLook(now, angle.headline.style)
           const of = post ? hookOfPost(post, assumed) : job ? hookOfJob(job, assumed) : null
           return look ? sameLook(of, look) : sameHook(of, hook)
         },
@@ -757,14 +819,16 @@ export function BatchView({
           bankRef.current = next
           await saveBatchBank(next)
         },
-        latest: () => bankRef.current ?? current,
-      }),
-    )
+        latest: () => bankRef.current ?? now,
+      })
+    })
       .then((done) => {
-        if (!done) return
         setPosts(done.posts)
         const n = done.taken
-        setNotice(`${said} Took out ${n} video${n === 1 ? '' : 's'} not out yet${done.bank.running ? ' - the batch makes others in their place' : ''}.`)
+        setNotice(
+          `${said} Took out ${n} video${n === 1 ? '' : 's'} not out yet${done.bank.running ? ' - the batch makes others in their place' : ''}.` +
+            makingNote(done.making),
+        )
         if (done.failed > 0) setProblem(`${done.failed} couldn't be taken out: ${done.reason}`)
         void listPosts(true).then(setPosts).catch(() => {})
         if (done.bank.running) runTopUp(done.bank)
@@ -785,15 +849,17 @@ export function BatchView({
     setTopping(true)
     setProblem(null)
     setSaving(`Changing ${LOOK_LABEL[from]} to ${LOOK_LABEL[to]}…`)
-    void oneAtATime(campaign.id, () =>
-      changeLook({
-        bank: current,
+    void nextInLine(campaign.id, async () => {
+      await nextDraw()
+      const now = bankRef.current ?? current
+      return changeLook({
+        bank: now,
         campaignId: campaign.id,
-        jobs,
+        jobs: jobsRef.current,
         from,
         to,
         matches: ({ post, job }) => {
-          const assumed = assumedLook(current, angle.headline.style)
+          const assumed = assumedLook(now, angle.headline.style)
           return sameLook(post ? hookOfPost(post, assumed) : job ? hookOfJob(job, assumed) : null, from)
         },
         change: (b) => swapLook(b, from, to),
@@ -804,17 +870,17 @@ export function BatchView({
           await saveBatchBank(next)
         },
         make: (videos) => onMake(campaign, angle, videos),
-        latest: () => bankRef.current ?? current,
-      }),
-    )
+        latest: () => bankRef.current ?? now,
+      })
+    })
       .then((done) => {
-        if (!done) return
         setPosts(done.posts)
         const left = done.taken - done.remade
         setNotice(
           `Changed ${LOOK_LABEL[from]} to ${LOOK_LABEL[to]}: ${done.remade} video${done.remade === 1 ? '' : 's'} being made again in ${LOOK_LABEL[to]} for the same days and times.` +
             (left > 0 ? ` ${left} more ${left === 1 ? 'is' : 'are'} made by the batch at other times (too soon, or a clip no longer in the bank).` : '') +
-            ` New videos won't be ${LOOK_LABEL[from]}.`,
+            ` New videos won't be ${LOOK_LABEL[from]}.` +
+            makingNote(done.making),
         )
         if (done.failed > 0) setProblem(`${done.failed} couldn't be taken out: ${done.reason}`)
         void listPosts(true).then(setPosts).catch(() => {})
@@ -834,7 +900,7 @@ export function BatchView({
   // Run by WhenChanged in the page, not a hook here, below the early returns.
   const dropWeak = () => {
     const current = bankRef.current
-    if (!weak || !current || busyMaking || saving !== null || topping) return
+    if (!weak || !current) return
     const others = groupHooks(
       hookStats_.filter((s) => !sameHook(s, weak)),
       'words',
@@ -868,18 +934,20 @@ export function BatchView({
     setTopping(true)
     setProblem(null)
     setSaving('Taking the batch\'s videos out…')
-    void oneAtATime(campaign.id, async () => {
+    void nextInLine(campaign.id, async () => {
+      await nextDraw()
+      const now = bankRef.current ?? bank
       const done = await startOver({
-        bank,
+        bank: now,
         campaignId: campaign.id,
-        jobs,
+        jobs: jobsRef.current,
         removeJob: onRemove,
         save: async (next) => {
           setBank(next)
           bankRef.current = next
           await saveBatchBank(next)
         },
-        latest: () => bankRef.current ?? bank,
+        latest: () => bankRef.current ?? now,
       })
       setPosts(done.posts)
       setNotice(`Took out ${done.taken} video${done.taken === 1 ? '' : 's'}. Tap Start to make them again.`)
@@ -1323,7 +1391,7 @@ export function BatchView({
               bank={bank}
               byWords={hookRows}
               byLook={lookRows}
-              busy={busyMaking || saving !== null}
+              busy={saving !== null}
               onServer={onServer}
               onStopWords={(hook) => runTakeOut(hook, (b) => dropHook(b, hook, mixedLooks), `Stopped using ${hookLabel(hook, bank)}.`)}
               onStopLook={(look) =>
@@ -1509,15 +1577,15 @@ export function BatchView({
               ? `${bank.madeThrough ? `Made through ${dayLabel(bank.madeThrough)}. ` : ''}It makes the next days on its own ${onServer ? 'on the server, day and night' : 'whenever the app is open'}${onEngine ? '' : ' - until every different video is made'}.`
               : `Makes the next ${AHEAD_DAYS} days now, then keeps going on its own ${onServer ? 'on the server, day and night' : 'whenever the app is open'}${onEngine ? '' : ', until every different video is made'}.`}
           </p>
-          {running || outAhead > 0 ? (
+          {running || outAhead > 0 || stoppable ? (
             <div className="actions-row">
-              {running ? (
-                <button type="button" className="btn small" onClick={stop}>
-                  Stop
+              {running || stoppable ? (
+                <button type="button" className="btn small" disabled={saving === 'Stopping…'} onClick={stop}>
+                  {running ? 'Stop' : `Stop the ${waitingHere} waiting to be made`}
                 </button>
               ) : null}
               {outAhead > 0 ? (
-                <button type="button" className="btn small" disabled={busyMaking || saving !== null} onClick={runStartOver}>
+                <button type="button" className="btn small" disabled={engineBusy || saving !== null} onClick={runStartOver}>
                   Start over
                 </button>
               ) : null}

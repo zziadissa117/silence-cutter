@@ -77,9 +77,9 @@ function posting(place: Partial<CampaignPlace>): LocalPosting {
   }
 }
 
-async function show(place: Partial<CampaignPlace>, jobs: Job[] = [], onMake = vi.fn()) {
+async function show(place: Partial<CampaignPlace>, jobs: Job[] = [], onMake = vi.fn(), onRemove: (id: string) => void = () => {}) {
   const render = (list: Job[]) =>
-    root.render(<BatchView campaigns={[campaign]} posting={posting(place)} jobs={list} onMake={onMake} onRetry={() => {}} onRemove={() => {}} />)
+    root.render(<BatchView campaigns={[campaign]} posting={posting(place)} jobs={list} onMake={onMake} onRetry={() => {}} onRemove={onRemove} />)
   await act(async () => render(jobs))
   return { onMake, rerender: (list: Job[]) => act(async () => render(list)) }
 }
@@ -144,6 +144,40 @@ describe('the Start button', () => {
     expect((await savedBank()).running).toBe(false)
     expect(makeButton().textContent).toBe('Start · 3 a day')
     expect(onMake).not.toHaveBeenCalled()
+    await settle()
+  })
+
+  // His friend, 2026-10-24: Stop stopped the next top-up only, and the week
+  // already queued went on being made, video after video.
+  const job = (id: string, status: Job['status'], offset: number) =>
+    ({ id, campaignId: 'inflow', status, name: 'r1 + p1.mp4', headlineText: 'one', batch: { id: 'b1', date: iso(offset), time: '12:00', size: 4 } }) as unknown as Job
+
+  it('stops at once: the videos waiting to be made come out, the one being made is finished', async () => {
+    storedBank = { ...bank, running: true, filled: { [iso(1)]: 2, [iso(2)]: 2 } }
+    const removed: string[] = []
+    const jobs = [job('w', 'working', 1), job('q1', 'queued', 1), job('q2', 'queued', 2), job('q3', 'queued', 2)]
+    await show({}, jobs, vi.fn(), (id) => removed.push(id))
+    const stop = [...host.querySelectorAll('button')].find((b) => b.textContent === 'Stop') as HTMLButtonElement
+    await act(async () => stop.click())
+    expect(removed.sort()).toEqual(['q1', 'q2', 'q3'])
+    await settle()
+    const saved = await savedBank()
+    expect(saved.running).toBe(false)
+    // The days hold what is left: the video being made.
+    expect(saved.filled?.[iso(1)]).toBe(1)
+    expect(saved.filled?.[iso(2)]).toBe(0)
+    expect(host.textContent).toContain('Stopped. 3 videos waiting to be made were taken out.')
+  })
+
+  it('a batch stopped before, its videos still waiting, can be stopped for good', async () => {
+    storedBank = { ...bank, running: false }
+    const removed: string[] = []
+    await show({}, [job('q1', 'queued', 1), job('q2', 'queued', 2)], vi.fn(), (id) => removed.push(id))
+    const stop = [...host.querySelectorAll('button')].find((b) => b.textContent === 'Stop the 2 waiting to be made') as HTMLButtonElement
+    expect(stop).toBeTruthy()
+    await act(async () => stop.click())
+    expect(removed.sort()).toEqual(['q1', 'q2'])
+    await settle()
   })
 })
 
@@ -511,7 +545,7 @@ describe('starting the batch over', () => {
     const button = [...host.querySelectorAll('button')].find((b) => b.textContent === 'Start over') as HTMLButtonElement
     expect(button).toBeTruthy()
     await act(async () => button.click())
-    await act(async () => new Promise((resolve) => setTimeout(resolve, 50)))
+    await settle()
     expect(confirm.mock.calls[0][0]).toContain('Take out the 2 videos')
     const saved = await savedBank()
     expect(saved.running).toBe(false)
@@ -578,6 +612,19 @@ describe('how each hook is doing', () => {
     expect(taken.headlines).toEqual(['one', 'three'])
     expect(taken.running).toBe(true)
     expect(host.textContent).toContain('Stopped using "two". Took out 2 videos not out yet')
+  })
+
+  it('works while the batch is making a video', async () => {
+    storedBank = { ...bank, running: true, filled: week(2) }
+    const making = { id: 'w', campaignId: 'inflow', status: 'working', name: 'r1 + p1.mp4', headlineText: 'one', batch: { id: 'b', date: iso(1), time: '15:00', size: 4 } } as unknown as Job
+    await show({}, [making])
+    const row = [...host.querySelectorAll('.hook-row')].find((r) => r.textContent?.includes('"two"'))!
+    const stop = [...row.querySelectorAll('button')].find((b) => b.textContent?.includes('Stop using it'))!
+    expect(stop.disabled).toBe(false)
+    await act(async () => stop.click())
+    await settle()
+    const { stopPostsNow } = await import('./posting')
+    expect(vi.mocked(stopPostsNow).mock.calls[0][0].map((p) => p.id).sort()).toEqual(['b2', 'b3'])
   })
 
   it('changes the words of a hook: the old ones out, the new ones in', async () => {
