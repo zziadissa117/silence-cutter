@@ -7,7 +7,7 @@
 // for one of the campaign's posting times - to wait for his approval.
 
 import { TrackName, TrackPlayer } from './TrackPlayer'
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 
 import { VideoPicker } from '../VideoPicker'
 import { pickArrived, pickSaved } from '../pickWatch'
@@ -120,6 +120,15 @@ const LAST_KEY = 'batch.campaign'
 const MAX_SONG_MB = 30
 
 export type { BatchVideo } from './batchRun'
+
+/** Calls `run` when it first shows and whenever `signal` changes - a hook of
+ *  its own, so the tab's code below its early returns can use one. */
+function WhenChanged({ signal, run }: { signal: string; run: () => void }) {
+  const runRef = useRef(run)
+  runRef.current = run
+  useEffect(() => runRef.current(), [signal])
+  return null
+}
 
 /** Calls `run` a moment after `due` is true for a new `signal` - so tapping
  *  + five times makes one top-up, not five. A component of its own so its
@@ -713,14 +722,14 @@ export function BatchView({
    *  to be made here (batchHooks.ts). */
   const mixedLooks = bank ? looksToMix(bank) : []
   // Still in the mix: any look he has picked, even the one look of a batch that doesn't take turns.
-  const hookStats_ = useMemo(() => (bank ? hookStats(posts, jobs, bank, looksOf(bank)) : []), [posts, jobs, bank]) // eslint-disable-line react-hooks/exhaustive-deps
-  const hookRows = useMemo(() => groupHooks(hookStats_, 'words'), [hookStats_])
+  // Worked out on every draw, not kept with useMemo: this is below the tab's
+  // early returns, where a hook would change their number and crash the tab.
+  const hookStats_ = bank ? hookStats(posts, jobs, bank, looksOf(bank), angle.headline.style) : []
+  const hookRows = groupHooks(hookStats_, 'words')
   // A line per look when the batch takes turns between looks, or when a look
   // has videos still to go that could be changed to another.
-  const lookRows = useMemo(() => {
-    const rows = groupHooks(hookStats_, 'look')
-    return mixedLooks.length > 1 || rows.some((r) => r.look && r.waiting > 0) ? rows : []
-  }, [hookStats_]) // eslint-disable-line react-hooks/exhaustive-deps
+  const lookRowsAll = groupHooks(hookStats_, 'look')
+  const lookRows = mixedLooks.length > 1 || lookRowsAll.some((r) => r.look && r.waiting > 0) ? lookRowsAll : []
 
   /** Takes one hook's videos not out yet out of the batch and changes the
    *  bank (the hook dropped, or its words changed); a running batch then
@@ -737,7 +746,7 @@ export function BatchView({
         campaignId: campaign.id,
         jobs,
         matches: ({ post, job }) => {
-          const assumed = assumedLook(current)
+          const assumed = assumedLook(current, angle.headline.style)
           const of = post ? hookOfPost(post, assumed) : job ? hookOfJob(job, assumed) : null
           return look ? sameLook(of, look) : sameHook(of, hook)
         },
@@ -784,7 +793,7 @@ export function BatchView({
         from,
         to,
         matches: ({ post, job }) => {
-          const assumed = assumedLook(current)
+          const assumed = assumedLook(current, angle.headline.style)
           return sameLook(post ? hookOfPost(post, assumed) : job ? hookOfJob(job, assumed) : null, from)
         },
         change: (b) => swapLook(b, from, to),
@@ -822,7 +831,8 @@ export function BatchView({
   // once its videos' views say so (batchHooks.weakHooks), and said here.
   const weak = bank?.dropWeakHooks && !onServer ? weakHooks(hookRows)[0] : undefined
   const weakKey = weak ? `${weak.look ?? ''}|${weak.words}` : ''
-  useEffect(() => {
+  // Run by WhenChanged in the page, not a hook here, below the early returns.
+  const dropWeak = () => {
     const current = bankRef.current
     if (!weak || !current || busyMaking || saving !== null || topping) return
     const others = groupHooks(
@@ -840,7 +850,7 @@ export function BatchView({
       }),
       `Dropped ${label} by itself: ${shortNumber(weak.views)} views a video against ${shortNumber(theirViews)} for the others.`,
     )
-  }, [weakKey]) // eslint-disable-line react-hooks/exhaustive-deps
+  }
 
   const runStartOver = () => {
     if (!bank) return
@@ -1093,6 +1103,12 @@ export function BatchView({
               ? ` · at ${times.map(timeLabel).join(', ')}`
               : ''}
         </p>
+        {lookRows.some((r) => r.look && r.waiting > 0) ? (
+          // The card is far down the tab: from here, one tap to it.
+          <button type="button" className="linkbtn" onClick={() => document.getElementById('hook-results')?.scrollIntoView({ behavior: 'smooth', block: 'start' })}>
+            Change a look on the videos not out yet ↓
+          </button>
+        ) : null}
       </div>
 
       {bank && ordering ? (
@@ -1433,6 +1449,7 @@ export function BatchView({
             </button>
           ) : null}
 
+          <WhenChanged signal={weakKey} run={dropWeak} />
           <WhenDue due={trimNow} signal={`${perDay}|${over.join(',')}`} run={() => bankRef.current && runTrim(bankRef.current)} />
           <WhenDue due={dueNow} signal={`${perDay}|${due.length}`} run={() => bankRef.current && runTopUp(bankRef.current)} />
           {/* Mixes already made hold Start back: Start anyway, in red, makes
@@ -1667,7 +1684,7 @@ function HookResults({
   const confirmStop = (what: string, waiting: number) =>
     window.confirm(`Stop using ${what}?${waiting > 0 ? ` The ${waiting} video${waiting === 1 ? '' : 's'} with it not out yet come${waiting === 1 ? 's' : ''} out, and the batch makes others instead.` : ''}`)
   return (
-    <div className="group hook-results">
+    <div className="group hook-results" id="hook-results">
       <div className="group-title">How each hook is doing</div>
       <p className="hint bank-hint">
         Views are read a day, three days and a week after a video goes out. Stop a hook that does badly, or change its

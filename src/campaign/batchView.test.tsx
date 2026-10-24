@@ -550,7 +550,9 @@ describe('how each hook is doing', () => {
     await show({})
     const card = host.querySelector('.hook-results')!
     expect(card).not.toBeNull()
-    const rows = [...card.querySelectorAll('.hook-row')].map((r) => r.textContent)
+    // The headlines' list - the looks' list, when there is one, comes first.
+    const lists = [...card.querySelectorAll('ul.hook-list:not(.dropped)')]
+    const rows = [...lists[lists.length - 1].querySelectorAll('.hook-row')].map((r) => r.textContent)
     expect(rows[0]).toContain('"one"')
     expect(rows[0]).toContain('2 posted · 800 views a video')
     expect(rows[1]).toContain('"two"')

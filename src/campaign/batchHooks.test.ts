@@ -118,5 +118,9 @@ describe('changing a look', () => {
     expect(hookOfPost(post({ headline: 'POV: it works', status: 'scheduled' }), assumedLook(b))).toEqual({ look: 'snap', words: 'POV: it works' })
     expect(hookOfPost(post({ headline: '$650 a day', status: 'scheduled' }), assumedLook(b))).toEqual({ look: 'formula', words: '' })
     expect(assumedLook(bank({ looks: [{ look: 'snap', parts: 1 }, { look: 'box', parts: 1 }] }))).toBeNull()
+    // No look picked: the angle's own.
+    expect(assumedLook(bank(), 'outline')).toBe('outline')
+    expect(assumedLook(bank({ looks: [{ look: 'formula', parts: 1 }] }), 'box')).toBe('box')
+    expect(assumedLook(bank({ looks: [{ look: 'snap', parts: 1 }] }), 'box')).toBe('snap')
   })
 })

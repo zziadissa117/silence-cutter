@@ -34,10 +34,13 @@ function hookOf(headline: string | null, look: string | null | undefined): HookK
 }
 
 /** A headline video made before its look was kept: in the batch's one
- *  headline look, when it has just one picked now - every headline video of
- *  it was then made in that look (unless he changed it since). */
-export function assumedLook(bank: Parameters<typeof looksOf>[0]): BatchLook | null {
+ *  headline look, when it has just one picked now - or, with none picked,
+ *  in the angle's own (`angleLook`) - every headline video of it was then
+ *  made in that look (unless he changed it since). With several picked it
+ *  can't be told. */
+export function assumedLook(bank: Parameters<typeof looksOf>[0], angleLook?: BatchLook | null): BatchLook | null {
   const headlineLooks = looksOf(bank).filter((l) => l.look !== 'formula')
+  if (headlineLooks.length === 0) return angleLook ?? null
   return headlineLooks.length === 1 ? headlineLooks[0].look : null
 }
 
@@ -90,6 +93,8 @@ export function hookStats(
   jobs: readonly Job[],
   bank: Pick<BatchBank, 'headlines' | 'looks' | 'hook' | 'headlineStyles' | 'headlineStyle'> & { campaignId: string },
   mixed: readonly LookShare[],
+  /** The angle's own headline look: a batch with no look picked is in it. */
+  angleLook?: BatchLook | null,
 ): HookStat[] {
   const rows = new Map<string, HookStat>()
   const keyOf = (h: HookKey) => `${h.look ?? 'angle'}|${h.look === 'formula' ? '' : wordsKey(h.words)}`
@@ -107,7 +112,7 @@ export function hookStats(
     return r
   }
   const sums = new Map<string, number>()
-  const assumed = assumedLook(bank)
+  const assumed = assumedLook(bank, angleLook)
   for (const post of posts) {
     if (post.campaignId !== bank.campaignId || !post.batch) continue
     const hook = hookOfPost(post, assumed)

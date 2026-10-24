@@ -3,6 +3,19 @@
 Newest first. Every change says what it does, how to use it, and how it works
 underneath. Kept up to date with each commit.
 
+## Fix: "How each hook is doing" and "Change to..." missing on a batch with no look picked
+Only ./deploy.sh is needed; then close the Cutter and open it again.
+**What happened (his friend, 2026-10-24):** on a batch where no headline look was ever picked in the Batch tab, the
+videos use the angle's own look but none of them recorded it, so the card had no line per look - nothing to "Change
+to..." from. Those videos now count as the angle's look (`batchHooks.assumedLook(bank, angleLook)`, given
+`angle.headline.style` by BatchView), so the look line shows with its "Change to..." chips as soon as one of its
+videos is still to go out. The card is far down the tab: a "Change a look on the videos not out yet ↓" link under the
+batch's status line jumps to it.
+**Also:** the hook card's sums and the weak-hook check were React hooks placed after the tab's early returns
+(no posting profile / no campaign), so a tab that went from one of those to the batch could crash with "rendered
+more hooks". They are plain sums on each draw now, and the weak-hook check runs from a small `WhenChanged`
+component.
+
 ## Fix: a post made with "Pick a time", then given music, vanished - and posting it again showed nothing
 Only ./deploy.sh is needed; then close the Cutter and open it again. Post the video again from New post: it goes.
 **What happened (Lock in, 2026-10-24):** a video posted from New post at a picked time (tomorrow 3:53 PM) was given
