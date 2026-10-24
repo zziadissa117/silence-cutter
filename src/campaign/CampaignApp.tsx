@@ -108,7 +108,7 @@ import {
   withHeadlinePlace,
   withHeadlineStyle,
 } from './look'
-import { forgetSend, queueSend, sending, startSending, watchSending } from './outbox'
+import { forgetSend, queueSend, replaceNow, sending, startSending, watchSending } from './outbox'
 import { headlineFor, listen, make, makeCampaignVideo, makeGreenScreen, makeMontage, makeReaction, plainCut, type CampaignResult, type PopSettings } from './pipeline'
 import { makeCutout } from './cutout'
 import { popCue, posterOf, useVideoBank, videoFile, type BankVideo } from './videoBank'
@@ -526,9 +526,12 @@ export function CampaignApp() {
    *  be sent from its row. */
   /** An edited video replaces the post it was made again from, when that has
    *  not gone out: the old post is rejected (taken out of Postiz if it was
-   *  already scheduled) before the new one is sent. One already posted can't
-   *  be taken back, so the new one goes out as a post of its own - said. */
-  const retireOld = async (job: Job): Promise<void> => {
+   *  already scheduled) once the new one is on the server - the key returned
+   *  goes with the new one's send (outbox.retireReplaced). Rejected before,
+   *  a send that stalled left nothing at all. One due too soon to wait is
+   *  rejected now, as before; one already posted can't be taken back, so the
+   *  new one goes out as a post of its own - said. */
+  const retireOld = async (job: Job): Promise<string | undefined> => {
     if (!job.replaces) return
     try {
       const posts = await listPosts(true).catch(() => lastPosts())
@@ -539,6 +542,7 @@ export function CampaignApp() {
         setNotice('The first version was already posted, so the edited one goes out as a new post.')
         return
       }
+      if (!replaceNow(old)) return old.key
       await postAction('reject', old.id)
       await forgetSend(old.key).catch(() => {})
     } catch (error) {
@@ -639,9 +643,10 @@ export function CampaignApp() {
           .join(' ')
       : (result.said ?? '')
     const retired = retireOld(job)
-    const queued = retired.then(() => queueSend(
+    const queued = retired.then((later) => queueSend(
       {
         key: postKeyOf(job.id, job.version),
+        ...(later ? { replaces: later } : {}),
         profileId: local.profile.id,
         campaign: { id: campaign.id, name: campaign.name, posting: campaign.posting ?? NO_POSTING },
         meta: {

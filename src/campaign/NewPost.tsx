@@ -19,7 +19,21 @@ import { formatTime } from './jobs'
 import { NO_POSTING, type Campaign } from './look'
 import { fingerprint, handPostKey, newOnes, skippedNotice } from './fingerprint'
 import { fingerprintsFor, isQueued, queueSend } from './outbox'
-import { PostingError, accountLabel, localInput, ownDayTimes, placeFor, windowOf, timeLabel, whenLabel, windowLabel, writeCaptionFor, type Profile } from './posting'
+import {
+  PostingError,
+  accountLabel,
+  lastPosts,
+  listPosts,
+  localInput,
+  ownDayTimes,
+  placeFor,
+  windowOf,
+  timeLabel,
+  whenLabel,
+  windowLabel,
+  writeCaptionFor,
+  type Profile,
+} from './posting'
 import { stillsOf } from './stills'
 import { asMp4 } from './toMp4'
 
@@ -116,6 +130,9 @@ export function NewPost({
   const campaignRef = useRef(campaign)
   campaignRef.current = campaign
   const files = useRef(new Map<string, File>())
+  /** A video whose post of today was rejected, posted again: its own key,
+   *  the same for every tap, by picked item. */
+  const anew = useRef(new Map<string, string>())
   const stillsFor = useRef(new Map<string, string[]>())
   const aboutRef = useRef(about)
   aboutRef.current = about
@@ -309,6 +326,10 @@ export function NewPost({
     if (!ready) return
     keepCampaign(campaign.id)
     setNotice(null)
+    // The posts as the server has them: one of today's with the same key that
+    // was rejected (or never went) is not this post - the server would only
+    // hand that one back, and nothing would show anywhere.
+    const before = await listPosts().catch(() => lastPosts())
     const list = [...items]
     const skipped: string[] = []
     const doubled: File[] = []
@@ -320,7 +341,10 @@ export function NewPost({
         // post, so tapping again - or coming back to this screen and picking
         // it again - finds it already in line instead of making a second one.
         // One he added anyway has its own key: a new post, made once.
-        const key = `${handPostKey(item.fp, campaign.id, localDay())}${item.again ? `~again-${item.again}` : ''}`
+        const first = `${handPostKey(item.fp, campaign.id, localDay())}${item.again ? `~again-${item.again}` : ''}`
+        const dead = before.find((p) => p.key === first && (p.status === 'rejected' || p.status === 'failed'))
+        if (dead && !anew.current.has(item.key)) anew.current.set(item.key, `${first}~anew-${Date.now().toString(36)}`)
+        const key = dead ? anew.current.get(item.key)! : first
         if (await isQueued(key)) {
           skipped.push(item.file.name)
           if (!item.again) doubled.push(item.file)

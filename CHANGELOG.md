@@ -3,6 +3,25 @@
 Newest first. Every change says what it does, how to use it, and how it works
 underneath. Kept up to date with each commit.
 
+## Fix: a post made with "Pick a time", then given music, vanished - and posting it again showed nothing
+Only ./deploy.sh is needed; then close the Cutter and open it again. Post the video again from New post: it goes.
+**What happened (Lock in, 2026-10-24):** a video posted from New post at a picked time (tomorrow 3:53 PM) was given
+music three times. Each version with music lost the picked time and went to the campaign's next time (today 3:19
+PM), and each took the one before it out of Postiz the moment it was queued - before it had even been uploaded. The
+last one never arrived, so nothing was left anywhere. Posting the video again from New post then made the same
+post key as the first one (same video, campaign and day); the server handed back that rejected post, and nothing
+showed.
+**Now:**
+- Music on a post made by hand keeps the time he picked for it (and it still needs no approving).
+- The old version (music added, or Edit again) comes out only once the new one is on the server. If the new one
+  can't get there (no signal, app closed), the old one stays until it does. One due within 15 minutes still comes
+  out at once, as before, so both can't go out.
+- A video posted again from New post after its post of today was rejected is a new post, with a key of its own.
+**How:** `SendEntry.replaces` + `outbox.retireReplaced` (after `sent`, and again on each run for any left over),
+`outbox.replaceNow`, `musicAfterSend` (`byHand` with the post's own time, `replaces`), `CampaignApp.retireOld`
+(returns the key to replace later), `NewPost` (`~anew-` key when today's post with its key was rejected).
+Tests: `musicAfterSend.test.ts`, `outboxReplace.test.ts`, `newPost.test.tsx`.
+
 ## Updates install by themselves, even with a batch running
 Only ./deploy.sh is needed. This one still arrives the old way (the "Update now" line at the top of the screen, or
 closing and opening the Cutter); every update after it installs by itself.

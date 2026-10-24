@@ -6,7 +6,7 @@ import { addMusicTo } from './addMusic'
 import type { Campaign } from './look'
 import { NO_POSTING } from './look'
 import type { MusicLevel } from './music'
-import { forgetSend, localVideo, queueSend } from './outbox'
+import { forgetSend, localVideo, queueSend, replaceNow } from './outbox'
 import { PostingError, postAction, postingHere, type ServerPost } from './posting'
 
 /** The key of the next version of a post: `id` -> `id~2` -> `id~3`. */
@@ -59,17 +59,26 @@ export async function sendWithMusic({
 
   const made = await addMusicTo(video, music, onProgress)
   const key = nextKey(post.key)
+  const said = caption?.trim() ? caption : post.caption
+  // Taken out once the new version is on the server - unless it is due too
+  // soon to wait. Taken out first, a send that stalled left nothing at all.
+  const outNow = replaceNow(post)
   const queued = await queueSend(
     {
       key,
       profileId: local.profile.id,
       campaign: { id: post.campaignId, name: post.campaignName, posting: campaign?.posting ?? NO_POSTING },
+      ...(outNow ? {} : { replaces: post.key }),
       meta: {
         transcript: '',
         headline: post.headline ?? '',
         duration: 0,
         fileName: post.fileName ?? 'video.mp4',
         ...(post.batch ? { batch: post.batch } : {}),
+        // A post he made by hand keeps the time he picked for it - the new
+        // version went to the campaign's next time instead, today and not
+        // tomorrow (2026-10-24, Lock in).
+        ...(post.byHand ? { byHand: { at: post.postAt, caption: said ?? '', about: '' } } : {}),
         carry: {
           caption: caption?.trim() ? caption : post.caption,
           title: post.title,
@@ -81,6 +90,7 @@ export async function sendWithMusic({
     made.blob,
   )
   if (queued === 'duplicate') return 'The version with music is already on its way.'
+  if (!outNow) return 'Music added. The new version is on its way - the old one comes out as soon as it arrives.'
   // The new one is safely kept and queued: now the old one goes.
   try {
     await postAction('reject', post.id)

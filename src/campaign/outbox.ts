@@ -11,7 +11,7 @@
 // The copy stays on the phone afterwards, for Save and Share, until the
 // post has gone out or been rejected.
 
-import { PostingError, finishSend, putPart, startSend, type ServerPost } from './posting'
+import { PostingError, finishSend, listPosts, postAction, putPart, startSend, type ServerPost } from './posting'
 import { deleteSend, loadSendVideo, loadSends, saveSend, saveSendVideo, updateSend, type SendEntry } from './store'
 import { SERVER_MODE } from './serverFlag'
 import { within } from '../media/within'
@@ -199,6 +199,11 @@ async function pump(): Promise<void> {
     do {
       again = false
       await refresh()
+      // Old versions still to take out (no signal when their new one arrived).
+      for (const entry of entries.filter((e) => e.state === 'sent' && e.replaces)) {
+        if (!navigator.onLine) break
+        await retireReplaced(entry).catch(() => {})
+      }
       // A stuck one (its copy gone, the server said no) waits for Try again:
       // tried every five minutes it only read its copy back for nothing.
       for (const entry of entries.filter((e) => e.state === 'sending' && !e.stuck)) {
@@ -267,9 +272,34 @@ async function sendOne(entry: SendEntry): Promise<void> {
   throw new PostingError('Part of the video did not arrive. Trying again.', true)
 }
 
+/** A post this soon - or one approved to go straight away - is taken out as
+ *  soon as its new version is made, as before: waiting for the new one to
+ *  arrive, it could go out first, and both would. */
+const REPLACE_SOON_MS = 15 * 60_000
+
+/** Whether a post being replaced must come out now rather than once its new
+ *  version is on the server (queueSend's `replaces`). */
+export function replaceNow(old: Pick<ServerPost, 'status' | 'postAt'>, now = Date.now()): boolean {
+  if (old.status !== 'scheduled' && old.status !== 'approved') return false
+  return !old.postAt || Date.parse(old.postAt) <= now + REPLACE_SOON_MS
+}
+
+/** The post an entry replaces, taken out now that the entry is on the
+ *  server - unless it went out meanwhile, which can't be taken back (this one
+ *  then goes as a post of its own). Tried again by the queue if it fails. */
+async function retireReplaced(entry: SendEntry): Promise<void> {
+  if (!entry.replaces) return
+  const old = (await listPosts(true)).find((p) => p.key === entry.replaces)
+  const goneOut = old && (old.status === 'posted' || (old.status === 'scheduled' && old.postAt !== null && Date.parse(old.postAt) <= Date.now()))
+  if (old && !goneOut && old.status !== 'rejected' && old.status !== 'failed') await postAction('reject', old.id)
+  await forgetSend(entry.replaces).catch(() => {})
+  await updateSend(entry.key, { replaces: undefined })
+}
+
 async function sent(entry: SendEntry, postId: string): Promise<void> {
   await updateSend(entry.key, { state: 'sent', postId, error: undefined, stuck: undefined })
   progress.set(entry.key, 1)
+  await retireReplaced(entry).catch(() => {})
   // On the Cutter server nobody watches it there - the phone plays Postiz's
   // copy - and a week of batch videos kept would fill its small disk.
   if (SERVER_MODE) await forgetSend(entry.key)

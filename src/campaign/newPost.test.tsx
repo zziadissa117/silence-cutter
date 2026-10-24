@@ -20,12 +20,14 @@ vi.mock('./toMp4', () => ({ asMp4: vi.fn(async (file: File) => ({ file, storedAs
 vi.mock('./posting', async (original) => ({
   ...(await original<Record<string, unknown>>()),
   writeCaptionFor: vi.fn(async () => 'A caption'),
+  listPosts: vi.fn(async () => []),
 }))
 
+import { handPostKey } from './fingerprint'
 import { queueSend } from './outbox'
+import { listPosts, type Profile, type ServerPost } from './posting'
 import type { Campaign } from './look'
 import { NewPost } from './NewPost'
-import type { Profile } from './posting'
 
 ;(globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true
 
@@ -78,5 +80,25 @@ describe('a video already sent', () => {
     const sent = vi.mocked(queueSend).mock.calls[0][0] as { key: string; fp: string }
     expect(sent.fp).toBe('fp-sent.mp4')
     expect(sent.key).toMatch(/~again-\d+$/)
+  })
+})
+
+describe('a video whose post of today was rejected', () => {
+  it('is posted again as a new post, not handed back the rejected one', async () => {
+    const d = new Date()
+    const today = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+    const first = handPostKey('fp-fresh.mp4', 'inflow', today)
+    vi.mocked(listPosts).mockResolvedValue([{ key: first, status: 'rejected' } as unknown as ServerPost])
+    await act(async () => root.render(<NewPost campaigns={[campaign]} profile={profile} onDone={() => {}} onCancel={() => {}} />))
+    const input = host.querySelector('input[aria-label="Choose the videos"]') as HTMLInputElement
+    Object.defineProperty(input, 'files', { value: [new File(['x'], 'fresh.mp4', { type: 'video/mp4' })] })
+    await act(async () => input.dispatchEvent(new Event('change', { bubbles: true })))
+    await wait()
+    const post = [...host.querySelectorAll('button.btn.primary')].find((b) => b.textContent === 'Post now') as HTMLButtonElement
+    await act(async () => post.click())
+    await wait()
+    const sent = vi.mocked(queueSend).mock.calls[0][0] as { key: string }
+    expect(sent.key.startsWith(`${first}~anew-`)).toBe(true)
+    vi.mocked(listPosts).mockResolvedValue([])
   })
 })

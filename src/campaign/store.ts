@@ -354,6 +354,10 @@ export interface SendEntry {
      *  at its batch day and time without asking again. */
     scheduled?: boolean
   }
+  /** The post this one is a new version of (Edit again, music added), by
+   *  key: taken out once this one is on the server (outbox.retireReplaced) -
+   *  never before, or a send that stalls leaves nothing at all. */
+  replaces?: string
   size: number
   /** Where the phone's own copy is: the browser's private files, or - on a
    *  browser that cannot write those - the database. */
