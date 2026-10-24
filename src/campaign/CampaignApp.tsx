@@ -25,7 +25,7 @@ import { lostPick, pickArrived, pickQuiet, pickSaved, whenPickGoesWrong } from '
 import { report } from '../report'
 import { typedBack } from './captionFixes'
 import { reportStorage } from './storageReport'
-import { UpdateBanner } from '../UpdateBanner'
+import { UPDATE_READY_EVENT, UpdateBanner, updateDownloaded } from '../UpdateBanner'
 import { VideoPicker } from '../VideoPicker'
 import { BankView } from './BankView'
 import { MusicBankView } from './MusicBankView'
@@ -673,6 +673,20 @@ export function CampaignApp() {
   /** An edit screen, cuts editor or campaign editor is open (restartPage waits). */
   const inEditor = useRef(false)
   inEditor.current = reviewing !== null || cutting !== null || editing !== null
+  /** On a screen he is in the middle of (approving, a question, setting
+   *  posting up): set where the screen is picked, below. */
+  const inFlowRef = useRef(false)
+  // A new version downloaded: the batch makes no new video, and once the one
+  // being made is done the Cutter starts again into it (restartPage, the
+  // same safe moment as after a stall) and carries on where it was. Waiting
+  // for an empty queue meant never, with a batch topping itself up - his
+  // friend's phone stayed days behind.
+  const [updateWaiting, setUpdateWaiting] = useState(updateDownloaded)
+  useEffect(() => {
+    const onReady = () => setUpdateWaiting(true)
+    window.addEventListener(UPDATE_READY_EVENT, onReady)
+    return () => window.removeEventListener(UPDATE_READY_EVENT, onReady)
+  }, [])
   // Videos about to be checked, waiting on whether the hook gets captions.
   const [asking, setAsking] = useState<string[] | null>(null)
   // Dropped videos that are not 9:16, waiting for: cut them too, or only 9:16?
@@ -777,9 +791,10 @@ export function CampaignApp() {
     const go = async () => {
       const active = document.activeElement as HTMLElement | null
       const typing = active instanceof HTMLTextAreaElement || (active instanceof HTMLInputElement && active.type !== 'file') || Boolean(active?.isContentEditable)
-      // Nor over an open edit screen or editor: what he has done there is
-      // written only when he finishes, and a reload would lose it.
-      if (document.visibilityState !== 'visible' || typing || inEditor.current) return void window.setTimeout(() => void go(), 2000)
+      // Nor over an open edit screen or editor, or a screen he is going
+      // through: what he has done there is written only when he finishes,
+      // and a reload would lose it.
+      if (document.visibilityState !== 'visible' || typing || inEditor.current || inFlowRef.current) return void window.setTimeout(() => void go(), 2000)
       await pickQuiet()
       await within(Promise.allSettled([...persisting.current.values(), ...copying.current.values()]), 60_000, undefined)
       window.location.reload()
@@ -1274,6 +1289,8 @@ export function CampaignApp() {
     // Nothing starts in the background: iOS takes the video decoder away
     // from a hidden page, so it would only fail.
     if (processing.current || restarting.current || campaigns === null || !visible) return
+    // A new version is waiting: nothing new starts, so it loads between two videos.
+    if (updateWaiting) return
     // While he checks captions, only listening goes on - that is sound
     // alone. Making a video would have the page's decoder and the player on
     // screen fighting over the phone's video hardware.
@@ -1748,7 +1765,16 @@ export function CampaignApp() {
         setJobs((js) => [...js])
       }
     })()
-  }, [jobs, campaigns, visible, reviewing])
+  }, [jobs, campaigns, visible, reviewing, updateWaiting])
+
+  // The new version, once no video is being made (the queue starts none
+  // while it waits): the same safe restart as after a stall - never while he
+  // types, edits or goes through a screen, and only once what is being kept
+  // and sent is saved. Queued videos are on the phone and carry on after it.
+  useEffect(() => {
+    if (!updateWaiting || processing.current || restarting.current) return
+    restartPage()
+  }, [updateWaiting, jobs]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // The screen stays on while there is work to do, so auto-lock cannot stop
   // a day's videos halfway.
@@ -3831,12 +3857,14 @@ export function CampaignApp() {
     settingUpPosting ||
     (showPosts && posting !== null) ||
     asking !== null || Boolean(cutsJob && cutting) || Boolean(reviewJob && reviewing)
+  inFlowRef.current = inFlow
 
   return (
     <>
       {inFlow ? null : <ModeNav current="campaign" workToLose={workToLose} />}
       <main className={inFlow ? 'flow' : 'tabbed'}>
-        <UpdateBanner safeToReload={jobs.every((j) => j.status === 'held' || j.status === 'failed')} />
+        <UpdateBanner safeToReload={false} handled />
+        {updateWaiting ? <p className="notice">Updating the Cutter to its new version{jobs.some((j) => j.status === 'working') ? ' after the video being made' : ''} - your videos carry on where they were.</p> : null}
         {!inFlow && tab !== 'videos' ? notices : null}
         {screen}
       </main>

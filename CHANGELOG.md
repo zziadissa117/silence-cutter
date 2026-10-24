@@ -3,6 +3,20 @@
 Newest first. Every change says what it does, how to use it, and how it works
 underneath. Kept up to date with each commit.
 
+## Updates install by themselves, even with a batch running
+Only ./deploy.sh is needed. This one still arrives the old way (the "Update now" line at the top of the screen, or
+closing and opening the Cutter); every update after it installs by itself.
+**What was wrong:** a new version only loaded once nothing at all was waiting to be made. A batch tops itself up, so
+on a phone with a batch running that moment never came: his friend's phone stayed behind, with an "Update now" line
+at the top of a screen he had scrolled away from. (His friend's iPhone also has two Cutters - the home-screen one, up
+to date, and one in a Safari tab that was days behind; they don't share anything on an iPhone.)
+**Now:** once a new version has downloaded, the batch starts no new video; when the one being made is done, the
+Cutter starts again into the new version - the same safe restart it does after a stall: never while he types, edits
+or goes through a screen, only once what is being kept and sent is saved - and the batch carries on where it was.
+A line at the top says so meanwhile. The plain cutter keeps its "Update now".
+**How:** `UpdateBanner` (`UPDATE_READY_EVENT`, `updateDownloaded`, `handled`), `CampaignApp` (`updateWaiting` holds
+the queue, then `restartPage`; `restartPage` also waits out any screen he is going through, `inFlowRef`).
+
 ## Batch: change a look's scheduled videos to another look - only those are made again
 Only ./deploy.sh is needed; then close the Cutter and open it again.
 **How to use it:** Batch tab, "How each hook is doing": each look has a line (Snapchat, Outline, White box, Claude +

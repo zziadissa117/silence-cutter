@@ -19,8 +19,23 @@ import { pickQuiet } from './pickWatch'
  *  away. Otherwise it says a new version is ready and waits to be asked. It
  *  never reloads on its own while there is something to lose; a reload
  *  mid-cut is how the planner version lost videos. */
-export function UpdateBanner({ safeToReload }: { safeToReload: boolean }) {
-  const [ready, setReady] = useState(false)
+/** Fired on window once a new version has downloaded and is waiting for the page to load it. */
+export const UPDATE_READY_EVENT = 'cutter:update-ready'
+let downloaded = false
+/** A new version has downloaded: the page loads it on its next reload. */
+export function updateDownloaded(): boolean {
+  return downloaded
+}
+
+export function UpdateBanner({ safeToReload, handled = false }: { safeToReload: boolean; handled?: boolean }) {
+  const [ready, setReadyState] = useState(false)
+  const setReady = (on: boolean) => {
+    if (on && !downloaded) {
+      downloaded = true
+      window.dispatchEvent(new Event(UPDATE_READY_EVENT))
+    }
+    setReadyState(on)
+  }
 
   useEffect(() => {
     const sw = 'serviceWorker' in navigator ? navigator.serviceWorker : null
@@ -59,7 +74,9 @@ export function UpdateBanner({ safeToReload }: { safeToReload: boolean }) {
   // Never while he is picking videos: they only exist once the picker has
   // handed them over and they are saved (see pickWatch.ts).
   useEffect(() => {
-    if (!ready || !safeToReload) return
+    // The page reloads into it by itself, at its own safe moment (the Cutter's
+    // batch page: between two videos).
+    if (handled || !ready || !safeToReload) return
     let cancelled = false
     void pickQuiet().then(() => {
       if (!cancelled) window.location.reload()
@@ -69,7 +86,7 @@ export function UpdateBanner({ safeToReload }: { safeToReload: boolean }) {
     }
   }, [ready, safeToReload])
 
-  if (!ready || safeToReload) return null
+  if (handled || !ready || safeToReload) return null
 
   return (
     <div className="notice">
