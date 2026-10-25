@@ -32,10 +32,33 @@ export const SERVER_LINK_EVENT = 'cutter:server-link'
 
 export class ServerError extends Error {}
 
-export interface ServerStatus {
+/** The server's disk and memory (server/main.mjs `room`). */
+export interface ServerRoom {
+  freeGB: number | null
+  /** The whole disk (the Railway volume). */
+  diskGB?: number | null
+  /** The memory the server may use, when its machine says. */
+  memoryGB?: number | null
+}
+
+/** What is wrong with the server's room, in his words - a free Railway plan
+ *  (0.5 GB of disk and of memory) fills up in a batch's first minutes - or
+ *  null when it is fine. */
+export function roomProblem(room: ServerRoom | null | undefined): string | null {
+  if (!room) return null
+  const small = (room.diskGB ?? Infinity) < 1 || (room.memoryGB ?? Infinity) < 1
+  if (small) {
+    return `The server is too small to make videos (${room.diskGB ?? '?'} GB of disk, ${room.memoryGB ?? '?'} GB of memory) - that is Railway's free plan. Take the Hobby plan on Railway, then give the server a 5 GB volume.`
+  }
+  if (room.freeGB !== null && room.freeGB < 0.5) {
+    return `The server's disk is almost full (${room.freeGB} GB free). Make its volume bigger on Railway (the Pro plan goes past 5 GB).`
+  }
+  return null
+}
+
+export interface ServerStatus extends ServerRoom {
   version: string
   chrome: 'running' | 'starting' | 'off'
-  freeGB: number | null
   /** What the app on the server last said, and when. */
   page: (ServerProgress & { at: string }) | null
 }
@@ -90,10 +113,7 @@ async function call<T>(method: string, path: string, body?: unknown, raw?: Blob)
 }
 
 /** Hands the server this phone's login and posting profile; it starts making. */
-export function connectServer(): Promise<{
-  version: string
-  freeGB: number | null
-}> {
+export function connectServer(): Promise<ServerRoom & { version: string }> {
   const session = currentSession()
   return call('POST', '/connect', {
     name: session?.name ?? null,

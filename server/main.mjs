@@ -121,6 +121,10 @@ function startChrome() {
     '--disable-backgrounding-occluded-windows',
     '--autoplay-policy=no-user-gesture-required',
     `--user-data-dir=${dir('chrome')}`,
+    // Chrome's own cache on the container's disk, small, not on the volume:
+    // only the app's storage needs keeping across restarts.
+    '--disk-cache-dir=/tmp/chrome-cache',
+    `--disk-cache-size=${64 * 1024 * 1024}`,
     // For trying it on a computer (a debugging port, say); unset on the real server.
     ...(process.env.CHROME_EXTRA_ARGS ?? '').split(' ').filter(Boolean),
     `http://localhost:${APP_PORT}/campaign.html?server=1`,
@@ -128,14 +132,22 @@ function startChrome() {
   chromeStarted = Date.now()
   // His time zone, not the server's: the batch's days and times are his.
   const zone = readJsonSync(sessionFile)?.posting?.profile?.timezone
-  chrome = spawn(CHROME, args, { stdio: ['ignore', 'ignore', 'pipe'], env: { ...process.env, TZ: typeof zone === 'string' && zone ? zone : 'UTC' } })
-  chrome.stderr.on('data', () => {})
+  const child = spawn(CHROME, args, { stdio: ['ignore', 'ignore', 'pipe'], env: { ...process.env, TZ: typeof zone === 'string' && zone ? zone : 'UTC' } })
+  chrome = child
+  child.stderr.on('data', () => {})
   log('chrome started')
-  chrome.on('exit', (code, signal) => {
-    log('chrome stopped', code ?? signal)
-    chrome = null
+  // Once, however it ends - stopped, or never started at all (missing, no
+  // memory), which would otherwise throw and take the whole server down.
+  let ended = false
+  const end = (why) => {
+    if (ended) return
+    ended = true
+    log('chrome stopped', why)
+    if (chrome === child) chrome = null
     if (wanted) setTimeout(startChrome, 5000)
-  })
+  }
+  child.on('error', (error) => end(`- it could not start: ${error.message}`))
+  child.on('exit', (code, signal) => end(code ?? signal))
 }
 
 function restartChrome(why) {
@@ -322,13 +334,31 @@ function body(req, max) {
 
 const jsonBody = async (req, max = 2_000_000) => JSON.parse((await body(req, max)).toString('utf8') || '{}')
 
-async function freeGB() {
+const gb = (bytes) => Math.round((bytes / 1e9) * 10) / 10
+
+/** The disk's room, and the memory the server is allowed: a free Railway
+ *  plan gives 0.5 GB of each, which a batch fills in its first minutes (his
+ *  friend's, 2026-10-25) - the phone says so (serverLink.roomProblem). */
+async function room() {
+  let freeGB = null
+  let diskGB = null
   try {
     const s = await fsp.statfs(DATA)
-    return Math.round(((s.bavail * s.bsize) / 1e9) * 10) / 10
+    freeGB = gb(s.bavail * s.bsize)
+    diskGB = gb(s.blocks * s.bsize)
   } catch {
-    return null
+    // Not known: the phone shows "?".
   }
+  let memoryGB = null
+  for (const file of ['/sys/fs/cgroup/memory.max', '/sys/fs/cgroup/memory/memory.limit_in_bytes']) {
+    const limit = Number((await fsp.readFile(file, 'utf8').catch(() => '')).trim())
+    // "max", or the huge number cgroup v1 writes for no limit: none set.
+    if (Number.isFinite(limit) && limit > 0 && limit < 2 ** 50) {
+      memoryGB = gb(limit)
+      break
+    }
+  }
+  return { freeGB, diskGB, memoryGB }
 }
 
 const publicServer = http.createServer(async (req, res) => {
@@ -365,7 +395,7 @@ const publicServer = http.createServer(async (req, res) => {
       wanted = true
       if (fresh && chrome) restartChrome('a new login')
       else startChrome()
-      return send(res, 200, { ok: true, version: VERSION, freeGB: await freeGB() }, cors)
+      return send(res, 200, { ok: true, version: VERSION, ...(await room()) }, cors)
     }
     if (!session || session.space !== space) return send(res, 403, { error: 'Connect this server in Settings first.' }, cors)
 
@@ -400,7 +430,7 @@ const publicServer = http.createServer(async (req, res) => {
 
     if (req.method === 'GET' && url.pathname === '/status') {
       const status = await readJson(dir('status.json'), null)
-      return send(res, 200, { version: VERSION, chrome: chrome ? 'running' : wanted ? 'starting' : 'off', freeGB: await freeGB(), page: status }, cors)
+      return send(res, 200, { version: VERSION, chrome: chrome ? 'running' : wanted ? 'starting' : 'off', ...(await room()), page: status }, cors)
     }
 
     return send(res, 404, { error: 'Unknown.' }, cors)
@@ -439,7 +469,8 @@ const localServer = http.createServer(async (req, res) => {
       const meta = id ? await readJson(dir('files', `${id}.json`), null) : null
       if (!meta || !fs.existsSync(dir('files', id))) return send(res, 404, { error: 'Not here.' })
       readAt.set(id, Date.now())
-      res.writeHead(200, { 'content-type': meta.type || 'application/octet-stream', 'content-length': fs.statSync(dir('files', id)).size })
+      // no-store: Chrome would otherwise keep a second copy of every clip in its cache.
+      res.writeHead(200, { 'content-type': meta.type || 'application/octet-stream', 'content-length': fs.statSync(dir('files', id)).size, 'cache-control': 'no-store' })
       return fs.createReadStream(dir('files', id)).pipe(res)
     }
     if (url.pathname === '/local/inbox' && req.method === 'GET') return send(res, 200, await inbox())
@@ -489,6 +520,10 @@ if (fs.existsSync(sessionFile)) {
   wanted = true
   startChrome()
 }
+
+// A full disk or a lost connection fails one request, never the whole
+// server: Railway would mark the deploy crashed and start it over and over.
+process.on('unhandledRejection', (error) => log('unhandled', error instanceof Error ? error.message : error))
 
 for (const signal of ['SIGTERM', 'SIGINT']) {
   process.on(signal, () => {

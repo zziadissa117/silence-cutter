@@ -3,6 +3,27 @@
 Newest first. Every change says what it does, how to use it, and how it works
 underneath. Kept up to date with each commit.
 
+## Cutter server: says when Railway's plan is too small, and keeps its disk for what matters
+Nothing to deploy with ./deploy.sh for the server (it rebuilds by itself on Railway); `./deploy.sh` brings the
+phone's side (the warning in Settings and the Batch tab).
+**What happened (his friend's server, 2026-10-25):** "the volume is 98% full in the first minute", then "the
+deploy crashed". The server's reports: `QuotaExceededError Encountered full disk`, `FILE_ERROR_NO_SPACE`,
+`Failed to write blobs` - the disk was full as soon as the clips went up, and videos couldn't be kept to send.
+His Railway is most likely on the free plan: 0.5 GB of disk and 0.5 GB of memory, too small for Chrome making
+1080x1920 videos.
+**Now:**
+- `/connect` and `/status` give the disk's size and the memory the server may use (`room` in `server/main.mjs`,
+  from the volume and the container's cgroup). `serverLink.roomProblem` turns that into one line: under 1 GB of
+  either is "Railway's free plan - take Hobby, then a 5 GB volume"; under 0.5 GB free is "almost full". Settings,
+  Server shows it in red instead of "Connected", and the Batch tab's server line too.
+- Chrome's own cache goes to the container's disk, capped at 64 MB (`--disk-cache-dir`, `--disk-cache-size`), not
+  the volume, and the clips the page reads are `no-store`: Chrome no longer keeps a second copy of each one.
+- Chrome that can't start (missing, out of memory) is tried again, instead of taking the whole server down with
+  it; an unhandled failure is logged, never a crash.
+- The page's check after each start no longer says "this phone can't read 4K iPhone video" on the server: it
+  makes iPhone video H.264 with ffmpeg and writes sound with its own encoder, so those two checks are the phone's
+  only.
+
 ## Cutter server: its log says which version it runs
 Nothing to deploy with ./deploy.sh; each Railway server rebuilds by itself.
 The server's first log line now reads `for the phone on :8080 - version <commit> (<service name>)`, the same

@@ -11,6 +11,7 @@
 
 import { orTimeout } from '../media/within'
 import { report } from '../report'
+import { SERVER_MODE } from './serverFlag'
 
 const PASSED_KEY = 'check.passed'
 const DB = 'silence-cutter-check'
@@ -70,10 +71,15 @@ async function checkStorage(): Promise<void> {
 /** Ten real 1080x1920 frames through the H.264 encoder and back through the
  *  decoder, and the formats an iPhone video needs. */
 async function checkVideo(): Promise<void> {
-  const hevc = await VideoDecoder.isConfigSupported({ codec: 'hvc1.2.4.L153.B0', codedWidth: 2160, codedHeight: 3840 })
-  if (!hevc.supported) throw new Error("this phone can't read 4K iPhone video in the page")
-  const aac = await AudioEncoder.isConfigSupported({ codec: 'mp4a.40.2', sampleRate: 48000, numberOfChannels: 2, bitrate: 128000 })
-  if (!aac.supported) throw new Error("this phone can't write sound in the page")
+  // The Cutter server's Chrome has neither, on purpose: it makes iPhone
+  // video H.264 with ffmpeg as it arrives, and writes sound with its own
+  // AAC encoder (server/README.md).
+  if (!SERVER_MODE) {
+    const hevc = await VideoDecoder.isConfigSupported({ codec: 'hvc1.2.4.L153.B0', codedWidth: 2160, codedHeight: 3840 })
+    if (!hevc.supported) throw new Error("this phone can't read 4K iPhone video in the page")
+    const aac = await AudioEncoder.isConfigSupported({ codec: 'mp4a.40.2', sampleRate: 48000, numberOfChannels: 2, bitrate: 128000 })
+    if (!aac.supported) throw new Error("this phone can't write sound in the page")
+  }
 
   const width = 1080
   const height = 1920

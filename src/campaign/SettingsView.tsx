@@ -7,7 +7,7 @@ import type { PresetName } from '../media/silenceMath'
 import type { Session, SyncState } from './cloud'
 import { savedTheme, savedTips, setTheme, setTips, type Theme } from '../theme'
 import { cleanEngineUrl, engineStatus, engineUrl, setEngineUrl } from './engine'
-import { bringBack, connectServer, serverStatus, serverUrl, setServerUrl } from './serverLink'
+import { bringBack, connectServer, roomProblem, serverStatus, serverUrl, setServerUrl } from './serverLink'
 import { loadBatchBank } from './store'
 import { cleanPlace } from '../../supabase/functions/postiz/place.ts'
 import { DEFAULT_WINDOW } from '../../supabase/functions/postiz/window.ts'
@@ -428,9 +428,10 @@ function ServerSetting({ campaignIds }: { campaignIds: string[] }) {
       .then((status) => {
         if (!alive) return
         const making = Object.values(status.page?.making ?? {}).reduce((n, m) => n + m.queued + (m.now ? 1 : 0), 0)
+        const problem = roomProblem(status)
         setLine({
-          text: `Connected · ${status.freeGB ?? '?'} GB free · ${making > 0 ? `making ${making}` : status.chrome === 'running' ? 'waiting for the next days' : 'starting'}`,
-          bad: false,
+          text: problem ?? `Connected · ${status.freeGB ?? '?'} GB free · ${making > 0 ? `making ${making}` : status.chrome === 'running' ? 'waiting for the next days' : 'starting'}`,
+          bad: problem !== null,
         })
       })
       .catch((error: unknown) => alive && setLine({ text: error instanceof Error ? error.message : String(error), bad: true }))
@@ -450,7 +451,8 @@ function ServerSetting({ campaignIds }: { campaignIds: string[] }) {
     setServerUrl(clean)
     try {
       const done = await connectServer()
-      setLine({ text: `Connected · ${done.freeGB ?? '?'} GB free. Your batches are made there from now on - the clips go up while the app is open.`, bad: false })
+      const problem = roomProblem(done)
+      setLine({ text: problem ?? `Connected · ${done.freeGB ?? '?'} GB free. Your batches are made there from now on - the clips go up while the app is open.`, bad: problem !== null })
     } catch (error) {
       setServerUrl(before)
       setLine({ text: error instanceof Error ? error.message : String(error), bad: true })

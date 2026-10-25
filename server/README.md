@@ -33,7 +33,9 @@ Posts for approval as always.
 
 Nothing else: no keys, no variables. It uses the phone's login and posting profile, handed over by Connect.
 
-**Plan and size.** Hobby is enough to start. Its volume is 5 GB: the server deletes clips no batch uses any more
+**Plan and size.** Railway's free plan (0.5 GB of disk and 0.5 GB of memory) is too small: the disk fills
+in the batch's first minutes and Chrome runs out of memory - the Cutter says so in Settings, Server, and in the
+Batch tab. Hobby is enough to start. Its volume is 5 GB: the server deletes clips no batch uses any more
 (after two days) and its own copy of every video once Postiz has it. If Settings shows little space left, grow
 the volume (Pro plan) - nothing else changes. In a test here it used under 2 GB of memory with 1080p clips; 4K ones need more.
 

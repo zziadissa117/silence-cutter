@@ -17,7 +17,7 @@ vi.mock('./posting', async (original) => ({
 
 import { emptyBank } from './batch'
 import type { Job } from './jobs'
-import { bringBack, linkBatches, setServerUrl } from './serverLink'
+import { bringBack, linkBatches, roomProblem, setServerUrl } from './serverLink'
 
 /** The server, as server/main.mjs answers. */
 function fakeServer() {
@@ -123,5 +123,18 @@ describe('linkBatches (every batch to the Cutter server)', () => {
     expect(here.where).toBeUndefined()
     expect(here.running).toBe(true)
     expect(server.calls).toContain('POST /banks/c1/back-to-phone')
+  })
+})
+
+describe("the server's room", () => {
+  it("says a free Railway plan is too small, and a disk nearly full; nothing when it's fine", () => {
+    // His friend's first server, 2026-10-25: full in its first minutes.
+    expect(roomProblem({ freeGB: 0, diskGB: 0.5, memoryGB: 0.5 })).toContain("Railway's free plan")
+    expect(roomProblem({ freeGB: 3, diskGB: 5, memoryGB: 0.5 })).toContain('Hobby plan')
+    expect(roomProblem({ freeGB: 0.3, diskGB: 5, memoryGB: 8 })).toContain('almost full')
+    expect(roomProblem({ freeGB: 4.2, diskGB: 5, memoryGB: 8 })).toBeNull()
+    // An older server says only what is free.
+    expect(roomProblem({ freeGB: 4.2 })).toBeNull()
+    expect(roomProblem(null)).toBeNull()
   })
 })

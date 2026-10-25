@@ -115,7 +115,7 @@ import {
   type EngineJob,
 } from './engine'
 import { serverConnected } from './serverFlag'
-import { bankFiles, lastServerStatus, linkProblem, sendingLine, serverCommand, serverMaking, SERVER_LINK_EVENT, type LinkEvent } from './serverLink'
+import { bankFiles, lastServerStatus, linkProblem, roomProblem, sendingLine, serverCommand, serverMaking, SERVER_LINK_EVENT, type LinkEvent } from './serverLink'
 
 const LAST_KEY = 'batch.campaign'
 /** A track this big is any song there is. */
@@ -605,6 +605,8 @@ export function BatchView({
   const linkTrouble = onServer ? linkProblem(campaign.id) : null
   const serverNow = onServer ? serverMaking(campaign.id) : null
   const serverSeen = onServer ? lastServerStatus()?.page?.at : undefined
+  // Out of disk or memory, the server makes nothing: said here, where he looks.
+  const serverRoom = onServer ? roomProblem(lastServerStatus()) : null
   const serverQueued = (serverNow?.queued ?? 0) + (serverNow?.now ? 1 : 0)
   const corner = bank?.corner ?? DEFAULT_CORNER
   // The hooks picked, with their shares - none picked: headlines in the
@@ -1560,11 +1562,13 @@ export function BatchView({
             </p>
           ) : null}
           {onServer && (bank.where === 'server' || sending || linkTrouble || bankFiles(bank).length > 0) ? (
-            <p className={`hint batch-server${linkTrouble ? ' warn-text' : ''}`}>
+            <p className={`hint batch-server${linkTrouble || serverRoom ? ' warn-text' : ''}`}>
               {sending ??
                 (linkTrouble
                   ? `Couldn't reach the server: ${linkTrouble} It tries again by itself.`
-                  : serverNow?.now
+                  : serverRoom
+                    ? serverRoom
+                    : serverNow?.now
                     ? `On the server now: ${serverNow.now}`
                     : bank.where === 'server'
                       ? `Made on the server${serverSeen ? ` - last heard from ${timeAgo(serverSeen)}` : ''}.`
