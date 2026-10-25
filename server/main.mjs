@@ -189,11 +189,14 @@ function run(cmd, args) {
   })
 }
 
+/** The width a tall clip is made H.264 at, at most (see readable). */
+const TALL_WIDTH = 1620
+
 /** Chrome here reads H.264, not the iPhone's HEVC: such a file (or an HDR
  *  one) is made into H.264 once, when it arrives, at a quality that keeps it
  *  as it was. Everything else is kept exactly as the phone sent it. */
 async function readable(file) {
-  const probe = await run('ffprobe', ['-v', 'error', '-select_streams', 'v:0', '-show_entries', 'stream=codec_name,color_transfer', '-of', 'json', file])
+  const probe = await run('ffprobe', ['-v', 'error', '-select_streams', 'v:0', '-show_entries', 'stream=codec_name,color_transfer,width,height', '-of', 'json', file])
   let stream = null
   try {
     stream = JSON.parse(probe.out).streams?.[0] ?? null
@@ -206,7 +209,14 @@ async function readable(file) {
   const out = `${file}.h264.mp4`
   const tonemap = 'zscale=t=linear:npl=100,format=gbrpf32le,zscale=p=bt709,tonemap=hable:desat=0,zscale=t=bt709:m=bt709:r=tv,format=yuv420p'
   const args = ['-v', 'error', '-y', '-i', file, '-map', '0:v:0', '-map', '0:a?', '-c:v', 'libx264', '-preset', 'medium', '-crf', '16', '-pix_fmt', 'yuv420p']
-  if (hdr) args.push('-vf', tonemap)
+  // A tall clip no wider than the videos need: 1080 across, zoomed in up to
+  // 1.45 times (effects MAX_SCALE) - 1620 keeps every pixel of that. Kept at
+  // 4K, H.264 at this quality took 2-4 times the iPhone's own file, and a
+  // bank of them filled a 5 GB disk. A wide clip is cut to 9:16 from its
+  // height, so it keeps all of it.
+  const narrower = stream.height > stream.width && stream.width > TALL_WIDTH ? `scale=${TALL_WIDTH}:-2` : null
+  const filters = [narrower, hdr ? tonemap : null].filter(Boolean)
+  if (filters.length > 0) args.push('-vf', filters.join(','))
   args.push('-color_primaries', 'bt709', '-color_trc', 'bt709', '-colorspace', 'bt709', '-fps_mode', 'passthrough', '-c:a', 'aac', '-b:a', '192k', '-movflags', '+faststart', out)
   const made = await run('ffmpeg', args)
   if (made.code !== 0) return { ok: false, why: `This clip couldn't be made readable here (${stream.codec_name}).` }

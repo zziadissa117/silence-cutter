@@ -20,6 +20,10 @@ His Railway is most likely on the free plan: 0.5 GB of disk and 0.5 GB of memory
   the volume, and the clips the page reads are `no-store`: Chrome no longer keeps a second copy of each one.
 - Chrome that can't start (missing, out of memory) is tried again, instead of taking the whole server down with
   it; an unhandled failure is logged, never a crash.
+- A tall iPhone clip is made H.264 at most 1620 across (`TALL_WIDTH` in `readable`): the videos are 1080 across,
+  zoomed in up to 1.45 times, so that keeps every pixel. Kept at 4K, H.264 at that quality took 2-4 times the
+  iPhone's own file - a 3 s 4K test clip: 27 MB as HEVC, 168 MB as 4K H.264, 67 MB at 1620 - and a bank of them
+  filled the disk. It is twice as fast too. Wide clips keep their full size (9:16 is cut from their height).
 - The page's check after each start no longer says "this phone can't read 4K iPhone video" on the server: it
   makes iPhone video H.264 with ffmpeg and writes sound with its own encoder, so those two checks are the phone's
   only.
