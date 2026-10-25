@@ -2625,9 +2625,13 @@ export function CampaignApp() {
       const making: Record<string, ServerMaking> = {}
       for (const job of jobsRef.current) {
         if (!job.batch) continue
-        const one = (making[job.campaignId] ??= { queued: 0, now: null })
+        const one = (making[job.campaignId] ??= { queued: 0, now: null, failed: 0 })
         if (job.status === 'queued') one.queued++
-        else if (job.status !== 'done' && job.status !== 'failed' && job.status !== 'held') one.now = job.name
+        else if (job.status === 'failed' || job.status === 'held') one.failed = (one.failed ?? 0) + 1
+        else if (job.status !== 'done') {
+          one.now = job.name
+          one.progress = job.progress
+        }
       }
       return making
     })

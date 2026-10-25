@@ -3,6 +3,23 @@
 Newest first. Every change says what it does, how to use it, and how it works
 underneath. Kept up to date with each commit.
 
+## Batch tab: one card at the top says what the batch is doing
+Only ./deploy.sh is needed; then close the Cutter and open it again.
+**Why (2026-10-25, his words):** "the UI is disgusting on the batch, so we don't even know if posts are being made
+or not." What the batch was doing was six grey lines under every setting, at the very bottom of the tab.
+**Now:** a card right under the campaign picker (`BatchStatus.tsx`, its logic in `batchStatus.ts`):
+- One headline with a dot: **Making videos** (green), **Up to date** (green), **About to make more**, **Paused**,
+  **Stopped** (grey), or what is wrong in red - the server out of reach or out of room, **The server went
+  quiet** (no word from it for 10 minutes while the batch runs), or **N couldn't be made**. Where: on the server,
+  this phone or the engine.
+- **Now:** the video being made and how far it is (the server now reports its progress, and how many failed).
+- How many more are waiting, and **Last video ready N min ago** - the newest of the batch's videos in Posts.
+- **Next 7 days:** each day's count ready of its number (green when full), and a bar - gone out (green), ready
+  in Posts (blue), being made (grey). On this phone a failed video no longer counts as being made.
+- Server checked in N ago, and the GB free. **Stop** is in the card.
+The old lines ("Next 7 days: X of Y", "On the server now", "Made through", the phone's "Making 3 of 6" bar) are
+gone; the "Makes the next 7 days now" line stays under Start while the batch is stopped.
+
 ## Cutter server: says when Railway's plan is too small, and keeps its disk for what matters
 Nothing to deploy with ./deploy.sh for the server (it rebuilds by itself on Railway); `./deploy.sh` brings the
 phone's side (the warning in Settings and the Batch tab).

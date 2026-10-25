@@ -132,6 +132,10 @@ async function takeInbox(): Promise<void> {
 export interface ServerMaking {
   queued: number
   now: string | null
+  /** How far the one being made is, 0-1 (servers before 2026-10-25 don't say). */
+  progress?: number
+  /** Its videos that couldn't be made. */
+  failed?: number
 }
 
 /** What the server is doing, for the phone's Batch tab. */
