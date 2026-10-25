@@ -3,6 +3,12 @@
 Newest first. Every change says what it does, how to use it, and how it works
 underneath. Kept up to date with each commit.
 
+## Cutter server: its log says which version it runs
+Nothing to deploy with ./deploy.sh; each Railway server rebuilds by itself.
+The server's first log line now reads `for the phone on :8080 - version <commit> (<service name>)`, the same
+version `/health` gives. With two servers (his and his friend's), Deploy Logs then show at once whether one missed
+an update - his friend's had auto deploy off and stayed on an old build.
+
 ## Railway: the Cutter server builds with nothing to set
 Nothing to deploy with ./deploy.sh. On Railway, each server rebuilds by itself from this push.
 **What happened (2026-10-25, his two servers):** both Railway addresses showed the Cutter app itself (its sign-in)

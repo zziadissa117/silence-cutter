@@ -473,7 +473,10 @@ const localServer = http.createServer(async (req, res) => {
   }
 })
 
-publicServer.listen(PORT, () => log(`for the phone on :${PORT}`))
+// Its first log line says which push it runs, and which Railway service:
+// with two of them, the version tells at once whether one missed an update.
+const SERVICE = process.env.RAILWAY_SERVICE_NAME ? ` (${process.env.RAILWAY_SERVICE_NAME})` : ''
+publicServer.listen(PORT, () => log(`for the phone on :${PORT} - version ${VERSION}${SERVICE}`))
 // Railway sends the address to the port typed when it was made (8080, says
 // the README), and its own PORT can be another: the phone's door is on both.
 if (PORT !== 8080 && APP_PORT !== 8080) {
