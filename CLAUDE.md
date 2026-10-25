@@ -36,7 +36,7 @@ and why. These notes are what earlier sessions learned the hard way.
   vitest and media plumbing with mediabunny in a `// @vitest-environment node`
   test, or ffmpeg (installed) on files in the scratchpad.
 - Chrome for Testing (Google's build, `storage.googleapis.com/chrome-for-testing-public`,
-  138.0.7204.168 linux64 - the one `server/Dockerfile` uses) does encode H.264 and
+  138.0.7204.168 linux64 - the one the root `Dockerfile` (the Cutter server's) uses) does encode H.264 and
   decode H.264/AAC (not HEVC; no AAC encoder - `@mediabunny/aac-encoder`). Real
   batch renders run in it here: `server/main.mjs` with `CUTTER_SERVER_TEST_TOKEN`
   and `CHROME_EXTRA_ARGS=--remote-debugging-port=...`, the Supabase functions

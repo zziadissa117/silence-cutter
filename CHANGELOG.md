@@ -3,6 +3,17 @@
 Newest first. Every change says what it does, how to use it, and how it works
 underneath. Kept up to date with each commit.
 
+## Railway: the Cutter server builds with nothing to set
+Nothing to deploy with ./deploy.sh. On Railway, each server rebuilds by itself from this push.
+**What happened (2026-10-25, his two servers):** both Railway addresses showed the Cutter app itself (its sign-in)
+instead of the server. Railway no longer lets a new service use a config file ("Config as Code is deprecated ...
+services that have never used Config as Code cannot opt in"), so the "Config file path" `/server/railway.json`
+step did nothing, and Railway built the repo as a plain website.
+**Now:** the server's image is the `Dockerfile` at the top of the repo (moved from `server/Dockerfile`), which
+Railway uses by itself; `server/railway.json` is gone. The server also answers the phone on 8080 when Railway's
+own `PORT` is another, so the address made with port 8080 always reaches it. A working server's `/health` is one
+line of text, `{"ok":true,...}` (`server/README.md` says how to tell).
+
 ## Fix: Stop now stops the batch, and the hook buttons work while it is making
 Only ./deploy.sh is needed; then close the Cutter and open it again.
 **What happened (his friend, 2026-10-24):** Stop only stopped the next days from being planned. A top-up queues up

@@ -474,6 +474,11 @@ const localServer = http.createServer(async (req, res) => {
 })
 
 publicServer.listen(PORT, () => log(`for the phone on :${PORT}`))
+// Railway sends the address to the port typed when it was made (8080, says
+// the README), and its own PORT can be another: the phone's door is on both.
+if (PORT !== 8080 && APP_PORT !== 8080) {
+  http.createServer(publicServer.listeners('request')[0]).listen(8080, () => log('for the phone on :8080 too'))
+}
 localServer.listen(APP_PORT, '127.0.0.1', () => log(`the app for chrome on 127.0.0.1:${APP_PORT}`))
 
 // Connected before this start (a deploy, a restart): carry on at once.

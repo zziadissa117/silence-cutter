@@ -1,7 +1,9 @@
 # The Cutter server (server/README.md): the Cutter app, built here, run in
 # Chrome for Testing - Google's Chrome, which reads and writes H.264 - by
-# server/main.mjs. Built from the repo's root (railway.json says so), so the
-# app is the very code the phone runs.
+# server/main.mjs. At the top of the repo so Railway builds it with nothing
+# set: it uses a Dockerfile it finds there by itself (its config files, that
+# pointed at server/Dockerfile, can't be turned on for new services since
+# 2026-08-28). The app is the very code the phone runs.
 
 FROM node:22-bookworm-slim
 

@@ -90,7 +90,7 @@ only, no Supabase); `./deploy-server.sh` ships the `postiz` and `cutter` functio
 - Duplicate protection: `campaign/fingerprint.ts` (never key a send or a bank file on a random id alone)
 - Login (server): `supabase/functions/cutter/index.ts` (`whoami` is the engine's and the Cutter server's login check)
 - The Cutter server (Railway: this same app headless in Chrome for Testing, making every batch day and night):
-  `server/main.mjs` (Node, no packages), `server/Dockerfile`, `server/railway.json`, setup in `server/README.md`;
+  `server/main.mjs` (Node, no packages), its image the root `Dockerfile` (Railway finds it by itself), setup in `server/README.md`;
   app side `serverMode.ts` (`?server=1` on its localhost, `serverFlag.ts`), phone side `serverLink.ts` (hand-over,
   each change, progress back; `batch.fromPhone` says who owns which field, `batchRun.handOver`), Settings "Server"
 - The engine (Railway, Python + ffmpeg, Ilyan's Le plateau): `engine/` (setup in `engine/README.md`); phone side

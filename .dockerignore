@@ -1,4 +1,4 @@
-# The Cutter server's image (server/Dockerfile) needs the app's sources, not
+# The Cutter server's image (Dockerfile) needs the app's sources, not
 # these. Not supabase/: the app uses some of its posting code (window, slots).
 .git
 node_modules

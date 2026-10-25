@@ -434,7 +434,9 @@ is behind the cutter login (`spaceFor`); the rows and the bucket have no policie
 ## The Cutter server (`server/`, on Railway)
 
 The Cutter app itself in Chrome for Testing (headless, Linux), driven by `server/main.mjs` (Node, no packages):
-the same top-ups, mixing, rendering and sending as on the phone. Setup and diagram: `server/README.md`.
+the same top-ups, mixing, rendering and sending as on the phone. Setup and diagram: `server/README.md`. Its image is
+the `Dockerfile` at the top of the repo, where Railway finds it with nothing set (Railway config files can't be
+turned on for new services since 2026-08-28).
 
 - Public port (`PORT`): `/health`; everything else needs the phone's Cutter token (Bearer), checked with the
   `cutter` function's `whoami`, and only that space - and the posting profile that connected first - once

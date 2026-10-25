@@ -12,13 +12,21 @@ Posts for approval as always.
 
 1. **New project** -> **Deploy from GitHub repo** -> `zziadissa117/silence-cutter`.
 2. In the new service's **Settings**:
-   - **Source**: branch `claude/cutter-lockdown-and-map`. Leave **Root Directory** empty (the whole repo).
-   - **Config-as-code** -> **Config file path**: `/server/railway.json`. That tells Railway to build
-     `server/Dockerfile`, check `/health`, and restart it if it ever stops.
-   - **Networking** -> **Generate Domain** (port 8080 if it asks). That address is what goes in the Cutter.
+   - **Source**: branch `claude/cutter-lockdown-and-map` (not `main`). Leave **Root Directory** empty (the whole repo).
+   - Nothing to set for the build: Railway finds the `Dockerfile` at the top of the repo and builds it.
+     (Railway's config files - "Config-as-code" - can't be turned on for new services since 2026-08-28, so
+     there is none.)
+   - **Networking** -> **Generate Domain**, port **8080**. That address is what goes in the Cutter. The server
+     answers on 8080 whatever `PORT` Railway gives it.
+   - Optional, under **Deploy**: Healthcheck Path `/health`, Restart Policy **Always**.
+
+   **How to tell it worked:** `https://<the address>/health` shows one line of text, `{"ok":true,"version":"..."}`.
+   If it shows the Cutter app (its sign-in), Railway built the repo as a plain website: the branch is wrong
+   (the old `main` has no server), or the build didn't find the `Dockerfile` (Root Directory must be empty).
 3. **Add a volume** to the service (right-click the service, or Settings), mounted at **`/data`**. The clips, the
    login and what it has made live there; without it all is lost on each deploy.
-4. Wait for the first deploy to go green (about 5 minutes: it builds the app and downloads Chrome).
+4. Wait for the first deploy to go green (about 5 minutes: it builds the app and downloads Chrome). Its build log
+   says it uses the Dockerfile.
 5. On the phone: Cutter, Settings, **Server**, paste the address, **Connect**. It says how much space is free.
    Then open the app with signal for a while: the clips go up (once each), and the server starts making.
 
@@ -31,7 +39,7 @@ the volume (Pro plan) - nothing else changes. In a test here it used under 2 GB 
 **One person per server.** It makes videos for the posting profile that connected it first. His friend needs a
 server of their own (the same steps, their own Connect).
 
-**Updates.** Each push to the branch rebuilds it by itself (Railway watches the app's files). The video being
+**Updates.** Each push to the branch rebuilds it by itself. The video being
 made at that moment is made again after the restart; nothing is posted twice.
 
 **Back to the phone.** Settings, **Make batches on this phone again**: the server stops, and the phone carries on
