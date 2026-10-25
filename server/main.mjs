@@ -102,6 +102,8 @@ const sessionFile = dir('session.json')
 
 let chrome = null
 let chromeStarted = 0
+/** Chrome quitting right after it starts, this many times in a row. */
+let quickExits = 0
 let wanted = false
 
 function startChrome() {
@@ -109,6 +111,12 @@ function startChrome() {
   // An old app version kept by a service worker would keep running after a
   // deploy: the page always loads the version this server serves.
   fs.rmSync(dir('chrome', 'Default', 'Service Worker'), { recursive: true, force: true })
+  // A Chrome stopped hard - a deploy restarts the container - leaves its lock
+  // on the volume, naming the old container. Every Chrome after it took the
+  // profile as in use by another machine and quit at once (exit 21), every 5
+  // seconds, for ever (2026-10-25). Only this server runs Chrome here, and it
+  // isn't running now: the lock is always stale.
+  for (const name of ['SingletonLock', 'SingletonSocket', 'SingletonCookie']) fs.rmSync(dir('chrome', name), { force: true })
   const args = [
     '--headless=new',
     '--no-sandbox',
@@ -144,7 +152,13 @@ function startChrome() {
     ended = true
     log('chrome stopped', why)
     if (chrome === child) chrome = null
-    if (wanted) setTimeout(startChrome, 5000)
+    // One that quits at once again and again waits longer each time (up to
+    // 5 minutes) instead of starting every 5 seconds; one that ran a while
+    // starts again in 5 seconds.
+    quickExits = Date.now() - chromeStarted < 30_000 ? quickExits + 1 : 0
+    const wait = Math.min(5 * 60_000, 5000 * 2 ** Math.min(quickExits, 6))
+    if (quickExits > 1) log(`chrome quit ${quickExits} times in a row right after starting - next try in ${Math.round(wait / 1000)} s`)
+    if (wanted) setTimeout(startChrome, quickExits > 0 ? wait : 5000)
   }
   child.on('error', (error) => end(`- it could not start: ${error.message}`))
   child.on('exit', (code, signal) => end(code ?? signal))

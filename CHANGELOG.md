@@ -3,6 +3,17 @@
 Newest first. Every change says what it does, how to use it, and how it works
 underneath. Kept up to date with each commit.
 
+## Fix: the server's Chrome started and quit every 5 seconds ("chrome stopped 21")
+Nothing to deploy with ./deploy.sh: each Railway server rebuilds by itself from this push.
+**What happened (2026-10-25, his server's log):** `chrome started` / `chrome stopped 21` every 5 seconds. Exit 21 is
+Chrome's "profile in use". A deploy restarts the container and stops Chrome hard, and Chrome's lock file
+(`SingletonLock`, naming the old container) stayed on the volume; every Chrome after it took the profile as in use
+by another machine and quit at once. Reproduced here with Chrome for Testing: exit 21 with such a lock.
+**Now:** `startChrome` removes `SingletonLock`, `SingletonSocket` and `SingletonCookie` before it starts Chrome -
+only this server runs Chrome on that volume, and never two at once - and the same Chrome then starts and runs. A
+Chrome that still quits right after starting waits longer each time (10 s, 20 s, 40 s ... up to 5 minutes), and the
+log says so, instead of starting every 5 seconds.
+
 ## Fix: "The server went quiet" while the phone was only sending clips
 Only ./deploy.sh is needed.
 **What happened (2026-10-25):** after his server's disk was made new, the phone sent every clip up again - many
