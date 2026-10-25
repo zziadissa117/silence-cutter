@@ -144,7 +144,17 @@ export function batchState(input: {
       line: `${short} still to make for the next ${days.length} days - it starts by itself${where === 'phone' ? ' while the app is open' : ''}.`,
     }
   }
-  return { tone: 'idle', title: 'Stopped', line: 'Nothing new is made. Tap Start below to make the next days.' }
+  // "Stopped" read as if the posts were stopped (2026-10-25): it is only the
+  // making - what is made still goes out at its time.
+  const waitingToGo = days.reduce((n, d) => n + d.ready - d.out, 0)
+  return {
+    tone: 'idle',
+    title: 'Not making new videos',
+    line:
+      waitingToGo > 0
+        ? `The ${waitingToGo} already made still go out at their times. Tap Start below to make more.`
+        : 'Tap Start below to make the next days.',
+  }
 }
 
 function minutes(ms: number): string {

@@ -48,7 +48,10 @@ describe('what the card leads with', () => {
     expect(batchState({ ...base, days: short }).title).toBe('About to make more')
     expect(batchState({ ...base, days: short }).line).toContain('2 still to make')
     expect(batchState({ ...base, perDay: 0 }).title).toBe('Paused')
-    expect(batchState({ ...base, running: false }).title).toBe('Stopped')
+    const stopped = batchState({ ...base, running: false })
+    expect(stopped.title).toBe('Not making new videos')
+    // Stopping the making never stops what is made.
+    expect(stopped.line).toContain('The 9 already made still go out at their times')
   })
 
   it('says what is wrong first: a problem, a server gone quiet, videos that failed', () => {

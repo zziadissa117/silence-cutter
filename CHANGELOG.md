@@ -3,6 +3,11 @@
 Newest first. Every change says what it does, how to use it, and how it works
 underneath. Kept up to date with each commit.
 
+## Batch card: "Stopped" says the made videos still go out
+Only ./deploy.sh is needed.
+A stopped batch's card said **Stopped**, and he read it as his 18 videos for today being stopped. It now says **Not
+making new videos** - "The 18 already made still go out at their times. Tap Start below to make more."
+
 ## Fix: ./deploy.sh failed on the Mac ("differs ... only in casing")
 Only ./deploy.sh is needed.
 The Batch tab's new card had its logic in `batchStatus.ts` beside `BatchStatus.tsx`. A Mac's disk doesn't tell
@@ -16,7 +21,7 @@ Only ./deploy.sh is needed; then close the Cutter and open it again.
 or not." What the batch was doing was six grey lines under every setting, at the very bottom of the tab.
 **Now:** a card right under the campaign picker (`BatchStatus.tsx`, its logic in `batchNow.ts`):
 - One headline with a dot: **Making videos** (green), **Up to date** (green), **About to make more**, **Paused**,
-  **Stopped** (grey), or what is wrong in red - the server out of reach or out of room, **The server went
+  **Not making new videos** (grey), or what is wrong in red - the server out of reach or out of room, **The server went
   quiet** (no word from it for 10 minutes while the batch runs), or **N couldn't be made**. Where: on the server,
   this phone or the engine.
 - **Now:** the video being made and how far it is (the server now reports its progress, and how many failed).
