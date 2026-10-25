@@ -10,7 +10,9 @@ instead of the server. Railway no longer lets a new service use a config file ("
 services that have never used Config as Code cannot opt in"), so the "Config file path" `/server/railway.json`
 step did nothing, and Railway built the repo as a plain website.
 **Now:** the server's image is the `Dockerfile` at the top of the repo (moved from `server/Dockerfile`), which
-Railway uses by itself; `server/railway.json` is gone. The server also answers the phone on 8080 when Railway's
+Railway uses by itself. `server/railway.json` stays, pointing at that same `Dockerfile`, for a service that took
+it as its config file before Railway closed that (his friend's shows "Config as Code is deprecated"): it keeps
+working until 2026-12-01 and builds the same server. The server also answers the phone on 8080 when Railway's
 own `PORT` is another, so the address made with port 8080 always reaches it. A working server's `/health` is one
 line of text, `{"ok":true,...}` (`server/README.md` says how to tell).
 

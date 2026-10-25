@@ -14,8 +14,9 @@ Posts for approval as always.
 2. In the new service's **Settings**:
    - **Source**: branch `claude/cutter-lockdown-and-map` (not `main`). Leave **Root Directory** empty (the whole repo).
    - Nothing to set for the build: Railway finds the `Dockerfile` at the top of the repo and builds it.
-     (Railway's config files - "Config-as-code" - can't be turned on for new services since 2026-08-28, so
-     there is none.)
+     (Railway's config files - "Config-as-code" - can't be turned on for new services since 2026-08-28.
+     A service that already has `/server/railway.json` as its config file keeps it until 2026-12-01: it
+     points at the same `Dockerfile`, so both ways build the same server. Its "deprecated" notice is only that.)
    - **Networking** -> **Generate Domain**, port **8080**. That address is what goes in the Cutter. The server
      answers on 8080 whatever `PORT` Railway gives it.
    - Optional, under **Deploy**: Healthcheck Path `/health`, Restart Policy **Always**.
