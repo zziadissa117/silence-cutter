@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 
 import { emptyBank, addDays, todayHere } from './batch'
-import { QUIET_MS, batchState, lastReadyAt, statusDays, type StatusDay } from './batchStatus'
+import { QUIET_MS, batchState, lastReadyAt, statusDays, type StatusDay } from './batchNow'
 import type { Job } from './jobs'
 import type { ServerPost } from './posting'
 

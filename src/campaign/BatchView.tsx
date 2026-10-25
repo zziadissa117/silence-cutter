@@ -37,7 +37,7 @@ import {
 } from './batch'
 import { StepOrder } from './StepOrder'
 import { BatchStatus } from './BatchStatus'
-import { batchState, lastReadyAt, statusDays } from './batchStatus'
+import { batchState, lastReadyAt, statusDays } from './batchNow'
 import { ClipViewer } from './ClipViewer'
 import { describeClip } from './clipCheck'
 import { report as reportProblem } from '../report'

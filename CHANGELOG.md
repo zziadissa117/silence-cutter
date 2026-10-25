@@ -3,11 +3,18 @@
 Newest first. Every change says what it does, how to use it, and how it works
 underneath. Kept up to date with each commit.
 
+## Fix: ./deploy.sh failed on the Mac ("differs ... only in casing")
+Only ./deploy.sh is needed.
+The Batch tab's new card had its logic in `batchStatus.ts` beside `BatchStatus.tsx`. A Mac's disk doesn't tell
+capitals apart, so `./BatchStatus` found the logic file and the build stopped - nothing was shipped. The logic is
+`batchNow.ts` now, and `caseNames.test.ts` fails the checks whenever two of the app's files (tests aside) differ
+only in capitals, so it is caught here, before his Mac.
+
 ## Batch tab: one card at the top says what the batch is doing
 Only ./deploy.sh is needed; then close the Cutter and open it again.
 **Why (2026-10-25, his words):** "the UI is disgusting on the batch, so we don't even know if posts are being made
 or not." What the batch was doing was six grey lines under every setting, at the very bottom of the tab.
-**Now:** a card right under the campaign picker (`BatchStatus.tsx`, its logic in `batchStatus.ts`):
+**Now:** a card right under the campaign picker (`BatchStatus.tsx`, its logic in `batchNow.ts`):
 - One headline with a dot: **Making videos** (green), **Up to date** (green), **About to make more**, **Paused**,
   **Stopped** (grey), or what is wrong in red - the server out of reach or out of room, **The server went
   quiet** (no word from it for 10 minutes while the batch runs), or **N couldn't be made**. Where: on the server,

@@ -1,5 +1,6 @@
-// What the Batch tab says at the top about a batch (BatchStatus.tsx): is it
-// making videos right now, where, and is each of the next days ready. Before
+// What the Batch tab says at the top about a batch (BatchStatus.tsx - this
+// file is named apart from it: a Mac's disk doesn't tell batchStatus.ts from
+// BatchStatus.tsx, and his deploy failed on it): is it making videos right now, where, and is each of the next days ready. Before
 // this the answer was six grey lines under every setting, and with the batch
 // on the Cutter server he couldn't tell whether posts were being made at all.
 

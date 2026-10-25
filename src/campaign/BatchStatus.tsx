@@ -1,9 +1,9 @@
-// The top of the Batch tab while a batch runs (batchStatus.ts): what it is
+// The top of the Batch tab while a batch runs (batchNow.ts): what it is
 // doing now, in one line he can read at a glance, and each of the next days
 // - how many are ready in Posts, gone out, and still being made.
 
 import { todayHere } from './batch'
-import { timeAgo, type BatchState, type StatusDay } from './batchStatus'
+import { timeAgo, type BatchState, type StatusDay } from './batchNow'
 
 const WHERE = { phone: 'On this phone', server: 'On the server', engine: 'On the engine' } as const
 
