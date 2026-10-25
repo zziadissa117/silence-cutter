@@ -1130,6 +1130,7 @@ export function BatchView({
     making: makingNow !== null || waitingNow > 0 || engineBusy || (where === 'phone' && topping),
     failed: failedNow,
     heardAt: serverSeen ?? null,
+    askedAt: onServer ? (lastServerStatus()?.askedAt ?? null) : null,
     days,
   })
   const showStatus = Boolean(bank) && (running || makingNow !== null || waitingNow > 0 || failedNow > 0 || statusProblem !== null || days.some((d) => d.ready > 0))

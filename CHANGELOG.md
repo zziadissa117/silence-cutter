@@ -3,6 +3,16 @@
 Newest first. Every change says what it does, how to use it, and how it works
 underneath. Kept up to date with each commit.
 
+## Fix: "The server went quiet" while the phone was only sending clips
+Only ./deploy.sh is needed.
+**What happened (2026-10-25):** after his server's disk was made new, the phone sent every clip up again - many
+minutes - and the Batch card said "The server went quiet - nothing from it for 12 min". The server was fine: the
+phone asks how the server is doing once per round of sending (`serverLink.linkOnce`), and that round was still
+sending clips, so the last answer it had grew old.
+**Now:** while a round is still sending, each 30 s tick asks the server's status anyway, and the status keeps when
+the phone asked (`askedAt`). "Went quiet" is measured from that question - the server's page silent for 10 minutes
+at the moment it was asked - never from the phone not asking.
+
 ## Batch card: "Stopped" says the made videos still go out
 Only ./deploy.sh is needed.
 A stopped batch's card said **Stopped**, and he read it as his 18 videos for today being stopped. It now says **Not

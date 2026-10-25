@@ -108,6 +108,33 @@ describe('linkBatches (every batch to the Cutter server)', () => {
     expect(server.inbox.get('c1')!.perDay).toBe(5)
   })
 
+  it("still asks how the server is doing while clips are going up", async () => {
+    banks.set('c1', { ...emptyBank('c1', 'a1'), reactions: [file('r1')], products: [file('p1')], running: true })
+    // The clip upload hangs until let go: a long round of sending.
+    let letGo = () => {}
+    const held = new Promise<void>((resolve) => (letGo = resolve))
+    const plain = server.fetchMock.getMockImplementation()!
+    let sending = false
+    server.fetchMock.mockImplementation(async (url: string, init?: RequestInit) => {
+      if (new URL(url).pathname.startsWith('/files/')) {
+        sending = true
+        await held
+      }
+      return plain(url, init)
+    })
+    const ctx = { campaignIds: ['c1'], jobs: () => [], removeJob: () => {} }
+    const first = linkBatches(ctx)
+    try {
+      await vi.waitFor(() => expect(sending).toBe(true))
+      const asked = server.calls.filter((c) => c === 'GET /status').length
+      void linkBatches(ctx)
+      await vi.waitFor(() => expect(server.calls.filter((c) => c === 'GET /status').length).toBe(asked + 1))
+    } finally {
+      letGo()
+      await first
+    }
+  })
+
   it('leaves the engine its own batches', async () => {
     banks.set('c1', { ...emptyBank('c1', 'a1'), layout: 'engine', reactions: [file('r1')], running: true })
     await linkBatches({ campaignIds: ['c1'], jobs: () => [], removeJob: () => {} })

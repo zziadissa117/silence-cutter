@@ -62,6 +62,10 @@ describe('what the card leads with', () => {
     // Still making the others: that leads; the failed ones are a line of the card.
     expect(batchState({ ...base, making: true, failed: 2 }).title).toBe('Making videos')
     expect(batchState({ ...base, failed: 2 })).toMatchObject({ tone: 'bad', title: "2 couldn't be made" })
+    // The phone busy sending clips hasn't asked for 15 minutes: the server
+    // had checked in 20 s before that last question, so it isn't quiet.
+    const askedLong = new Date(now.getTime() - 15 * 60_000)
+    expect(batchState({ ...base, making: true, askedAt: askedLong.toISOString(), heardAt: new Date(askedLong.getTime() - 20_000).toISOString() }).title).toBe('Making videos')
     // A phone isn't a server: no word from one is nothing.
     expect(batchState({ ...base, where: 'phone', heardAt: null }).title).toBe('Up to date')
   })

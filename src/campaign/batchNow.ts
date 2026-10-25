@@ -91,13 +91,16 @@ export function batchState(input: {
   failed?: number
   /** When the server last checked in (server only). */
   heardAt: string | null
+  /** When the phone last asked it - quiet is measured from then, not from now. */
+  askedAt?: string | null
   days: readonly StatusDay[]
   now?: number
 }): BatchState {
   const { running, where, days } = input
   const now = input.now ?? Date.now()
   if (input.problem) return { tone: 'bad', title: 'Something is wrong', line: input.problem }
-  const quietFor = input.heardAt ? now - Date.parse(input.heardAt) : null
+  const asked = input.askedAt ? Math.min(now, Date.parse(input.askedAt)) : now
+  const quietFor = input.heardAt ? asked - Date.parse(input.heardAt) : null
   if (where === 'server' && running && quietFor !== null && quietFor > QUIET_MS) {
     return {
       tone: 'bad',

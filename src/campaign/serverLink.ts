@@ -59,6 +59,10 @@ export function roomProblem(room: ServerRoom | null | undefined): string | null 
 export interface ServerStatus extends ServerRoom {
   version: string
   chrome: 'running' | 'starting' | 'off'
+  /** When this phone asked (its own clock): the server's page is quiet only
+   *  if it had said nothing for a while at that moment - not because the
+   *  phone hasn't asked lately. */
+  askedAt?: string
   /** What the app on the server last said, and when. */
   page: (ServerProgress & { at: string }) | null
 }
@@ -122,7 +126,7 @@ export function connectServer(): Promise<ServerRoom & { version: string }> {
 }
 
 export async function serverStatus(): Promise<ServerStatus> {
-  const status = await call<ServerStatus>('GET', '/status')
+  const status = { ...(await call<ServerStatus>('GET', '/status')), askedAt: new Date().toISOString() }
   try {
     localStorage.setItem(STATUS_KEY, JSON.stringify(status))
   } catch {
@@ -279,6 +283,14 @@ let again = false
 export function linkBatches(ctx: { campaignIds: string[]; jobs: () => readonly Job[]; removeJob: (id: string) => void }): Promise<void> {
   if (running) {
     again = true
+    // A run can take many minutes - all the clips going up again after the
+    // server's disk was new (2026-10-25) - and the Batch tab said "the server
+    // went quiet" meanwhile: how the server is doing is still asked each time.
+    if (serverUrl() && currentSession()) {
+      void serverStatus()
+        .then(() => ctx.campaignIds.forEach((id) => tell(id, false)))
+        .catch(() => {})
+    }
     return running
   }
   running = (async () => {
