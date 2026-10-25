@@ -10,6 +10,11 @@ vi.mock('./store', () => ({
   saveBankFile: vi.fn(async () => {}),
 }))
 vi.mock('./cloud', () => ({ currentSession: () => ({ name: 'me', token: 'tok' }) }))
+vi.mock('./emojiSprites', async (original) => ({
+  ...(await original<Record<string, unknown>>()),
+  // The iPhone's own emoji, drawn: a canvas here has no fonts.
+  drawEmoji: vi.fn(async () => ({ blob: new Blob(['png']), advance: 1.25, left: 0.02, top: -0.95, width: 1.2, height: 1.2 })),
+}))
 vi.mock('./posting', async (original) => ({
   ...(await original<Record<string, unknown>>()),
   postingHere: () => ({ profile: { id: 'prof1', accounts: [], settings: {}, timezone: 'UTC' }, sendHere: true }),
@@ -133,6 +138,22 @@ describe('linkBatches (every batch to the Cutter server)', () => {
     } finally {
       letGo()
       await first
+    }
+  })
+
+  it("an iPhone's emoji pictures go up before the headlines that need them", async () => {
+    const ua = vi.spyOn(navigator, 'userAgent', 'get').mockReturnValue('Mozilla/5.0 (iPhone; CPU iPhone OS 18_7 like Mac OS X)')
+    try {
+      banks.set('c1', { ...emptyBank('c1', 'a1'), reactions: [file('r1')], products: [file('p1')], headlines: ['wait for it 😂'], running: true })
+      await linkBatches({ campaignIds: ['c1'], jobs: () => [], removeJob: () => {} })
+      expect(server.inbox.get('c1')!.emojis?.map((e) => e.text)).toEqual(['😂'])
+      expect(server.files.has('emoji-1f602')).toBe(true)
+      const picture = server.calls.findIndex((c) => c.startsWith('PUT /files/emoji-1f602'))
+      const bank = server.calls.findIndex((c) => c.startsWith('PUT /banks'))
+      expect(picture).toBeGreaterThanOrEqual(0)
+      expect(picture).toBeLessThan(bank)
+    } finally {
+      ua.mockRestore()
     }
   })
 

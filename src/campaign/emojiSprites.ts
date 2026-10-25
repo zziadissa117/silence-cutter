@@ -8,6 +8,7 @@
 // the size and place the iPhone would have drawn it. A phone draws its own
 // emoji as before: the pictures are only ever used on the server.
 
+import { report } from '../report'
 import type { BankFile } from './batch'
 import { SERVER_MODE } from './serverFlag'
 
@@ -95,6 +96,7 @@ export function emojiSpritesReady(): Promise<void> {
 /** For tests: pictures as given, nothing loaded. */
 export function useEmojiSprites(list: readonly { sprite: EmojiSprite; image: CanvasImageSource }[]): void {
   ready.clear()
+  checked.clear()
   for (const item of list) ready.set(item.sprite.text, item)
 }
 
@@ -116,6 +118,21 @@ function runs(line: string): Run[] | null {
     else out.push({ text: g })
   }
   return pictured ? out : null
+}
+
+const checked = new Set<string>()
+
+/** On the server, an emoji about to be drawn with no picture from the phone
+ *  - Google's would show - is reported, once per emoji, so it is seen and
+ *  fixed rather than found in his posts. Text checked once each. */
+export function checkPictures(text: string, onServer = SERVER_MODE): string[] {
+  if (!onServer || checked.has(text)) return []
+  checked.add(text)
+  const missing = emojisIn([text]).filter((g) => !ready.has(g) && !checked.has(`emoji:${g}`))
+  if (missing.length === 0) return []
+  for (const g of missing) checked.add(`emoji:${g}`)
+  report({ page: 'campaign', kind: 'check', phase: 'emoji', message: `No picture from the phone for ${missing.join(' ')} - drawn with the server's own emoji, in "${text.slice(0, 80)}"` })
+  return missing
 }
 
 /** Whether the line has an emoji drawn from its picture. */

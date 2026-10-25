@@ -6,7 +6,7 @@
 // videos go: the For You tabs across the top, the like/comment/share column
 // down the right, and the caption across the bottom.
 
-import { drawLine, hasPictures, measureLine } from './emojiSprites'
+import { checkPictures, drawLine, hasPictures, measureLine } from './emojiSprites'
 import { HEADLINE_FAMILY, headlineFontReady } from './headlineFont'
 import { HEADLINE_SCALE, type HeadlinePlace, type HeadlinePosition, type HeadlineSize, type HeadlineStyle, type LogoPosition, type OutlineWidth } from './look'
 
@@ -117,6 +117,7 @@ export function layoutHeadline(
 ): HeadlineLayout | null {
   const text = headline.text.trim()
   if (!text) return null
+  checkPictures(text)
   // Sized off the shorter side, so a landscape video does not get a
   // headline taller than the frame.
   const boxed = headline.style === 'box'

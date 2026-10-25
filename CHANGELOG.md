@@ -3,6 +3,16 @@
 Newest first. Every change says what it does, how to use it, and how it works
 underneath. Kept up to date with each commit.
 
+## Apple's emoji: kept that way for everyone
+Only ./deploy.sh is needed; the Railway servers rebuild by themselves.
+After his friend's batch videos came out with Google's emoji, three guards so it doesn't happen to anyone again:
+- Any iPhone (or Mac) with a server sends the pictures of a headline's emoji before the headline itself reaches
+  the server - checked by a test that has the clip upload, the emoji picture and the bank in that order
+  (`serverLink.test.ts`). The server's videos wait for the pictures it has been sent (`headlineFontReady`).
+- A server about to draw an emoji it has no picture for reports it, once per emoji (`emojiSprites.checkPictures`,
+  a `check`/`emoji` report naming the emoji and the headline) - seen in the reports before it is seen in posts.
+- A test fails if any headline line in `overlay.ts` is drawn without `drawLine` (the one way the pictures are used).
+
 ## The server's videos have Apple's emoji, not Google's ("Samsung emojis")
 `./deploy.sh` for the phones; each Railway server rebuilds by itself.
 **What happened (his friend's posts, 2026-10-25):** the Cutter server draws the headlines in Chrome on Linux, which

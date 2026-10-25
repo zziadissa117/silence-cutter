@@ -12,7 +12,7 @@
 import { fromPhone, PROGRESS_FIELDS, type BankFile, type BatchBank } from './batch'
 import { handOver, oneAtATime } from './batchRun'
 import { currentSession } from './cloud'
-import { drawsAppleEmoji, emojiSpritesFor } from './emojiSprites'
+import { drawEmoji, drawsAppleEmoji, emojiSpritesFor } from './emojiSprites'
 import type { Job } from './jobs'
 import { listPosts, postingHere, type ServerPost } from './posting'
 import { loadBankFile, loadBatchBank, saveBankFile, saveBatchBank } from './store'
@@ -342,7 +342,7 @@ async function linkOnce({
  *  show Apple's emoji, not Linux's. Only an iPhone's (or a Mac's) are drawn. */
 async function withEmojis(campaignId: string, bank: BatchBank): Promise<BatchBank> {
   if (!drawsAppleEmoji()) return bank
-  const emojis = await emojiSpritesFor(bank, saveBankFile)
+  const emojis = await emojiSpritesFor(bank, saveBankFile, drawEmoji)
   if (!emojis) return bank
   // Read again right before: a change he made meanwhile is kept.
   const next = { ...((await loadBatchBank(campaignId)) ?? bank), emojis }

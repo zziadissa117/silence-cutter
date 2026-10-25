@@ -1,6 +1,9 @@
+// @vitest-environment jsdom
+import { readFileSync } from 'node:fs'
+import path from 'node:path'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
-import { drawLine, emojisIn, emojiSpritesFor, graphemes, measureLine, spriteId, useEmojiSprites, type EmojiSprite } from './emojiSprites'
+import { checkPictures, drawLine, emojisIn, emojiSpritesFor, graphemes, measureLine, spriteId, useEmojiSprites, type EmojiSprite } from './emojiSprites'
 
 const sprite = (text: string, over: Partial<EmojiSprite> = {}): EmojiSprite => ({
   id: spriteId(text),
@@ -75,5 +78,22 @@ describe('the emoji of his headlines', () => {
     expect(await emojiSpritesFor({ headlines: ['wait 😂'], emojis: made! }, keep, draw)).toBeNull()
     expect(await emojiSpritesFor({ headlines: ['no emoji'] }, keep, draw)).toBeNull()
     expect(draw).toHaveBeenCalledTimes(3)
+  })
+})
+
+describe('never Google emoji in a video again', () => {
+  it('the server says when it would draw an emoji with no picture from the phone, once each', () => {
+    expect(checkPictures('wait 😂 🔥', true)).toEqual(['😂', '🔥'])
+    expect(checkPictures('again 😂', true)).toEqual([])
+    useEmojiSprites([{ sprite: sprite('🚀'), image: {} as CanvasImageSource }])
+    expect(checkPictures('go 🚀', true)).toEqual([])
+    // A phone draws its own: nothing to say.
+    expect(checkPictures('wait 🎉', false)).toEqual([])
+  })
+
+  it("every headline line is drawn through drawLine, so the phone's pictures are always used", () => {
+    const source = readFileSync(path.join(__dirname, 'overlay.ts'), 'utf8')
+    // Only inkOf's own scratch canvas (c.) draws text directly.
+    expect(source.match(/\bctx\.(fillText|strokeText)\(/g) ?? []).toEqual([])
   })
 })
