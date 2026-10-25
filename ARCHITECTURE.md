@@ -454,6 +454,11 @@ turned on for new services since 2026-08-28).
   batch over (clips first, then `batchRun.handOver`, `where: 'server'`, `movedAt`), sends each settings change
   (`settingsKey`), and reads back the server's progress. `topUp` makes nothing on a phone with a server connected.
 - HEVC/HDR clips are made H.264 by ffmpeg when they arrive; unused clips are let go after two days (`sweepFiles`).
+- Emoji: Chrome on Linux has only Google's. The iPhone draws each emoji of the bank's headlines and step names
+  as a PNG with its own font (`emojiSprites.drawEmoji`: advance and ink box in ems), keeps them in `bank.emojis`
+  (bank files, sent with the clips - `serverLink.withEmojis`), and the server's page loads them
+  (`serverMode`, `loadEmojiSprites`; `headlineFontReady` waits for them) and draws each where its emoji goes
+  (`overlay.ts` through `drawLine`/`measureLine`). A phone never uses them; without them it is the server's own.
 
 ## The engine (`engine/`, on Railway)
 

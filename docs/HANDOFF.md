@@ -54,7 +54,7 @@ He wants plain words, no permission questions (questions are fine), the deploy c
    making every batch day and night. Built and tested end to end here (stand-in posting function over CDP),
    not on Railway - he hasn't set it up yet (no reports from a headless device). Known limits told to him:
    Hobby volume 5 GB (it lets unused clips go after 2 days and drops its copy once Postiz has a video), one
-   posting profile per server, no "Edit again" on server-made videos, Google's emoji instead of Apple's.
+   posting profile per server, no "Edit again" on server-made videos, Google's emoji instead of Apple's (fixed 2026-10-25: the iPhone sends its emoji as pictures, `emojiSprites.ts`).
    The Docker image couldn't be built here (Debian mirrors blocked by the proxy); the app builds from exactly
    the image's context.
 3. **Rejected batch videos are not replaced**: `filled` still counts them, so "10 a day" can mean fewer going

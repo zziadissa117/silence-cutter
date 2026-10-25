@@ -15,8 +15,9 @@
 import { canEncodeAudio } from 'mediabunny'
 
 import { fromPhone, type BatchBank } from './batch'
+import { loadEmojiSprites } from './emojiSprites'
 import { SERVER_MODE } from './serverFlag'
-import { loadBatchBank, saveBatchBank } from './store'
+import { loadBankFile, loadBatchBank, saveBatchBank } from './store'
 
 /** A bank arrived or changed: make what is due now rather than at the next half hour. */
 export const SERVER_BANKS_EVENT = 'cutter:server-banks'
@@ -79,6 +80,9 @@ export async function startServerMode(): Promise<void> {
   window.addEventListener('unhandledrejection', (e) => serverLog(`unhandled: ${e.reason instanceof Error ? e.reason.message : String(e.reason)}`))
   serverLog(`started, version ${__APP_VERSION__}`)
 
+  // The iPhone's emoji pictures for the banks it already has, before any
+  // video is made (headlineFontReady waits for them).
+  for (const id of serverCampaigns()) void loadBatchBank(id).then((bank) => loadEmojiSprites(bank?.emojis, loadBankFile))
   void inboxLoop()
   void statusLoop()
 }
@@ -107,7 +111,9 @@ async function takeInbox(): Promise<void> {
   let changed = false
   for (const [campaignId, { bank, at }] of Object.entries(box.banks ?? {})) {
     const here = await loadBatchBank(campaignId)
-    await saveBatchBank(fromPhone(here, { ...bank, campaignId }))
+    const merged = fromPhone(here, { ...bank, campaignId })
+    await saveBatchBank(merged)
+    void loadEmojiSprites(merged.emojis, loadBankFile)
     keepServerCampaigns([...serverCampaigns(), campaignId])
     taken.banks[campaignId] = at
     changed = true

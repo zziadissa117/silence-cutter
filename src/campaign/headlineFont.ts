@@ -7,6 +7,7 @@
 // no signal. One variable file covers every weight; the Latin Extended half
 // only loads when a headline needs one of its letters.
 
+import { emojiSpritesReady } from './emojiSprites'
 import latin from './fonts/TikTokSans-latin.woff2'
 import latinExt from './fonts/TikTokSans-latin-ext.woff2'
 
@@ -19,9 +20,15 @@ const LATIN_EXT =
 
 let ready: Promise<void> | null = null
 
-/** Resolves once TikTok Sans can be drawn. Never rejects: if the font will
- *  not load, the headline falls back to Helvetica rather than not appearing. */
+/** Resolves once TikTok Sans can be drawn - and, on the Cutter server, the
+ *  iPhone's emoji pictures asked for so far (emojiSprites.ts). Never rejects:
+ *  if the font will not load, the headline falls back to Helvetica rather
+ *  than not appearing. */
 export function headlineFontReady(): Promise<void> {
+  return fontReady().then(() => emojiSpritesReady())
+}
+
+function fontReady(): Promise<void> {
   ready ??= (async () => {
     if (typeof document === 'undefined' || typeof FontFace === 'undefined') return
     const faces = [

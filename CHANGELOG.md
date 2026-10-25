@@ -3,6 +3,22 @@
 Newest first. Every change says what it does, how to use it, and how it works
 underneath. Kept up to date with each commit.
 
+## The server's videos have Apple's emoji, not Google's ("Samsung emojis")
+`./deploy.sh` for the phones; each Railway server rebuilds by itself.
+**What happened (his friend's posts, 2026-10-25):** the Cutter server draws the headlines in Chrome on Linux, which
+has only Google's emoji, so the batch videos it made showed them instead of the iPhone's. Apple's emoji font can't be
+put on a Linux server.
+**Now:** the iPhone draws each emoji of the batch's headlines and step names as a picture, with its own font, as it
+always drew them in his videos (`emojiSprites.ts`: `drawEmoji` - cut to its ink, with its advance and where it sits
+from the baseline, in ems). They are kept with the bank (`bank.emojis`, bank files named `emoji-<code points>`) and
+go up with the clips (`serverLink.withEmojis`, `bankFiles`). The server's page loads them (`serverMode`;
+`headlineFontReady` waits for them before a video is made) and `overlay.ts` draws each picture where its emoji goes
+(`drawLine`, `measureLine`; an outline goes round the words only, as on the iPhone). The server keeps them like the
+clips (`main.mjs` `bankFileIds`). A phone draws its own emoji as before; only an iPhone's (or a Mac's) pictures are
+sent. Checked in Chrome here: a headline drawn from pictures made this way lands on the same size, height and place
+as the same headline drawn normally. Not seen on a real iPhone + server yet: new emoji only reach the server the next
+time the phone opens the app with signal.
+
 ## Fix: the server's Chrome started and quit every 5 seconds ("chrome stopped 21")
 Nothing to deploy with ./deploy.sh: each Railway server rebuilds by itself from this push.
 **What happened (2026-10-25, his server's log):** `chrome started` / `chrome stopped 21` every 5 seconds. Exit 21 is

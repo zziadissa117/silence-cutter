@@ -12,9 +12,10 @@
 import { fromPhone, PROGRESS_FIELDS, type BankFile, type BatchBank } from './batch'
 import { handOver, oneAtATime } from './batchRun'
 import { currentSession } from './cloud'
+import { drawsAppleEmoji, emojiSpritesFor } from './emojiSprites'
 import type { Job } from './jobs'
 import { listPosts, postingHere, type ServerPost } from './posting'
-import { loadBankFile, loadBatchBank, saveBatchBank } from './store'
+import { loadBankFile, loadBatchBank, saveBankFile, saveBatchBank } from './store'
 import { SERVER_URL_KEY } from './serverFlag'
 import type { ServerMaking, ServerProgress } from './serverMode'
 
@@ -162,6 +163,7 @@ export function bankFiles(bank: BatchBank): BankFile[] {
     ...(bank.steps ?? []).flatMap((s) => s.files),
     ...(bank.formula?.left ? [bank.formula.left] : []),
     ...(bank.formula?.right ? [bank.formula.right] : []),
+    ...(bank.emojis ?? []),
   ]
   return [...new Map(all.map((f) => [f.id, f])).values()]
 }
@@ -335,6 +337,19 @@ async function linkOnce({
   }
 }
 
+/** The emoji of his headlines drawn by this iPhone (emojiSprites.ts) and
+ *  kept with the bank, so they go up with the clips and the server's videos
+ *  show Apple's emoji, not Linux's. Only an iPhone's (or a Mac's) are drawn. */
+async function withEmojis(campaignId: string, bank: BatchBank): Promise<BatchBank> {
+  if (!drawsAppleEmoji()) return bank
+  const emojis = await emojiSpritesFor(bank, saveBankFile)
+  if (!emojis) return bank
+  // Read again right before: a change he made meanwhile is kept.
+  const next = { ...((await loadBatchBank(campaignId)) ?? bank), emojis }
+  await saveBatchBank(next)
+  return next
+}
+
 async function linkBank(
   campaignId: string,
   status: ServerStatus,
@@ -342,9 +357,10 @@ async function linkBank(
   jobs: () => readonly Job[],
   removeJob: (id: string) => void,
 ): Promise<void> {
-  const bank = await loadBatchBank(campaignId)
+  const loaded = await loadBatchBank(campaignId)
   // The engine makes its own; an empty bank goes up once there is something in it.
-  if (!bank || bank.layout === 'engine') return
+  if (!loaded || loaded.layout === 'engine') return
+  const bank = await withEmojis(campaignId, loaded)
   if (bank.where !== 'server') {
     if (bankFiles(bank).length === 0 && !bank.running) return
     await sendFiles(bank)

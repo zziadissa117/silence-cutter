@@ -7,6 +7,7 @@ vi.mock('./store', () => ({
   loadBatchBank: vi.fn(async (id: string) => structuredClone(banks.get(id) ?? null)),
   saveBatchBank: vi.fn(async (bank: BatchBank) => void banks.set(bank.campaignId, structuredClone(bank))),
   loadBankFile: vi.fn(async (file: BankFile) => new File([new Uint8Array(file.size)], file.name, { type: file.type })),
+  saveBankFile: vi.fn(async () => {}),
 }))
 vi.mock('./cloud', () => ({ currentSession: () => ({ name: 'me', token: 'tok' }) }))
 vi.mock('./posting', async (original) => ({

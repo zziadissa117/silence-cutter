@@ -9,6 +9,7 @@
 // itself. What was made is kept, so the next batch carries on where this
 // one left off.
 
+import type { EmojiSprite } from './emojiSprites'
 import type { HeadlineStyle } from './look'
 
 /** A file in the bank, kept on this phone only - his own footage. */
@@ -35,6 +36,9 @@ export interface BatchBank {
   reactions: BankFile[]
   products: BankFile[]
   headlines: string[]
+  /** The emoji of its headlines as the iPhone draws them, for the Cutter
+   *  server's videos (emojiSprites.ts) - kept by a phone with a server. */
+  emojis?: EmojiSprite[]
   music: BankFile[]
   perDay: number
   /** More videos each day than the day before ("start with 4 and add +1 per

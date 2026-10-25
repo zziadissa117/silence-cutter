@@ -6,6 +6,7 @@
 // videos go: the For You tabs across the top, the like/comment/share column
 // down the right, and the caption across the bottom.
 
+import { drawLine, hasPictures, measureLine } from './emojiSprites'
 import { HEADLINE_FAMILY, headlineFontReady } from './headlineFont'
 import { HEADLINE_SCALE, type HeadlinePlace, type HeadlinePosition, type HeadlineSize, type HeadlineStyle, type LogoPosition, type OutlineWidth } from './look'
 
@@ -128,12 +129,15 @@ export function layoutHeadline(
     // emoji's measured width can be far off, and a line that came out wider
     // than measured ran off one side.
     const drawnWidth = (s: string) => {
+      // On the server, emoji drawn from the iPhone's pictures: their width is known.
+      if (hasPictures(s)) return measureLine(ctx, s, fontPx)
       const measured = ctx.measureText(s).width
       if (!EMOJI.test(s)) return measured
       const ink = inkOf(s, font, fontPx, measured)
       return ink ? Math.max(measured, ink.width) : measured
     }
     const lines = wrapText(text, maxWidth, drawnWidth).map((line) => {
+      if (hasPictures(line)) return { text: line, width: measureLine(ctx, line, fontPx) }
       const measured = ctx.measureText(line).width
       const ink = inkOf(line, font, fontPx, measured)
       if (!ink) return { text: line, width: measured }
@@ -440,18 +444,18 @@ export function drawHeadline(ctx: Ctx, layout: HeadlineLayout): void {
     const x = layout.centerX + (line.shift ?? 0)
     if (layout.style === 'box') {
       ctx.fillStyle = '#000000'
-      ctx.fillText(line.text, x, baseline)
+      drawLine(ctx, line.text, x, baseline, layout.fontPx)
     } else if (layout.style === 'snap') {
       ctx.fillStyle = '#ffffff'
-      ctx.fillText(line.text, x, baseline)
+      drawLine(ctx, line.text, x, baseline, layout.fontPx)
     } else {
       ctx.lineJoin = 'round'
       ctx.miterLimit = 2
       ctx.lineWidth = layout.fontPx * OUTLINE.stroke * OUTLINE_WIDTH[layout.outlineWidth]
       ctx.strokeStyle = layout.outlineColor
-      ctx.strokeText(line.text, x, baseline)
+      drawLine(ctx, line.text, x, baseline, layout.fontPx, 'stroke')
       ctx.fillStyle = '#ffffff'
-      ctx.fillText(line.text, x, baseline)
+      drawLine(ctx, line.text, x, baseline, layout.fontPx)
     }
   })
   ctx.restore()

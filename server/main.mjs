@@ -282,7 +282,8 @@ const startedAt = Date.now()
 const readAt = new Map()
 
 function bankFileIds(bank) {
-  const files = [...(bank?.reactions ?? []), ...(bank?.products ?? []), ...(bank?.music ?? []), ...(bank?.steps ?? []).flatMap((s) => s.files ?? [])]
+  // The emoji pictures too (src/campaign/emojiSprites.ts): small, and every video's headline needs them.
+  const files = [...(bank?.reactions ?? []), ...(bank?.products ?? []), ...(bank?.music ?? []), ...(bank?.steps ?? []).flatMap((s) => s.files ?? []), ...(bank?.emojis ?? [])]
   if (bank?.formula?.left) files.push(bank.formula.left)
   if (bank?.formula?.right) files.push(bank.formula.right)
   return files.map((f) => f?.id).filter(Boolean)
