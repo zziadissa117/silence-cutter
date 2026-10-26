@@ -3,6 +3,26 @@
 Newest first. Every change says what it does, how to use it, and how it works
 underneath. Kept up to date with each commit.
 
+## Fix: his friend's videos stuck out of Postiz all day; even days no longer moved again
+Needs deploying: run ./deploy-server.sh (./deploy.sh runs it by itself).
+**What happened (2026-10-26):** his friend's 80 videos taken out by the respread sat out of Postiz all afternoon
+with his Postiz hour free. Three things together:
+- A video Postiz couldn't take far ahead, on an account Buffer backs up, is parked until a few hours before its
+  time - and the new hourly count (`PostizWait`, "this hour's share is used") parked it the same way, for hours.
+  Now `PostizWait` on a video more than an hour off goes to `failed()` and is tried again when the hour is out
+  (no try spent). Parking is left for Postiz being down.
+- The half-hourly "ask Postiz again" for parked videos (`probePostiz`) went by the parked videos' last change - and
+  the respread changed them on every go, so it never asked. It keeps its own note now (`probe:<login>` in
+  `cutter_config`).
+- One login's Postiz hour running out stopped the scheduler for every login (`postizBusyUntil` was one for all).
+  It is per login now (`postizBusy`); the tick looks at up to 60 due posts and tries 10 of the logins not waiting.
+**The respread moved what was already even (`respread.ts` `evenAlready`):** worked out afresh each time, the rest of
+today shifted a little with every go, and so did every new day the batch made (its even times differ from the
+respread's own) - each one in Postiz taken out and put back for nothing. A day whose videos are already evenly
+apart (every gap within 40% of their average, and today's not bunched up in what is left of it; a whole day's
+last-to-first gap counts) is now left as it is. The parked 80 were put back to be tried at once by hand
+(`retry_at`), with his friend's hour free.
+
 ## Postiz's 30 requests an hour, shared out: posting first
 Needs deploying: run ./deploy-server.sh (./deploy.sh runs it by itself).
 **What happened (2026-10-26, 06:00-14:00 UTC):** after the respread took videos out, only 60 of about 470 went back

@@ -152,8 +152,11 @@ class PostizProblem extends Problem {}
  *  it said "too many" a moment ago (postizAllowance). Waiting it out is no
  *  failed try - it never counts towards giving up on a post. */
 class PostizWait extends PostizProblem {
-  constructor() {
+  /** When Postiz can be asked again. */
+  until: number
+  constructor(until: number) {
     super('Postiz says too many requests right now.', true, 429)
+    this.until = until
   }
 }
 
@@ -297,10 +300,9 @@ async function postizAllowance(key: string, need: PostizNeed): Promise<{ id: str
     const use = await readUse(id, now)
     const busy = now < use.busyUntil
     if (busy || use.used >= (need === 'read' ? POSTIZ_READS : POSTIZ_PER_HOUR - 2)) {
-      // Posting can't be done this run: the tick and the respread stop asking.
-      // (Reads running out leaves posting its share.)
-      if (busy || need === 'post') postizBusyUntil = Math.max(postizBusyUntil, busy ? use.busyUntil : use.since + 60 * MINUTE)
-      throw new PostizWait()
+      // The tick and the respread stop asking for this login (failed sets
+      // postizBusy). Reads running out leaves posting its share.
+      throw new PostizWait(busy ? use.busyUntil : use.since + 60 * MINUTE)
     }
     const spent = { ...use, used: use.used + 1 }
     await saveUse(id, spent)
@@ -348,10 +350,15 @@ async function postiz<T>(key: string, method: string, path: string, body?: unkno
   postizFailure(response.status, postizMessage(json) ?? text.slice(0, 300))
 }
 
-/** Until when Postiz has said "too many requests" (it counts by the hour):
- *  nothing more is asked of it before then in this run - every try would only
- *  be turned away and spend its patience (tick, respreadBatches). */
-let postizBusyUntil = 0
+/** Until when each login's Postiz has said "too many requests" (it counts by
+ *  the hour): nothing more of that login's is tried before then in this run -
+ *  every try would only be turned away (tick, respreadBatches). By login: one
+ *  whose hour is used up held up every other's posts too (2026-10-26). */
+const postizBusy = new Map<string, number>()
+
+function postizBusyFor(profileId: string): boolean {
+  return Date.now() < (postizBusy.get(profileId) ?? 0)
+}
 
 function postizFailure(status: number, said: string): never {
   if (/unsupported file type/i.test(said)) {
@@ -360,10 +367,7 @@ function postizFailure(status: number, said: string): never {
   if (status === 401 || status === 403) {
     throw new PostizProblem("Postiz didn't accept your key - paste it again in Settings, Posting.", false, 401)
   }
-  if (status === 429) {
-    postizBusyUntil = Date.now() + 5 * MINUTE
-    throw new PostizProblem('Postiz says too many requests right now.', true, 429)
-  }
+  if (status === 429) throw new PostizProblem('Postiz says too many requests right now.', true, 429)
   if (status >= 500) throw new PostizProblem(`Postiz had a problem (${status}${said ? `: ${said}` : ''}).`, true, 502)
   throw new PostizProblem(`Postiz said: ${said || status}`, false, 400)
 }
@@ -1915,6 +1919,10 @@ async function schedule(start: Post): Promise<Post> {
     const covered = toPostiz.filter((a) => backupFor(profile)[a.id])
     if (covered.length === 0) throw error
     const at = now ? Date.now() : new Date(date).getTime()
+    // Postiz not asked - this hour's share of its requests is used: it is
+    // asked again once the hour is out (failed), not left until a few hours
+    // before its time (2026-10-26: 80 of his friend's sat there all day).
+    if (error instanceof PostizWait && at - Date.now() > 60 * MINUTE) throw error
     if (at - Date.now() > HAND_AHEAD_MS) {
       // Not due for a while: Postiz gets another go once it answers again
       // (probePostiz, a tick's one question every half hour) or nearer its
@@ -1987,10 +1995,13 @@ async function failed(post: Post, error: unknown): Promise<void> {
   // Not asked at all (PostizWait): no try spent - a post never goes back to
   // him for waiting out Postiz's hour.
   const attempts = error instanceof PostizWait ? post.attempts : post.attempts + 1
-  // Postiz counts requests by the hour, so "too many" waits it out.
+  // Postiz counts requests by the hour, so "too many" waits it out - this
+  // login's other posts too, for the rest of this run.
   const busy = problem.status === 429
+  const free = error instanceof PostizWait ? error.until : Date.now() + 15 * MINUTE
+  if (busy) postizBusy.set(post.profile_id, Math.max(postizBusy.get(post.profile_id) ?? 0, free))
   if (problem.later && attempts < (busy ? MAX_ATTEMPTS * 2 : MAX_ATTEMPTS)) {
-    const wait = busy ? 15 * MINUTE : [2, 5, 10, 20, 30][Math.min(attempts - 1, 4)] * MINUTE
+    const wait = busy ? Math.max(5 * MINUTE, free - Date.now()) : [2, 5, 10, 20, 30][Math.min(attempts - 1, 4)] * MINUTE
     // creating_at cleared: while it is set, Take back says the post is going
     // to Postiz this moment, and it could stay set through a whole outage.
     await update(post.id, { error: `${problem.message} Trying again by itself.`, attempts, retry_at: new Date(Date.now() + wait).toISOString(), creating_at: null })
@@ -2442,7 +2453,7 @@ async function respreadBatches(profile: Profile, body: Record<string, unknown>):
     .eq('profile_id', profile.id)
     .eq('status', 'approved')
     .not('batch', 'is', null)
-  if ((outOfPostiz ?? 0) > 3 || Date.now() < postizBusyUntil) spent.used = Math.max(spent.used, RESPREAD_PER_HOUR)
+  if ((outOfPostiz ?? 0) > 3 || postizBusyFor(profile.id)) spent.used = Math.max(spent.used, RESPREAD_PER_HOUR)
   let key: string | null = null
   let moved = 0
   let failed = 0
@@ -2452,7 +2463,7 @@ async function respreadBatches(profile: Profile, body: Record<string, unknown>):
     if (Date.now() > deadline) break
     const row = byId.get(move.id)!
     // In Postiz: only while this hour's share of its requests lasts.
-    if (row.status === 'scheduled' && (spent.used >= RESPREAD_PER_HOUR || Date.now() < postizBusyUntil)) {
+    if (row.status === 'scheduled' && (spent.used >= RESPREAD_PER_HOUR || postizBusyFor(profile.id))) {
       paused = true
       continue
     }
@@ -2811,8 +2822,14 @@ async function probePostiz(now: number): Promise<void> {
     byProfile.set(row.profile_id, [...(byProfile.get(row.profile_id) ?? []), row])
   }
   for (const [profileId, rows] of byProfile) {
-    // Asked within the last half hour: not again yet.
-    if (rows.some((r) => Date.parse(r.updated_at) > now - PROBE_EVERY_MS)) continue
+    // Asked within the last half hour: not again yet. Its own note of when:
+    // the waiting posts' last change was the clock before, and a respread
+    // moving them held it back all day (2026-10-26).
+    const key = `probe:${profileId}`
+    const { data: last } = await db.from('cutter_config').select('value').eq('key', key).maybeSingle()
+    if (now - (Number((last as { value: string } | null)?.value) || 0) < PROBE_EVERY_MS) continue
+    await db.from('cutter_config').upsert({ key, value: String(now) }, { onConflict: 'key' })
+    if (postizBusyFor(profileId)) continue
     await advance(rows[0].id)
     const after = await reload(rows[0].id).catch(() => null)
     if (after?.status !== 'scheduled') continue
@@ -2835,15 +2852,19 @@ async function tick(): Promise<void> {
   // waiting to go back in after a respread), those are the ones that matter.
   const { data: due } = await db
     .from('cutter_posts')
-    .select('id, retry_at, updated_at')
+    .select('id, profile_id, retry_at, updated_at')
     .in('status', ['writing', 'approved'])
     .or(`retry_at.is.null,retry_at.lte.${iso(now)}`)
     .lt('updated_at', iso(now - 2 * MINUTE))
     .order('post_at', { ascending: true, nullsFirst: true })
-    .limit(10)
-  for (const row of due ?? []) {
-    // Postiz just said "too many": the rest wait for a later tick.
-    if (Date.now() < postizBusyUntil) break
+    .limit(60)
+  let tried = 0
+  for (const row of (due ?? []) as { id: string; profile_id: string }[]) {
+    if (tried >= 10) break
+    // That login's Postiz just said "too many": its rest wait for a later
+    // tick, and the other logins' go meanwhile.
+    if (postizBusyFor(row.profile_id)) continue
+    tried++
     await advance(row.id)
   }
   await probePostiz(now).catch((error) => console.error('asking Postiz again failed', error))

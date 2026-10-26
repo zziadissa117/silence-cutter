@@ -68,6 +68,11 @@ export function planRespread(rows: readonly RespreadRow[], { now, tz }: { now: n
     }
     // Today: from a little after now - none left when that is already tomorrow.
     const from = date !== today ? 0 : localDate(new Date(soon), tz) !== today ? 24 * 60 : minutesOf(localTime(new Date(soon), tz)) + 1
+    // Evenly apart already (a respread made it, or the batch did): left as it
+    // is. Worked out afresh, today's rest moved a little with every go, and
+    // so did each new day, whose even times differ from these - each one in
+    // Postiz taken out and put back for nothing (2026-10-26).
+    if (evenAlready(moving.map((r) => minutesOf(r.batch!.time)), from)) continue
     // Today's videos due soon or gone, and any other that stays, keep their minutes.
     const kept = new Set(day.filter(stays).map((r) => r.batch!.time))
     const times = evenTimes(moving.length, `${campaignId}|respread`, date, from).map((t) => clearOf(t, kept))
@@ -83,6 +88,22 @@ export function planRespread(rows: readonly RespreadRow[], { now, tz }: { now: n
   }
   moves.sort((a, b) => a.postAt.localeCompare(b.postAt))
   return { moves, pending }
+}
+
+const DAY = 24 * 60
+
+/** Whether these times of a day (minutes, from `from` on - 0 for a whole
+ *  day) are already evenly apart: every gap within 40% of their average
+ *  one - a respread leaves them within a fifth - and, today, not bunched
+ *  up in what is left of it. A whole day's last to its first is a gap too:
+ *  six between 11 and 5 aren't even. */
+export function evenAlready(times: readonly number[], from: number): boolean {
+  if (times.length < 2) return true
+  const t = [...times].sort((a, b) => a - b)
+  const gaps = t.slice(1).map((m, i) => m - t[i])
+  if (from === 0) gaps.push(DAY - t[t.length - 1] + t[0])
+  const mean = gaps.reduce((a, b) => a + b, 0) / gaps.length
+  return mean >= ((DAY - from) / t.length) * 0.6 && gaps.every((g) => g >= mean * 0.6 && g <= mean * 1.4)
 }
 
 function minutesOf(time: string): number {

@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 
 import { batchChoices, batchJitter } from './batch.ts'
-import { RESPREAD_LEAD_MS, planRespread, type RespreadRow } from './respread.ts'
+import { RESPREAD_LEAD_MS, evenAlready, planRespread, type RespreadRow } from './respread.ts'
 import { zoned } from './slots.ts'
 import { evenTimes } from './window.ts'
 
@@ -108,8 +108,51 @@ describe('respreading what is scheduled', () => {
   })
 
   it('keeps each campaign to its own days', () => {
-    const rows = [row('2026-10-28', '12:00'), row('2026-10-28', '12:30', 'scheduled', { campaign_id: 'c2' })]
+    const rows = [
+      row('2026-10-28', '12:00'),
+      row('2026-10-28', '13:00'),
+      row('2026-10-28', '12:30', 'scheduled', { campaign_id: 'c2' }),
+      row('2026-10-28', '13:30', 'scheduled', { campaign_id: 'c2' }),
+    ]
     const { moves } = planRespread(rows, { now, tz: TZ })
-    expect(moves).toHaveLength(2)
+    expect(moves).toHaveLength(4)
+    const c1 = moves.filter((m) => rows.find((r) => r.id === m.id)!.campaign_id === 'c1').map((m) => minutes(m.time))
+    expect(Math.abs(c1[1] - c1[0])).toBeGreaterThan(500)
+  })
+
+  it("leaves a day the batch already made even, though its times aren't the respread's own", () => {
+    const made = evenTimes(25, 'c1', '2026-10-29').map((t) => row('2026-10-29', t))
+    expect(planRespread(made, { now, tz: TZ }).moves).toEqual([])
+  })
+
+  it('leaves the rest of today once it is even, however late it gets', () => {
+    const today = Array.from({ length: 8 }, (_, i) => row('2026-10-26', `${String(15 + Math.floor(i / 2)).padStart(2, '0')}:${i % 2 ? '30' : '05'}`))
+    const first = planRespread(today, { now, tz: TZ }).moves
+    expect(first).toHaveLength(8)
+    let placed = today.map((r) => {
+      const m = first.find((x) => x.id === r.id)!
+      return { ...r, slot: m.slot, post_at: m.postAt, batch: { date: m.date, time: m.time } }
+    })
+    for (const at of ['14:30', '16:45', '19:10', '22:40']) {
+      const later = zoned('2026-10-26', at, TZ).getTime()
+      // What has gone out by then stays out.
+      placed = placed.map((r) => (Date.parse(r.post_at!) < later ? { ...r, status: 'posted' } : r))
+      expect(planRespread(placed, { now: later, tz: TZ }).moves).toEqual([])
+    }
+  })
+})
+
+describe('already evenly apart', () => {
+  it('tells an even day from a squeezed or lopsided one', () => {
+    const even = evenTimes(10, 'x', '2026-10-28').map(minutes)
+    expect(evenAlready(even, 0)).toBe(true)
+    // Six between 11 and 5: the night is one big hole.
+    expect(evenAlready([660, 720, 780, 840, 900, 960], 0)).toBe(false)
+    // Two side by side in an otherwise even day.
+    expect(evenAlready([...even.slice(0, 9), even[8] + 3], 0)).toBe(false)
+    // Today's rest bunched up in its first hour, with the evening empty.
+    expect(evenAlready([1000, 1010, 1020, 1030], 990)).toBe(false)
+    // One alone is wherever it is.
+    expect(evenAlready([700], 0)).toBe(true)
   })
 })
