@@ -3,6 +3,20 @@
 Newest first. Every change says what it does, how to use it, and how it works
 underneath. Kept up to date with each commit.
 
+## Postiz's 30 requests an hour, shared out: posting first
+Needs deploying: run ./deploy-server.sh (./deploy.sh runs it by itself).
+**What happened (2026-10-26, 06:00-14:00 UTC):** after the respread took videos out, only 60 of about 470 went back
+into Postiz in 8 hours. The scheduler runs every 5 minutes and, each time, read Postiz (what went out, views) and
+retried a refused post - and Postiz counts the questions it turns away too, so both accounts stayed at "too many
+requests" all morning. Nothing was lost or went out late (posts due were put in when a request got through, or
+parked until a few hours before their time).
+**Now (`postizAllowance` in the posting function):** every Postiz request is counted per Postiz key, by the hour, in
+`cutter_config` (`postiz-use:<hash of the key>` - never the key). Reads - checking what went out, views - may use
+12 of the 30; putting videos in and taking them out the rest (28). After Postiz says "too many", nothing is asked
+of it until its hour is out (at least 15 minutes), instead of a refused question every 5 minutes. A post that
+waits for that (`PostizWait`) spends no try, so it never goes back to "To approve" for it. Should the counting fail,
+Postiz is asked anyway.
+
 ## Fix: videos taken out of Postiz by the respread go back in soonest first
 Needs deploying: run ./deploy-server.sh (./deploy.sh runs it by itself).
 Before the pacing above was live, his phone's respread took 245 scheduled videos out of Postiz while Postiz,

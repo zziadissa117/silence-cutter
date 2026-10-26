@@ -148,6 +148,15 @@ class Problem extends Error {
  *  backup takes over (buffer.ts). */
 class PostizProblem extends Problem {}
 
+/** Not asked of Postiz at all: this hour's share of its requests is used, or
+ *  it said "too many" a moment ago (postizAllowance). Waiting it out is no
+ *  failed try - it never counts towards giving up on a post. */
+class PostizWait extends PostizProblem {
+  constructor() {
+    super('Postiz says too many requests right now.', true, 429)
+  }
+}
+
 // --- The shared login ---------------------------------------------------------
 //
 // The same token the cutter function hands out (supabase/functions/cutter),
@@ -237,7 +246,72 @@ interface Media {
   path: string
 }
 
-async function postiz<T>(key: string, method: string, path: string, body?: unknown): Promise<T> {
+// --- Postiz's hourly allowance ---------------------------------------------------
+//
+// Postiz lets an account make 30 requests an hour (its docs), and counts the
+// ones it turns away too. On 2026-10-26 the scheduler's reads (what went out,
+// views) and its own retries, every 5 minutes, kept two accounts at "too many
+// requests" for hours, while hundreds of videos waited to be put back in.
+// So every request is counted here, per Postiz key, by the hour: reads may use
+// only part of it, the rest is kept for putting videos in and taking them out;
+// and after Postiz says "too many", nothing is asked of it until the hour is
+// out - a refused question would only push that further away.
+
+const POSTIZ_PER_HOUR = 30
+/** What reads may use of the hour: the rest is for posting. */
+const POSTIZ_READS = 12
+type PostizNeed = 'post' | 'read'
+interface PostizUse {
+  since: number
+  used: number
+  busyUntil: number
+}
+
+async function useKeyOf(key: string): Promise<string> {
+  const digest = new Uint8Array(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(key)))
+  return `postiz-use:${Array.from(digest.slice(0, 8), (b) => b.toString(16).padStart(2, '0')).join('')}`
+}
+
+async function readUse(id: string, now: number): Promise<PostizUse> {
+  const { data } = await db.from('cutter_config').select('value').eq('key', id).maybeSingle()
+  let use: PostizUse = { since: now, used: 0, busyUntil: 0 }
+  try {
+    const saved = JSON.parse((data as { value: string } | null)?.value ?? 'null') as Partial<PostizUse> | null
+    if (saved) use = { since: Number(saved.since) || now, used: Number(saved.used) || 0, busyUntil: Number(saved.busyUntil) || 0 }
+  } catch {
+    // Counted afresh.
+  }
+  return now - use.since >= 60 * MINUTE ? { since: now, used: 0, busyUntil: use.busyUntil } : use
+}
+
+async function saveUse(id: string, use: PostizUse): Promise<void> {
+  await db.from('cutter_config').upsert({ key: id, value: JSON.stringify(use) }, { onConflict: 'key' })
+}
+
+/** Takes one of the hour's requests for `need`, or throws PostizWait. Should
+ *  the counting itself fail, Postiz is asked anyway: posting never waits on it. */
+async function postizAllowance(key: string, need: PostizNeed): Promise<{ id: string; use: PostizUse } | null> {
+  try {
+    const id = await useKeyOf(key)
+    const now = Date.now()
+    const use = await readUse(id, now)
+    const busy = now < use.busyUntil
+    if (busy || use.used >= (need === 'read' ? POSTIZ_READS : POSTIZ_PER_HOUR - 2)) {
+      // Posting can't be done this run: the tick and the respread stop asking.
+      // (Reads running out leaves posting its share.)
+      if (busy || need === 'post') postizBusyUntil = Math.max(postizBusyUntil, busy ? use.busyUntil : use.since + 60 * MINUTE)
+      throw new PostizWait()
+    }
+    const spent = { ...use, used: use.used + 1 }
+    await saveUse(id, spent)
+    return { id, use: spent }
+  } catch (error) {
+    if (error instanceof PostizWait) throw error
+    return null
+  }
+}
+
+async function postiz<T>(key: string, method: string, path: string, body?: unknown, need: PostizNeed = 'post'): Promise<T> {
   if (isFakePostiz(key)) {
     try {
       return (await fakePostiz(db, key, method, path, body)) as T
@@ -246,6 +320,7 @@ async function postiz<T>(key: string, method: string, path: string, body?: unkno
       throw error
     }
   }
+  const allowance = await postizAllowance(key, need)
   let response: Response
   try {
     response = await fetch(`${POSTIZ}${path}`, {
@@ -265,6 +340,11 @@ async function postiz<T>(key: string, method: string, path: string, body?: unkno
     json = null
   }
   if (response.ok) return json as T
+  if (response.status === 429 && allowance) {
+    // Nothing more this hour - at least a quarter of an hour.
+    const until = Math.max(Date.now() + 15 * MINUTE, allowance.use.since + 60 * MINUTE)
+    await saveUse(allowance.id, { ...allowance.use, used: POSTIZ_PER_HOUR, busyUntil: until }).catch(() => {})
+  }
   postizFailure(response.status, postizMessage(json) ?? text.slice(0, 300))
 }
 
@@ -1880,9 +1960,9 @@ interface PostizPost {
   integration?: { id?: string; providerIdentifier?: string; name?: string }
 }
 
-async function postsAround(key: string, from: number, to: number): Promise<PostizPost[]> {
+async function postsAround(key: string, from: number, to: number, need: PostizNeed = 'post'): Promise<PostizPost[]> {
   const query = `?startDate=${encodeURIComponent(new Date(from).toISOString())}&endDate=${encodeURIComponent(new Date(to).toISOString())}`
-  const result = await postiz<{ posts?: PostizPost[] }>(key, 'GET', `/posts${query}`)
+  const result = await postiz<{ posts?: PostizPost[] }>(key, 'GET', `/posts${query}`, undefined, need)
   return result?.posts ?? []
 }
 
@@ -1904,7 +1984,9 @@ async function findCreated(key: string, post: Post, date: string): Promise<{ pos
 
 async function failed(post: Post, error: unknown): Promise<void> {
   const problem = error instanceof Problem ? error : new Problem(error instanceof Error ? error.message : String(error), true)
-  const attempts = post.attempts + 1
+  // Not asked at all (PostizWait): no try spent - a post never goes back to
+  // him for waiting out Postiz's hour.
+  const attempts = error instanceof PostizWait ? post.attempts : post.attempts + 1
   // Postiz counts requests by the hour, so "too many" waits it out.
   const busy = problem.status === 429
   if (problem.later && attempts < (busy ? MAX_ATTEMPTS * 2 : MAX_ATTEMPTS)) {
@@ -2868,7 +2950,7 @@ async function refreshViews(now: number): Promise<void> {
   const { profileId, account, cache } = pick
   try {
     const { postiz: key } = await keysFor(profileId)
-    const metrics = await postiz<unknown>(key, 'GET', `/analytics/${encodeURIComponent(account.id)}?date=${VIEWS_WINDOW_DAYS}`)
+    const metrics = await postiz<unknown>(key, 'GET', `/analytics/${encodeURIComponent(account.id)}?date=${VIEWS_WINDOW_DAYS}`, undefined, 'read')
     const posted = await postedThere(profileId, account.id, now)
     cache.accounts[account.id] = remember(cache.accounts[account.id], readViews(account.platform, metrics, posted), new Date(now))
   } catch (error) {
@@ -2903,7 +2985,7 @@ async function refreshPostViews(now: number): Promise<void> {
   let unread: unknown
   for (const ref of post.postiz_ids ?? []) {
     try {
-      const answer = await postiz<unknown>(key, 'GET', `/analytics/post/${encodeURIComponent(ref.postId)}?date=30`)
+      const answer = await postiz<unknown>(key, 'GET', `/analytics/post/${encodeURIComponent(ref.postId)}?date=30`, undefined, 'read')
       const count = postViewCount(answer)
       if (count === null) unread = answer
       else views[accountNameFor(post.accounts, ref.integration)] = count
@@ -2963,7 +3045,7 @@ async function checkPosted(now: number): Promise<void> {
     try {
       const { postiz: key } = await keysFor(profileId)
       const times = posts.map((p) => new Date(p.post_at!).getTime())
-      const found = await postsAround(key, Math.min(...times) - 60 * MINUTE, Math.max(...times) + 60 * MINUTE)
+      const found = await postsAround(key, Math.min(...times) - 60 * MINUTE, Math.max(...times) + 60 * MINUTE, 'read')
       const byId = new Map(found.map((p) => [p.id, p]))
       for (const post of posts) {
         const mine = (post.postiz_ids ?? []).map((ref) => byId.get(ref.postId)).filter((p): p is PostizPost => Boolean(p))
