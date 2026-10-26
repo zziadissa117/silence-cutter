@@ -3,6 +3,14 @@
 Newest first. Every change says what it does, how to use it, and how it works
 underneath. Kept up to date with each commit.
 
+## Fix: the soonest videos get Postiz's hour first, so none goes out late
+Needs deploying: run ./deploy-server.sh (./deploy.sh runs it by itself).
+One of his videos due at 22:45 UTC went past its time still out of Postiz (it takes the next free time, nothing
+lost). Postiz's hour went to videos days off: the Posts screen's nudge (3 stuck posts each time it is read, every
+minute on the Cutter server) took the newest made first, and a post refused many times waited a flat half hour
+and came due after the hour had opened and filled. Now the nudge takes the soonest first, like the scheduler, and
+skips a login whose Postiz is busy; and every "too many" post is tried again the moment its Postiz hour is out.
+
 ## Fix: his friend's videos stuck out of Postiz all day; even days no longer moved again
 Needs deploying: run ./deploy-server.sh (./deploy.sh runs it by itself).
 **What happened (2026-10-26):** his friend's 80 videos taken out by the respread sat out of Postiz all afternoon

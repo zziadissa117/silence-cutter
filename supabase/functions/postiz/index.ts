@@ -2012,10 +2012,12 @@ async function failed(post: Post, error: unknown): Promise<void> {
     // an approved post stays approved and is tried every half hour, for a
     // day. Sent back to To approve, 25 posts came back for nothing in every
     // outage, and again an hour after he approved them again.
+    // "Too many": tried again the moment Postiz's hour is out, like the rest -
+    // half an hour on, it came after them and its time went by.
     await update(post.id, {
-      error: `${problem.message} Trying again every half hour.`,
+      error: `${problem.message} Trying again ${busy ? 'by itself' : 'every half hour'}.`,
       attempts,
-      retry_at: new Date(Date.now() + 30 * MINUTE).toISOString(),
+      retry_at: new Date(Date.now() + (busy ? Math.max(5 * MINUTE, free - Date.now()) : 30 * MINUTE)).toISOString(),
       creating_at: null,
     })
     return
@@ -2087,14 +2089,19 @@ async function listPosts(profile: Profile): Promise<Response> {
   const posts = [...((live.data ?? []) as Post[]), ...((done.data ?? []) as Post[])]
     .filter((p) => !seen.has(p.id) && seen.add(p.id))
     .sort((a, b) => b.created_at.localeCompare(a.created_at))
-  // Anything stuck mid-way gets a nudge, without waiting for the scheduler.
-  const stuck = posts.filter(
-    (p) =>
-      (p.status === 'writing' || p.status === 'approved') &&
-      (!p.retry_at || new Date(p.retry_at).getTime() <= Date.now()) &&
-      Date.now() - new Date(p.updated_at).getTime() > 2 * MINUTE,
-  )
-  for (const p of stuck.slice(0, 3)) later(advance(p.id))
+  // Anything stuck mid-way gets a nudge, without waiting for the scheduler -
+  // the soonest to go out first, as the scheduler does: newest first, the
+  // nudges spent Postiz's hour on videos days off while one due that evening
+  // waited, and went out late (2026-10-26).
+  const stuck = posts
+    .filter(
+      (p) =>
+        (p.status === 'writing' || p.status === 'approved') &&
+        (!p.retry_at || new Date(p.retry_at).getTime() <= Date.now()) &&
+        Date.now() - new Date(p.updated_at).getTime() > 2 * MINUTE,
+    )
+    .sort((a, b) => (a.post_at ?? '').localeCompare(b.post_at ?? ''))
+  if (!postizBusyFor(profile.id)) for (const p of stuck.slice(0, 3)) later(advance(p.id))
   return reply({ posts: posts.map(postView), now: new Date().toISOString() })
 }
 
