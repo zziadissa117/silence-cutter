@@ -51,29 +51,33 @@ function readLast(): Record<string, number> {
   }
 }
 
-let running: Promise<number> | null = null
+let running: Promise<{ moved: number; left: number }> | null = null
 
-/** Moves what needs moving; how many videos moved. Never throws: it is tried
- *  again the next time the app opens. */
-export function keepEven(now = new Date()): Promise<number> {
+/** Moves what needs moving: how many moved, and how many wait for a later
+ *  hour (Postiz takes only so many changes an hour - the posting function
+ *  paces it). Never throws: it is tried again the next time. */
+export function keepEven(now = new Date()): Promise<{ moved: number; left: number }> {
   running ??= (async () => {
     try {
       if (localStorage.getItem(DONE_KEY) !== DONE_VERSION) {
         const { moved, left } = await respreadBatches()
         if (left === 0) localStorage.setItem(DONE_KEY, DONE_VERSION)
-        return moved
+        return { moved, left }
       }
       const last = readLast()
       let moved = 0
+      let left = 0
       for (const campaignId of unevenCampaigns(await listPosts(true), now)) {
         if (now.getTime() - (last[campaignId] ?? 0) < AGAIN_MS) continue
         last[campaignId] = now.getTime()
         localStorage.setItem(LAST_KEY, JSON.stringify(last))
-        moved += (await respreadBatches(campaignId)).moved
+        const done = await respreadBatches(campaignId)
+        moved += done.moved
+        left += done.left
       }
-      return moved
+      return { moved, left }
     } catch {
-      return 0
+      return { moved: 0, left: 0 }
     } finally {
       running = null
     }

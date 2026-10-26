@@ -2289,6 +2289,30 @@ async function stopPicked(profile: Profile, body: Record<string, unknown>): Prom
   return await stopRows(profile, rows)
 }
 
+/** Postiz lets an account make 30 requests an hour, and moving a scheduled
+ *  video takes two (out, back in): the first run moved 20 in a minute and
+ *  Postiz said "too many requests" (2026-10-26). The moving takes at most this
+ *  many an hour - 12 requests - so new videos still get into Postiz (two each),
+ *  soonest first, so each day is done well before it comes. */
+const RESPREAD_PER_HOUR = 6
+const respreadKey = (profileId: string) => `respread:${profileId}`
+
+/** How many scheduled videos the moving has taken out this hour. */
+async function respreadSpent(profileId: string): Promise<{ used: number; since: number }> {
+  const { data } = await db.from('cutter_config').select('value').eq('key', respreadKey(profileId)).maybeSingle()
+  try {
+    const saved = JSON.parse((data as { value: string } | null)?.value ?? 'null') as { used?: number; since?: number } | null
+    if (saved && typeof saved.since === 'number' && Date.now() - saved.since < 60 * MINUTE) return { used: Number(saved.used) || 0, since: saved.since }
+  } catch {
+    // A fresh hour.
+  }
+  return { used: 0, since: Date.now() }
+}
+
+async function keepRespreadSpent(profileId: string, spent: { used: number; since: number }): Promise<void> {
+  await db.from('cutter_config').upsert({ key: respreadKey(profileId), value: JSON.stringify(spent) }, { onConflict: 'key' })
+}
+
 /** "Spread my scheduled posts evenly" (respread.ts, his ask on 2026-10-26):
  *  the batch's videos not out yet, each to its even time on its own day. One
  *  waiting for him, or approved and not in Postiz yet, just gets the time; one
@@ -2318,14 +2342,21 @@ async function respreadBatches(profile: Profile, body: Record<string, unknown>):
   }
   const byId = new Map(rows.map((r) => [r.id, r]))
   const deadline = Date.now() + 50 * 1000
+  const spent = await respreadSpent(profile.id)
   let key: string | null = null
   let moved = 0
   let failed = 0
   let tried = 0
+  let paused = false
   for (const move of moves) {
     if (Date.now() > deadline) break
-    tried++
     const row = byId.get(move.id)!
+    // In Postiz: only while this hour's share of its requests lasts.
+    if (row.status === 'scheduled' && spent.used >= RESPREAD_PER_HOUR) {
+      paused = true
+      continue
+    }
+    tried++
     const at = { slot: move.slot, batch: { ...row.batch!, time: move.time } }
     try {
       if (row.status !== 'scheduled') {
@@ -2345,6 +2376,7 @@ async function respreadBatches(profile: Profile, body: Record<string, unknown>):
         // at its old time and goes out as before - never lost.
         if (claimed.buffer_ids) await dropFromBuffer(profile, claimed)
         if (claimed.postiz_ids?.[0]) await deleteScheduled(key, claimed)
+        spent.used++
         await update(row.id, {
           ...at,
           post_at: move.postAt,
@@ -2366,9 +2398,17 @@ async function respreadBatches(profile: Profile, body: Record<string, unknown>):
     } catch (error) {
       failed++
       console.error('moving a post to its even time failed', row.id, error)
+      // Postiz has had enough for now: nothing more this hour.
+      if (error instanceof PostizProblem && error.status === 429) {
+        spent.used = RESPREAD_PER_HOUR
+        paused = true
+        break
+      }
     }
   }
-  return reply({ moved, failed, left: moves.length - tried + pending })
+  await keepRespreadSpent(profile.id, spent)
+  // `paused`: the rest wait for the next hour - the app asks again by itself.
+  return reply({ moved, failed, left: moves.length - tried + pending, paused })
 }
 
 async function stopRows(profile: Profile, rows: Post[]): Promise<Response> {

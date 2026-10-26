@@ -2551,8 +2551,13 @@ export function CampaignApp() {
     if (!posting?.profile) return
     const run = () => {
       if (document.visibilityState !== 'visible') return
-      void keepEven().then((moved) => {
-        if (moved > 0) setNotice(`Spread ${moved} scheduled video${moved === 1 ? '' : 's'} evenly over the whole day.`)
+      void keepEven().then(({ moved, left }) => {
+        if (SERVER_MODE || moved === 0) return
+        setNotice(
+          left > 0
+            ? `Spreading your scheduled videos evenly over the whole day: ${moved} moved, ${left} to go. Postiz takes only so many changes an hour, so the rest follow by themselves, soonest first - the app can be closed.`
+            : `Spread ${moved} scheduled video${moved === 1 ? '' : 's'} evenly over the whole day.`,
+        )
       })
     }
     run()

@@ -669,12 +669,16 @@ export async function respreadBatches(campaignId?: string, onProgress?: (moved: 
   let failed = 0
   let left = 0
   for (let round = 0; round < 40; round++) {
-    const done = await call<{ moved: number; failed: number; left: number }>('respread-batches', { profile: profileId(), ...(campaignId ? { campaignId } : {}) })
+    const done = await call<{ moved: number; failed: number; left: number; paused?: boolean }>('respread-batches', {
+      profile: profileId(),
+      ...(campaignId ? { campaignId } : {}),
+    })
     moved += done.moved
     failed += done.failed
     left = done.left
     onProgress?.(moved)
-    if (done.left === 0 || done.moved === 0) break
+    // Paused: this hour's share of Postiz's requests is used - asked again later (keepEven).
+    if (done.left === 0 || done.moved === 0 || done.paused) break
   }
   return { moved, failed, left }
 }

@@ -3,6 +3,18 @@
 Newest first. Every change says what it does, how to use it, and how it works
 underneath. Kept up to date with each commit.
 
+## Spreading what is scheduled: paced to Postiz's 30 requests an hour
+Needs deploying: run ./deploy-server.sh (./deploy.sh runs it by itself).
+**What happened (2026-10-26):** the first run moved 20 of his videos in a minute, then Postiz answered "too many
+requests" - it lets an account make 30 requests an hour (its docs), and moving a scheduled video takes two (out,
+back in). Nothing was lost: the 31 taken out wait as approved and go back in by themselves as Postiz allows, hours
+before their times; the rest stay at their old times until moved.
+**Now:** `respreadBatches` takes at most 6 scheduled videos out an hour per login (`RESPREAD_PER_HOUR`, 12 requests,
+counted in `cutter_config` `respread:<profile>`), so new videos still get into Postiz, and stops for the hour at the
+first "too many requests". Videos not in Postiz yet (waiting, approved) still move at once - they cost nothing.
+Soonest first, so each day is done well before it comes. The phone and the Cutter server ask again every half hour
+(`keepEven`), so it finishes by itself with the app closed; the phone says how many moved and how many follow.
+
 ## Spreading what is scheduled: the Cutter server does it too
 Only ./deploy.sh is needed; each Railway server rebuilds by itself.
 He asked why the phone had to stay open about 10 minutes while a few hundred scheduled videos were moved to
