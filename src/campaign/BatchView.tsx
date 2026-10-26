@@ -75,8 +75,6 @@ import {
   ownDayTimes,
   placeFor,
   timeLabel,
-  windowLabel,
-  windowOf,
   type LocalPosting,
   type ServerPost,
 } from './posting'
@@ -425,8 +423,8 @@ export function BatchView({
 
   const place = placeFor(profile, campaign.id)
   const accounts = place.accounts.map((id) => profile.accounts.find((a) => a.id === id)).filter((a) => a !== undefined)
-  // As many times a day as he picked: random ones from the campaign's
-  // window, or his own (with random extras when he wants more than he has).
+  // As many times a day as he picked, spread over the whole day - or his own
+  // (with more spread over the rest of the day when he wants more than he has).
   const today = todayHere()
   // Today's number: his, or - while it grows each day - where it has got to.
   const perDay = bank ? perDayOn(bank, today) : 1
@@ -1184,7 +1182,7 @@ export function BatchView({
         <p className="hint new-post-to">
           To {accounts.map(accountLabel).join(', ')}
           {random
-            ? ` · ${windowLabel(windowOf(place))}`
+            ? ' · around the clock'
             : times.length > 0
               ? ` · at ${times.map(timeLabel).join(', ')}`
               : ''}
@@ -1497,12 +1495,12 @@ export function BatchView({
               ) : (
                 <span className={`hint${times.length < perDay ? ' warn-text' : ''}`}>
                   {times.length < perDay
-                    ? `The window only fits ${times.length} a day - widen it in the campaign's Posting. `
+                    ? `The day only fits ${times.length} more today. `
                     : ''}
                   {random
-                    ? `At random times inside the window, different each day - today ${times.map(timeLabel).join(', ')}.`
+                    ? `Spread over the whole day, different times each day - today ${times.map(timeLabel).join(', ')}.`
                     : times.length > place.times.length
-                      ? `At your times and random ones in between - today ${times.map(timeLabel).join(', ')}.`
+                      ? `At your times and more spread over the rest of the day - today ${times.map(timeLabel).join(', ')}.`
                       : `At ${times.map(timeLabel).join(', ')}.`}
                 </span>
               )}

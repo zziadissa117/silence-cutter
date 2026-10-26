@@ -126,19 +126,36 @@ describe('random times for every campaign', () => {
 describe('batchTimesOn', () => {
   const minutes = (t: string) => Number(t.slice(0, 2)) * 60 + Number(t.slice(3, 5))
 
-  it('draws as many as he picks from a random campaign\'s window, a different set each day', () => {
-    const place = { accounts: [], times: [], window: { from: '10:00', to: '22:00', perDay: 3 } }
-    for (let n = 1; n <= 6; n++) {
+  it('spreads them evenly over the whole day, whatever the window - 2, 10, 50 or 125 (2026-10-26)', () => {
+    // Most campaigns' windows were the old 11 AM - 6 PM: it no longer squeezes a batch.
+    const place = { accounts: [], times: [], window: { from: '11:00', to: '18:00', perDay: 3 } }
+    for (const n of [1, 2, 3, 5, 10, 25, 50, 125]) {
       const times = batchTimesOn(place, 'inflow', '2026-10-12', n)
       expect(times).toHaveLength(n)
-      // The whole window he set, not cut to the middle of the day.
-      for (const t of times) expect(t >= '10:00' && t <= '21:50').toBe(true)
-      for (let i = 1; i < times.length; i++) expect(minutes(times[i]) - minutes(times[i - 1])).toBeGreaterThanOrEqual(30)
+      expect(new Set(times).size).toBe(n)
+      const step = 1440 / n
+      // Evenly apart: a step, give or take a tenth and a rounding.
+      for (let i = 1; i < times.length; i++) {
+        const gap = minutes(times[i]) - minutes(times[i - 1])
+        expect(gap).toBeGreaterThanOrEqual(Math.floor(step * 0.8) - 2)
+        expect(gap).toBeLessThanOrEqual(Math.ceil(step * 1.2) + 2)
+      }
+      // The night too: the first a quarter to three quarters of a step after midnight.
+      expect(minutes(times[0])).toBeLessThanOrEqual(Math.ceil(step * 0.85) + 1)
+      expect(minutes(times[times.length - 1])).toBeGreaterThanOrEqual(1440 - Math.ceil(step * 0.85) - 1)
+      // Never on a round minute: those are his own times, which the server moves 0-9 minutes.
+      for (const t of times) expect(minutes(t) % 5).not.toBe(0)
     }
+    // Not in the same minutes every day.
+    const monday = batchTimesOn(place, 'inflow', '2026-10-12', 10)
+    const tuesday = batchTimesOn(place, 'inflow', '2026-10-13', 10)
+    expect(monday.filter((t, i) => Math.abs(minutes(t) - minutes(tuesday[i])) > 5).length).toBeGreaterThan(5)
+    // And no big hole across midnight.
+    const across = 1440 - minutes(monday[monday.length - 1]) + minutes(tuesday[0])
+    expect(across).toBeGreaterThanOrEqual(144 * 0.4)
+    expect(across).toBeLessThanOrEqual(144 * 1.6)
     const many = batchTimesOn(place, 'inflow', '2026-10-12', 25)
     expect(many).toHaveLength(25)
-    for (const t of many) expect(t >= '10:00' && t <= '21:50').toBe(true)
-    for (let i = 1; i < many.length; i++) expect(minutes(many[i]) - minutes(many[i - 1])).toBeGreaterThanOrEqual(10)
     expect(batchTimesOn(place, 'inflow', '2026-10-12', 5)).not.toEqual(batchTimesOn(place, 'inflow', '2026-10-13', 5))
     // No most a day: as many as he wants, closer the more there are.
     const more = batchTimesOn(place, 'inflow', '2026-10-12', 60)
@@ -180,13 +197,13 @@ describe('batch times that move from day to day', () => {
   const minutes = (t: string) => Number(t.slice(0, 2)) * 60 + Number(t.slice(3, 5))
   const days = Array.from({ length: 10 }, (_, i) => `2026-10-${String(i + 10).padStart(2, '0')}`)
 
-  it('puts a time added to his own in the open part of the day, not right after the first', () => {
+  it('puts a time added to his own in the open part of the day, far from his', () => {
     const place = { accounts: [], times: ['11:00', '18:00'] }
     const extras = days.map((d) => batchTimesOn(place, 'c', d, 3).find((t) => t !== '11:00' && t !== '18:00')!)
-    for (const t of extras) expect(minutes(t)).toBeGreaterThanOrEqual(minutes('11:30'))
-    // Somewhere different on different days - not always just after 11.
+    // Three a day: 8 hours apart would be even - the extra is hours from each of his.
+    for (const t of extras) for (const his of ['11:00', '18:00']) expect(Math.abs(minutes(t) - minutes(his))).toBeGreaterThanOrEqual(180)
+    // Somewhere different on different days.
     expect(new Set(extras).size).toBeGreaterThan(5)
-    expect(extras.filter((t) => minutes(t) < minutes('12:00')).length).toBeLessThan(5)
   })
 
   it('does not sit on the same grid every day when the day is full', () => {
@@ -217,10 +234,9 @@ describe('a batch stacked on one running', () => {
     for (let n = 1; n <= 5; n++) {
       const times = stackTimesOn(place, 'inflow', '2026-10-14', n, taken)
       expect(times).toHaveLength(n)
-      for (const t of times) {
-        expect(t >= '11:00' && t <= '18:00').toBe(true)
-        for (const o of taken) expect(Math.abs(minutes(t) - minutes(o))).toBeGreaterThanOrEqual(20)
-      }
+      for (const t of times) for (const o of taken) expect(Math.abs(minutes(t) - minutes(o))).toBeGreaterThanOrEqual(20)
+      // Around the clock: the free hours of the night too.
+      if (n >= 3) expect(times.some((t) => t < '11:00' || t > '18:00')).toBe(true)
     }
   })
 

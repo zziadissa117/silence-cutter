@@ -75,6 +75,7 @@ import { approvalFor, batchChoices, batchInfo, batchReady, type BatchInfo } from
 import { handFields } from './hand.ts'
 import { lastTimeToday, nextSlot, normalTimes, pickTime, sessionOf, spreadDay, spreadEnd, spreadUntil, timesFor, type OtherPost, type Spread, addDays, localDate, localTime, zoned } from './slots.ts'
 import { cleanWindow, type PostingWindow } from './window.ts'
+import { planRespread, type RespreadRow } from './respread.ts'
 import { cleanPlace, instagramPlace, type Place } from './place.ts'
 import { attachMove, summarise, type AttachMove } from './attach.ts'
 import { cleanMode, pickRecaption, recaptionMode } from './recaption.ts'
@@ -2288,6 +2289,88 @@ async function stopPicked(profile: Profile, body: Record<string, unknown>): Prom
   return await stopRows(profile, rows)
 }
 
+/** "Spread my scheduled posts evenly" (respread.ts, his ask on 2026-10-26):
+ *  the batch's videos not out yet, each to its even time on its own day. One
+ *  waiting for him, or approved and not in Postiz yet, just gets the time; one
+ *  scheduled comes out of Postiz (and Buffer) and goes back in at its new time
+ *  with the video Postiz already has - no approving again. Under a minute a
+ *  call, soonest first; the phone calls again while `left` says some are. */
+async function respreadBatches(profile: Profile, body: Record<string, unknown>): Promise<Response> {
+  const campaignId = typeof body.campaignId === 'string' && /^[\w-]{1,80}$/.test(body.campaignId) ? body.campaignId : null
+  let query = db
+    .from('cutter_posts')
+    .select('*')
+    .eq('profile_id', profile.id)
+    .not('batch', 'is', null)
+    .in('status', [...PENDING_STATUSES, 'posted', 'error'])
+    .gte('batch->>date', localDate(new Date(), profile.timezone))
+    .limit(3000)
+  if (campaignId) query = query.eq('campaign_id', campaignId)
+  const { data, error } = await query
+  if (error) throw new Problem('The posts could not be read. Try again.', true, 500)
+  const rows = (data ?? []) as Post[]
+  const { moves, pending } = planRespread(rows as unknown as RespreadRow[], { now: Date.now(), tz: profile.timezone })
+  // Their slots freed first: a time one takes may still be another's old one
+  // (one video a slot - cutter_posts_one_per_slot).
+  const ids = moves.map((m) => m.id)
+  for (let i = 0; i < ids.length; i += 200) {
+    await db.from('cutter_posts').update({ slot: null }).in('id', ids.slice(i, i + 200)).in('status', [...PENDING_STATUSES])
+  }
+  const byId = new Map(rows.map((r) => [r.id, r]))
+  const deadline = Date.now() + 50 * 1000
+  let key: string | null = null
+  let moved = 0
+  let failed = 0
+  let tried = 0
+  for (const move of moves) {
+    if (Date.now() > deadline) break
+    tried++
+    const row = byId.get(move.id)!
+    const at = { slot: move.slot, batch: { ...row.batch!, time: move.time } }
+    try {
+      if (row.status !== 'scheduled') {
+        // Not in Postiz: its time is all there is to change.
+        const done = await updateIf(row.id, row.status, { ...at, ...(row.post_at ? { post_at: move.postAt } : {}) })
+        if (done) moved++
+        continue
+      }
+      const claimed = await claim(row.id)
+      if (!claimed || claimed.status !== 'scheduled') {
+        if (claimed) await release(row.id)
+        continue
+      }
+      try {
+        key ??= (await keysFor(profile.id)).postiz
+        // Buffer first: should Postiz then refuse, the post is still in it
+        // at its old time and goes out as before - never lost.
+        if (claimed.buffer_ids) await dropFromBuffer(profile, claimed)
+        if (claimed.postiz_ids?.[0]) await deleteScheduled(key, claimed)
+        await update(row.id, {
+          ...at,
+          post_at: move.postAt,
+          status: 'approved',
+          postiz_ids: null,
+          buffer_ids: null,
+          creating_at: null,
+          error: null,
+          retry_at: null,
+          attempts: 0,
+        })
+      } finally {
+        await release(row.id)
+      }
+      // Back into Postiz now, at its new time - the scheduler would get to it
+      // too, but ten a minute is slow for a few hundred.
+      await advance(row.id)
+      moved++
+    } catch (error) {
+      failed++
+      console.error('moving a post to its even time failed', row.id, error)
+    }
+  }
+  return reply({ moved, failed, left: moves.length - tried + pending })
+}
+
 async function stopRows(profile: Profile, rows: Post[]): Promise<Response> {
   return reply(await stopAll(profile, rows, true))
 }
@@ -3204,6 +3287,8 @@ Deno.serve(async (req) => {
         return await recaption(profile, body)
       case 'stop-posts':
         return await stopPicked(profile, body)
+      case 'respread-batches':
+        return await respreadBatches(profile, body)
       case 'end-campaign':
         return await endCampaign(profile, body)
       case 'backup':

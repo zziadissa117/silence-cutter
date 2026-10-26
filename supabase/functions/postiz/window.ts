@@ -133,3 +133,33 @@ export function windowTimes(window: PostingWindow, key: string, date: string, ga
   const offsets = Array.from({ length: n }, () => Math.floor(random() * (slack + 1))).sort((a, b) => a - b)
   return offsets.map((offset, i) => hhmm((start + offset + i * gap) % DAY_MINUTES)).sort()
 }
+
+/** `count` times spread evenly from `from` to `to` (minutes of the day - the
+ *  whole day unless said), his words (2026-10-26): "If it's 2 posts, 10 posts,
+ *  or 50, it all has to be evenly separated and operated over a 24-hour
+ *  period", and "I don't want them to always be in the same minute". One
+ *  every (to - from) / count minutes; the whole row moved by a quarter to three
+ *  quarters of a step - a different amount each day, so the minutes change -
+ *  and each time nudged by up to a tenth of a step. Across midnight, the last
+ *  of one day and the first of the next stay half a step to a step and a half
+ *  apart. With a step of a few minutes or more, a time never lands on a minute
+ *  ending in 0 or 5: those are his own round times, which the server nudges
+ *  0-9 minutes (batch.ts batchChoices), and these must stay where they are. */
+export function evenTimes(count: number, key: string, date: string, from = 0, to = DAY_MINUTES): string[] {
+  const room = Math.max(0, to - from)
+  const n = Math.max(0, Math.min(Math.floor(count), room))
+  if (n === 0) return []
+  const step = room / n
+  // One a minute or two: the plain grid.
+  if (step < 3) return Array.from({ length: n }, (_, i) => hhmm(from + Math.floor(i * step)))
+  const random = seeded(`${key}|${date}|even`)
+  const phase = step * (0.25 + 0.5 * random())
+  const out: number[] = []
+  for (let i = 0; i < n; i++) {
+    let m = Math.round(from + phase + i * step + (random() - 0.5) * 0.2 * step)
+    if (m % 5 === 0) m += random() < 0.5 ? -1 : 1
+    m = Math.min(to - 1, Math.max(from, m, (out[i - 1] ?? from - 1) + 1))
+    out.push(m)
+  }
+  return out.map(hhmm)
+}

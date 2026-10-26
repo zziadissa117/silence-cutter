@@ -9,7 +9,7 @@
 // The phone keeps only which profile is its own, and whether it sends.
 
 import type { ViewsByAccount } from './analytics'
-import { DEFAULT_WINDOW, LEAST_GAP_MINUTES, cleanWindow, gapFor, spanOf, windowTimes, type PostingWindow } from '../../supabase/functions/postiz/window.ts'
+import { DEFAULT_WINDOW, LEAST_GAP_MINUTES, cleanWindow, evenTimes, windowTimes, type PostingWindow } from '../../supabase/functions/postiz/window.ts'
 import { cleanPlace, type Place } from '../../supabase/functions/postiz/place.ts'
 import { timesFor, timesOn } from '../../supabase/functions/postiz/slots.ts'
 import { PUBLISHABLE_KEY, currentSession } from './cloud'
@@ -349,40 +349,27 @@ export function ownDayTimes(place: Pick<CampaignPlace, 'times'>): string[] {
  *  +1, +1"): what the window holds, a minute apart, is all that caps it. */
 const candidatesFor = (count: number) => Math.max(50, count * 2)
 
-/** A batch's times on one date: `perDay` of them, whatever the campaign's
- *  own count. A random campaign draws that many from its window; one on his
- *  own times keeps them (an even pick when he wants fewer) and, when he
- *  wants more, adds random ones from the window, clear of his. Half an hour
- *  apart when the window has room, closer - as close as it takes - when he
- *  wants more than that fits (125 a day in the whole day are 8 to 11 minutes
- *  apart). The server takes a batch video's own time as given. */
-export function batchTimesOn(place: CampaignPlace, campaignId: string, date: string, perDay: number): string[] {
-  const window = windowOf(place)
-  const count = perDay
-  const gap = batchGap(window, count)
-  const own = ownDayTimes(place)
-  if (own.length === 0) return windowTimes({ ...window, perDay: count }, campaignId, date, gap)
-  if (count <= own.length) return dayTimes(own, count)
-  const minutes = (t: string) => Number(t.slice(0, 2)) * 60 + Number(t.slice(3, 5))
-  // His times take room from the window, so the extras close up a little
-  // more until enough of them keep clear of his.
-  let extras: string[] = []
-  for (let g = gap; g >= LEAST_GAP_MINUTES && extras.length < count - own.length; g--) {
-    const clear = (t: string) => own.every((o) => Math.abs(minutes(o) - minutes(t)) >= g)
-    extras = windowTimes({ ...window, perDay: candidatesFor(count) }, `${campaignId}|batch`, date, g).filter(clear)
-  }
-  // An even pick of the candidates, so the extras spread over the window
-  // instead of bunching up at its start.
-  return [...own, ...spreadPick(extras, count - own.length, `${campaignId}|${date}|extra`)].sort()
-}
+/** A batch posts around the clock, spread over the whole day - his words
+ *  (2026-10-26): "They have to be compressed by a 24-hour period. Always has
+ *  to be posting." It used to draw from the campaign's window, which on most
+ *  campaigns was the old default, 11 AM - 6 PM: 125 a day would have been
+ *  squeezed into seven hours. The window still says when New post's posts go. */
+export const BATCH_DAY: PostingWindow = { from: '00:00', to: '00:00', perDay: 1 }
 
-/** A batch's spacing: the window's own, but never so close that the times
- *  fill the whole day - a quarter of it stays free, so they still move from
- *  day to day (24 a day in 11 AM - 6 PM sat on 11:00, 11:17, 11:34... every
- *  day). */
-function batchGap(window: PostingWindow, count: number): number {
-  const gap = gapFor(window, count)
-  return count <= 1 ? gap : Math.max(LEAST_GAP_MINUTES, Math.min(gap, Math.floor((spanOf(window) * 0.75) / (count - 1))))
+/** A batch's times on one date: `perDay` of them, whatever the campaign's
+ *  own count, spread over the whole day (BATCH_DAY) - three a day are hours
+ *  apart, 125 a day 8 to 11 minutes. A campaign on his own times keeps them
+ *  (an even pick when he wants fewer) and, when he wants more, adds ones
+ *  spread over the rest of the day, clear of his. The server takes a batch
+ *  video's own time as given. */
+export function batchTimesOn(place: CampaignPlace, campaignId: string, date: string, perDay: number): string[] {
+  const count = perDay
+  const own = ownDayTimes(place)
+  if (own.length === 0) return evenTimes(count, campaignId, date)
+  if (count <= own.length) return dayTimes(own, count)
+  // His times stay; the rest where the day's whole number would sit evenly,
+  // farthest from his (stackTimesOn) - each once.
+  return [...own, ...stackTimesOn(place, campaignId, date, count - own.length, own)].sort()
 }
 
 /** How far a stacked batch's times keep from the ones already taken: half
@@ -390,21 +377,31 @@ function batchGap(window: PostingWindow, count: number): number {
 const STACK_GAP = 20
 
 /** Times for a batch stacked on top of one already running: `perDay` of
- *  them inside the campaign's window, each clear of every time already
+ *  them in the day, each clear of every time already
  *  `taken` that day - so 3 a day and 2 more make 5, none on top of another -
  *  and each one `usable` (today: far enough ahead). Closer than STACK_GAP
  *  only when that many don't fit. */
 export function stackTimesOn(
-  place: CampaignPlace,
+  /** The campaign's posting: a batch posts around the clock, whatever it says. */
+  _place: CampaignPlace,
   campaignId: string,
   date: string,
   perDay: number,
   taken: readonly string[],
   usable: (time: string) => boolean = () => true,
 ): string[] {
-  const window = windowOf(place)
   const count = perDay
   const minutes = (t: string) => Number(t.slice(0, 2)) * 60 + Number(t.slice(3, 5))
+  const away = (t: string) => Math.min(Infinity, ...taken.map((o) => Math.abs(minutes(o) - minutes(t))))
+  // Where the day's whole number would sit evenly (evenTimes), the ones
+  // farthest from the times it already has: as even as the day can be
+  // without moving what is there (batchRespread in the posting function
+  // moves those too).
+  const grid = evenTimes(taken.length + count, `${campaignId}|stack`, date).filter((t) => usable(t) && away(t) >= LEAST_GAP_MINUTES)
+  const picked = [...grid].sort((a, b) => away(b) - away(a)).slice(0, count)
+  if (picked.length >= count) return picked.sort()
+  // A crowded day: anything clear of the rest, around the clock (BATCH_DAY).
+  const window = BATCH_DAY
   let clear: string[] = []
   for (let gap = STACK_GAP; gap >= LEAST_GAP_MINUTES && clear.length < count; gap--) {
     const far = (t: string) => taken.every((o) => Math.abs(minutes(o) - minutes(t)) >= gap)
@@ -660,6 +657,26 @@ export function stoppable(posts: readonly ServerPost[], now = Date.now()): Serve
 /** Stops the posts he ticked on the Posts screen, the same way. */
 export async function stopPosts(ids: string[]): Promise<{ stopped: number; unposting: number }> {
   return call<{ stopped: number; unposting: number }>('stop-posts', { profile: profileId(), ids })
+}
+
+/** Moves the batch's videos not out yet so each day's are evenly apart over
+ *  the whole day (the posting function's respread-batches: one waiting stays
+ *  waiting, one scheduled goes back into Postiz at its new time, the same
+ *  video) - every campaign, or one. Under a minute a call: called again while
+ *  some are left, until none are or a round moves none. */
+export async function respreadBatches(campaignId?: string, onProgress?: (moved: number) => void): Promise<{ moved: number; failed: number; left: number }> {
+  let moved = 0
+  let failed = 0
+  let left = 0
+  for (let round = 0; round < 40; round++) {
+    const done = await call<{ moved: number; failed: number; left: number }>('respread-batches', { profile: profileId(), ...(campaignId ? { campaignId } : {}) })
+    moved += done.moved
+    failed += done.failed
+    left = done.left
+    onProgress?.(moved)
+    if (done.left === 0 || done.moved === 0) break
+  }
+  return { moved, failed, left }
 }
 
 export interface StopOutcome {

@@ -40,16 +40,24 @@ export function batchInfo(value: unknown): BatchInfo | null {
 }
 
 /** Where a batch video goes: its own time first, then the day's other
- *  times in order after it, then before it - each with the same small
- *  offset every post gets, so they don't all land on the minute. */
+ *  times in order after it, then before it. A round time (a minute ending in
+ *  0 or 5 - his own times) gets the same small offset every post gets, so
+ *  they don't all land on the minute; a time the phone spread evenly over the
+ *  day (window.ts evenTimes - never round) is kept to the minute, or 125 a
+ *  day 11 minutes apart could come out 2 minutes apart. */
 export function batchChoices(batch: BatchInfo, times: Times, tz: string): { slot: string; at: Date }[] {
   const all = timesOn(times, batch.date)
   const after = all.filter((t) => t > batch.time)
   const before = all.filter((t) => t < batch.time).reverse()
   return [batch.time, ...after, ...before].map((time) => {
     const slot = `${batch.date} ${time}`
-    return { slot, at: new Date(zoned(batch.date, time, tz).getTime() + jitterMinutes(slot) * 60_000) }
+    return { slot, at: new Date(zoned(batch.date, time, tz).getTime() + batchJitter(slot) * 60_000) }
   })
+}
+
+/** The minutes a batch video's time moves: 0-9 on a round time, none on an even one. */
+export function batchJitter(slot: string): number {
+  return Number(slot.slice(-2)) % 5 === 0 ? jitterMinutes(slot) : 0
 }
 
 /** "Wed Sep 30" to "Tue Oct 6" - what the notification says. */

@@ -3,6 +3,36 @@
 Newest first. Every change says what it does, how to use it, and how it works
 underneath. Kept up to date with each commit.
 
+## Batches post around the clock, evenly - and what is already scheduled is moved to match
+Needs deploying: run ./deploy-server.sh (./deploy.sh runs it by itself when it sees the posting function changed).
+**Why (2026-10-26, his words):** "Why is it that posts only happen between 11 am and 5 pm? ... One day I'm going to
+do 125 posts a day ... They have to be compressed by a 24-hour period. Always has to be posting." And: "If it's 2
+posts, 10 posts, or 50, it all has to be evenly separated", "I don't want them to always be in the same minute",
+"change the already scheduled posts ... I'm not doing that manually". Most campaigns' posting windows were 11 AM -
+6 PM (the old default, written in by "Random times for every campaign"), and a batch drew its times from it.
+**Now:**
+- A batch's times ignore the window: `window.evenTimes` spreads them evenly over the whole day - one every
+  24 h / n, the row moved a quarter to three quarters of a step each day (so the minutes change), each nudged up to
+  a tenth of a step, never on a minute ending in 0 or 5. Across midnight the gap stays half to one and a half steps.
+  `posting.batchTimesOn` uses it; his own fixed times stay, the rest placed where the day's whole number would
+  sit evenly, farthest from his (`stackTimesOn`, which also places videos added to a day that has some).
+- The server keeps an even time to the minute: `batch.batchJitter` gives the usual 0-9 minutes only to round
+  times (his own), so 125 a day 11 minutes apart don't come out 2 minutes apart.
+- What is already scheduled: the posting function's new `respread-batches` (`respread.ts` `planRespread`, tested):
+  for each campaign and day from today, the videos not out yet are put at the day's even times - today, over
+  what is left of it after 20 minutes; posted ones and ones due in 20 minutes stay. A video waiting for approval
+  just gets its time; one scheduled comes out of Buffer, then Postiz, and goes back in at its new time with the
+  video Postiz already has - no approving again, no upload. Under a minute a call, soonest first.
+- The phone does it by itself (`keepEven.ts`, from `CampaignApp` when the app is open, every half hour): once for
+  everything after this update, then for any campaign whose coming days came out uneven (`unevenCampaigns`), at
+  most hourly. It says "Spread N scheduled videos evenly over the whole day."
+- Batch tab: "Spread over the whole day, different times each day - today ..."; the campaign line says "around
+  the clock". The window still sets when New post's posts go.
+Checked: unit tests for the even times, the plan (a day squeezed into 11-5 comes out evenly over 24 h; the same plan
+twice moves nothing; today only the rest of the day) and the uneven-day check; the posting function type-checks
+with Deno as before (its one old error unchanged). Not run against Postiz from here: watch the first round's notice
+and the posts' new times in Posts.
+
 ## Apple's emoji: kept that way for everyone
 Only ./deploy.sh is needed; the Railway servers rebuild by themselves.
 After his friend's batch videos came out with Google's emoji, three guards so it doesn't happen to anyone again:

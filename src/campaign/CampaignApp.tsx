@@ -218,6 +218,7 @@ import {
   BATCH_BANK_SAVED,
 } from './store'
 import { SERVER_MODE } from './serverFlag'
+import { keepEven } from './keepEven'
 import { linkBatches, SERVER_URL_EVENT, serverUrl } from './serverLink'
 import { reportMaking, SERVER_BANKS_EVENT, SERVER_COMMAND_EVENT, serverLog, type ServerCommand, type ServerMaking } from './serverMode'
 import { TabBar, type Tab } from './TabBar'
@@ -2539,6 +2540,27 @@ export function CampaignApp() {
   /** Runs every batch's top-up now - after its number changed from the
    *  Analytics tab, say. Set by the effect below. */
   const runBatchesRef = useRef<() => void>(() => {})
+  // Each campaign's scheduled videos evenly spread over the whole day
+  // (keepEven.ts): whenever the app is open - opened, back on screen, every
+  // half hour. Everything already scheduled once after this update, then any
+  // campaign whose coming days came out uneven.
+  useEffect(() => {
+    if (SERVER_MODE || !posting?.profile) return
+    const run = () => {
+      if (document.visibilityState !== 'visible') return
+      void keepEven().then((moved) => {
+        if (moved > 0) setNotice(`Spread ${moved} scheduled video${moved === 1 ? '' : 's'} evenly over the whole day.`)
+      })
+    }
+    run()
+    document.addEventListener('visibilitychange', run)
+    const timer = window.setInterval(run, 30 * 60_000)
+    return () => {
+      document.removeEventListener('visibilitychange', run)
+      window.clearInterval(timer)
+    }
+  }, [posting?.profile?.id]) // eslint-disable-line react-hooks/exhaustive-deps
+
   // Batches that keep going (batchRun.ts): whenever the app is open - opened,
   // back on screen, or every half hour - each running batch keeps up with its
   // number: days over it lose the extra, days missing are made. The Batch tab

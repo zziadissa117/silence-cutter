@@ -133,7 +133,7 @@ export function growthSummary(
   }
   const text = [
     `Today ${on(0)}, tomorrow ${on(1)}, in a week ${on(7)}.`,
-    tight ? ` From ${tight.day === 0 ? 'today' : dayLabel(addDays(today, tight.day))} the posting window only fits ${tight.holds} a day - widen it in the campaign's Posting.` : '',
+    tight ? ` From ${tight.day === 0 ? 'today' : dayLabel(addDays(today, tight.day))} the day only fits ${tight.holds} a day.` : '',
   ].join('')
   return { text, tight: tight !== null }
 }

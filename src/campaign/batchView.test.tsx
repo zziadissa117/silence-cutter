@@ -193,7 +193,7 @@ describe('videos a day', () => {
     await upTo(30)
     expect(value()).toBe('30')
     expect(more().disabled).toBe(false)
-    expect(host.textContent).toContain('At your times and random ones in between')
+    expect(host.textContent).toContain('At your times and more spread over the rest of the day')
     expect(host.querySelector('.stepper + .hint')?.textContent).toMatch(/6(:00)? PM/)
   })
 
@@ -203,11 +203,13 @@ describe('videos a day', () => {
     expect(host.textContent).not.toContain('only fits')
   })
 
-  it('says when the window is too short for that many', async () => {
-    // 5 minutes of room: 6 a day a minute apart, and no more.
+  it("posts around the clock, whatever the campaign's window (2026-10-26: \"always has to be posting\")", async () => {
+    // A window of a quarter of an hour once held 6 a day at most.
     await show({ window: { from: '12:00', to: '12:15', perDay: 2 } })
     await upTo(10)
-    expect(host.textContent).toContain('The window only fits 6 a day')
+    expect(host.textContent).not.toContain('only fits')
+    expect(host.textContent).toContain('Spread over the whole day')
+    expect(host.textContent).toContain('around the clock')
   })
 })
 
