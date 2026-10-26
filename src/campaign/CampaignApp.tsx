@@ -2543,9 +2543,12 @@ export function CampaignApp() {
   // Each campaign's scheduled videos evenly spread over the whole day
   // (keepEven.ts): whenever the app is open - opened, back on screen, every
   // half hour. Everything already scheduled once after this update, then any
-  // campaign whose coming days came out uneven.
+  // campaign whose coming days came out uneven. On the Cutter server too
+  // ("why does it not do it on the server?"): it is open day and night, so
+  // nobody has to keep the app open while a few hundred are moved. Both at
+  // once is harmless - the posting function moves each video once.
   useEffect(() => {
-    if (SERVER_MODE || !posting?.profile) return
+    if (!posting?.profile) return
     const run = () => {
       if (document.visibilityState !== 'visible') return
       void keepEven().then((moved) => {

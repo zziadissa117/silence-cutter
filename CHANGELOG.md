@@ -3,6 +3,13 @@
 Newest first. Every change says what it does, how to use it, and how it works
 underneath. Kept up to date with each commit.
 
+## Spreading what is scheduled: the Cutter server does it too
+Only ./deploy.sh is needed; each Railway server rebuilds by itself.
+He asked why the phone had to stay open about 10 minutes while a few hundred scheduled videos were moved to
+their even times. `keepEven` now runs on the Cutter server's page as well (it was left out in `SERVER_MODE`):
+the server is open day and night, so the moving carries on with the phone closed, and later uneven days are put
+right there too. Both running at once is harmless: the posting function moves each video once (it claims it).
+
 ## Batches post around the clock, evenly - and what is already scheduled is moved to match
 Needs deploying: run ./deploy-server.sh (./deploy.sh runs it by itself when it sees the posting function changed).
 **Why (2026-10-26, his words):** "Why is it that posts only happen between 11 am and 5 pm? ... One day I'm going to
