@@ -6,6 +6,7 @@
 // update, then for any campaign whose coming days have come out uneven - a
 // raised number a day stacked onto days already made, say.
 
+import { evenAlready } from '../../supabase/functions/postiz/respread.ts'
 import { addDays, todayHere } from './batch'
 import { listPosts, respreadBatches, type ServerPost } from './posting'
 
@@ -18,9 +19,9 @@ const AGAIN_MS = 60 * 60_000
 
 const minutes = (at: Date) => at.getHours() * 60 + at.getMinutes()
 
-/** The campaigns whose coming days (tomorrow on, a week) are uneven: some
- *  videos much closer together than the day's even step, or a hole much
- *  wider - a respread puts every gap within a fifth of the step. */
+/** The campaigns whose coming days (tomorrow on, a week) are uneven, as the
+ *  posting function's respread tells it (evenAlready): some videos much
+ *  closer together than the day's even step, or a hole much wider. */
 export function unevenCampaigns(posts: readonly ServerPost[], now = new Date()): string[] {
   const today = todayHere(now)
   const last = addDays(today, 8)
@@ -33,12 +34,7 @@ export function unevenCampaigns(posts: readonly ServerPost[], now = new Date()):
   }
   const uneven = new Set<string>()
   for (const [key, times] of days) {
-    if (times.length < 3) continue
-    times.sort((a, b) => a - b)
-    const step = 1440 / times.length
-    const gaps = times.slice(1).map((t, i) => t - times[i])
-    gaps.push(1440 - times[times.length - 1] + times[0])
-    if (Math.max(...gaps) > step * 1.75 || Math.min(...gaps) < step * 0.3) uneven.add(key.split('|')[0])
+    if (times.length >= 3 && !evenAlready(times, 0)) uneven.add(key.split('|')[0])
   }
   return [...uneven]
 }

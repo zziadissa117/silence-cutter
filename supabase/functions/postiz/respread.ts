@@ -93,17 +93,22 @@ export function planRespread(rows: readonly RespreadRow[], { now, tz }: { now: n
 const DAY = 24 * 60
 
 /** Whether these times of a day (minutes, from `from` on - 0 for a whole
- *  day) are already evenly apart: every gap within 40% of their average
- *  one - a respread leaves them within a fifth - and, today, not bunched
- *  up in what is left of it. A whole day's last to its first is a gap too:
- *  six between 11 and 5 aren't even. */
+ *  day) are already evenly apart enough to leave: every gap between a third
+ *  and twice their average one, and, today, not bunched up in what is left
+ *  of it. A whole day's last to its first is a gap too: six between 11 and 5
+ *  aren't even. A respread leaves gaps within a fifth; a day the batch topped
+ *  up (a higher number a day, its new videos between the ones it had) within
+ *  about half and twice - and moving all of those, each one in Postiz taken
+ *  out and put back, would spend days of Postiz's hourly requests
+ *  (2026-10-26: 25 a day going to 48 for a campaign ending). Shared with the
+ *  phone (keepEven.ts). */
 export function evenAlready(times: readonly number[], from: number): boolean {
   if (times.length < 2) return true
   const t = [...times].sort((a, b) => a - b)
   const gaps = t.slice(1).map((m, i) => m - t[i])
   if (from === 0) gaps.push(DAY - t[t.length - 1] + t[0])
   const mean = gaps.reduce((a, b) => a + b, 0) / gaps.length
-  return mean >= ((DAY - from) / t.length) * 0.6 && gaps.every((g) => g >= mean * 0.6 && g <= mean * 1.4)
+  return mean >= ((DAY - from) / t.length) * 0.6 && gaps.every((g) => g >= mean / 3 && g <= mean * 2)
 }
 
 function minutesOf(time: string): number {

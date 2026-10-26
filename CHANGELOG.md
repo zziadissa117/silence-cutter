@@ -3,6 +3,22 @@
 Newest first. Every change says what it does, how to use it, and how it works
 underneath. Kept up to date with each commit.
 
+## Up to 48 a day, growing fast: a campaign's last week
+Needs deploying: run ./deploy-server.sh (./deploy.sh runs it by itself).
+**What he asked (2026-10-26):** a campaign ending in about a week with budget left - "today and tomorrow ... at least 25
+... tomorrow 30 ... after tomorrow 50 on both accounts ... and that's it", "slowly up it, but up it aggressively".
+**How to use it:** Batch tab, each campaign: Videos a day 30, More each day 10 - 30 today, 40 tomorrow, then 48 every
+day. The server tops up every day of the week ahead at once: each day's new videos go between the ones it has.
+- **48 a day is the most** (`batchRun.MOST_A_DAY`, in `perDayOn`): Instagram takes at most 50 posts an account in
+  any 24 hours from an app and refuses the rest, and each video goes to every account of its campaign. Growth used
+  to have no most. Videos a day stops at 48 and says why.
+- **More each day** goes to 25 (was 5) and can be typed, like Videos a day.
+- **A topped-up day is left as it is** (`respread.evenAlready`, now also what the phone's `keepEven` checks): every
+  gap between a third and twice the average one counts as even enough. A day going from 29 to 48 has its videos 15
+  to 55 minutes apart; moving them all to exact even times would take each one out of Postiz and put it back -
+  some 1,300 requests for this week, two days of Postiz's hourly limit, holding up the new videos. A day badly
+  lopsided (squeezed into 11 to 5, two on top of each other) is still moved.
+
 ## Fix: the soonest videos get Postiz's hour first, so none goes out late
 Needs deploying: run ./deploy-server.sh (./deploy.sh runs it by itself).
 One of his videos due at 22:45 UTC went past its time still out of Postiz (it takes the next free time, nothing

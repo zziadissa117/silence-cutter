@@ -84,6 +84,7 @@ import {
   dayVideos,
   daysToMake,
   growthSummary,
+  MOST_A_DAY,
   perDayOn,
   withGrowth,
   withPerDay,
@@ -220,8 +221,9 @@ function writeList(key: string, list: string[]): void {
 
 const mb = (bytes: number) => `${Math.max(1, Math.round(bytes / 1e6))} MB`
 
-/** The most "more each day" there is. */
-const MAX_GROWTH = 5
+/** The most "more each day" there is: from 1 a day to the most a day
+ *  (MOST_A_DAY) in two days. */
+const MAX_GROWTH = 25
 
 /** "2 min ago", "at 14:05": when the server last said something. */
 export function BatchView({
@@ -294,6 +296,7 @@ export function BatchView({
   const [topping, setTopping] = useState(false)
   /** What he is typing as videos a day, until it is a number. */
   const [perDayDraft, setPerDayDraft] = useState<string | null>(null)
+  const [growthDraft, setGrowthDraft] = useState<string | null>(null)
   /** The Set order sheet is open. */
   const [ordering, setOrdering] = useState(false)
   /** The batch the engine is making for this campaign, as it last said. */
@@ -956,7 +959,7 @@ export function BatchView({
   const trimNow = over.length > 0 && saving === null && !topping
   const dueNow = running && !onServer && over.length === 0 && due.length > 0 && missing.length === 0 && saving === null && !topping
   const setPerDay = (n: number) => {
-    if (bank && Number.isFinite(n)) keep(withPerDay(bank, Math.max(0, Math.round(n)), today))
+    if (bank && Number.isFinite(n)) keep(withPerDay(bank, Math.min(MOST_A_DAY, Math.max(0, Math.round(n))), today))
   }
   const setGrowth = (n: number) => {
     if (bank && Number.isFinite(n)) keep(withGrowth(bank, Math.min(MAX_GROWTH, Math.max(0, Math.round(n))), today))
@@ -1485,11 +1488,15 @@ export function BatchView({
                   type="button"
                   className="btn small icon-btn"
                   aria-label="More a day"
+                  disabled={perDay >= MOST_A_DAY}
                   onClick={() => setPerDay(perDay + 1)}
                 >
                   +
                 </button>
               </div>
+              {perDay >= MOST_A_DAY ? (
+                <span className="hint">{MOST_A_DAY} a day is the most: Instagram takes at most 50 posts an account in any 24 hours, and refuses the rest.</span>
+              ) : null}
               {perDay === 0 ? (
                 <span className="hint">Paused: nothing more goes out until you raise it. Your clips and what's left to make are kept.</span>
               ) : (
@@ -1512,9 +1519,26 @@ export function BatchView({
                 <button type="button" className="btn small icon-btn" aria-label="Less more each day" disabled={growth <= 0} onClick={() => setGrowth(growth - 1)}>
                   −
                 </button>
-                <span className="stepper-value" aria-label="More each day">
-                  {growth > 0 ? `+${growth}` : '0'}
-                </span>
+                <input
+                  type="number"
+                  inputMode="numeric"
+                  className="stepper-value"
+                  aria-label="More each day"
+                  min={0}
+                  max={MAX_GROWTH}
+                  value={growthDraft ?? String(growth)}
+                  disabled={perDay === 0}
+                  onFocus={(e) => e.target.select()}
+                  onChange={(e) => setGrowthDraft(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') e.currentTarget.blur()
+                  }}
+                  onBlur={() => {
+                    // Like Videos a day: applied once he has finished typing.
+                    if (growthDraft !== null && growthDraft.trim() !== '') setGrowth(Number(growthDraft))
+                    setGrowthDraft(null)
+                  }}
+                />
                 <button
                   type="button"
                   className="btn small icon-btn"

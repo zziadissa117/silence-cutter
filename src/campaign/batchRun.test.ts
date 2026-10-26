@@ -412,11 +412,16 @@ describe('taking one hook out', () => {
 describe('a batch that grows each day ("start with 4 and add +1 per day")', () => {
   const growing = (fields: Partial<BatchBank> = {}) => bank({ perDay: 4, growth: 1, growthFrom: '2026-09-30', ...fields })
 
-  it('makes its number on its first day, and one more each day after - no most a day', () => {
+  it("makes its number on its first day, and one more each day after - up to Instagram's most", () => {
     expect(perDayOn(growing(), '2026-09-30')).toBe(4)
     expect(perDayOn(growing(), '2026-10-01')).toBe(5)
     expect(perDayOn(growing(), '2026-10-07')).toBe(11)
-    expect(perDayOn(growing(), '2026-12-31')).toBe(4 + 92)
+    expect(perDayOn(growing(), '2026-11-13')).toBe(48)
+    expect(perDayOn(growing(), '2026-12-31')).toBe(48)
+    expect(perDayOn(bank({ perDay: 125 }), '2026-10-07')).toBe(48)
+    // "25 today, 30 tomorrow, then 50": 30 and +10 a day.
+    const ending = withGrowth(withPerDay(bank({ perDay: 25 }), 30, '2026-10-26'), 10, '2026-10-26')
+    expect(['2026-10-26', '2026-10-27', '2026-10-28', '2026-11-01'].map((d) => perDayOn(ending, d))).toEqual([30, 40, 48, 48])
     expect(perDayOn(growing(), '2026-09-01')).toBe(4)
     expect(perDayOn(growing({ perDay: 0 }), '2026-10-07')).toBe(0)
     expect(perDayOn(bank({ perDay: 4 }), '2026-10-07')).toBe(4)

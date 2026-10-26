@@ -83,13 +83,21 @@ function daysFrom(from: string, to: string): number {
   return Math.round(day(to) - day(from))
 }
 
+/** The most videos a day a batch makes. Instagram takes at most 50 posts an
+ *  account in any 24 hours from an app (Postiz) and refuses the rest, and
+ *  every video goes to every account of its campaign; 48 keeps a day's even
+ *  times under it. His words (2026-10-26): "50 on both accounts ... and that's
+ *  it". Growth used to have no most ("it's just +1, +1, +1 - there's no
+ *  limit") - past 50 a day the posts were only refused. */
+export const MOST_A_DAY = 48
+
 /** How many videos a day the batch makes on `date`: his number, or - while it
  *  grows - his number for `growthFrom` and `growth` more on each day after,
- *  with no most a day ("it's just +1, +1, +1 - there's no limit"). */
+ *  up to MOST_A_DAY. */
 export function perDayOn(bank: Pick<BatchBank, 'perDay' | 'growth' | 'growthFrom'>, date: string): number {
   // 0 is paused, growing or not.
-  if (!bank.growth || !bank.growthFrom || bank.perDay === 0) return bank.perDay
-  return Math.max(0, bank.perDay + bank.growth * Math.max(0, daysFrom(bank.growthFrom, date)))
+  if (!bank.growth || !bank.growthFrom || bank.perDay === 0) return Math.min(MOST_A_DAY, bank.perDay)
+  return Math.min(MOST_A_DAY, Math.max(0, bank.perDay + bank.growth * Math.max(0, daysFrom(bank.growthFrom, date))))
 }
 
 /** The bank with `n` a day from `today` on - his number now, the growth (if
