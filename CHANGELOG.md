@@ -3,6 +3,17 @@
 Newest first. Every change says what it does, how to use it, and how it works
 underneath. Kept up to date with each commit.
 
+## Fix: videos taken out of Postiz by the respread go back in soonest first
+Needs deploying: run ./deploy-server.sh (./deploy.sh runs it by itself).
+Before the pacing above was live, his phone's respread took 245 scheduled videos out of Postiz while Postiz,
+at its 30 requests an hour, turned the putting back in away ("too many requests"). They wait as approved and are
+tried again every 15 minutes (then every half hour); one still out at its time takes the next free time - none is
+lost, but the soonest must get in first.
+- The tick tries due posts soonest first (`post_at`, was oldest change first), and stops for the run at Postiz's
+  first "too many" (`postizBusyUntil`, 5 minutes) instead of spending ten tries a minute being turned away.
+- The respread takes nothing more out of Postiz while more than 3 of the login's batch videos are waiting to go
+  back in, or while Postiz is busy.
+
 ## Spreading what is scheduled: paced to Postiz's 30 requests an hour
 Needs deploying: run ./deploy-server.sh (./deploy.sh runs it by itself).
 **What happened (2026-10-26):** the first run moved 20 of his videos in a minute, then Postiz answered "too many

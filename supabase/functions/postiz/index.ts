@@ -268,6 +268,11 @@ async function postiz<T>(key: string, method: string, path: string, body?: unkno
   postizFailure(response.status, postizMessage(json) ?? text.slice(0, 300))
 }
 
+/** Until when Postiz has said "too many requests" (it counts by the hour):
+ *  nothing more is asked of it before then in this run - every try would only
+ *  be turned away and spend its patience (tick, respreadBatches). */
+let postizBusyUntil = 0
+
 function postizFailure(status: number, said: string): never {
   if (/unsupported file type/i.test(said)) {
     throw new PostizProblem('Postiz only takes MP4 videos and this one is another format. Remove it and post it again - the app now turns it into an MP4 first.')
@@ -275,7 +280,10 @@ function postizFailure(status: number, said: string): never {
   if (status === 401 || status === 403) {
     throw new PostizProblem("Postiz didn't accept your key - paste it again in Settings, Posting.", false, 401)
   }
-  if (status === 429) throw new PostizProblem('Postiz says too many requests right now.', true, 429)
+  if (status === 429) {
+    postizBusyUntil = Date.now() + 5 * MINUTE
+    throw new PostizProblem('Postiz says too many requests right now.', true, 429)
+  }
   if (status >= 500) throw new PostizProblem(`Postiz had a problem (${status}${said ? `: ${said}` : ''}).`, true, 502)
   throw new PostizProblem(`Postiz said: ${said || status}`, false, 400)
 }
@@ -2343,6 +2351,16 @@ async function respreadBatches(profile: Profile, body: Record<string, unknown>):
   const byId = new Map(rows.map((r) => [r.id, r]))
   const deadline = Date.now() + 50 * 1000
   const spent = await respreadSpent(profile.id)
+  // Videos already taken out and still waiting to go back in (Postiz busy):
+  // none more comes out until they are back - every one taken out must find
+  // room in Postiz again before its time.
+  const { count: outOfPostiz } = await db
+    .from('cutter_posts')
+    .select('id', { count: 'exact', head: true })
+    .eq('profile_id', profile.id)
+    .eq('status', 'approved')
+    .not('batch', 'is', null)
+  if ((outOfPostiz ?? 0) > 3 || Date.now() < postizBusyUntil) spent.used = Math.max(spent.used, RESPREAD_PER_HOUR)
   let key: string | null = null
   let moved = 0
   let failed = 0
@@ -2352,7 +2370,7 @@ async function respreadBatches(profile: Profile, body: Record<string, unknown>):
     if (Date.now() > deadline) break
     const row = byId.get(move.id)!
     // In Postiz: only while this hour's share of its requests lasts.
-    if (row.status === 'scheduled' && spent.used >= RESPREAD_PER_HOUR) {
+    if (row.status === 'scheduled' && (spent.used >= RESPREAD_PER_HOUR || Date.now() < postizBusyUntil)) {
       paused = true
       continue
     }
@@ -2730,16 +2748,22 @@ async function tick(): Promise<void> {
   const now = Date.now()
   const iso = (ms: number) => new Date(ms).toISOString()
 
-  // Whatever is due to be tried again, or was left half-way.
+  // Whatever is due to be tried again, or was left half-way - the soonest to
+  // go out first: when Postiz takes only so many an hour (2026-10-26: 245
+  // waiting to go back in after a respread), those are the ones that matter.
   const { data: due } = await db
     .from('cutter_posts')
     .select('id, retry_at, updated_at')
     .in('status', ['writing', 'approved'])
     .or(`retry_at.is.null,retry_at.lte.${iso(now)}`)
     .lt('updated_at', iso(now - 2 * MINUTE))
-    .order('updated_at', { ascending: true })
+    .order('post_at', { ascending: true, nullsFirst: true })
     .limit(10)
-  for (const row of due ?? []) await advance(row.id)
+  for (const row of due ?? []) {
+    // Postiz just said "too many": the rest wait for a later tick.
+    if (Date.now() < postizBusyUntil) break
+    await advance(row.id)
+  }
   await probePostiz(now).catch((error) => console.error('asking Postiz again failed', error))
 
   // Uploads that never finished, after two days: the phone gave up on them.
