@@ -1,3 +1,56 @@
+# Handoff - state on 2026-10-27, about 1 AM his time (05:00 UTC)
+
+Read this section first, then `CLAUDE.md`/`AGENTS.md` and the newest `CHANGELOG.md` entries (they explain each change
+below in full). Branch `claude/cutter-lockdown-and-map`; he ships with
+`cd ~/Projects/silence-cutter && git checkout tsconfig.tsbuildinfo && git pull && ./deploy.sh` (it runs
+./deploy-server.sh itself when `supabase/functions` changed). The two Railway Cutter servers (`cutter-me`,
+`cutter-friend`) rebuild by themselves on every push. Plain words, deploy command first, never ask permission
+(questions are fine). Profiles: `1cb6c047-...` = him, `156a23fe-...` = his friend; both America/Toronto.
+
+## Deploy pending - check first
+
+Commits `fc642aa`..`d4ef035` (2026-10-26/27) may not be live yet. `list_edge_functions`: postiz was version 47
+before them. Then check `cutter_errors.version` for the phone build.
+
+## What changed in the last day (all about Postiz's 30 requests an hour per key)
+
+- `postizAllowance` counts every Postiz request per key per hour in `cutter_config` `postiz-use:<hash>`: reads 12,
+  batch videos 20 (`POSTIZ_BATCH`), his own posts the rest (28 in all). `PostizWait` = not asked, no try spent.
+  `postizBusy` is per login, and a batch-only wait doesn't hold up his own posts.
+- **Batch videos wait in the Cutter until 12 h before their time** (`BATCH_LEAD_MS` in `schedule`): approved,
+  `retry_at` = time - 12 h, video kept in storage (`postiz-outbox`, ~26 MB each). `prepare` no longer uploads a
+  batch video's media. His words: "only schedule the ones that are necessary for the day".
+- The even-spacing (`respread.ts`, `keepEven.ts`) never takes a video out of Postiz any more: only videos still
+  waiting in the Cutter move, a day with one in Postiz is left, and `evenAlready` accepts gaps from 1/3 to 2x the
+  average (topped-up days).
+- `AHEAD_DAYS` 7 -> 3. `MOST_A_DAY` 48 caps `perDayOn` (Instagram refuses an app's posts past 50 per account in
+  24 h). "More each day" can be typed, up to 25.
+- Soonest posts get the hour first (tick and the Posts list nudge both by `post_at`); parked-for-"too many" posts
+  are no longer left until a few hours before their time; `probePostiz` keeps its own clock (`probe:<login>`).
+- `unpostStopped` no longer counts `PostizWait` as a failed try (it had given up on 161 of his friend's stopped
+  videos, leaving them in Postiz).
+
+## Data fixed by hand today (SQL)
+
+- All videos the 2026-10-26 respread took out of Postiz are back in (both logins). Done.
+- Friend: 161 stopped-but-still-in-Postiz videos set back to `scheduled` (he chose "keep them posting"); his 58 new
+  Nov 2 videos moved into the gaps: Lovable 16 = 48 on Oct 27, 48 on Oct 28, 32 on Oct 29; lovable 18 pro 12 on
+  Oct 27. 41 of them are `waiting` - he must approve them in Posts.
+
+## Open with him
+
+1. **Campaign ending in about a week, budget left:** he was told to set, in the Batch tab, Videos a day 30 and
+   More each day 10 for LOVABLE @steve and Loveable zi (30 today, 40 tomorrow, then 48). Check per-day totals in
+   `cutter_posts` - at 05:00 UTC they were still 27, 29, 31... and 26, 28...
+2. Friend's Lovable 16 has only 24/16/22 on Oct 30/31/Nov 1; his bank's `filled` counts may say those days are
+   full (their videos were stopped), so the Batch may not refill them. Offered to top up if they look thin.
+3. VAZA: YouTube (Postiz account "Vazaziad") refused the 01:15 UTC post; every earlier one went. Told him to check
+   the YouTube connection in Postiz.
+4. After the deploy, watch: new batch videos sit `approved` with `retry_at` 12 h before their time; his own posts
+   aren't "too many requests"; `postiz-use:` stays under 28.
+5. Older, still open: rejected batch videos aren't replaced (asked, no answer); offered a push when the server stops
+   making videos (not built); Grok Bot plan (nothing built).
+
 # Handoff - state on 2026-10-20 (evening), with a note from 2026-10-23
 
 **2026-10-23, one session (commits bd80abf..):** "Cut ums" works now (see the CHANGELOG entry: whisper never wrote the
