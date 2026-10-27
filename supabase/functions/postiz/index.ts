@@ -2538,7 +2538,10 @@ async function unpostStopped(profileId?: string): Promise<number> {
       await update(post.id, { postiz_ids: null, error: null })
       done++
     } catch (error) {
-      const attempts = post.attempts + 1
+      // Postiz's hour used up (PostizWait): not asked at all, so no try spent.
+      // Counted, six ticks of waiting gave up on 143 of his friend's stopped
+      // videos and left them to go out from Postiz (2026-10-27).
+      const attempts = error instanceof PostizWait ? post.attempts : post.attempts + 1
       await update(post.id, {
         attempts,
         error:
@@ -2546,6 +2549,7 @@ async function unpostStopped(profileId?: string): Promise<number> {
             ? `Couldn't take it out of Postiz (${error instanceof Error ? error.message : String(error)}) - delete it there.`
             : STOPPING,
       })
+      if (error instanceof PostizWait) break
     }
   }
   return done

@@ -3,6 +3,13 @@
 Newest first. Every change says what it does, how to use it, and how it works
 underneath. Kept up to date with each commit.
 
+## Fix: stopped videos left in Postiz when its hour was used up
+Needs deploying: run ./deploy-server.sh (./deploy.sh runs it by itself).
+Taking a stopped video out of Postiz counted "Postiz's hour is used up" (`PostizWait` - Postiz not even asked) as a
+failed try: after six ticks it gave up with "Couldn't take it out of Postiz ... - delete it there". 143 of his
+friend's stopped videos (2026-10-26, evening) stayed in Postiz and would still go out. Waiting for the hour no
+longer counts (`unpostStopped`), and the rest of that run waits too.
+
 ## Batch videos wait in the Cutter until half a day before their time
 Needs deploying: run ./deploy-server.sh (./deploy.sh runs it by itself).
 **What happened (2026-10-27, midnight):** the server made the new seventh day's videos and each went straight into
