@@ -189,6 +189,14 @@ is held the post stays `approved`, untouched, retried every 30 min. `releaseHeld
 video+caption, at the video's time of day on the first day with room. Paused ones
 resume without loss; caps are counted per account per local day.
 
+**Waiting past its time.** A post still `waiting` for his OK (or the brand's) whose
+`post_at` has gone is moved on by every tick (`moveOnWaiting`, `slots.ts`
+`laterWhileWaiting`): an hour later, again each hour the same day, and the step that
+would cross midnight goes to 09:MM the next morning (its own minute kept). A batch
+video's `batch.date`/`batch.time`/`slot` follow it (a minute on when the slot is
+taken); others drop `spread` so `schedule` keeps the time. Approved, it goes at the
+time it shows.
+
 ## Posting pipeline
 
 ```

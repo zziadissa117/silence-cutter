@@ -122,6 +122,31 @@ export function addDays(date: string, days: number): string {
   return next.toISOString().slice(0, 10)
 }
 
+/** Where a post waiting for his OK goes once its time has gone. */
+export const WAITING_MORNING = '09'
+
+/** A post still waiting for his OK whose time has gone, moved on - his words
+ *  (2026-10-27): "If there's time on the day before midnight, reschedule it
+ *  for an hour later, and keep rescheduling it for an hour later until we hit
+ *  midnight, but then reschedule it for the morning after." An hour on at a
+ *  time, the same day; the step that would cross midnight goes to 9 the next
+ *  morning (its own minute kept, so a day's videos don't all land on one).
+ *  The first such time later than `after`. */
+export function laterWhileWaiting(at: number, after: number, tz: string): number {
+  let t = at
+  for (let n = 0; n < 10_000 && t <= after; n++) {
+    const next = t + 60 * MINUTE
+    const day = localDate(new Date(t), tz)
+    if (localDate(new Date(next), tz) === day) {
+      t = next
+      continue
+    }
+    const minute = localTime(new Date(t), tz).slice(3)
+    t = zoned(addDays(day, 1), `${WAITING_MORNING}:${minute}`, tz).getTime()
+  }
+  return t
+}
+
 /** 0-9 minutes, the same for the same slot and different from day to day. */
 export function jitterMinutes(slot: string): number {
   let hash = 2166136261

@@ -24,12 +24,12 @@ import {
 } from './posting'
 
 const APPROVALS: { value: CampaignPosting['approval']; label: string; hint: string }[] = [
-  { value: 'me', label: 'I approve', hint: 'Each post waits on the Posts screen for you to approve it.' },
+  { value: 'me', label: 'I approve', hint: 'Each post waits on the Posts screen for you to approve it. If its time goes by, it moves an hour later, and to 9 the next morning after midnight.' },
   { value: 'direct', label: 'Straight away', hint: "Scheduled as soon as it's ready - nothing to approve." },
   {
     value: 'brand',
     label: 'Brand approves',
-    hint: "Waits until you tap Brand approved. If its time has gone by then, it takes the next time today, or posts at once.",
+    hint: 'Waits until you tap Brand approved. If its time goes by, it moves an hour later, and to 9 the next morning after midnight.',
   },
 ]
 

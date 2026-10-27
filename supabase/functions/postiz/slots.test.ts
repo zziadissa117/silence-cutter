@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { addDays, endOfDay, jitterMinutes, spreadEnd, spreadUntil, lastTimeToday, localDate, localTime, nextSlot, normalTimes, pickTime, sessionOf, spreadDay, timesFor, timesOn, zoned } from './slots.ts'
+import { addDays, endOfDay, jitterMinutes, laterWhileWaiting, spreadEnd, spreadUntil, lastTimeToday, localDate, localTime, nextSlot, normalTimes, pickTime, sessionOf, spreadDay, timesFor, timesOn, zoned } from './slots.ts'
 
 const TZ = 'America/Toronto'
 
@@ -270,5 +270,37 @@ describe('when a late spread ends', () => {
     expect(spreadUntil(undefined)).toBe('18:00')
     expect(local(spreadEnd(at('14:07'), '2026-10-12', TZ, '23:00'))).toBe('23:00')
     expect(spreadEnd(at('14:07'), '2026-10-12', TZ, '24:00')).toBe(endOfDay('2026-10-12', TZ))
+  })
+})
+
+describe('laterWhileWaiting', () => {
+  const at = (date: string, time: string) => zoned(date, time, TZ).getTime()
+  const shown = (t: number) => `${localDate(new Date(t), TZ)} ${localTime(new Date(t), TZ)}`
+
+  it('goes an hour on while the day has time', () => {
+    // 6pm gone at 6:03: 7pm.
+    expect(shown(laterWhileWaiting(at('2026-10-27', '18:00'), at('2026-10-27', '18:08'), TZ))).toBe('2026-10-27 19:00')
+    // Still waiting at 9:30: 10pm.
+    expect(shown(laterWhileWaiting(at('2026-10-27', '18:00'), at('2026-10-27', '21:35'), TZ))).toBe('2026-10-27 22:00')
+  })
+
+  it('goes to the next morning when an hour on is past midnight, its minute kept', () => {
+    expect(shown(laterWhileWaiting(at('2026-10-27', '23:00'), at('2026-10-27', '23:05'), TZ))).toBe('2026-10-28 09:00')
+    expect(shown(laterWhileWaiting(at('2026-10-27', '18:17'), at('2026-10-27', '23:30'), TZ))).toBe('2026-10-28 09:17')
+  })
+
+  it('goes on from the morning when he approves it the day after', () => {
+    expect(shown(laterWhileWaiting(at('2026-10-27', '18:00'), at('2026-10-28', '14:20'), TZ))).toBe('2026-10-28 15:00')
+    // Days later: still a time today, never one gone.
+    expect(shown(laterWhileWaiting(at('2026-10-27', '18:00'), at('2026-10-30', '02:00'), TZ))).toBe('2026-10-30 09:00')
+  })
+
+  it('leaves a time still ahead as it is', () => {
+    expect(laterWhileWaiting(at('2026-10-27', '18:00'), at('2026-10-27', '17:00'), TZ)).toBe(at('2026-10-27', '18:00'))
+  })
+
+  it('holds across the night the clocks change', () => {
+    expect(shown(laterWhileWaiting(at('2026-10-31', '23:40'), at('2026-10-31', '23:50'), TZ))).toBe('2026-11-01 09:40')
+    expect(shown(laterWhileWaiting(at('2026-11-01', '00:30'), at('2026-11-01', '03:10'), TZ))).toBe('2026-11-01 03:30')
   })
 })

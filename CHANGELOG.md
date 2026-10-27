@@ -3,6 +3,19 @@
 Newest first. Every change says what it does, how to use it, and how it works
 underneath. Kept up to date with each commit.
 
+## A post waiting for your OK moves on when its time goes by
+Needs deploying: run ./deploy-server.sh (./deploy.sh runs it by itself).
+**What he asked (2026-10-27):** "If the time passes, it should reschedule it. If there's time on the day before
+midnight, reschedule it for an hour later, and keep rescheduling it for an hour later until we hit midnight, but then
+reschedule it for the morning after."
+**Now:** a post still waiting to be approved (by him or the brand) whose time has gone is moved an hour later by the
+posting function's tick (every 5 minutes), and again each hour; the hour that would pass midnight goes to 9 the next
+morning instead, keeping its minute (6:17 PM ... 11:17 PM, then 9:17 AM). Approved, it goes at the time it shows. A
+batch video's day moves with it, so it counts on the day it really posts (a minute on if another of the campaign's
+holds that time). Before, it stayed at its old time and took the next free time only when approved.
+- "The morning after" is 9 AM - nothing he said fixed the hour; the Posting settings' approval hints say so.
+- `slots.ts` `laterWhileWaiting` (tests in `slots.test.ts`, across the clock change too), `index.ts` `moveOnWaiting`.
+
 ## Fix: stopped videos left in Postiz when its hour was used up
 Needs deploying: run ./deploy-server.sh (./deploy.sh runs it by itself).
 Taking a stopped video out of Postiz counted "Postiz's hour is used up" (`PostizWait` - Postiz not even asked) as a

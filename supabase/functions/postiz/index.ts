@@ -73,7 +73,7 @@ import { carryOver, cleanCaptions, cleanRepost, repostDueAt, textFor, variationN
 import { FAKE_CLAUDE, FakeError, fakeCaption, fakePostiz, isFakePostiz } from './fake.ts'
 import { approvalFor, batchChoices, batchInfo, batchReady, type BatchInfo } from './batch.ts'
 import { handFields } from './hand.ts'
-import { lastTimeToday, nextSlot, normalTimes, pickTime, sessionOf, spreadDay, spreadEnd, spreadUntil, timesFor, type OtherPost, type Spread, addDays, localDate, localTime, zoned } from './slots.ts'
+import { laterWhileWaiting, lastTimeToday, nextSlot, normalTimes, pickTime, sessionOf, spreadDay, spreadEnd, spreadUntil, timesFor, type OtherPost, type Spread, addDays, localDate, localTime, zoned } from './slots.ts'
 import { cleanWindow, type PostingWindow } from './window.ts'
 import { planRespread, type RespreadRow } from './respread.ts'
 import { cleanPlace, instagramPlace, type Place } from './place.ts'
@@ -2862,6 +2862,7 @@ async function tick(): Promise<void> {
   for (const row of (untold ?? []) as Pick<Post, 'profile_id' | 'batch'>[]) if (row.batch) owed.set(row.batch.id, row.profile_id)
   for (const [batchId, profileId] of owed) await notifyBatch(profileId, batchId, true)
 
+  await moveOnWaiting(now)
   await releaseHeld(now)
   // Stopped posts Postiz still holds - a stop's own run may have been cut off.
   await unpostStopped()
@@ -2884,6 +2885,53 @@ async function tick(): Promise<void> {
   // "Posts to approve" held back while he was told a moment ago.
   const { data: pending } = await db.from('cutter_profiles').select('id').eq('push_pending', true).limit(20)
   for (const row of pending ?? []) await sendWaiting(row.id)
+}
+
+/** Posts still waiting for his OK whose time has gone: moved on an hour, and
+ *  again each hour until midnight, then to the next morning
+ *  (slots.ts laterWhileWaiting) - so what he approves late goes out at the
+ *  time it shows, and a batch video counts on the day it will really post. */
+async function moveOnWaiting(now: number): Promise<void> {
+  const { data } = await db
+    .from('cutter_posts')
+    .select('id, profile_id, post_at, slot, batch')
+    .eq('status', 'waiting')
+    .not('post_at', 'is', null)
+    .lte('post_at', new Date(now).toISOString())
+    .order('post_at', { ascending: true })
+    .limit(200)
+  const rows = (data ?? []) as Pick<Post, 'id' | 'profile_id' | 'post_at' | 'slot' | 'batch'>[]
+  if (rows.length === 0) return
+  const { data: profiles } = await db.from('cutter_profiles').select('id, timezone').in('id', [...new Set(rows.map((r) => r.profile_id))])
+  const zones = new Map(((profiles ?? []) as Pick<Profile, 'id' | 'timezone'>[]).map((p) => [p.id, p.timezone]))
+  for (const row of rows) {
+    const tz = zones.get(row.profile_id)
+    if (!tz) continue
+    let at = laterWhileWaiting(Date.parse(row.post_at!), now + 5 * MINUTE, tz)
+    // A batch video's day, time and slot follow it; a time another of the
+    // campaign's holds (one video a slot) - a minute on.
+    for (let tries = 0; tries < 10; tries++) {
+      const date = localDate(new Date(at), tz)
+      const time = localTime(new Date(at), tz)
+      const { error } = await db
+        .from('cutter_posts')
+        .update({
+          post_at: new Date(at).toISOString(),
+          spread: null,
+          ...(row.batch ? { batch: { ...row.batch, date, time }, ...(row.slot ? { slot: `${date} ${time}` } : {}) } : {}),
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', row.id)
+        .eq('status', 'waiting')
+        .eq('post_at', row.post_at!)
+      if (!error) break
+      if (error.code !== '23505') {
+        console.error('moving a waiting post on failed', row.id, error)
+        break
+      }
+      at += MINUTE
+    }
+  }
 }
 
 // --- Views, for Analytics (views.ts) ---------------------------------------------
