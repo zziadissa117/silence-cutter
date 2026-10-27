@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 
 import { emptyBank, addDays, todayHere } from './batch'
 import { QUIET_MS, batchState, lastReadyAt, statusDays, type StatusDay } from './batchNow'
+import { AHEAD_DAYS } from './batchRun'
 import type { Job } from './jobs'
 import type { ServerPost } from './posting'
 
@@ -16,7 +17,7 @@ describe('the next days', () => {
   it('counts what is in Posts, what went out, and what is still being made', () => {
     const posts = [post('a', 0, 'posted'), post('b', 0, 'scheduled'), post('c', 1, 'waiting'), post('x', 1, 'rejected'), post('y', 1, 'failed')]
     const days = statusDays({ ...bank, filled: { [day(0)]: 3, [day(1)]: 2 } }, posts, { now })
-    expect(days).toHaveLength(7)
+    expect(days).toHaveLength(AHEAD_DAYS)
     expect(days[0]).toMatchObject({ date: today, target: 3, ready: 2, out: 1, planned: 3 })
     expect(days[1]).toMatchObject({ ready: 1, out: 0, planned: 2 })
     expect(days[2]).toMatchObject({ ready: 0, planned: 0 })

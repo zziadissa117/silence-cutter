@@ -51,9 +51,12 @@ import { batchTimesOn, listPosts, stackTimesOn, stoppable, stopPostsNow, takenTi
 import { loadBankFile, type JobBatch } from './store'
 import { SERVER_MODE, serverConnected } from './serverFlag'
 
-/** How many days are kept made ahead: a week of posts waiting, so a few days
- *  without opening the app never leave a day empty. */
-export const AHEAD_DAYS = 7
+/** How many days are kept made ahead, today with them. Was a week, for a
+ *  phone opened now and then; the Cutter server makes them day and night, and
+ *  a week ahead was only more to hold (2026-10-27: "you don't need to create
+ *  the videos for next month"). A batch video goes into Postiz only half a
+ *  day before its time (postiz/index.ts BATCH_LEAD_MS), however early made. */
+export const AHEAD_DAYS = 3
 
 /** One batch video, as BatchView and the top-ups hand it to be made. */
 export interface BatchVideo {

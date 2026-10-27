@@ -6,7 +6,7 @@ import { createRoot, type Root } from 'react-dom/client'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import type { BatchBank } from './batch'
-import type { BatchVideo } from './batchRun'
+import { AHEAD_DAYS, type BatchVideo } from './batchRun'
 
 const bank: BatchBank = {
   campaignId: 'inflow',
@@ -101,7 +101,7 @@ const iso = (offset: number) => {
 const settle = () => act(() => new Promise((resolve) => setTimeout(resolve, 1400)))
 
 describe('the Start button', () => {
-  it('starts once however fast it is tapped twice, and makes the next week', async () => {
+  it('starts once however fast it is tapped twice, and makes the days ahead', async () => {
     const { onMake } = await show({})
     expect(makeButton().disabled).toBe(false)
     await act(async () => {
@@ -112,12 +112,12 @@ describe('the Start button', () => {
     expect(makeButton().disabled).toBe(true)
     expect(makeButton().textContent).toBe('Running · 3 a day')
     const videos = onMake.mock.calls[0][2] as { batch: { date: string } }[]
-    // Today's times still an hour away, then six whole days of 3.
-    expect(videos.filter((v) => v.batch.date > iso(0))).toHaveLength(18)
-    expect(videos.every((v) => v.batch.date <= iso(6))).toBe(true)
+    // Today's times still an hour away, then the whole days ahead, 3 each.
+    expect(videos.filter((v) => v.batch.date > iso(0))).toHaveLength(3 * (AHEAD_DAYS - 1))
+    expect(videos.every((v) => v.batch.date <= iso(AHEAD_DAYS - 1))).toBe(true)
     const saved = await savedBank()
     expect(saved.running).toBe(true)
-    expect(saved.filled?.[iso(6)]).toBe(3)
+    expect(saved.filled?.[iso(AHEAD_DAYS - 1)]).toBe(3)
   })
 
   it("stays busy, counting, while this campaign's batch is made", async () => {
@@ -130,7 +130,7 @@ describe('the Start button', () => {
   it('says it keeps going, with no days to pick', async () => {
     await show({})
     expect(makeButton().textContent).toBe('Start · 3 a day')
-    expect(host.textContent).toContain('Makes the next 7 days now, then keeps going on its own')
+    expect(host.textContent).toContain(`Makes the next ${AHEAD_DAYS} days now, then keeps going on its own`)
     expect(host.textContent).not.toContain('Days')
     // 3 reactions x 3 products x 3 headlines, at 3 a day.
     expect(host.querySelector('.batch-variations')?.textContent).toBe('27 variations3 reactions × 3 product showcases × 3 headlinesNone made yet - 9 days at 3 a day.')
@@ -285,23 +285,23 @@ describe('a batch that keeps going', () => {
     expect(onMake).toHaveBeenCalledTimes(1)
     const videos = onMake.mock.calls[0][2] as { batch: { date: string; time: string } }[]
     // One more on each day still to come.
-    expect(videos.filter((v) => v.batch.date > iso(0)).map((v) => v.batch.date)).toEqual([1, 2, 3, 4, 5, 6].map(iso))
+    expect(videos.filter((v) => v.batch.date > iso(0)).map((v) => v.batch.date)).toEqual(Array.from({ length: AHEAD_DAYS - 1 }, (_, i) => iso(i + 1)))
     for (const v of videos) {
       for (const p of scheduled.filter((x) => new Date(x.postAt).toLocaleDateString('en-CA') === v.batch.date)) {
         const t = new Date(p.postAt)
         expect(Math.abs(t.getHours() * 60 + t.getMinutes() - minutes(v.batch.time))).toBeGreaterThanOrEqual(20)
       }
     }
-    expect((await savedBank()).filled?.[iso(6)]).toBe(3)
+    expect((await savedBank()).filled?.[iso(AHEAD_DAYS - 1)]).toBe(3)
   })
 
   it('carries on after days made before it kept going, without making them again', async () => {
-    storedBank = { ...bank, perDay: 3, running: true, madeThrough: iso(3), lastPerDay: 3 }
+    storedBank = { ...bank, perDay: 3, running: true, madeThrough: iso(1), lastPerDay: 3 }
     const { onMake } = await show({})
     await settle()
     expect(onMake).toHaveBeenCalledTimes(1)
     const videos = onMake.mock.calls[0][2] as { batch: { date: string } }[]
-    expect(videos.map((v) => v.batch.date)).toEqual([4, 4, 4, 5, 5, 5, 6, 6, 6].map(iso))
+    expect(videos.map((v) => v.batch.date)).toEqual(Array.from({ length: AHEAD_DAYS - 2 }, (_, i) => [i + 2, i + 2, i + 2]).flat().map(iso))
   })
 })
 
@@ -377,7 +377,7 @@ describe('changing the number while it runs', () => {
     // Typing 2 then 5 and leaving the box made one top-up, for 25 a day -
     // never a trim to 2 on the way.
     const videos = onMake.mock.calls[0][2] as { batch: { date: string } }[]
-    expect(videos.filter((v) => v.batch.date === iso(6)).length).toBe(23)
+    expect(videos.filter((v) => v.batch.date === iso(AHEAD_DAYS - 1)).length).toBe(23)
   })
 })
 

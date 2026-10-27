@@ -589,7 +589,7 @@ export function BatchView({
     keep(rememberUsed({ ...bank, steps }, gone))
   }
 
-  // The days the batch is still missing, up to a week ahead.
+  // The days the batch is still missing, up to AHEAD_DAYS ahead.
   const due = bank ? runSlots({ bank, place, campaignId: campaign.id, taken: takenOn }) : []
   const green = bank?.layout === 'greenscreen'
   const onEngine = bank?.layout === 'engine'
@@ -1511,7 +1511,7 @@ export function BatchView({
                       : `At ${times.map(timeLabel).join(', ')}.`}
                 </span>
               )}
-              {running ? <span className="hint">Change it any time - the week ahead follows at once, up or down.</span> : null}
+              {running ? <span className="hint">Change it any time - the days ahead follow at once, up or down.</span> : null}
             </div>
             <div className="field">
               <span className="label">More each day</span>

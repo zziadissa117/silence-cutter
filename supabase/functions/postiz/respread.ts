@@ -2,9 +2,12 @@
 // the whole day (window.ts evenTimes) - his words (2026-10-26): "If you could
 // change the already scheduled posts that I have right now ... I'm not doing
 // that manually", "it all has to be evenly separated and operated over a
-// 24-hour period". The same videos: one waiting for him stays waiting, one
-// scheduled in Postiz is taken out and put back at its new time with the
-// video Postiz already has (index.ts respreadBatches).
+// 24-hour period". The same videos, only their times: one waiting for him
+// stays waiting. Only videos not in Postiz yet move, and a day with one in
+// Postiz is left as it is: taking one out and putting it back took two of
+// Postiz's 30 requests an hour, and his own posts couldn't get in
+// (2026-10-27). A batch video goes into Postiz only half a day before its
+// time (index.ts BATCH_LEAD_MS), so the days ahead are all still free to move.
 //
 // Plain TypeScript with no imports beyond the posting function's own pure
 // files, for Deno and the tests.
@@ -16,8 +19,8 @@ import { evenTimes } from './window.ts'
 /** A post this close to going out stays where it is. */
 export const RESPREAD_LEAD_MS = 20 * 60_000
 
-/** The ones that can move: not out, not being put into Postiz this moment. */
-const MOVABLE = new Set(['uploading', 'writing', 'waiting', 'approved', 'scheduled'])
+/** The ones that can move: not out, not in Postiz, not being put in this moment. */
+const MOVABLE = new Set(['uploading', 'writing', 'waiting', 'approved'])
 
 export interface RespreadRow {
   id: string
@@ -61,6 +64,9 @@ export function planRespread(rows: readonly RespreadRow[], { now, tz }: { now: n
     const stays = (r: RespreadRow) => !MOVABLE.has(r.status) || (r.post_at !== null && Date.parse(r.post_at) < soon)
     const moving = day.filter((r) => !stays(r)).sort((a, b) => a.created_at.localeCompare(b.created_at) || a.id.localeCompare(b.id))
     if (moving.length === 0) continue
+    // Some of the day in Postiz already: the rest would be spread around
+    // times that can't move - left as the batch made it.
+    if (day.some((r) => r.status === 'scheduled')) continue
     // One being put into Postiz this moment: its day waits for the next go.
     if (moving.some((r) => r.creating_at)) {
       pending += moving.length

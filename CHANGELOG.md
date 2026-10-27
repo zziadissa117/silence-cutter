@@ -3,6 +3,26 @@
 Newest first. Every change says what it does, how to use it, and how it works
 underneath. Kept up to date with each commit.
 
+## Batch videos wait in the Cutter until half a day before their time
+Needs deploying: run ./deploy-server.sh (./deploy.sh runs it by itself).
+**What happened (2026-10-27, midnight):** the server made the new seventh day's videos and each went straight into
+Postiz (upload + post: two of its 30 requests an hour), and the even-spacing kept taking scheduled videos out of
+Postiz and putting them back (two more each). His own post (Grubby Ai) got "too many requests" - his words: "only
+schedule the ones that are necessary for the day", "now I can't even post anything anymore".
+**Now:**
+- **A batch video goes into Postiz 12 hours before its time** (`BATCH_LEAD_MS` in the posting function's
+  `schedule`), not when it is made: until then it waits, approved and ready, with its video on the server. So
+  Postiz gets a steady few an hour around the clock - however many days are made at once. One that may be in
+  Postiz already (`creating_at`, Buffer) goes on as before.
+- **Batch videos may use 20 of Postiz's ~28 requests an hour** (`POSTIZ_BATCH`, need `'batch'`): the rest is kept
+  for his own posts. When only the batch's share is used, his posts still go (`postizBusy` keeps the two apart).
+- **The even-spacing never takes a video out of Postiz** (`respread.ts`: `scheduled` is no longer movable, and a
+  day with one in Postiz is left as it is). It moves only the videos still waiting in the Cutter - free - and
+  those are worked out again for their new time. Its hourly pacing (`RESPREAD_PER_HOUR`) is gone with it.
+- **The batch makes 3 days ahead, not 7** (`AHEAD_DAYS`): the server makes them day and night ("you don't need to
+  create the videos for next month"). Days already made further ahead stay.
+- The ~380 videos already scheduled in Postiz stay where they are - taking them out would only cost requests.
+
 ## Up to 48 a day, growing fast: a campaign's last week
 Needs deploying: run ./deploy-server.sh (./deploy.sh runs it by itself).
 **What he asked (2026-10-26):** a campaign ending in about a week with budget left - "today and tomorrow ... at least 25

@@ -37,7 +37,7 @@ describe('which campaigns have uneven days ahead', () => {
       const rows: RespreadRow[] = all.map((t, i) => ({
         id: `r${i}`,
         campaign_id: 'c1',
-        status: 'scheduled',
+        status: 'approved',
         post_at: zoned(date, t, 'America/Toronto').toISOString(),
         created_at: new Date(Date.UTC(2026, 9, 20, 0, i)).toISOString(),
         creating_at: null,

@@ -69,6 +69,11 @@ and why. These notes are what earlier sessions learned the hard way.
   don't switch to it.
 - What is uploaded is exactly the preview; softness after posting is the
   platform re-encoding, so stay inside its limits.
+- Postiz's public API takes 30 requests an hour per key, refused ones
+  counted too; every request goes through `postizAllowance` (reads 12, batch
+  videos 20, his own posts the rest). A batch video goes into Postiz only 12 h
+  before its time (`BATCH_LEAD_MS`); nothing automatic takes one out of Postiz
+  and back - that cost him his own posts on 2026-10-26/27.
 
 ## Music
 

@@ -33,7 +33,7 @@ describe('respreading what is scheduled', () => {
   // Monday 26 Oct 2026, 2 PM in Toronto.
   const now = zoned('2026-10-26', '14:00', TZ).getTime()
   let n = 0
-  const row = (date: string, time: string, status = 'scheduled', over: Partial<RespreadRow> = {}): RespreadRow => {
+  const row = (date: string, time: string, status = 'approved', over: Partial<RespreadRow> = {}): RespreadRow => {
     n++
     return {
       id: `p${String(n).padStart(3, '0')}`,
@@ -81,7 +81,7 @@ describe('respreading what is scheduled', () => {
   it('today: only what is left of the day, after the next 20 minutes; what is out or about to go stays', () => {
     const today = [
       row('2026-10-26', '11:00', 'posted'),
-      row('2026-10-26', '14:10', 'scheduled'),
+      row('2026-10-26', '14:10', 'approved'),
       row('2026-10-26', '15:00'),
       row('2026-10-26', '15:30'),
       row('2026-10-26', '16:00', 'waiting'),
@@ -111,13 +111,20 @@ describe('respreading what is scheduled', () => {
     const rows = [
       row('2026-10-28', '12:00'),
       row('2026-10-28', '13:00'),
-      row('2026-10-28', '12:30', 'scheduled', { campaign_id: 'c2' }),
-      row('2026-10-28', '13:30', 'scheduled', { campaign_id: 'c2' }),
+      row('2026-10-28', '12:30', 'approved', { campaign_id: 'c2' }),
+      row('2026-10-28', '13:30', 'waiting', { campaign_id: 'c2' }),
     ]
     const { moves } = planRespread(rows, { now, tz: TZ })
     expect(moves).toHaveLength(4)
     const c1 = moves.filter((m) => rows.find((r) => r.id === m.id)!.campaign_id === 'c1').map((m) => minutes(m.time))
     expect(Math.abs(c1[1] - c1[0])).toBeGreaterThan(500)
+  })
+
+  it('never takes one out of Postiz, and leaves a day with one in Postiz as it is', () => {
+    const squeezed = Array.from({ length: 6 }, (_, i) => row('2026-10-28', `${11 + i}:00`, i === 0 ? 'scheduled' : 'approved'))
+    expect(planRespread(squeezed, { now, tz: TZ }).moves).toEqual([])
+    const inPostiz = Array.from({ length: 6 }, (_, i) => row('2026-10-29', `${11 + i}:00`, 'scheduled'))
+    expect(planRespread(inPostiz, { now, tz: TZ }).moves).toEqual([])
   })
 
   it("leaves a day the batch already made even, though its times aren't the respread's own", () => {

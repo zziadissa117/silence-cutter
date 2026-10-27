@@ -12,7 +12,7 @@ vi.mock('./posting', async (original) => ({
   stopPostsNow: vi.fn(async (posts: unknown[]) => ({ stopped: posts.length, unposting: 0, failed: [] })),
 }))
 
-import { emptyBank, recastPicks, type BankFile, type BatchBank } from './batch'
+import { addDays, emptyBank, recastPicks, type BankFile, type BatchBank } from './batch'
 import { AHEAD_DAYS, changeLook, countedDays, dayVideos, daysToMake, filledOn, growthSummary, leftToMake, missingFor, nextInLine, oneAtATime, overfull, perDayOn, planVideos, runSlots, startOver, takeOutHook, takenBy, topUp, trimPlan, variationParts, withGrowth, withPerDay, type BatchVideo } from './batchRun'
 import { hookOfJob, hookOfPost, swapLook } from './batchHooks'
 import { makeOnEngine } from './engine'
@@ -36,8 +36,11 @@ const bank = (fields: Partial<BatchBank> = {}): BatchBank => ({
   ...fields,
 })
 
+/** The last day made ahead, from Sep 30 (NOON). */
+const LAST = addDays('2026-09-30', AHEAD_DAYS - 1)
+
 describe('the days a running batch still needs', () => {
-  it('fills today too - its times still an hour away, and one more for the one gone by - then whole days, a week ahead', () => {
+  it('fills today too - its times still an hour away, and one more for the one gone by - then whole days, the days ahead', () => {
     const slots = runSlots({ bank: bank(), place, campaignId: 'c1', now: NOON })
     const today = slots.filter((s) => s.date === '2026-09-30').map((s) => s.time)
     expect(today).toHaveLength(3)
@@ -46,7 +49,7 @@ describe('the days a running batch still needs', () => {
     expect(today.every((t) => t >= '13:30')).toBe(true)
     expect(slots.filter((s) => s.date === '2026-10-01').map((s) => s.time)).toEqual(['12:00', '14:00', '18:00'])
     expect(slots).toHaveLength(3 * AHEAD_DAYS)
-    expect(slots.at(-1)!.date).toBe('2026-10-06')
+    expect(slots.at(-1)!.date).toBe(LAST)
   })
 
   it('needs nothing while every day ahead is full', () => {
@@ -67,14 +70,14 @@ describe('the days a running batch still needs', () => {
   })
 
   it('counts days made before days were counted as full at the a-day they were made with', () => {
-    const old = bank({ madeThrough: '2026-10-03', lastPerDay: 2 })
+    const old = bank({ madeThrough: '2026-10-02', lastPerDay: 2 })
     expect(filledOn(old, '2026-10-02')).toBe(2)
     expect(filledOn(old, '2026-10-04')).toBe(0)
     // So at 3 a day those days get one more each, and the rest whole days.
     const slots = runSlots({ bank: old, place, campaignId: 'c1', now: new Date(2026, 9, 1, 6, 0) })
-    expect(slots.filter((s) => s.date <= '2026-10-03')).toHaveLength(3)
-    // Oct 4 to Oct 7: the rest of the week from Oct 1.
-    expect(slots.filter((s) => s.date > '2026-10-03')).toHaveLength(12)
+    expect(slots.filter((s) => s.date <= '2026-10-02')).toHaveLength(2)
+    // The rest of the days ahead from Oct 1.
+    expect(slots.filter((s) => s.date > '2026-10-02')).toHaveLength(3 * (AHEAD_DAYS - 2))
   })
 })
 
@@ -111,7 +114,7 @@ describe('making them', () => {
     const plan = planVideos(engine, slots, { now: NOON })
     expect(plan.videos).toEqual([])
     expect(plan.slots).toEqual(slots)
-    expect(plan.bank.filled?.['2026-10-06']).toBe(3)
+    expect(plan.bank.filled?.[LAST]).toBe(3)
   })
 })
 
@@ -140,7 +143,7 @@ describe('a top-up', () => {
       now: NOON,
     })
     expect(order).toEqual(['save', `make ${3 * AHEAD_DAYS}`])
-    expect(next?.filled?.['2026-10-06']).toBe(3)
+    expect(next?.filled?.[LAST]).toBe(3)
   })
 
   it('hands the engine the days and keeps its job', async () => {
@@ -148,7 +151,7 @@ describe('a top-up', () => {
     const next = await topUp({ bank: bank({ layout: 'engine' }), campaign, place, profileId: 'p', save, make: vi.fn(), now: NOON })
     expect(vi.mocked(makeOnEngine).mock.calls[0][0].slots).toHaveLength(3 * AHEAD_DAYS)
     expect(next?.engineJob).toBe('job-1')
-    expect(save.mock.calls[0][0].filled?.['2026-10-06']).toBe(3)
+    expect(save.mock.calls[0][0].filled?.[LAST]).toBe(3)
   })
 
   it('says why when the engine fails, and leaves the days to try again', async () => {
@@ -222,7 +225,7 @@ describe('lowering the number', () => {
     const counted = countedDays(videos, NOW)
     expect(counted['2026-09-30']).toBe(1)
     expect(counted['2026-10-01']).toBe(1)
-    expect(counted['2026-10-06']).toBe(0)
+    expect(counted[LAST]).toBe(0)
   })
 })
 
@@ -405,7 +408,8 @@ describe('taking one hook out', () => {
     expect(done.bank.made).toEqual(['r1|p1|h:h1|', 'r1|p2|h:h2|'])
     expect(done.bank.running).toBe(true)
     expect(done.bank.headlines).toEqual(['h1', 'h3'])
-    expect([day(1), day(2), day(3)].map((d) => done.bank.filled?.[d])).toEqual([1, 0, 0])
+    expect([day(1), day(2)].map((d) => done.bank.filled?.[d])).toEqual([1, 0])
+    expect(done.bank.filled?.[day(3)] ?? 0).toBe(0)
   })
 })
 
@@ -432,7 +436,7 @@ describe('a batch that grows each day ("start with 4 and add +1 per day")', () =
     const per = (date: string) => slots.filter((s) => s.date === date).length
     expect(per('2026-09-30')).toBe(4)
     expect(per('2026-10-01')).toBe(5)
-    expect(per('2026-10-06')).toBe(10)
+    expect(per(LAST)).toBe(4 + AHEAD_DAYS - 1)
   })
 
   it("a day already made at a lower number is topped up, and it is never overfull", () => {

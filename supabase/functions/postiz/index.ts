@@ -154,9 +154,12 @@ class PostizProblem extends Problem {}
 class PostizWait extends PostizProblem {
   /** When Postiz can be asked again. */
   until: number
-  constructor(until: number) {
+  /** Only batch videos' share used up: his own posts can still go. */
+  batchOnly: boolean
+  constructor(until: number, batchOnly = false) {
     super('Postiz says too many requests right now.', true, 429)
     this.until = until
+    this.batchOnly = batchOnly
   }
 }
 
@@ -263,7 +266,14 @@ interface Media {
 const POSTIZ_PER_HOUR = 30
 /** What reads may use of the hour: the rest is for posting. */
 const POSTIZ_READS = 12
-type PostizNeed = 'post' | 'read'
+/** What batch videos may use of the hour: the rest is kept for his own posts
+ *  - "now I can't even post anything anymore" (2026-10-27), with a night's
+ *  batch videos going in. */
+const POSTIZ_BATCH = 20
+type PostizNeed = 'post' | 'read' | 'batch'
+
+/** What a post's Postiz requests count as. */
+const needOf = (post: Pick<Post, 'batch'>): PostizNeed => (post.batch ? 'batch' : 'post')
 interface PostizUse {
   since: number
   used: number
@@ -299,10 +309,11 @@ async function postizAllowance(key: string, need: PostizNeed): Promise<{ id: str
     const now = Date.now()
     const use = await readUse(id, now)
     const busy = now < use.busyUntil
-    if (busy || use.used >= (need === 'read' ? POSTIZ_READS : POSTIZ_PER_HOUR - 2)) {
-      // The tick and the respread stop asking for this login (failed sets
-      // postizBusy). Reads running out leaves posting its share.
-      throw new PostizWait(busy ? use.busyUntil : use.since + 60 * MINUTE)
+    const most = need === 'read' ? POSTIZ_READS : need === 'batch' ? POSTIZ_BATCH : POSTIZ_PER_HOUR - 2
+    if (busy || use.used >= most) {
+      // The tick stops asking for this login (failed sets postizBusy). Reads
+      // or batch videos running out leaves his own posts their share.
+      throw new PostizWait(busy ? use.busyUntil : use.since + 60 * MINUTE, !busy && need === 'batch' && use.used < POSTIZ_PER_HOUR - 2)
     }
     const spent = { ...use, used: use.used + 1 }
     await saveUse(id, spent)
@@ -356,8 +367,11 @@ async function postiz<T>(key: string, method: string, path: string, body?: unkno
  *  whose hour is used up held up every other's posts too (2026-10-26). */
 const postizBusy = new Map<string, number>()
 
-function postizBusyFor(profileId: string): boolean {
-  return Date.now() < (postizBusy.get(profileId) ?? 0)
+/** Whether this login's Postiz is busy for this post: its batch videos wait
+ *  while their share is used up, his own posts only once all of it is. */
+function postizBusyFor(profileId: string, batch = true): boolean {
+  const until = Math.max(postizBusy.get(profileId) ?? 0, batch ? (postizBusy.get(`${profileId}|batch`) ?? 0) : 0)
+  return Date.now() < until
 }
 
 function postizFailure(status: number, said: string): never {
@@ -1525,7 +1539,8 @@ async function prepare(start: Post): Promise<Post> {
     throw new Problem(`No accounts are picked for ${post.campaign_name} - pick them in the campaign's Posting, then Try again.`)
   }
 
-  if (!post.media) {
+  // A batch video's goes in with it, half a day before its time (schedule).
+  if (!post.media && !post.batch) {
     const backedUp = accounts.some((a) => backupFor(profile)[a.id])
     try {
       post = await mediaInPostiz(keys.postiz, post, backedUp)
@@ -1556,7 +1571,7 @@ async function prepare(start: Post): Promise<Post> {
 /** The video into Postiz. The server's copy goes then - unless a Buffer
  *  backup may need it, in which case it stays until the post is out. */
 async function mediaInPostiz(key: string, post: Post, keepCopy: boolean): Promise<Post> {
-  const media = await postiz<Media>(key, 'POST', '/upload-from-url', { url: await videoUrl(post) })
+  const media = await postiz<Media>(key, 'POST', '/upload-from-url', { url: await videoUrl(post) }, needOf(post))
   if (!media?.id || !media?.path) throw new PostizProblem('Postiz took the video but gave nothing back to post it with.', true)
   const saved = await update(post.id, { media: { id: media.id, path: media.path } })
   if (!keepCopy) await removeParts(saved).catch(() => {})
@@ -1854,6 +1869,15 @@ async function schedule(start: Post): Promise<Post> {
   const now = !post.post_at
   const date = now ? new Date().toISOString() : post.post_at!
 
+  // A batch video waits here, ready, until half a day before its time - not
+  // into Postiz the moment it is made: a night's videos for days ahead used
+  // all of Postiz's hour, and his own posts couldn't get in (2026-10-27). One
+  // that may be in Postiz already (creating_at, Buffer) goes on.
+  const goesIn = new Date(date).getTime() - BATCH_LEAD_MS
+  if (post.batch && !now && goesIn > Date.now() && !post.creating_at && !post.buffer_ids) {
+    return update(post.id, { retry_at: new Date(goesIn).toISOString(), error: null, attempts: 0 })
+  }
+
   // A paused or full account does not go in this group: it is held on the post
   // and goes out by itself once it is free (releaseHeld). The others go as
   // planned. Everything held keeps the post queued, untouched.
@@ -1910,7 +1934,7 @@ async function schedule(start: Post): Promise<Post> {
           settings: settingsFor(account.platform, finishTitle(text.title ?? '', [post.headline ?? '', post.campaign_name]), instagramPlace(profile.settings, post.campaign_id)),
         }
       }),
-    })
+    }, needOf(post))
     return scheduled({ postiz_ids: Array.isArray(created) ? created : [] })
   } catch (error) {
     if (!(error instanceof PostizProblem)) throw error
@@ -1978,7 +2002,7 @@ async function postsAround(key: string, from: number, to: number, need: PostizNe
  *  that stopped before it could record them. */
 async function findCreated(key: string, post: Post, date: string): Promise<{ postId: string; integration: string }[] | null> {
   const at = new Date(date).getTime()
-  const found = await postsAround(key, at - 60 * MINUTE, at + 60 * MINUTE)
+  const found = await postsAround(key, at - 60 * MINUTE, at + 60 * MINUTE, needOf(post))
   const ours = new Set(post.accounts.map((a) => a.id))
   const matches = found.filter(
     (p) =>
@@ -1999,7 +2023,8 @@ async function failed(post: Post, error: unknown): Promise<void> {
   // login's other posts too, for the rest of this run.
   const busy = problem.status === 429
   const free = error instanceof PostizWait ? error.until : Date.now() + 15 * MINUTE
-  if (busy) postizBusy.set(post.profile_id, Math.max(postizBusy.get(post.profile_id) ?? 0, free))
+  const busyKey = error instanceof PostizWait && error.batchOnly ? `${post.profile_id}|batch` : post.profile_id
+  if (busy) postizBusy.set(busyKey, Math.max(postizBusy.get(busyKey) ?? 0, free))
   if (problem.later && attempts < (busy ? MAX_ATTEMPTS * 2 : MAX_ATTEMPTS)) {
     const wait = busy ? Math.max(5 * MINUTE, free - Date.now()) : [2, 5, 10, 20, 30][Math.min(attempts - 1, 4)] * MINUTE
     // creating_at cleared: while it is set, Take back says the post is going
@@ -2101,7 +2126,7 @@ async function listPosts(profile: Profile): Promise<Response> {
         Date.now() - new Date(p.updated_at).getTime() > 2 * MINUTE,
     )
     .sort((a, b) => (a.post_at ?? '').localeCompare(b.post_at ?? ''))
-  if (!postizBusyFor(profile.id)) for (const p of stuck.slice(0, 3)) later(advance(p.id))
+  for (const p of stuck.filter((p) => !postizBusyFor(profile.id, Boolean(p.batch))).slice(0, 3)) later(advance(p.id))
   return reply({ posts: posts.map(postView), now: new Date().toISOString() })
 }
 
@@ -2113,7 +2138,7 @@ async function deleteScheduled(key: string, post: Post): Promise<void> {
   const ids = [...new Set((post.postiz_ids ?? []).map((ref) => ref.postId))]
   for (const [n, id] of ids.entries()) {
     try {
-      await postiz(key, 'DELETE', `/posts/${id}`)
+      await postiz(key, 'DELETE', `/posts/${id}`, undefined, needOf(post))
     } catch (error) {
       if (n === 0 || !(error instanceof Problem) || error.status !== 400) throw error
     }
@@ -2397,36 +2422,15 @@ async function stopPicked(profile: Profile, body: Record<string, unknown>): Prom
   return await stopRows(profile, rows)
 }
 
-/** Postiz lets an account make 30 requests an hour, and moving a scheduled
- *  video takes two (out, back in): the first run moved 20 in a minute and
- *  Postiz said "too many requests" (2026-10-26). The moving takes at most this
- *  many an hour - 12 requests - so new videos still get into Postiz (two each),
- *  soonest first, so each day is done well before it comes. */
-const RESPREAD_PER_HOUR = 6
-const respreadKey = (profileId: string) => `respread:${profileId}`
-
-/** How many scheduled videos the moving has taken out this hour. */
-async function respreadSpent(profileId: string): Promise<{ used: number; since: number }> {
-  const { data } = await db.from('cutter_config').select('value').eq('key', respreadKey(profileId)).maybeSingle()
-  try {
-    const saved = JSON.parse((data as { value: string } | null)?.value ?? 'null') as { used?: number; since?: number } | null
-    if (saved && typeof saved.since === 'number' && Date.now() - saved.since < 60 * MINUTE) return { used: Number(saved.used) || 0, since: saved.since }
-  } catch {
-    // A fresh hour.
-  }
-  return { used: 0, since: Date.now() }
-}
-
-async function keepRespreadSpent(profileId: string, spent: { used: number; since: number }): Promise<void> {
-  await db.from('cutter_config').upsert({ key: respreadKey(profileId), value: JSON.stringify(spent) }, { onConflict: 'key' })
-}
-
 /** "Spread my scheduled posts evenly" (respread.ts, his ask on 2026-10-26):
- *  the batch's videos not out yet, each to its even time on its own day. One
- *  waiting for him, or approved and not in Postiz yet, just gets the time; one
- *  scheduled comes out of Postiz (and Buffer) and goes back in at its new time
- *  with the video Postiz already has - no approving again. Under a minute a
- *  call, soonest first; the phone calls again while `left` says some are. */
+ *  the batch's videos not in Postiz yet, each to its even time on its own
+ *  day - only the time changes, nothing is asked of Postiz. One already in
+ *  Postiz stays where it is, and so does its day: taking it out and putting
+ *  it back took two of Postiz's 30 requests an hour, and his own posts
+ *  couldn't get in (2026-10-27). A batch video waits outside Postiz until
+ *  half a day before its time (BATCH_LEAD_MS), so all but the next hours'
+ *  can still move. Under a minute a call; the phone calls again while `left`
+ *  says some are. */
 async function respreadBatches(profile: Profile, body: Record<string, unknown>): Promise<Response> {
   const campaignId = typeof body.campaignId === 'string' && /^[\w-]{1,80}$/.test(body.campaignId) ? body.campaignId : null
   let query = db
@@ -2450,83 +2454,29 @@ async function respreadBatches(profile: Profile, body: Record<string, unknown>):
   }
   const byId = new Map(rows.map((r) => [r.id, r]))
   const deadline = Date.now() + 50 * 1000
-  const spent = await respreadSpent(profile.id)
-  // Videos already taken out and still waiting to go back in (Postiz busy):
-  // none more comes out until they are back - every one taken out must find
-  // room in Postiz again before its time.
-  const { count: outOfPostiz } = await db
-    .from('cutter_posts')
-    .select('id', { count: 'exact', head: true })
-    .eq('profile_id', profile.id)
-    .eq('status', 'approved')
-    .not('batch', 'is', null)
-  if ((outOfPostiz ?? 0) > 3 || postizBusyFor(profile.id)) spent.used = Math.max(spent.used, RESPREAD_PER_HOUR)
-  let key: string | null = null
   let moved = 0
   let failed = 0
   let tried = 0
-  let paused = false
   for (const move of moves) {
     if (Date.now() > deadline) break
     const row = byId.get(move.id)!
-    // In Postiz: only while this hour's share of its requests lasts.
-    if (row.status === 'scheduled' && (spent.used >= RESPREAD_PER_HOUR || postizBusyFor(profile.id))) {
-      paused = true
-      continue
-    }
     tried++
-    const at = { slot: move.slot, batch: { ...row.batch!, time: move.time } }
     try {
-      if (row.status !== 'scheduled') {
-        // Not in Postiz: its time is all there is to change.
-        const done = await updateIf(row.id, row.status, { ...at, ...(row.post_at ? { post_at: move.postAt } : {}) })
-        if (done) moved++
-        continue
-      }
-      const claimed = await claim(row.id)
-      if (!claimed || claimed.status !== 'scheduled') {
-        if (claimed) await release(row.id)
-        continue
-      }
-      try {
-        key ??= (await keysFor(profile.id)).postiz
-        // Buffer first: should Postiz then refuse, the post is still in it
-        // at its old time and goes out as before - never lost.
-        if (claimed.buffer_ids) await dropFromBuffer(profile, claimed)
-        if (claimed.postiz_ids?.[0]) await deleteScheduled(key, claimed)
-        spent.used++
-        await update(row.id, {
-          ...at,
-          post_at: move.postAt,
-          status: 'approved',
-          postiz_ids: null,
-          buffer_ids: null,
-          creating_at: null,
-          error: null,
-          retry_at: null,
-          attempts: 0,
-        })
-      } finally {
-        await release(row.id)
-      }
-      // Back into Postiz now, at its new time - the scheduler would get to it
-      // too, but ten a minute is slow for a few hundred.
-      await advance(row.id)
-      moved++
+      const done = await updateIf(row.id, row.status, {
+        slot: move.slot,
+        batch: { ...row.batch!, time: move.time },
+        ...(row.post_at ? { post_at: move.postAt } : {}),
+        // Waiting for its time to go into Postiz: worked out again from the
+        // new time (schedule) - one moved earlier must not go in late.
+        ...(row.status === 'approved' ? { retry_at: null } : {}),
+      })
+      if (done) moved++
     } catch (error) {
       failed++
       console.error('moving a post to its even time failed', row.id, error)
-      // Postiz has had enough for now: nothing more this hour.
-      if (error instanceof PostizProblem && error.status === 429) {
-        spent.used = RESPREAD_PER_HOUR
-        paused = true
-        break
-      }
     }
   }
-  await keepRespreadSpent(profile.id, spent)
-  // `paused`: the rest wait for the next hour - the app asks again by itself.
-  return reply({ moved, failed, left: moves.length - tried + pending, paused })
+  return reply({ moved, failed, left: moves.length - tried + pending, paused: false })
 }
 
 async function stopRows(profile: Profile, rows: Post[]): Promise<Response> {
@@ -2802,6 +2752,12 @@ async function finishEndings(): Promise<void> {
 
 // --- The scheduler ------------------------------------------------------------
 
+/** How long before its time a batch video goes into Postiz (schedule): a
+ *  steady few an hour around the clock, never a week's at once. Over the
+ *  Buffer backup's few hours (HAND_AHEAD_MS), so a Postiz outage still has
+ *  hours of tries before Buffer takes it. */
+const BATCH_LEAD_MS = 12 * 60 * MINUTE
+
 /** What an approved post far ahead says while Postiz won't take it: the
  *  tick asks again (probePostiz), and Buffer takes it before its time. */
 const POSTIZ_WAIT = "Approved - Postiz didn't take it yet, so it tries again by itself. Buffer posts it a few hours before its time if Postiz still can't."
@@ -2859,18 +2815,19 @@ async function tick(): Promise<void> {
   // waiting to go back in after a respread), those are the ones that matter.
   const { data: due } = await db
     .from('cutter_posts')
-    .select('id, profile_id, retry_at, updated_at')
+    .select('id, profile_id, batch, retry_at, updated_at')
     .in('status', ['writing', 'approved'])
     .or(`retry_at.is.null,retry_at.lte.${iso(now)}`)
     .lt('updated_at', iso(now - 2 * MINUTE))
     .order('post_at', { ascending: true, nullsFirst: true })
     .limit(60)
   let tried = 0
-  for (const row of (due ?? []) as { id: string; profile_id: string }[]) {
+  for (const row of (due ?? []) as { id: string; profile_id: string; batch: Post['batch'] }[]) {
     if (tried >= 10) break
     // That login's Postiz just said "too many": its rest wait for a later
-    // tick, and the other logins' go meanwhile.
-    if (postizBusyFor(row.profile_id)) continue
+    // tick, and the other logins' go meanwhile - his own posts too, while
+    // only the batch's share is used.
+    if (postizBusyFor(row.profile_id, Boolean(row.batch))) continue
     tried++
     await advance(row.id)
   }
