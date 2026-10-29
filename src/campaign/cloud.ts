@@ -122,6 +122,53 @@ export async function signIn(name: string, password: string): Promise<Session> {
   return session
 }
 
+/** A one-time sign-in link opened (his ask, 2026-10-29): the password the
+ *  new person chose, and their own login is theirs. Nothing on this phone is
+ *  sent up: a link opened on a phone that already holds someone's setups
+ *  must not hand them to the new login. */
+export async function acceptInvite(code: string, password: string): Promise<Session> {
+  const { token, name } = await call<{ token: string; name: string }>('accept-invite', { code, password })
+  const session = { name, token }
+  keepSession(session)
+  await setMeta(LAST_PULL, null)
+  return session
+}
+
+/** A login he made with a link: its name, whether the link was opened, and
+ *  until when an unopened one works. */
+export interface Person {
+  name: string
+  status: 'active' | 'invited' | 'paused'
+  until: string | null
+  since: string
+}
+
+/** Makes a one-time sign-in link for a new login (the main login only). */
+export async function makeInvite(name: string): Promise<{ code: string; until: string }> {
+  const out = await askShared<{ code: string; until: string }>('invite', { name })
+  if (!out) throw new CloudError('Sign in first.')
+  return out
+}
+
+/** The logins he made; null when this isn't the main login. */
+export async function listPeople(): Promise<Person[] | null> {
+  try {
+    return (await askShared<{ people: Person[] }>('people'))?.people ?? null
+  } catch {
+    return null
+  }
+}
+
+/** The address a link's code is opened at: this app, with ?invite=. */
+export function inviteLink(code: string): string {
+  return `${window.location.origin}${window.location.pathname}?invite=${encodeURIComponent(code)}`
+}
+
+/** The code of a sign-in link this page was opened with, if any. */
+export function inviteInAddress(): string | null {
+  return new URLSearchParams(window.location.search).get('invite')
+}
+
 export function signOut(): void {
   keepSession(null)
   void setMeta(LAST_PULL, null)

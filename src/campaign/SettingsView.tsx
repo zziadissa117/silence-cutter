@@ -4,6 +4,7 @@
 import { useEffect, useState } from 'react'
 
 import type { PresetName } from '../media/silenceMath'
+import { People } from './People'
 import type { Session, SyncState } from './cloud'
 import { savedTheme, savedTips, setTheme, setTips, type Theme } from '../theme'
 import { cleanEngineUrl, engineStatus, engineUrl, setEngineUrl } from './engine'
@@ -247,6 +248,8 @@ export function SettingsView({
           </button>
         )}
       </div>
+
+      {session ? <People /> : null}
 
       <div className="list-title">Posting</div>
       {posting ? (

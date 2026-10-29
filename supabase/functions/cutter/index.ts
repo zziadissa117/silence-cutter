@@ -11,10 +11,13 @@
 // cutter_* tables and the cutter-files bucket (which have no policies at
 // all). Deployed with verify_jwt off: the login is checked here instead.
 //
-// CLOSED: this backend does not create logins. There is the one that already
-// exists, plus one admin backup (below). `create` is ignored. Anyone else who
-// calls login gets the same answer a wrong password gets, so nothing says
-// which names exist.
+// CLOSED: this backend does not create logins from a sign-in. There is the
+// owner's login (the oldest space), the admin backup (below), and the logins
+// the owner makes with a one-time link (invite.ts, his ask on 2026-10-29):
+// only a signed-in owner can make one, the link works once within 48 hours,
+// and the person who opens it gets their own space and picks the password.
+// `create` is ignored. Anyone else who calls login gets the same answer a
+// wrong password gets, so nothing says which names exist.
 //
 // The admin backup is a second way into the SAME space - not a second space,
 // which would be empty and useless as a backup. Its name is `admin` and its
@@ -26,6 +29,9 @@
 //
 // Actions, all POST with a JSON body:
 //   login          { name, password }           -> { token, name }
+//   invite         { token, name }              -> { code, until }  owner only: a one-time link's code
+//   accept-invite  { code, password }           -> { token, name }  the link opened: once, within 48 h
+//   people         { token }                    -> { people }       owner only: the logins he made
 //   pull           { token, since? }            -> { items, until }
 //   push           { token, items }             -> { accepted }
 //   upload-urls    { token, files: [{ sha }] }  -> { uploads: [{ sha, url }] }
@@ -44,7 +50,8 @@
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 
-import { MUSIC_DIR, SONG_KEY, cleanSong, sameSong, songsFrom, type SharedSong } from './songs.ts'
+import { MUSIC_DIR, cleanSong, sameSong, songsFrom, type SharedSong } from './songs.ts'
+import { INVITE_MS, cleanLoginName, isActive, songPrefix } from './invite.ts'
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!
 const SERVICE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
@@ -125,8 +132,8 @@ async function spaceFor(token: unknown): Promise<string | null> {
     const valid = await crypto.subtle.verify('HMAC', await signingKey(), fromB64url(signature), encoder.encode(payload))
     if (!valid) return null
     const { s, p } = JSON.parse(new TextDecoder().decode(fromB64url(payload))) as { s: string; p: string }
-    const { data } = await db.from('cutter_spaces').select('id, pass_hash').eq('id', s).maybeSingle()
-    return data && data.pass_hash.startsWith(p) ? data.id : null
+    const { data } = await db.from('cutter_spaces').select('*').eq('id', s).maybeSingle()
+    return data && isActive(data) && data.pass_hash.startsWith(p) ? data.id : null
   } catch {
     return null
   }
@@ -189,6 +196,11 @@ async function login(body: Record<string, unknown>): Promise<Response> {
   const { data: space, error } = await db.from('cutter_spaces').select('*').eq('name', name).maybeSingle()
   if (error) return reply({ error: 'The server could not check the login. Try again.' }, 500)
 
+  // A link not opened yet, or a paused login: as if there were no such name.
+  if (space && !isActive(space)) {
+    await hashPassword(password, 'no-such-login')
+    return reply(WRONG, 401)
+  }
   if (space) {
     if (space.locked_until && new Date(space.locked_until) > new Date()) {
       return reply({ error: `Too many wrong passwords. Try again in ${LOCK_MINUTES} minutes.` }, 429)
@@ -219,6 +231,88 @@ async function login(body: Record<string, unknown>): Promise<Response> {
   // answer takes does not say whether the name exists.
   await hashPassword(password, 'no-such-login')
   return reply(WRONG, 401)
+}
+
+/** The owner's space: the oldest - the one login there was before links. */
+let ownerId: string | null = null
+async function ownerSpace(): Promise<string | null> {
+  if (ownerId) return ownerId
+  const { data } = await db.from('cutter_spaces').select('id').order('created_at').limit(1).maybeSingle()
+  ownerId = data?.id ?? null
+  return ownerId
+}
+
+const NOT_OWNER = { error: 'Only the main login can do that.' }
+
+/** A one-time sign-in link for a new login, `name`: its code (only the
+ *  hash is kept). A name with a link not opened yet gets a new one - the old
+ *  one stops working. */
+async function invite(spaceId: string, body: Record<string, unknown>): Promise<Response> {
+  if (spaceId !== (await ownerSpace())) return reply(NOT_OWNER, 403)
+  const name = cleanLoginName(body.name)
+  if (!name) return reply({ error: 'Pick a login name: 3 to 30 letters or digits, no spaces.' }, 400)
+  const code = b64url(crypto.getRandomValues(new Uint8Array(32)))
+  const until = new Date(Date.now() + INVITE_MS).toISOString()
+  const link = { invite_hash: await sha256Hex(code), invite_until: until }
+  const { data: taken } = await db.from('cutter_spaces').select('*').eq('name', name).maybeSingle()
+  if (taken) {
+    if (taken.status !== 'invited') return reply({ error: 'That login name is taken - pick another.' }, 409)
+    const { error } = await db.from('cutter_spaces').update(link).eq('id', taken.id).eq('status', 'invited')
+    if (error) return reply({ error: 'The server could not make the link. Try again.' }, 500)
+    return reply({ code, until })
+  }
+  // No password yet: an unguessable one that nobody knows, until the link.
+  const salt = b64url(crypto.getRandomValues(new Uint8Array(16)))
+  const { error } = await db.from('cutter_spaces').insert({
+    name,
+    pass_salt: salt,
+    pass_hash: await hashPassword(b64url(crypto.getRandomValues(new Uint8Array(32))), salt),
+    status: 'invited',
+    ...link,
+  })
+  if (error) return reply({ error: 'The server could not make the link. Try again.' }, 500)
+  return reply({ code, until })
+}
+
+const LINK_DEAD = { error: 'This link has already been used or has expired. Ask for a new one.' }
+
+/** The link opened: the password he chose, and his login is his. In one
+ *  update that only an invited space with this code, in time, matches - so
+ *  the link works once. */
+async function acceptInvite(body: Record<string, unknown>): Promise<Response> {
+  const code = typeof body.code === 'string' && /^[\w-]{20,100}$/.test(body.code) ? body.code : null
+  const password = typeof body.password === 'string' ? body.password : ''
+  if (!code) return reply(LINK_DEAD, 410)
+  if (password.length < MIN_PASSWORD) return reply({ error: `The password needs at least ${MIN_PASSWORD} characters.` }, 400)
+  const salt = b64url(crypto.getRandomValues(new Uint8Array(16)))
+  const passHash = await hashPassword(password, salt)
+  const { data, error } = await db
+    .from('cutter_spaces')
+    .update({ status: 'active', pass_salt: salt, pass_hash: passHash, invite_hash: null, invite_until: null, failed_count: 0, locked_until: null })
+    .eq('invite_hash', await sha256Hex(code))
+    .eq('status', 'invited')
+    .gt('invite_until', new Date().toISOString())
+    .select('id, name, pass_hash')
+    .maybeSingle()
+  if (error) return reply({ error: 'The server could not check the link. Try again.' }, 500)
+  if (!data) return reply(LINK_DEAD, 410)
+  return reply({ token: await makeToken(data.id, data.pass_hash), name: data.name })
+}
+
+/** The logins he made: name, whether the link was opened, until when it works. */
+async function people(spaceId: string): Promise<Response> {
+  const owner = await ownerSpace()
+  if (spaceId !== owner) return reply(NOT_OWNER, 403)
+  const { data, error } = await db.from('cutter_spaces').select('*').neq('id', owner).order('created_at')
+  if (error) return reply({ error: 'The server could not read the logins.' }, 500)
+  return reply({
+    people: (data ?? []).map((row) => ({
+      name: row.name,
+      status: row.status ?? 'active',
+      until: row.status === 'invited' ? row.invite_until : null,
+      since: row.created_at,
+    })),
+  })
 }
 
 async function pull(spaceId: string, body: Record<string, unknown>): Promise<Response> {
@@ -316,8 +410,11 @@ async function downloadUrls(spaceId: string, body: Record<string, unknown>): Pro
 // Every login's phones see the same songs: rows `song:<id>` in cutter_config,
 // files at music/<sha> in the bucket. Only reached after a valid login.
 
-async function allSongs(): Promise<SharedSong[]> {
-  const { data, error } = await db.from('cutter_config').select('value').like('key', `${SONG_KEY}%`)
+/** A space's songs: the owner's bank as it always was; any other login has
+ *  its own (invite.ts songPrefix). */
+async function allSongs(spaceId: string): Promise<SharedSong[]> {
+  const prefix = songPrefix(spaceId, await ownerSpace())
+  const { data, error } = await db.from('cutter_config').select('value').like('key', `${prefix}%`)
   if (error) throw new Error('The server could not read the music bank.')
   return songsFrom((data ?? []) as { value: string }[])
 }
@@ -327,8 +424,8 @@ async function songFileThere(sha: string): Promise<boolean> {
   return (data ?? []).some((f: { name: string }) => f.name === sha)
 }
 
-async function songs(): Promise<Response> {
-  return reply({ songs: await allSongs() })
+async function songs(spaceId: string): Promise<Response> {
+  return reply({ songs: await allSongs(spaceId) })
 }
 
 async function songUpload(body: Record<string, unknown>): Promise<Response> {
@@ -339,43 +436,47 @@ async function songUpload(body: Record<string, unknown>): Promise<Response> {
   return reply({ url: data?.signedUrl ?? null })
 }
 
-async function addSong(body: Record<string, unknown>): Promise<Response> {
+async function addSong(spaceId: string, body: Record<string, unknown>): Promise<Response> {
   const song = cleanSong(body.song)
   if (!song) return reply({ error: 'That song could not be added.' }, 400)
-  const same = sameSong(await allSongs(), song)
+  const same = sameSong(await allSongs(spaceId), song)
   if (same) return reply({ song: same })
   // Only once its file is up, so no phone ever sees a song it can't play.
   if (!(await songFileThere(song.sha))) return reply({ error: "The song's file hasn't arrived yet.", later: true }, 409)
-  const { error } = await db.from('cutter_config').upsert({ key: `${SONG_KEY}${song.id}`, value: JSON.stringify(song) }, { onConflict: 'key' })
+  const key = `${songPrefix(spaceId, await ownerSpace())}${song.id}`
+  const { error } = await db.from('cutter_config').upsert({ key, value: JSON.stringify(song) }, { onConflict: 'key' })
   if (error) return reply({ error: 'The server could not keep the song.' }, 500)
   return reply({ song })
 }
 
-async function renameSong(body: Record<string, unknown>): Promise<Response> {
+async function renameSong(spaceId: string, body: Record<string, unknown>): Promise<Response> {
   const id = typeof body.id === 'string' ? body.id : ''
-  const song = (await allSongs()).find((s) => s.id === id)
+  const song = (await allSongs(spaceId)).find((s) => s.id === id)
   const name = typeof body.name === 'string' ? body.name.trim().slice(0, 120) : ''
   if (!song || !name) return reply({ song: song ?? null })
   const renamed = { ...song, name }
-  const { error } = await db.from('cutter_config').update({ value: JSON.stringify(renamed) }).eq('key', `${SONG_KEY}${song.id}`)
+  const { error } = await db.from('cutter_config').update({ value: JSON.stringify(renamed) }).eq('key', `${songPrefix(spaceId, await ownerSpace())}${song.id}`)
   if (error) return reply({ error: 'The server could not rename the song.' }, 500)
   return reply({ song: renamed })
 }
 
-async function removeSong(body: Record<string, unknown>): Promise<Response> {
+async function removeSong(spaceId: string, body: Record<string, unknown>): Promise<Response> {
   const id = typeof body.id === 'string' ? body.id : ''
-  const all = await allSongs()
-  const song = all.find((s) => s.id === id)
+  const song = (await allSongs(spaceId)).find((s) => s.id === id)
   if (!song) return reply({ removed: false })
-  const { error } = await db.from('cutter_config').delete().eq('key', `${SONG_KEY}${song.id}`)
+  const { error } = await db.from('cutter_config').delete().eq('key', `${songPrefix(spaceId, await ownerSpace())}${song.id}`)
   if (error) return reply({ error: 'The server could not take the song out.' }, 500)
-  // Its file too, unless another song is the same file.
-  if (!all.some((s) => s.id !== song.id && s.sha === song.sha)) await db.storage.from(BUCKET).remove([`${MUSIC_DIR}/${song.sha}`])
+  // Its file too, unless another song - any login's - is the same file.
+  const { data: rows } = await db.from('cutter_config').select('value').like('key', 'song%')
+  const everyone = songsFrom((rows ?? []) as { value: string }[])
+  if (!everyone.some((s) => s.sha === song.sha)) await db.storage.from(BUCKET).remove([`${MUSIC_DIR}/${song.sha}`])
   return reply({ removed: true })
 }
 
-async function songUrls(body: Record<string, unknown>): Promise<Response> {
-  const shas = (Array.isArray(body.shas) ? body.shas : []).filter((s): s is string => typeof s === 'string' && SHA.test(s))
+async function songUrls(spaceId: string, body: Record<string, unknown>): Promise<Response> {
+  // Only this login's own songs.
+  const mine = new Set((await allSongs(spaceId)).map((s) => s.sha))
+  const shas = (Array.isArray(body.shas) ? body.shas : []).filter((s): s is string => typeof s === 'string' && SHA.test(s) && mine.has(s))
   if (shas.length === 0) return reply({ urls: {} })
   const { data, error } = await db.storage.from(BUCKET).createSignedUrls(
     shas.slice(0, 100).map((sha) => `${MUSIC_DIR}/${sha}`),
@@ -434,6 +535,7 @@ Deno.serve(async (req) => {
     return reply({ error: 'Not JSON.' }, 400)
   }
   if (body.action === 'login') return login(body)
+  if (body.action === 'accept-invite') return acceptInvite(body)
   if (body.action === 'report') return report(body)
 
   const spaceId = await spaceFor(body.token)
@@ -451,18 +553,22 @@ Deno.serve(async (req) => {
       // The engine (engine/) checks a phone's login with this: a valid token
       // gets its space's id back, nothing more.
       return reply({ space: spaceId })
+    case 'invite':
+      return invite(spaceId, body)
+    case 'people':
+      return people(spaceId)
     case 'songs':
-      return songs().catch((error) => reply({ error: (error as Error).message }, 500))
+      return songs(spaceId).catch((error) => reply({ error: (error as Error).message }, 500))
     case 'song-upload':
       return songUpload(body)
     case 'add-song':
-      return addSong(body).catch((error) => reply({ error: (error as Error).message }, 500))
+      return addSong(spaceId, body).catch((error) => reply({ error: (error as Error).message }, 500))
     case 'rename-song':
-      return renameSong(body).catch((error) => reply({ error: (error as Error).message }, 500))
+      return renameSong(spaceId, body).catch((error) => reply({ error: (error as Error).message }, 500))
     case 'remove-song':
-      return removeSong(body).catch((error) => reply({ error: (error as Error).message }, 500))
+      return removeSong(spaceId, body).catch((error) => reply({ error: (error as Error).message }, 500))
     case 'song-urls':
-      return songUrls(body)
+      return songUrls(spaceId, body).catch((error) => reply({ error: (error as Error).message }, 500))
     default:
       return reply({ error: 'Unknown action.' }, 400)
   }

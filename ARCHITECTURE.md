@@ -47,10 +47,19 @@ first when something would be lost.
   there is a session (`cloud.ts` `currentSession()`); it returns the moment the
   session ends (`SESSION_EVENT`). Offline use is unaffected once signed in.
   The gate is the front door, **the lock is the server**.
-- **One shared login** (name + password) lives in `cutter_spaces`. **Logins
-  cannot be created**: `supabase/functions/cutter/index.ts` ignores `create`.
-  Unknown name, wrong password and wrong admin password all answer `Wrong login
-  or password.`; 5 wrong passwords lock 30 min.
+- **The owner's login** (name + password, the oldest `cutter_spaces` row) and
+  the logins he makes with a **one-time sign-in link** (2026-10-29): Settings,
+  People (`People.tsx`, shown to the owner only) -> cutter `invite` { name }
+  makes a space `status = invited` with an unknown password and the SHA-256 of a
+  random 256-bit code, good 48 h (`invite.ts`); the link `?invite=<code>` opens
+  `AcceptInvite.tsx` (LoginGate, signed-out phones only) -> `accept-invite`
+  { code, password } turns it `active` with that password and clears the code in
+  the same update (one use). Nothing else creates a login; `create` is ignored.
+  An invited or paused space can't sign in or use a token (`isActive`, in both
+  functions). Each login is its own space: campaigns, bank, posting profiles,
+  posts - and its own music bank (`song@<space>:` rows; the owner's stay
+  `song:`). Unknown name, wrong password and wrong admin password all answer
+  `Wrong login or password.`; 5 wrong passwords lock 30 min.
 - **Admin backup:** name `admin`, password = Edge Function secret
   `CUTTER_ADMIN_PASSWORD` (>= 12 chars; unset = no admin). Opens the same space
   (the oldest `cutter_spaces` row). Own failure counter in `cutter_config`.
@@ -60,7 +69,7 @@ first when something would be lost.
   `postiz-outbox` storage buckets are private with no policies.
 - Both functions are `verify_jwt = false`: the cutter login token (HMAC-signed
   with the service key, bound to the space + a piece of its password hash) is
-  checked inside. Open routes: `login`, `report` (insert-only, capped), signed
+  checked inside. Open routes: `login`, `accept-invite` (a one-time code), `report` (insert-only, capped), signed
   video GETs, `tick` (secret-gated cron), and `channels` (the planner's
   `planner-postiz` function, same project, gated by the project's service key
   in `x-planner-bridge`; read-only toward Postiz, returns which channels a
@@ -445,7 +454,7 @@ more; down almost a third -> fewer; quiet 3 days after an answer). Yes saves the
 
 ## The music bank, shared (`musicBank.ts`, `MusicBankView.tsx`, server `cutter/songs.ts`)
 
-Songs for every campaign, the same on every phone that uses the Cutter, whatever the login. Each
+Songs for every campaign, the same on every phone signed in to a login (each login has its own bank, `invite.ts` `songPrefix`). Each
 phone keeps its list in meta `music:bank` and the files as bank files (`saveBankFile`), as before.
 `syncSongs` (on each sync, on opening the Music screen, after a change) sends what this phone did -
 renames and takings-out queued in `music:pending`, then its songs not shared yet: the file (sound

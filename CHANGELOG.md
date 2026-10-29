@@ -3,6 +3,23 @@
 Newest first. Every change says what it does, how to use it, and how it works
 underneath. Kept up to date with each commit.
 
+## A one-time sign-in link for someone new, with their own Cutter
+Needs deploying: run ./deploy-server.sh (./deploy.sh runs it by itself) - after the migration
+`20261029120000_cutter_invites.sql` is applied (shown to him first).
+**What he asked (2026-10-29):** give a new person access - "We're going to send him a link ... automatic sign-in ...
+a one-time login. After that link gets clicked once, it's not valid anymore." His answers: his own space ("I want
+him to keep his data"), the link dead after 48 hours, and he sets a password so he can sign in again himself.
+**How to use it:** Settings, **People** (only on the main login): type his login name, **Make link**, **Send** (the
+phone's share sheet: WhatsApp, Messages). He opens it, chooses a password, and is in his own Cutter, empty -
+nothing of yours. The link then stops working; one never opened stops after 48 h (make a new one with the same
+name). People lists each login and whether its link was opened.
+**Underneath:** cutter function `invite` (main login only) / `accept-invite` / `people`; `invite.ts`
+(`cleanLoginName`, `isActive`, `songPrefix`); only the code's SHA-256 is stored, cleared on use in the one update
+that signs him up. Invited or paused logins can't sign in or post (both functions). The music bank was shared by
+every login: each login now has its own (his stays as it is). The phone doesn't send anything it holds to the new
+login (a link opened on a phone with someone's setups). AGENTS.md hard rule 1 now names this as the only way a
+login is made. Tests: `invite.test.ts`, `loginGate.test.tsx`. Not tried against the live server here.
+
 ## Music: stops with the song outside batches; change it or take it off after approving
 **What he asked (2026-10-29):** "Let's say we have a song, and it completely ends. Don't loop it at all. Just stop
 it right there ... for all the talking head videos, but for the batches, make sure they keep replaying"; and "I

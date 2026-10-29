@@ -92,4 +92,28 @@ describe('the login gate', () => {
     const button = host.querySelector('button[type="submit"]') as HTMLButtonElement
     expect(button.disabled).toBe(true)
   })
+
+  it('opens a one-time link on the choose-a-password page, not the sign-in', () => {
+    history.replaceState(null, '', '/campaign.html?invite=abcdefghijklmnopqrstuvwxyz0123456789ABCDEFG')
+    try {
+      show()
+      expect(host.textContent).toContain('Choose a password')
+      expect(host.textContent).not.toContain('the app')
+      const button = host.querySelector('button[type="submit"]') as HTMLButtonElement
+      expect(button.disabled).toBe(true)
+    } finally {
+      history.replaceState(null, '', '/')
+    }
+  })
+
+  it('never shows the link page to a phone already signed in', () => {
+    localStorage.setItem('cutter.session', JSON.stringify({ name: 'me', token: 't.k' }))
+    history.replaceState(null, '', '/campaign.html?invite=abcdefghijklmnopqrstuvwxyz0123456789ABCDEFG')
+    try {
+      show()
+      expect(host.textContent).toContain('the app')
+    } finally {
+      history.replaceState(null, '', '/')
+    }
+  })
 })

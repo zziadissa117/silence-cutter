@@ -13,7 +13,8 @@
 
 import { useEffect, useState, type ReactNode } from 'react'
 
-import { SESSION_EVENT, currentSession } from './cloud'
+import { AcceptInvite } from './AcceptInvite'
+import { SESSION_EVENT, currentSession, inviteInAddress } from './cloud'
 import { SignIn } from './SignIn'
 
 export function LoginGate({ children }: { children: ReactNode }) {
@@ -31,9 +32,11 @@ export function LoginGate({ children }: { children: ReactNode }) {
   }, [])
 
   if (!signedIn) {
+    // A one-time sign-in link: the new person chooses a password instead.
+    const invite = inviteInAddress()
     return (
       <main className="login-gate">
-        <SignIn onSignedIn={() => setSignedIn(true)} />
+        {invite ? <AcceptInvite code={invite} onSignedIn={() => setSignedIn(true)} /> : <SignIn onSignedIn={() => setSignedIn(true)} />}
       </main>
     )
   }

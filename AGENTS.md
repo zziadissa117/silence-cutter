@@ -43,8 +43,9 @@ only, no Supabase); `./deploy-server.sh` ships the `postiz` and `cutter` functio
    door; the server is the lock. Never add a route, table grant or function
    action that exposes data without a valid cutter login token (the two
    server-to-server exceptions: `tick`, by its `cutter_config` secret, and
-   `channels`, by the project's service key - see ARCHITECTURE.md). Never re-add
-   login creation. All `cutter_*` tables: RLS on, **no policies, no anon/authenticated
+   `channels`, by the project's service key - see ARCHITECTURE.md). Never add
+   another way to make a login: the only one is the owner's one-time sign-in link
+   (cutter `invite` / `accept-invite`, his OK 2026-10-29) - no sign-up, no `create`. All `cutter_*` tables: RLS on, **no policies, no anon/authenticated
    privileges**. Secrets (Postiz/Anthropic keys, admin password) never go in code,
    the client, or git.
 2. `supabase/functions/cutter/index.ts` in the repo is the deployed source of

@@ -194,8 +194,9 @@ async function spaceFor(token: unknown): Promise<string | null> {
     const valid = await crypto.subtle.verify('HMAC', await hmacKey(), fromB64url(signature), encoder.encode(payload))
     if (!valid) return null
     const { s, p } = JSON.parse(decoder.decode(fromB64url(payload))) as { s: string; p: string }
-    const { data } = await db.from('cutter_spaces').select('id, pass_hash').eq('id', s).maybeSingle()
-    return data && data.pass_hash.startsWith(p) ? data.id : null
+    const { data } = await db.from('cutter_spaces').select('*').eq('id', s).maybeSingle()
+    // A paused login can't post either (rows from before the status column are active).
+    return data && (data.status ?? 'active') === 'active' && data.pass_hash.startsWith(p) ? data.id : null
   } catch {
     return null
   }
