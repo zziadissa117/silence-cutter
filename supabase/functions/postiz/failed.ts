@@ -2,6 +2,8 @@
 // failed, how each account is named on the post (two accounts can share a
 // name - "Ilyan Hamdane" on YouTube and on Instagram), and what the post says.
 
+import { addDays, localDate, zoned } from './slots.ts'
+
 export interface FailedAccount {
   id: string
   name: string
@@ -108,4 +110,24 @@ export function reconnectedAs<T extends ConnectedAccount>(account: FailedAccount
   if (same) return same
   const like = live.filter((c) => c.platform === account.platform && (account.profile ? c.profile === account.profile : c.name === account.name))
   return like.length === 1 ? like[0] : null
+}
+
+/** YouTube's daily upload limit starts again at midnight in California: its
+ *  uploads fail through the evening there (2026-10-29: of 14 days' YouTube
+ *  posts, nearly none failed from 7 AM to 3 PM Pacific and half to all from
+ *  4 PM to midnight), and go again after it. */
+export const YOUTUBE_DAY_TZ = 'America/Los_Angeles'
+
+/** The first moment after `now` that YouTube's new day has started, with a
+ *  few minutes' margin. */
+export function youtubeDayStarts(now: number): number {
+  const today = localDate(new Date(now), YOUTUBE_DAY_TZ)
+  const at = zoned(today, '00:10', YOUTUBE_DAY_TZ).getTime()
+  return at > now ? at : zoned(addDays(today, 1), '00:10', YOUTUBE_DAY_TZ).getTime()
+}
+
+/** A post's note without what was added about posting it again, so the
+ *  accounts it names (namesIn) stay first. */
+export function baseNote(note: string): string {
+  return note.replace(/ (Posting again|Still not posted)\b.*$/s, '')
 }

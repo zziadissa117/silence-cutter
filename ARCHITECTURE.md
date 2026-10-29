@@ -196,6 +196,11 @@ has a new id: `reconnectedAs` finds it by platform + username (name if none kept
 it into every campaign, the cached accounts and the posts not in Postiz yet. Any missed account not connected
 (or Postiz's `refreshNeeded`): nothing posts, and he is told to reconnect it. "Reconnect in Postiz" beside the
 button opens Postiz.
+A tap while Postiz's hour is used up is queued, not refused (`postAgainSoon`: `retry_at` on a `posted`/`error`
+row, note "Posting again as soon as Postiz has room."); `retryMissing` (tick) posts them. A YouTube account missed
+is posted to again by itself once, at 00:10 Pacific (`failed.ts` `youtubeDayStarts`: YouTube's daily upload limit
+starts over then; `missedFields` in `checkPosted`, `attempts` counts the tries made by itself). Every missed account
+sends a push (`checkPosted`, `checkBuffer`, `giveUpUnconfirmed`, `retryMissing`). A refused tap shows under its post.
 
 **Waiting past its time.** A post still `waiting` for his OK (or the brand's) whose
 `post_at` has gone is moved on by every tick (`moveOnWaiting`, `slots.ts`

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { accountName, failedRefs, missingAccounts, namesIn, notPostedNote, reconnectedAs } from './failed'
+import { accountName, baseNote, failedRefs, missingAccounts, namesIn, notPostedNote, reconnectedAs, youtubeDayStarts } from './failed'
 
 const accounts = [
   { id: 'yt', name: 'Ilyan Hamdane', platform: 'youtube' },
@@ -108,5 +108,26 @@ describe('namesIn', () => {
     expect([...namesIn("Buffer couldn't post it to Jake. Open Buffer to see why.")]).toEqual(['Jake'])
     expect([...namesIn("Not posted to Jake (Buffer couldn't).")]).toEqual(['Jake'])
     expect([...namesIn('Something else.')]).toEqual([])
+  })
+})
+
+describe('youtubeDayStarts', () => {
+  it('is ten past midnight in California, the next one', () => {
+    // 8 PM Pacific on Oct 28 (03:00 UTC Oct 29): 00:10 Pacific Oct 29 = 07:10 UTC.
+    expect(new Date(youtubeDayStarts(Date.parse('2026-10-29T03:00:00Z'))).toISOString()).toBe('2026-10-29T07:10:00.000Z')
+    // Just after it: the one a day later.
+    expect(new Date(youtubeDayStarts(Date.parse('2026-10-29T07:15:00Z'))).toISOString()).toBe('2026-10-30T07:10:00.000Z')
+    // Winter time (from Nov 1): 08:10 UTC.
+    expect(new Date(youtubeDayStarts(Date.parse('2026-11-05T03:00:00Z'))).toISOString()).toBe('2026-11-05T08:10:00.000Z')
+  })
+})
+
+describe('baseNote', () => {
+  it('keeps the accounts a note names, without what was added about posting again', () => {
+    expect(baseNote("Not posted to Vazaziad. Posting again at 3:10 AM, when YouTube's daily limit starts over.")).toBe('Not posted to Vazaziad.')
+    expect(baseNote('Not posted to Vazaziad. Posting again as soon as Postiz has room.')).toBe('Not posted to Vazaziad.')
+    expect(baseNote("Postiz couldn't publish it to X. Open Postiz to see why. Still not posted: X needs reconnecting.")).toBe("Postiz couldn't publish it to X. Open Postiz to see why.")
+    expect(baseNote('Not posted to Vazaziad.')).toBe('Not posted to Vazaziad.')
+    expect([...namesIn("Not posted to Vazaziad. Posting again at 3:10 AM, when YouTube's daily limit starts over.")]).toEqual(['Vazaziad'])
   })
 })

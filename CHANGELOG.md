@@ -3,6 +3,31 @@
 Newest first. Every change says what it does, how to use it, and how it works
 underneath. Kept up to date with each commit.
 
+## Missed YouTube posts go again by themselves; a notification for every missed account
+Needs deploying: run ./deploy-server.sh (./deploy.sh runs it by itself).
+**What he said (2026-10-29):** YouTube misses some accounts; "Post again to the missing ones" just says "Trying" and
+gives the same button back, so he posts them by hand; "notify me whenever a post does not work - I'm not always
+going to know that I lose money".
+**What was found:**
+- **Why YouTube fails:** of 14 days' YouTube posts, almost none failed between 7 AM and 3 PM Pacific, and half to
+  all failed from 4 PM to midnight Pacific. YouTube's daily upload limit starts over at midnight Pacific: it runs
+  out through the evening, not his accounts. Reconnecting doesn't help that.
+- **Why the button did nothing:** his two taps (2026-10-29 03:51 UTC) were refused with "Postiz says too many
+  requests right now" (Postiz's hour was used up), and that message showed at the top of the Posts list, out of
+  sight. The reconnect fix of the same day wasn't deployed yet either.
+**Now:**
+- **A YouTube account missed is posted to again by itself** at 12:10 AM Pacific (3:10 AM in Toronto), once. The
+  post says "Posting again at 3:10 AM, when YouTube's daily limit starts over." If it fails again, it's his: a
+  notification says so.
+- **Post again never just fails on a busy Postiz:** the tap is kept and it goes by itself as soon as Postiz has room
+  ("Posting again as soon as Postiz has room."). Anything else a tap comes back with shows under that post.
+- **A notification for every video that misses an account** ("VAZA: missed an account - Not posted to
+  Vazaziad. ..."), not only for ones that missed all of them; also through Buffer, for ones Postiz never confirmed,
+  and when posting again by itself still fails.
+- `failed.ts` `youtubeDayStarts`, `baseNote`; `index.ts` `missedFields`, `postAgainSoon`, `retryMissing`;
+  `PostsView` per-post problem. Tests in `failed.test.ts`. Posts that already missed YouTube before this are
+  left to him.
+
 ## A YouTube account that won't post: reconnect it in Postiz, tap once, it posts
 Needs deploying: run ./deploy-server.sh (./deploy.sh runs it by itself).
 **What he asked (2026-10-29):** sometimes a video doesn't go to some YouTube accounts. He disconnects and reconnects

@@ -197,6 +197,7 @@ function EditAgain({
 function WaitingPost({
   post,
   busy,
+  problem,
   onAct,
   editable,
   onEdit,
@@ -209,6 +210,8 @@ function WaitingPost({
   onEdit: (key: string) => void
   campaigns: Campaign[]
   onChanged: (message: string) => void
+  /** What his last tap on it came back with. */
+  problem?: string
   onAct: (action: PostAction, fields?: { caption?: string; at?: string; captions?: Record<string, { caption?: string }> }) => void
 }) {
   // His own words while he types; null means the box shows the caption as
@@ -292,6 +295,7 @@ function WaitingPost({
       ) : null}
       {watching ? <Watch post={post} /> : null}
       {addingMusic ? <MusicAfter post={post} campaigns={campaigns} caption={caption} onDone={onChanged} onClose={() => setAddingMusic(false)} /> : null}
+      {problem ? <p className="hint warn-text">{problem}</p> : null}
       <div className="post-actions">
         <button
           type="button"
@@ -341,6 +345,7 @@ function waitingForTime(post: ServerPost, now = Date.now()): boolean {
 function OtherPost({
   post,
   busy,
+  problem,
   onAct,
   editable,
   onEdit,
@@ -353,6 +358,8 @@ function OtherPost({
   onEdit: (key: string) => void
   campaigns: Campaign[]
   onChanged: (message: string) => void
+  /** What his last tap on it came back with. */
+  problem?: string
   onAct: (action: PostAction) => void
 }) {
   const [open, setOpen] = useState(false)
@@ -405,6 +412,7 @@ function OtherPost({
         </div>
       ) : null}
       {addingMusic ? <MusicAfter post={post} campaigns={campaigns} onDone={onChanged} onClose={() => setAddingMusic(false)} /> : null}
+      {problem ? <p className="hint warn-text">{problem}</p> : null}
       <div className="post-actions">
         <SaveVideo post={post} />
         <EditAgain post={post} editable={editable} onEdit={onEdit} />
@@ -621,6 +629,15 @@ export function PostsView({
   const [making, setMaking] = useState(false)
   const profile = postingHere()?.profile ?? null
   const [problem, setProblem] = useState<string | null>(null)
+  // What a tap on a post came back with, shown under that post - at the top
+  // of a long list it went unseen, and "Post again" looked like it did
+  // nothing (2026-10-29).
+  const [postProblems, setPostProblems] = useState<Record<string, string>>({})
+  const postProblem = (id: string, message: string | null) =>
+    setPostProblems((all) => {
+      const { [id]: _gone, ...rest } = all
+      return message ? { ...rest, [id]: message } : rest
+    })
   const [said, setSaid] = useState<string | null>(null)
   const [busy, setBusy] = useState<Set<string>>(new Set())
   const [approvingAll, setApprovingAll] = useState(false)
@@ -677,11 +694,11 @@ export function PostsView({
     try {
       const next = await postAction(action, post.id, fields)
       setPosts((ps) => ps.map((p) => (p.id === next.id ? next : p)))
-      if (next.status === 'waiting' && next.error && action === 'approve') setProblem(next.error)
-      else setProblem(null)
+      postProblem(post.id, next.status === 'waiting' && next.error && action === 'approve' ? next.error : null)
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error)
-      setProblem(
+      postProblem(
+        post.id,
         action === 'ready' && /unknown action/i.test(message)
           ? "Post later needs the server updated first - run ./deploy-server.sh in silence-cutter."
           : message,
@@ -862,7 +879,7 @@ export function PostsView({
           <div className="list-title">To approve</div>
           <ul className="posts-list">
             {list(foldBatches(waiting), (post) => (
-              <WaitingPost key={post.id} editable={editable} onEdit={onEditAgain} campaigns={campaigns} onChanged={onMusicDone} post={post} busy={busy.has(post.id)} onAct={(action, fields) => void act(post, action, fields)} />
+              <WaitingPost key={post.id} editable={editable} onEdit={onEditAgain} campaigns={campaigns} onChanged={onMusicDone} post={post} busy={busy.has(post.id)} problem={postProblems[post.id]} onAct={(action, fields) => void act(post, action, fields)} />
             ))}
           </ul>
         </>
@@ -873,7 +890,7 @@ export function PostsView({
           <div className="list-title">Ready to post · {ready.length}</div>
           <ul className="posts-list">
             {list(foldBatches(ready), (post) => (
-              <WaitingPost key={post.id} editable={editable} onEdit={onEditAgain} campaigns={campaigns} onChanged={onMusicDone} post={post} busy={busy.has(post.id)} onAct={(action, fields) => void act(post, action, fields)} />
+              <WaitingPost key={post.id} editable={editable} onEdit={onEditAgain} campaigns={campaigns} onChanged={onMusicDone} post={post} busy={busy.has(post.id)} problem={postProblems[post.id]} onAct={(action, fields) => void act(post, action, fields)} />
             ))}
           </ul>
         </>
@@ -899,7 +916,7 @@ export function PostsView({
           <div className="list-title">Failed</div>
           <ul className="posts-list">
             {failed.map((post) => (
-              <OtherPost key={post.id} editable={editable} onEdit={onEditAgain} campaigns={campaigns} onChanged={onMusicDone} post={post} busy={busy.has(post.id)} onAct={(action) => void act(post, action)} />
+              <OtherPost key={post.id} editable={editable} onEdit={onEditAgain} campaigns={campaigns} onChanged={onMusicDone} post={post} busy={busy.has(post.id)} problem={postProblems[post.id]} onAct={(action) => void act(post, action)} />
             ))}
           </ul>
         </>
@@ -910,7 +927,7 @@ export function PostsView({
           <div className="list-title">Scheduled · {scheduled.length}</div>
           <ul className="posts-list">
             {list(foldBatches(scheduled), (post) => (
-              <OtherPost key={post.id} editable={editable} onEdit={onEditAgain} campaigns={campaigns} onChanged={onMusicDone} post={post} busy={busy.has(post.id)} onAct={(action) => void act(post, action)} />
+              <OtherPost key={post.id} editable={editable} onEdit={onEditAgain} campaigns={campaigns} onChanged={onMusicDone} post={post} busy={busy.has(post.id)} problem={postProblems[post.id]} onAct={(action) => void act(post, action)} />
             ))}
           </ul>
         </>
@@ -921,7 +938,7 @@ export function PostsView({
           <div className="list-title">Posted · {done.length}</div>
           <ul className="posts-list">
             {(allPosted ? done : done.slice(0, POSTED_SHOWN)).map((post) => (
-              <OtherPost key={post.id} editable={editable} onEdit={onEditAgain} campaigns={campaigns} onChanged={onMusicDone} post={post} busy={busy.has(post.id)} onAct={(action) => void act(post, action)} />
+              <OtherPost key={post.id} editable={editable} onEdit={onEditAgain} campaigns={campaigns} onChanged={onMusicDone} post={post} busy={busy.has(post.id)} problem={postProblems[post.id]} onAct={(action) => void act(post, action)} />
             ))}
           </ul>
           {done.length > POSTED_SHOWN ? (
