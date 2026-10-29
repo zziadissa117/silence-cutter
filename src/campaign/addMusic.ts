@@ -8,16 +8,21 @@
 // video is made (music.ts: set well under the voice, dipping while he talks,
 // fading in and out, looping if short).
 //
-// Music is added on top of whatever sound the video has. A video that already
-// has music gets a second track over it; to swap one for another, make the
-// video again (Edit again) with the other track.
+// Music is added on top of whatever sound the video has - unless the phone
+// kept the video's sound without its music (musicFree.ts, a talking video made
+// with music): then that is the sound, and the music is changed for another
+// or taken off. Without it, a video that has music gets a second track over
+// it; to swap one then, make the video again (Edit again).
 
 import {
   AudioSample,
   AudioSampleSource,
   canEncodeAudio,
+  ALL_FORMATS,
+  BlobSource,
   EncodedPacketSink,
   EncodedVideoPacketSource,
+  Input,
   Mp4OutputFormat,
   Output,
   QUALITY_MEDIUM,
@@ -42,29 +47,44 @@ export interface MusicAdded {
 
 export async function addMusicTo(
   video: Blob,
-  music: { audio: Blob; level: MusicLevel },
+  /** Null: no music - the video's sound without its music (`voice`). */
+  music: { audio: Blob; level: MusicLevel } | null,
   onProgress?: (fraction: number) => void,
+  /** A batch video's music starts again when the song ends; any other's stops. */
+  loop = false,
+  /** The video's sound without its music, used instead of its own sound. */
+  voice: Blob | null = null,
 ): Promise<MusicAdded> {
+  if (!music && !voice) throw new SilenceCutError('There is no music to take off this video.')
   if (!(await canEncodeAudio('aac', { sampleRate: RATE, numberOfChannels: CHANNELS }))) {
     throw new SilenceCutError("This browser can't write the video's sound. Try Safari or Chrome.")
   }
   const clip = await openClip(video, 'finished video')
+  const voiceInput = voice ? new Input({ source: new BlobSource(voice), formats: ALL_FORMATS }) : null
   const sink = await createOutputSink()
   const output = new Output({ format: new Mp4OutputFormat({ fastStart: false }), target: sink.target })
   let finished = false
   try {
     const range = wholeOf(clip)
     const total = clip.duration - clip.first
-    const walk: WalkAudio = async (visit) => eachSound(clip, [range], RATE, CHANNELS, visit)
+    // The sound to go under: the music-free copy when there is one.
+    const voiceTrack = voiceInput ? await voiceInput.getPrimaryAudioTrack() : null
+    if (voiceInput && !(voiceTrack && (await voiceTrack.canDecode()))) throw new SilenceCutError("The video's sound without its music couldn't be read.")
+    const sound = voiceTrack ? { ...clip, audio: voiceTrack } : clip
+    const walk: WalkAudio = async (visit) => eachSound(sound, [range], RATE, CHANNELS, visit)
 
-    const { channels } = await prepareMusic(music.audio, 'music', total, RATE)
-    const measured = await measureLoudness(RATE, CHANNELS, walk)
-    const voiceLufs = Number.isFinite(measured) ? measured : -20
-    const gain = musicGain(trackLoudness(channels, RATE), voiceLufs, music.level)
-    if (!(gain > 0)) throw new SilenceCutError('That track is silent, so there is nothing to add.')
-    const bed = new MusicBed(channels, RATE, Math.round(total * RATE), gain, voiceLufs)
-    // The voice's own limiter, so the mix never clips.
-    const voice = await Voice.measure(RATE, CHANNELS, walk).catch(() => null)
+    let bed: MusicBed | null = null
+    let limiter: Voice | null = null
+    if (music) {
+      const { channels } = await prepareMusic(music.audio, 'music', total, RATE)
+      const measured = await measureLoudness(RATE, CHANNELS, walk)
+      const voiceLufs = Number.isFinite(measured) ? measured : -20
+      const gain = musicGain(trackLoudness(channels, RATE), voiceLufs, music.level)
+      if (!(gain > 0)) throw new SilenceCutError('That track is silent, so there is nothing to add.')
+      bed = new MusicBed(channels, RATE, Math.round(total * RATE), gain, voiceLufs, loop)
+      // The voice's own limiter, so the mix never clips.
+      limiter = await Voice.measure(RATE, CHANNELS, walk).catch(() => null)
+    }
 
     const codec = await clip.video.getCodec()
     if (!codec) throw new SilenceCutError("This video's picture format isn't one this app can copy.")
@@ -89,16 +109,16 @@ export async function addMusicTo(
           packet = await packets.getNextPacket(packet)
         }
       })(),
-      eachSound(clip, [range], RATE, CHANNELS, async (planes) => {
+      eachSound(sound, [range], RATE, CHANNELS, async (planes) => {
         const firstFrame = writtenFrames
         writtenFrames += planes[0].length
         const data = new Float32Array(planes[0].length * CHANNELS)
         const out = [data.subarray(0, planes[0].length), data.subarray(planes[0].length)]
         out[0].set(planes[0])
         out[1].set(planes[1])
-        bed.mixInto(out, firstFrame)
-        mixInto(out, firstFrame, [], !voice)
-        if (voice) voice.limit(out)
+        bed?.mixInto(out, firstFrame)
+        mixInto(out, firstFrame, [], !limiter)
+        if (limiter) limiter.limit(out)
         else for (const plane of out) for (let i = 0; i < plane.length; i++) plane[i] = Math.max(-1, Math.min(1, plane[i]))
         const sample = new AudioSample({ data, format: 'f32-planar', numberOfChannels: CHANNELS, sampleRate: RATE, timestamp: firstFrame / RATE })
         await audioSource.add(sample)
@@ -115,6 +135,7 @@ export async function addMusicTo(
     return { blob, storedAs: sink.storedAs }
   } finally {
     clip.input.dispose()
+    voiceInput?.dispose()
     if (!finished) {
       await output.cancel().catch(() => {})
       await sink.discard()

@@ -127,7 +127,7 @@ export async function renderReaction(
         const { channels } = await prepareMusic(music.audio, 'music', total, RATE)
         const voiceLufs = voice?.lufs ?? (await measureLoudness(RATE, CHANNELS, walk))
         const gain = musicGain(trackLoudness(channels, RATE), Number.isFinite(voiceLufs) ? voiceLufs : -20, music.level)
-        if (gain > 0) bed = new MusicBed(channels, RATE, Math.round(total * RATE), gain, Number.isFinite(voiceLufs) ? voiceLufs : -20)
+        if (gain > 0) bed = new MusicBed(channels, RATE, Math.round(total * RATE), gain, Number.isFinite(voiceLufs) ? voiceLufs : -20, false)
       } catch (error) {
         console.warn('The music could not be added, so the video is made without it:', error)
         reportProblem({ kind: 'fallback', phase: 'music', message: musicProblem(error, music.audio) })

@@ -19,7 +19,7 @@ import type { Campaign } from './look'
 import { NewPost } from './NewPost'
 import { StopPicker } from './StopPicker'
 import { jobOfPostKey, EDIT_WINDOW_MS } from './store'
-import { MusicAfter } from './MusicAfter'
+import { MusicAfter, useCanChangeMusic } from './MusicAfter'
 import { byDay, campaignsIn, foldCampaigns, localDay, rememberShown, shownCampaign, type ListItem } from './postsList'
 import { canAddMusic } from './musicAfterSend'
 import { copyKind, forgetSend, localVideo, retryStuck, sending, tidySends, watchSending, type Sending } from './outbox'
@@ -235,6 +235,7 @@ function WaitingPost({
   const ownEdited = JSON.stringify(ownCaptions()) !== JSON.stringify(Object.fromEntries(Object.entries(post.captions ?? {}).map(([id, t]) => [id, { caption: t.caption ?? '' }]).filter(([, t]) => (t as { caption: string }).caption.trim())))
   const [changingTime, setChangingTime] = useState(false)
   const [addingMusic, setAddingMusic] = useState(false)
+  const musicWord = useCanChangeMusic(post) ? 'Change music' : 'Add music'
   const [at, setAt] = useState(localInput(post.postAt))
   const [watching, setWatching] = useState(watchFirst)
   const brand = post.approval === 'brand'
@@ -329,7 +330,7 @@ function WaitingPost({
         <EditAgain post={post} editable={editable} onEdit={onEdit} />
         {canAddMusic(post) ? (
           <button type="button" className="linkbtn" onClick={() => setAddingMusic((m) => !m)}>
-            {addingMusic ? 'Hide music' : 'Add music'}
+            {addingMusic ? 'Hide music' : musicWord}
           </button>
         ) : null}
         <button type="button" className="linkbtn" onClick={() => setWatching((w) => !w)}>
@@ -379,6 +380,7 @@ function OtherPost({
 }) {
   const [open, setOpen] = useState(false)
   const [addingMusic, setAddingMusic] = useState(false)
+  const musicWord = useCanChangeMusic(post) ? 'Change music' : 'Add music'
   const tone =
     post.status === 'posted' ? (post.error ? 'warn' : 'ok') : post.status === 'error' || post.status === 'failed' ? 'bad' : 'later'
   // Sent through Buffer, the backup, instead of Postiz.
@@ -433,7 +435,7 @@ function OtherPost({
         <EditAgain post={post} editable={editable} onEdit={onEdit} />
         {canAddMusic(post) ? (
           <button type="button" className="linkbtn" onClick={() => setAddingMusic((m) => !m)}>
-            {addingMusic ? 'Hide music' : 'Add music'}
+            {addingMusic ? 'Hide music' : musicWord}
           </button>
         ) : null}
         {post.status === 'failed' ? (

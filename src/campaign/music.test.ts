@@ -18,8 +18,8 @@ function loudness(planes: Float32Array[]): number {
 }
 
 /** The music alone, mixed over `voice` (which is left out afterwards). */
-function musicOver(voice: Float32Array, track: Float32Array, gain: number, voiceLufs: number): Float32Array {
-  const bed = new MusicBed([track], RATE, voice.length, gain, voiceLufs)
+function musicOver(voice: Float32Array, track: Float32Array, gain: number, voiceLufs: number, loop = true): Float32Array {
+  const bed = new MusicBed([track], RATE, voice.length, gain, voiceLufs, loop)
   const mixed = voice.slice()
   for (let at = 0; at < mixed.length; at += 1024) bed.mixInto([mixed.subarray(at, at + 1024)], at)
   return mixed.map((v, i) => v - voice[i])
@@ -70,6 +70,16 @@ describe('MusicBed', () => {
     const music = musicOver(quiet, sine(6, 0.2), 1, -14)
     expect(Math.abs(music[0])).toBeLessThan(1e-6)
     expect(Math.abs(music[music.length - 1])).toBeLessThan(1e-3)
+  })
+
+  it('stops with the song, outside a batch: no loop', () => {
+    const music = musicOver(quiet, sine(1, 0.2), 1, -14, false)
+    let during = 0
+    for (let i = 0.5 * RATE; i < 0.9 * RATE; i++) during += music[i] * music[i]
+    expect(Math.sqrt(during / (0.4 * RATE))).toBeGreaterThan(0.05)
+    for (let i = RATE; i < music.length; i++) expect(music[i]).toBe(0)
+    // Eased out at its end, no click.
+    expect(Math.abs(music[RATE - 1])).toBeLessThan(1e-3)
   })
 
   it('loops a short track to the end of the video', () => {

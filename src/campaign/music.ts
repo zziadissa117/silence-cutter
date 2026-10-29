@@ -11,9 +11,10 @@
 // time - about 19 dB under a voice at -14 LUFS - and a phone speaker loses
 // most of a quiet track's bass. Now it is about 12 dB under while he talks:
 // heard clearly, still behind him. It fades in and
-// out, loops (with a short fade at the seam) if the track is shorter than
-// the video, and goes through the voice's limiter with everything else, so
-// nothing clips.
+// out and goes through the voice's limiter with everything else, so nothing
+// clips. A track shorter than the video loops (with a short fade at the seam)
+// in a batch video only; in the rest it ends where the song ends - his call
+// (2026-10-29): "Don't loop it at all. Just stop it right there".
 
 import { LoudnessMeter } from './voice'
 
@@ -74,6 +75,7 @@ export class MusicBed {
   private readonly voiceRelease: number
   private readonly duckAttack: number
   private readonly duckRelease: number
+  private readonly loop: boolean
   private voice = 0
   private duck = 0
 
@@ -85,7 +87,11 @@ export class MusicBed {
     totalFrames: number,
     gain: number,
     voiceLufs: number,
+    /** Starts the track again when it ends (batch videos); otherwise the
+     *  music stops with the song. */
+    loop = true,
   ) {
+    this.loop = loop
     this.channels = channels
     this.sampleRate = sampleRate
     this.totalFrames = totalFrames
@@ -107,7 +113,7 @@ export class MusicBed {
     const fadeIn = MUSIC.fadeInSec * this.sampleRate
     const fadeOut = MUSIC.fadeOutSec * this.sampleRate
     const seam = MUSIC.seamSec * this.sampleRate
-    const loops = trackLength < this.totalFrames
+    const loops = this.loop && trackLength < this.totalFrames
     for (let i = 0; i < length; i++) {
       // How loud he is right now, from the voice itself.
       let loudest = 0
@@ -121,9 +127,13 @@ export class MusicBed {
       this.duck += (wanted < this.duck ? this.duckAttack : this.duckRelease) * (wanted - this.duck)
 
       const frame = firstFrame + i
+      // The song is over and doesn't start again: silence from here.
+      if (!this.loop && frame >= trackLength) continue
       const at = frame % trackLength
       let shape = ease(frame / fadeIn) * ease((this.totalFrames - frame) / fadeOut)
       if (loops) shape *= ease(at / seam) * ease((trackLength - at) / seam)
+      // Its last moment eased out, so it ends without a click.
+      else if (!this.loop) shape *= ease((trackLength - frame) / seam)
       if (shape <= 0) continue
       const gain = this.gain * shape * dbToGain(this.duck)
       for (let c = 0; c < planes.length; c++) {

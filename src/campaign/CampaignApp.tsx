@@ -108,7 +108,7 @@ import {
   withHeadlinePlace,
   withHeadlineStyle,
 } from './look'
-import { forgetSend, queueSend, replaceNow, sending, startSending, watchSending } from './outbox'
+import { forgetSend, keepVoiceOnly, queueSend, replaceNow, sending, startSending, watchSending } from './outbox'
 import { headlineFor, listen, make, makeCampaignVideo, makeGreenScreen, makeMontage, makeReaction, plainCut, type CampaignResult, type PopSettings } from './pipeline'
 import { makeCutout } from './cutout'
 import { popCue, posterOf, useVideoBank, videoFile, type BankVideo } from './videoBank'
@@ -661,7 +661,11 @@ export function CampaignApp() {
         },
       },
       result.blob,
-    )).catch((error: unknown) => {
+    ).then(async (queuedAs) => {
+      // Its sound without the music, so the music can be changed later.
+      if (result.voiceOnly) await keepVoiceOnly(postKeyOf(job.id, job.version), result.voiceOnly).catch(() => {})
+      return queuedAs
+    })).catch((error: unknown) => {
       const why = error instanceof Error ? error.message : String(error)
       report({ page: 'campaign', kind: 'failed', phase: 'posting', message: `Could not keep a copy to send: ${why}` })
       setNotice(`${job.name} is made but not on its way: a copy to send couldn't be kept (${why}). Open it and tap Send to Postiz to try again.`)

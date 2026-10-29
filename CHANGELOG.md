@@ -3,6 +3,26 @@
 Newest first. Every change says what it does, how to use it, and how it works
 underneath. Kept up to date with each commit.
 
+## Music: stops with the song outside batches; change it or take it off after approving
+**What he asked (2026-10-29):** "Let's say we have a song, and it completely ends. Don't loop it at all. Just stop
+it right there ... for all the talking head videos, but for the batches, make sure they keep replaying"; and "I
+already approved it, and then I realize, I don't want that music, or maybe I want to change the music."
+**Now:**
+- **A song shorter than the video stops where the song ends** (a short ease out, no click) in talking-head videos,
+  reaction videos and music added from Posts to a video that isn't a batch's. **Batch videos (montage, green screen)
+  still loop it**, and music added to a batch video from Posts loops too. `MusicBed`'s new `loop`.
+- **Change music / Take the music off** on a post waiting, approved or scheduled for later: a talking video made
+  with music now keeps its sound without the music beside the copy waiting to be posted (`musicFree.ts`, about 1 MB
+  a minute, in the phone's private files, gone with the copy). The Posts screen's music button then says **Change
+  music**: the new song goes under that sound instead of on top of the old one; **Take the music off** sends it with
+  no music. The picture is copied, not made again - seconds. Sent as a new version, the old one taken back, as "Add
+  music" always did. Videos made before this, and batch videos made by the server, still only get "Add music" (on
+  top) - Edit again (2 h) changes a talking video's music as before.
+- `music.ts` (`loop`), `render.ts` / `reactionRender.ts` (no loop; `voiceOnly` written), `musicFree.ts`,
+  `outbox.keepVoiceOnly/voiceOnly`, `addMusic.addMusicTo(video, music | null, ..., loop, voice)`,
+  `musicAfterSend` (`canChangeMusic`), `MusicAfter` (`useCanChangeMusic`). Test in `music.test.ts`. The new sound
+  file and Change music were not tried on an iPhone (no AAC encoder in this container's browsers).
+
 ## Claude checks the captions by meaning, with what the video is about, by itself
 Needs deploying: run ./deploy-server.sh (./deploy.sh runs it by itself).
 **What he asked (2026-10-29):** when he talks to Claude, it understands everything because it knows the context;

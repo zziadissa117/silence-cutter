@@ -1,6 +1,7 @@
 // "Add music" on a post in Posts: pick a track (the music bank's, an angle's
 // or the batch bank's), and it is mixed under the finished video and sent as
-// a new version, approved - see musicAfterSend.ts.
+// a new version, approved - see musicAfterSend.ts. A video whose sound the
+// phone kept without its music gets "Change music" and "Take the music off".
 
 import { useEffect, useState } from 'react'
 
@@ -8,8 +9,22 @@ import type { Campaign } from './look'
 import { loadBankFile, loadBatchBank } from './store'
 import { loadMusicBank, songFile } from './musicBank'
 import { PlayButton } from './TrackPlayer'
-import { sendWithMusic } from './musicAfterSend'
+import { canChangeMusic, sendWithMusic } from './musicAfterSend'
 import type { ServerPost } from './posting'
+
+/** Whether this post's music can be changed or taken off (the phone kept its
+ *  sound without music), for the button that opens this. */
+export function useCanChangeMusic(post: ServerPost): boolean {
+  const [can, setCan] = useState(false)
+  useEffect(() => {
+    let alive = true
+    void canChangeMusic(post).then((yes) => alive && setCan(yes)).catch(() => {})
+    return () => {
+      alive = false
+    }
+  }, [post.key, post.status, post.postAt]) // eslint-disable-line react-hooks/exhaustive-deps
+  return can
+}
 
 interface Option {
   id: string
@@ -66,19 +81,21 @@ export function MusicAfter({
     }
   }, [campaigns, post.campaignId])
 
+  const changing = useCanChangeMusic(post)
   const busy = progress !== null
   const picked = options.find((o) => o.id === choice) ?? null
   // "Approve, post later" stays his to post; a brand's post waits for the brand.
   const approve = !post.ready && post.approval !== 'brand'
 
-  const run = async () => {
+  /** `off`: the music taken off instead of a track put on. */
+  const run = async (off = false) => {
     setError(null)
     setProgress(0)
     try {
-      const audio = await picked?.load()
-      if (!audio) throw new Error('That track is no longer on this phone.')
+      const audio = off ? null : await picked?.load()
+      if (!off && !audio) throw new Error('That track is no longer on this phone.')
       const campaign = campaigns.find((c) => c.id === post.campaignId)
-      const message = await sendWithMusic({ post, campaign, music: { audio, level: 'normal' }, caption, approve, onProgress: setProgress })
+      const message = await sendWithMusic({ post, campaign, music: audio ? { audio, level: 'normal' } : null, caption, approve, onProgress: setProgress })
       onDone(message)
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e))
@@ -86,7 +103,8 @@ export function MusicAfter({
     }
   }
 
-  const label = approve && post.status === 'waiting' ? 'Add music & approve' : 'Add music'
+  const verb = changing ? 'Change music' : 'Add music'
+  const label = approve && post.status === 'waiting' ? `${verb} & approve` : verb
   return (
     <div className="music-after">
       {options.length > 0 ? (
@@ -106,8 +124,13 @@ export function MusicAfter({
       {error ? <p className="hint warn-text">{error}</p> : null}
       <div className="post-actions">
         <button type="button" className="btn small primary" disabled={busy || !picked} onClick={() => void run()}>
-          {busy ? `Adding music… ${Math.round((progress ?? 0) * 100)}%` : label}
+          {busy ? `Working… ${Math.round((progress ?? 0) * 100)}%` : label}
         </button>
+        {changing ? (
+          <button type="button" className="btn small" disabled={busy} onClick={() => void run(true)}>
+            Take the music off
+          </button>
+        ) : null}
         <button type="button" className="linkbtn" disabled={busy} onClick={onClose}>
           Cancel
         </button>

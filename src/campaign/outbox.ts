@@ -133,10 +133,40 @@ export async function localVideo(key: string): Promise<Blob | null> {
   }
 }
 
+const voiceName = (key: string) => `${key.replace(/[^\w.-]/g, '_')}.voice.m4a`
+
+/** Keeps a video's sound without its music beside its copy (musicFree.ts),
+ *  for changing the music from the Posts screen. Private files only: it is
+ *  small, and without them the music just can't be changed later. */
+export async function keepVoiceOnly(key: string, audio: Blob): Promise<void> {
+  const dir = await within(directory(), COPY_WAIT_MS, null)
+  if (!dir) return
+  try {
+    const handle = await dir.getFileHandle(voiceName(key), { create: true })
+    if (typeof handle.createWritable !== 'function') return
+    const writable = await handle.createWritable()
+    await audio.stream().pipeTo(writable)
+  } catch {
+    void dir.removeEntry(voiceName(key)).catch(() => {})
+  }
+}
+
+/** A video's sound without its music, while the phone keeps it. */
+export async function voiceOnly(key: string): Promise<Blob | null> {
+  try {
+    const dir = await directory()
+    const file = await dir?.getFileHandle(voiceName(key)).then((h) => h.getFile())
+    return file && file.size > 0 ? file : null
+  } catch {
+    return null
+  }
+}
+
 /** Lets a video go: its copy and its place in the queue. */
 export async function forgetSend(key: string): Promise<void> {
   const dir = await directory()
   await dir?.removeEntry(fileName(key)).catch(() => {})
+  await dir?.removeEntry(voiceName(key)).catch(() => {})
   await deleteSend(key).catch(() => {})
   progress.delete(key)
   await refresh()

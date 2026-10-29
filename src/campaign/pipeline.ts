@@ -45,6 +45,8 @@ import { firstLineHeadline } from './sort'
 export interface CampaignResult {
   blob: Blob
   storedAs: string | null
+  /** Its sound without the music, for changing the music later (musicFree.ts). */
+  voiceOnly?: Blob
   originalDurationSec: number
   newDurationSec: number
   cuts: number
@@ -302,6 +304,7 @@ export async function make(
   return {
     blob: rendered.blob,
     storedAs: rendered.storedAs,
+    ...(rendered.voiceOnly ? { voiceOnly: rendered.voiceOnly } : {}),
     originalDurationSec: plan.duration,
     newDurationSec: totalDuration(plan.keep) + joined.beforeSec + joined.afterSec + joined.middleSec,
     cuts: plan.silences,

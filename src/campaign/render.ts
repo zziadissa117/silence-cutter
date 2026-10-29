@@ -66,6 +66,7 @@ import type { HeadlinePlace, HeadlineStyle, LogoPosition } from './look'
 import { dbToGain, mixInto, musicProblem, prepareMusic, prepareSound, type PlacedSound, type PreparedSound } from './sounds'
 import { MomentPlacer, inWindow } from './timeline'
 import { MusicBed, musicGain, trackLoudness, type MusicLevel } from './music'
+import { MusicFreeCopy } from './musicFree'
 import { cover } from './reaction'
 import { Voice, measureLoudness, type WalkAudio } from './voice'
 import { frameRateOf, makeSize, videoQuality } from './quality'
@@ -181,6 +182,8 @@ export interface CampaignRenderInput {
 export interface CampaignRenderResult {
   blob: Blob
   storedAs: string | null
+  /** Its sound without the music, when it has music (musicFree.ts). */
+  voiceOnly?: Blob
   /** When the logo actually came up in the finished video, in seconds. */
   logoAt: number[]
   /** When each picture came up, in seconds, in look.pictures order. */
@@ -243,6 +246,8 @@ export async function renderCampaignCut(
   traceStep('reading the video')
   const output = new Output({ format: new Mp4OutputFormat({ fastStart: false }), target: sink.target })
   let finished = false
+  // The sound without the music, kept beside a video that has music.
+  let musicFree: MusicFreeCopy | null = null
   let videoFrames: RangeReader<VideoSample> | null = null
   let audioFrames: RangeReader<AudioSample> | null = null
   let logoImage: ImageBitmap | null = null
@@ -380,13 +385,14 @@ export async function renderCampaignCut(
         const channelsNeeded = (await prepareMusic(music.audio, 'music', allSec, sampleRate)).channels
         const voiceLufs = voice?.lufs ?? (await measureLoudness(sampleRate, channels, walkKeptAudio))
         const gain = musicGain(trackLoudness(channelsNeeded, sampleRate), voiceLufs, music.level)
-        if (gain > 0) bed = new MusicBed(channelsNeeded, sampleRate, Math.round(allSec * sampleRate), gain, voiceLufs)
+        if (gain > 0) bed = new MusicBed(channelsNeeded, sampleRate, Math.round(allSec * sampleRate), gain, voiceLufs, false)
       } catch (error) {
         console.warn('The music could not be added, so the video is made without it:', error)
         reportProblem({ kind: 'fallback', phase: 'music', message: musicProblem(error, music.audio) })
         bed = null
       }
     }
+    if (bed) musicFree = new MusicFreeCopy(sampleRate, channels, voice !== null)
 
     // A clip's own sound, set to where his voice sits, so the video doesn't
     // jump in loudness at the join. Left as it is if it can't be measured.
@@ -603,6 +609,11 @@ export async function renderCampaignCut(
           })
           const firstFrame = Math.round(timestamp * sampleRate)
           if (nearCut(timestamp, length / sampleRate, at, clipEnd, clipEdges)) fadeAtCuts(out, timestamp, sampleRate, at, clipEnd, clipEdges)
+          if (musicFree) {
+            const dry = out.map((plane) => plane.slice())
+            mixInto(dry, firstFrame, placed, !voice)
+            await musicFree.add(dry, timestamp, sampleRate)
+          }
           bed?.mixInto(out, firstFrame)
           mixInto(out, firstFrame, placed, !voice)
           if (voice) voice.limit(out)
@@ -818,6 +829,11 @@ export async function renderCampaignCut(
               const firstFrame = Math.round(timestamp * rate)
               if (fading) fadeAtCuts(planes, at, rate, start, end, edges[index])
               voice?.shape(planes)
+              if (musicFree) {
+                const dry = planes.map((plane) => plane.slice())
+                mixInto(dry, firstFrame, placed, !voice)
+                await musicFree.add(dry, timestamp, rate)
+              }
               bed?.mixInto(planes, firstFrame)
               mixInto(planes, firstFrame, placed, !voice)
               if (voice) voice.limit(planes)
@@ -860,11 +876,13 @@ export async function renderCampaignCut(
     await output.finalize()
     const blob = await sink.finish()
     if (blob.size === 0) throw new SilenceCutError('Rendering finished but produced no file. Try again.')
+    const voiceOnly = musicFree ? await musicFree.finish() : null
     finished = true
     onProgress?.(1)
     return {
       blob,
       storedAs: sink.storedAs,
+      ...(voiceOnly ? { voiceOnly } : {}),
       logoAt: [...logoPlacer.times],
       picturesAt: pictures.map((p) => [...p.placer.times]),
       bankAt: bank.flatMap((b) => [...b.placer.times]).sort((a, b) => a - b),
@@ -886,6 +904,7 @@ export async function renderCampaignCut(
     if (!finished) {
       await output.cancel().catch(() => {})
       await sink.discard()
+      await musicFree?.cancel()
     }
   }
 }
