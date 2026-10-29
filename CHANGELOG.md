@@ -3,6 +3,23 @@
 Newest first. Every change says what it does, how to use it, and how it works
 underneath. Kept up to date with each commit.
 
+## A YouTube account that won't post: reconnect it in Postiz, tap once, it posts
+Needs deploying: run ./deploy-server.sh (./deploy.sh runs it by itself).
+**What he asked (2026-10-29):** sometimes a video doesn't go to some YouTube accounts. He disconnects and reconnects
+the account in Postiz, then taps the button on the missed accounts in the Cutter, and it should post again at once.
+**What was wrong:** reconnecting gives the account a new id in Postiz (Vazaziad: `cmv6t2ks...` became `cmvq3z8h...`
+on 2026-10-27), and disconnecting takes its failed posts out of Postiz. "Post again to the missing ones" still
+posted to the old id, or said "Postiz no longer says which account it failed on". It also waited 3 minutes.
+**Now:** on a post that missed accounts, the Posts screen has **Reconnect in Postiz** (opens Postiz) next to **Post
+again to the missing ones**. After reconnecting, that tap:
+- finds each missed account, under its new id if it has one (same platform and username), and posts to it **now**;
+- puts the new account into every campaign that had the old one, and into the videos not in Postiz yet, so the
+  next videos go to it too (videos already in Postiz stay as Postiz holds them);
+- if a missed account still isn't connected (or Postiz says it needs reconnecting), posts nothing and says
+  "<name> needs reconnecting in Postiz - reconnect, then tap again".
+- `failed.ts` `missingAccounts`, `namesIn`, `reconnectedAs` (tests in `failed.test.ts`); `index.ts` `retryAccounts`,
+  `useReconnected`. Not tried against Postiz itself (it can't be reached from here).
+
 ## A post waiting for your OK moves on when its time goes by
 Needs deploying: run ./deploy-server.sh (./deploy.sh runs it by itself).
 **What he asked (2026-10-27):** "If the time passes, it should reschedule it. If there's time on the day before

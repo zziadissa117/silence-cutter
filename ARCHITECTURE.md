@@ -189,6 +189,14 @@ is held the post stays `approved`, untouched, retried every 30 min. `releaseHeld
 video+caption, at the video's time of day on the first day with room. Paused ones
 resume without loss; caps are counted per account per local day.
 
+**An account a post missed** (mostly YouTube): "Post again to the missing ones" (action
+`retry-accounts`, `retryAccounts`) posts at once to the accounts Postiz failed on, or whose Postiz post is gone
+and the note names (`failed.ts` `missingAccounts`, `namesIn`). One he disconnected and reconnected in Postiz
+has a new id: `reconnectedAs` finds it by platform + username (name if none kept), and `useReconnected` swaps
+it into every campaign, the cached accounts and the posts not in Postiz yet. Any missed account not connected
+(or Postiz's `refreshNeeded`): nothing posts, and he is told to reconnect it. "Reconnect in Postiz" beside the
+button opens Postiz.
+
 **Waiting past its time.** A post still `waiting` for his OK (or the brand's) whose
 `post_at` has gone is moved on by every tick (`moveOnWaiting`, `slots.ts`
 `laterWhileWaiting`): an hour later, again each hour the same day, and the step that

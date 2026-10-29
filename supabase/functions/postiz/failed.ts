@@ -56,3 +56,56 @@ export function notPostedNote(errored: PostizState[], accounts: FailedAccount[])
   })
   return `Not posted to ${[...new Set(names)].join(', ')}.`
 }
+
+/** An account as Postiz lists it now. */
+export interface ConnectedAccount {
+  id: string
+  name: string
+  platform: string
+  profile: string
+  disabled: boolean
+  /** Postiz says it must be reconnected before it can post. */
+  refreshNeeded?: boolean
+}
+
+/** The post's accounts to post to again: the ones Postiz says failed, and the
+ *  ones its note names whose Postiz post is gone altogether - disconnecting
+ *  an account in Postiz takes its posts with it, and he disconnects and
+ *  reconnects a YouTube account that won't post before tapping again. */
+export function missingAccounts<T extends FailedAccount & { held?: unknown }>(
+  accounts: readonly T[],
+  ids: readonly PostizRef[],
+  found: readonly PostizState[],
+  note: string,
+): T[] {
+  const failed = failedRefs([...ids], [...found])
+  const there = new Set(found.map((p) => p.id))
+  const all: FailedAccount[] = [...accounts]
+  const named = namesIn(note)
+  return accounts.filter(
+    (a) =>
+      !a.held &&
+      (failed.some((ref) => ref.integration === a.id) ||
+        ids.some((ref) => ref.integration === a.id && !there.has(ref.postId) && named.has(accountName(a.name, a.platform, all)))),
+  )
+}
+
+/** The accounts a post's note names: "Not posted to A, B (YouTube)." and the
+ *  ways Postiz or Buffer failing say it. */
+export function namesIn(note: string): Set<string> {
+  const m = note.match(/^(?:Not posted to|Postiz couldn't publish it to|Buffer couldn't post it to) (.+?)(?: \(Buffer couldn't\))?\.(?: |$)/)
+  return new Set(m ? m[1].split(', ') : [])
+}
+
+/** Where to post to an account again: itself while Postiz still has it
+ *  connected; once he has disconnected and reconnected it, Postiz gives it a
+ *  new id - the one connected account of the same platform and username (its
+ *  name when the username isn't known). Null when there is none, or more
+ *  than one. */
+export function reconnectedAs<T extends ConnectedAccount>(account: FailedAccount & { profile?: string }, now: readonly T[]): T | null {
+  const live = now.filter((c) => !c.disabled)
+  const same = live.find((c) => c.id === account.id)
+  if (same) return same
+  const like = live.filter((c) => c.platform === account.platform && (account.profile ? c.profile === account.profile : c.name === account.name))
+  return like.length === 1 ? like[0] : null
+}

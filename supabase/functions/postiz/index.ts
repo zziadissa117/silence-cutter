@@ -68,7 +68,7 @@ import {
   type PostingRules,
 } from './caption.ts'
 import { RECHECK_SCHEMA, RECHECK_SYSTEM, acceptFix, costCents } from './recheck.ts'
-import { accountName, failedRefs, notPostedNote } from './failed.ts'
+import { accountName, failedRefs, missingAccounts, notPostedNote, reconnectedAs } from './failed.ts'
 import { carryOver, cleanCaptions, cleanRepost, repostDueAt, textFor, variationNote, type AccountText } from './repost.ts'
 import { FAKE_CLAUDE, FakeError, fakeCaption, fakePostiz, isFakePostiz } from './fake.ts'
 import { approvalFor, batchChoices, batchInfo, batchReady, type BatchInfo } from './batch.ts'
@@ -245,6 +245,8 @@ interface Account {
   profile: string
   picture: string
   disabled: boolean
+  /** Postiz says it must be reconnected before it can post again. */
+  refreshNeeded?: boolean
 }
 
 interface Media {
@@ -402,6 +404,7 @@ async function listAccounts(key: string): Promise<Account[]> {
     profile: String(i.profile ?? ''),
     picture: String(i.picture ?? ''),
     disabled: Boolean(i.disabled),
+    ...(i.refreshNeeded === true ? { refreshNeeded: true } : {}),
   }))
 }
 
@@ -2217,8 +2220,12 @@ async function act(profile: Profile, action: string, body: Record<string, unknow
   throw new Problem('Unknown action.')
 }
 
-/** Posts again, in a few minutes, to the accounts Postiz failed to post a
- *  video to - only those; the ones it reached are left alone. */
+/** Posts again, straight away, to the accounts Postiz failed to post a video
+ *  to - only those; the ones it reached are left alone. One he has
+ *  disconnected and reconnected in Postiz (a YouTube account that won't post,
+ *  2026-10-29) has a new id there: it is found by its platform and username,
+ *  posted to, and takes the old one's place in his campaigns and in the
+ *  videos not in Postiz yet. */
 async function retryAccounts(profile: Profile, post: Post): Promise<Post> {
   const partly = post.status === 'posted' && Boolean(post.error)
   if (!partly && post.status !== 'error') return post
@@ -2230,28 +2237,50 @@ async function retryAccounts(profile: Profile, post: Post): Promise<Post> {
     const due = new Date(owned.post_at!).getTime()
     const found = await postsAround(key, due - 60 * MINUTE, due + 60 * MINUTE)
     const ids = owned.postiz_ids ?? []
-    const failed = failedRefs(ids, found)
-    const accounts = owned.accounts.filter((a) => !a.held && failed.some((ref) => ref.integration === a.id))
-    if (accounts.length === 0) throw new Problem("Postiz no longer says which account it failed on - post it there by hand.")
-    const date = new Date(Date.now() + 3 * MINUTE).toISOString()
+    const missing = missingAccounts(owned.accounts, ids, found, owned.error ?? '')
+    if (missing.length === 0) throw new Problem("Postiz no longer says which account it failed on - post it there by hand.")
+    const now = await listAccounts(key)
+    // The username of one the post kept without it, from the accounts as last read.
+    const known = new Map(profile.accounts.map((a) => [a.id, a]))
+    const named = (a: PostAccount) => accountName(a.name, a.platform, owned.accounts)
+    const targets: { was: PostAccount; to: Account }[] = []
+    const notConnected: string[] = []
+    for (const account of missing) {
+      const to = reconnectedAs({ ...account, profile: account.profile ?? known.get(account.id)?.profile }, now)
+      if (!to || to.refreshNeeded) notConnected.push(named(account))
+      else targets.push({ was: account, to })
+    }
+    // All of them or none: one left behind would be forgotten once the
+    // others are out (checkPosted looks only around the new time).
+    if (notConnected.length > 0) {
+      throw new Problem(`${notConnected.join(', ')} ${notConnected.length === 1 ? 'needs' : 'need'} reconnecting in Postiz - reconnect, then tap again.`)
+    }
+    const date = new Date().toISOString()
     const made = await postiz<{ postId: string; integration: string }[]>(key, 'POST', '/posts', {
-      type: 'schedule',
+      type: 'now',
       date,
       shortLink: false,
       tags: [],
-      posts: accounts.map((account) => {
-        const text = textFor(owned, account.id)
+      posts: targets.map(({ was, to }) => {
+        const text = textFor(owned, was.id)
         return {
-          integration: { id: account.id },
+          integration: { id: to.id },
           value: [{ content: text.caption, image: [{ id: owned.media!.id, path: owned.media!.path }] }],
-          settings: settingsFor(account.platform, finishTitle(text.title ?? '', [owned.headline ?? '', owned.campaign_name]), instagramPlace(profile.settings, owned.campaign_id)),
+          settings: settingsFor(to.platform, finishTitle(text.title ?? '', [owned.headline ?? '', owned.campaign_name]), instagramPlace(profile.settings, owned.campaign_id)),
         }
       }),
     })
+    const swaps = new Map(targets.filter((t) => t.was.id !== t.to.id).map((t) => [t.was.id, t.to]))
+    if (swaps.size > 0) await useReconnected(profile, now, swaps)
     // The failed ones are dropped, or they would count as failed again.
-    const gone = new Set(failed.map((ref) => ref.postId))
+    const retried = new Set(targets.map((t) => t.was.id))
+    const kept = ids.filter((ref) => !retried.has(ref.integration))
     return await update(owned.id, {
-      postiz_ids: [...ids.filter((ref) => !gone.has(ref.postId)), ...(Array.isArray(made) ? made : [])],
+      accounts: owned.accounts.map((a) => {
+        const to = swaps.get(a.id)
+        return to ? { ...a, id: to.id, name: to.name, profile: to.profile } : a
+      }),
+      postiz_ids: [...kept, ...(Array.isArray(made) ? made : [])],
       status: 'scheduled',
       post_at: date,
       error: null,
@@ -2260,6 +2289,39 @@ async function retryAccounts(profile: Profile, post: Post): Promise<Post> {
     })
   } finally {
     await release(post.id)
+  }
+}
+
+/** Accounts he reconnected in Postiz under a new id: the new one in every
+ *  campaign that had the old, in the accounts as last read, and in the posts
+ *  not in Postiz yet - so the next videos go to it too. Posts already in
+ *  Postiz stay as they are (Postiz holds them). */
+async function useReconnected(profile: Profile, now: Account[], swaps: Map<string, Account>): Promise<void> {
+  const campaigns = { ...(profile.settings.campaigns ?? {}) }
+  for (const [id, place] of Object.entries(campaigns)) {
+    if (!place.accounts?.some((a) => swaps.has(a))) continue
+    campaigns[id] = { ...place, accounts: [...new Set((place.accounts ?? []).map((a) => swaps.get(a)?.id ?? a))] }
+  }
+  const { error } = await db
+    .from('cutter_profiles')
+    .update({ settings: { ...profile.settings, campaigns }, accounts: now, accounts_at: new Date().toISOString() })
+    .eq('id', profile.id)
+  if (error) console.error('saving the reconnected accounts failed', profile.id, error)
+  for (const [was, to] of swaps) {
+    const { data } = await db
+      .from('cutter_posts')
+      .select('id, accounts')
+      .eq('profile_id', profile.id)
+      .in('status', ['uploading', 'writing', 'waiting', 'approved'])
+      .contains('accounts', [{ id: was }])
+      .limit(1000)
+    for (const row of (data ?? []) as Pick<Post, 'id' | 'accounts'>[]) {
+      await db
+        .from('cutter_posts')
+        .update({ accounts: row.accounts.map((a) => (a.id === was ? { ...a, id: to.id, name: to.name, profile: to.profile } : a)) })
+        .eq('id', row.id)
+        .is('creating_at', null)
+    }
   }
 }
 

@@ -45,6 +45,8 @@ import {
 const POLL_MS = 15_000
 /** Posted shows this many until he asks for the rest. */
 const POSTED_SHOWN = 10
+/** Where he disconnects and reconnects an account that won't post. */
+const POSTIZ_ACCOUNTS = 'https://platform.postiz.com/launches'
 
 function useSending(): Sending[] {
   const [now, setNow] = useState(sending)
@@ -417,9 +419,17 @@ function OtherPost({
           </button>
         ) : null}
         {post.status === 'error' || (post.status === 'posted' && post.error?.startsWith('Not posted to')) ? (
-          <button type="button" className="btn small primary" disabled={busy} onClick={() => onAct('retry-accounts')}>
-            {busy ? 'Trying…' : post.status === 'error' ? 'Post again' : 'Post again to the missing ones'}
-          </button>
+          <>
+            <button type="button" className="btn small primary" disabled={busy} onClick={() => onAct('retry-accounts')}>
+              {busy ? 'Trying…' : post.status === 'error' ? 'Post again' : 'Post again to the missing ones'}
+            </button>
+            {/* An account that won't post (mostly YouTube): disconnect and
+                reconnect it there, then the button above posts to it at once,
+                under the new id Postiz gives it (postiz retryAccounts). */}
+            <a className="linkbtn" href={POSTIZ_ACCOUNTS} target="_blank" rel="noreferrer">
+              Reconnect in Postiz
+            </a>
+          </>
         ) : null}
         {post.status === 'approved' || (post.status === 'scheduled' && post.postAt && new Date(post.postAt).getTime() > Date.now()) ? (
           <button type="button" className="linkbtn" disabled={busy} onClick={() => onAct('unschedule')}>

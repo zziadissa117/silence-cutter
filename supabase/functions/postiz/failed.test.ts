@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { accountName, failedRefs, notPostedNote } from './failed'
+import { accountName, failedRefs, missingAccounts, namesIn, notPostedNote, reconnectedAs } from './failed'
 
 const accounts = [
   { id: 'yt', name: 'Ilyan Hamdane', platform: 'youtube' },
@@ -39,5 +39,74 @@ describe('notPostedNote', () => {
   })
   it('falls back to the name Postiz gives', () => {
     expect(notPostedNote([{ id: 'x', state: 'ERROR', integration: { id: 'gone', name: 'Jake' } }], accounts)).toBe('Not posted to Jake.')
+  })
+})
+
+describe('missingAccounts', () => {
+  const accounts = [
+    { id: 'yt', name: 'Vazaziad', platform: 'youtube' },
+    { id: 'ig', name: 'ziad', platform: 'instagram-standalone' },
+  ]
+  const ids = [
+    { postId: 'p-yt', integration: 'yt' },
+    { postId: 'p-ig', integration: 'ig' },
+  ]
+
+  it('is the ones Postiz says failed', () => {
+    const found = [
+      { id: 'p-yt', state: 'ERROR' },
+      { id: 'p-ig', state: 'PUBLISHED' },
+    ]
+    expect(missingAccounts(accounts, ids, found, 'Not posted to Vazaziad.').map((a) => a.id)).toEqual(['yt'])
+  })
+
+  it('is one named in the note whose Postiz post went with its disconnected account', () => {
+    const found = [{ id: 'p-ig', state: 'PUBLISHED' }]
+    expect(missingAccounts(accounts, ids, found, 'Not posted to Vazaziad.').map((a) => a.id)).toEqual(['yt'])
+  })
+
+  it('never one that went out and was only deleted in Postiz', () => {
+    expect(missingAccounts(accounts, ids, [{ id: 'p-yt', state: 'ERROR' }], 'Not posted to Vazaziad.').map((a) => a.id)).toEqual(['yt'])
+  })
+})
+
+describe('reconnectedAs', () => {
+  const was = { id: 'old', name: 'Vazaziad', platform: 'youtube', profile: 'vazaziad' }
+  const connected = (id: string, extra: Partial<{ name: string; platform: string; profile: string; disabled: boolean }> = {}) => ({
+    id,
+    name: 'Vazaziad',
+    platform: 'youtube',
+    profile: 'vazaziad',
+    disabled: false,
+    ...extra,
+  })
+
+  it('is the same account while it is still connected', () => {
+    expect(reconnectedAs(was, [connected('old'), connected('new')])?.id).toBe('old')
+  })
+
+  it('is the new id Postiz gave it when reconnected: same platform and username', () => {
+    expect(reconnectedAs(was, [connected('new'), connected('ig', { platform: 'instagram-standalone' })])?.id).toBe('new')
+    expect(reconnectedAs(was, [connected('old', { disabled: true }), connected('new')])?.id).toBe('new')
+  })
+
+  it('goes by name when the username was never kept', () => {
+    expect(reconnectedAs({ ...was, profile: undefined }, [connected('new', { profile: 'other' })])?.id).toBe('new')
+  })
+
+  it('is none when it is not connected, or two could be it', () => {
+    expect(reconnectedAs(was, [connected('ig', { platform: 'instagram-standalone' })])).toBeNull()
+    expect(reconnectedAs({ ...was, profile: undefined }, [connected('a'), connected('b')])).toBeNull()
+  })
+})
+
+describe('namesIn', () => {
+  it('reads every way a note names its accounts', () => {
+    expect([...namesIn('Not posted to Vazaziad.')]).toEqual(['Vazaziad'])
+    expect([...namesIn('Not posted to Jake’s (YouTube), Mikey.')]).toEqual(['Jake’s (YouTube)', 'Mikey'])
+    expect([...namesIn("Postiz couldn't publish it to steve.ugcx. Open Postiz to see why.")]).toEqual(['steve.ugcx'])
+    expect([...namesIn("Buffer couldn't post it to Jake. Open Buffer to see why.")]).toEqual(['Jake'])
+    expect([...namesIn("Not posted to Jake (Buffer couldn't).")]).toEqual(['Jake'])
+    expect([...namesIn('Something else.')]).toEqual([])
   })
 })
