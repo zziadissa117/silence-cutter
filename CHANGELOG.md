@@ -3,6 +3,12 @@
 Newest first. Every change says what it does, how to use it, and how it works
 underneath. Kept up to date with each commit.
 
+## Post now, beside Approve
+A post waiting for him has **Post now** next to Approve (his choice, 2026-10-29, over making Approve itself post
+at once): approved and sent to Postiz to go out straight away, whatever time it had. Underneath it is Approve with
+a time of now (`at`), which the posting function already sends as Postiz's "post now". Approve still goes at its
+time. Phone only - no server change.
+
 ## Missed YouTube posts go again by themselves; a notification for every missed account
 Needs deploying: run ./deploy-server.sh (./deploy.sh runs it by itself).
 **What he said (2026-10-29):** YouTube misses some accounts; "Post again to the missing ones" just says "Trying" and

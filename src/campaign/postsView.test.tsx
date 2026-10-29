@@ -27,6 +27,8 @@ const waitingPost = (id: string, ready = false) =>
 
 const redoCaptions = vi.fn(async (_campaignId: string, _posting: unknown, ids?: string[], _mode?: string) => ({ rewriting: ids?.length ?? 0, tooSoon: 0 }))
 const postAction = vi.fn(async (action: string, id: string) => ({ ...waitingPost(id), ready: action === 'ready' }))
+/** What the last post action carried besides its action and post. */
+let sentFields: unknown
 
 const posts = [
   waitingPost('w1'),
@@ -54,7 +56,10 @@ vi.mock('./posting', async (original) => ({
   lastPosts: () => posts,
   listPosts: vi.fn(async () => posts),
   postingHere: () => null,
-  postAction: (action: string, id: string) => postAction(action, id),
+  postAction: (action: string, id: string, fields?: unknown) => {
+    sentFields = fields
+    return postAction(action, id)
+  },
   redoCaptions: (campaignId: string, posting: unknown, ids?: string[], mode?: string) => redoCaptions(campaignId, posting, ids, mode),
 }))
 
@@ -108,6 +113,13 @@ describe('approve, post later', () => {
     await act(async () => button('Approve, post later')[0].click())
     expect(postAction).toHaveBeenCalledWith('ready', 'w1')
     expect(host.textContent).toContain('Ready to post · 2')
+  })
+
+  it('has Post now beside Approve: approved with a time of now', async () => {
+    const before = Date.now()
+    await act(async () => button('Post now')[0].click())
+    expect(postAction).toHaveBeenCalledWith('approve', 'w1')
+    expect(Date.parse((sentFields as { at: string }).at)).toBeGreaterThanOrEqual(before)
   })
 
   it('keeps a held post under Ready to post, with Post instead of Approve', () => {

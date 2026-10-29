@@ -305,6 +305,16 @@ function WaitingPost({
         >
           {busy ? 'Sending…' : post.ready ? 'Post' : brand ? 'Brand approved' : 'Approve'}
         </button>
+        {/* Approved and out now, whatever its time (2026-10-29, his ask):
+            a time of now goes to Postiz as "post now" (postiz schedule). */}
+        <button
+          type="button"
+          className="btn small"
+          disabled={busy || !caption.trim()}
+          onClick={() => onAct('approve', { ...fields(), at: new Date().toISOString() })}
+        >
+          Post now
+        </button>
         {post.ready ? null : (
           <button type="button" className="btn small" disabled={busy || !caption.trim()} onClick={() => onAct('ready', fields())}>
             Approve, post later
