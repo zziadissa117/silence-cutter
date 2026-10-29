@@ -129,6 +129,7 @@ import {
   postAction,
   postingHere,
   recheckCaptions,
+  type RecheckContext,
   refreshProfile,
   saveCampaignPlace,
   sendsFrom,
@@ -3354,6 +3355,19 @@ export function CampaignApp() {
 
   /** The names this video's campaign uses - brand words, the words that bring
    *  up its logo and pictures - for spotting and fixing a name heard wrong. */
+  /** What a video is for, for Claude's check of its captions. */
+  function recheckContextFor(job: Job): RecheckContext {
+    const campaign = campaignsRef.current.find((c) => c.id === job.campaignId)
+    const angle = campaign?.angles.find((a) => a.id === job.angleId)
+    return {
+      campaign: campaign?.name ?? '',
+      brand: campaign?.brandWords ?? [],
+      about: campaign?.posting?.rules ?? '',
+      angle: angle && !angle.general ? angle.name : '',
+      headline: job.headlineText ?? '',
+    }
+  }
+
   function vocabularyFor(job: Job): string[] {
     const campaign = campaignsRef.current.find((c) => c.id === job.campaignId)
     const angle = campaign?.angles.find((a) => a.id === job.angleId)
@@ -3743,7 +3757,8 @@ export function CampaignApp() {
           onHeadlineDone: () => saveHeadline(reviewJob.id),
           vocabulary: vocabularyFor(reviewJob),
           riskSpans: (reviewJob.day?.plan?.checks ?? []).filter((c) => c.kind !== 'noise').map((c) => ({ start: c.start, end: c.end })),
-          onRecheck: posting ? (phrases) => recheckCaptions(phrases, vocabularyFor(reviewJob)) : undefined,
+          onRecheck: posting ? (phrases) => recheckCaptions(phrases, vocabularyFor(reviewJob), reviewJob.campaignId, recheckContextFor(reviewJob)) : undefined,
+          recheckKey: reviewJob.id,
           position: reviewJob.day?.captionPosition ?? defaultCaptionPosition(),
           onPosition: (position) => setCaptionPosition(reviewJob.id, position),
           size: reviewJob.day?.captionSize ?? defaultCaptionSize(),

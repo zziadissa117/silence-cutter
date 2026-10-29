@@ -67,7 +67,7 @@ import {
   normalTag,
   type PostingRules,
 } from './caption.ts'
-import { RECHECK_SCHEMA, RECHECK_SYSTEM, acceptFix, costCents } from './recheck.ts'
+import { RECHECK_SCHEMA, RECHECK_SYSTEM, acceptFix, cleanContext, costCents, recheckMessage } from './recheck.ts'
 import { byteRange } from './range.ts'
 import { accountName, baseNote, failedRefs, missingAccounts, notPostedNote, reconnectedAs, youtubeDayStarts } from './failed.ts'
 import { carryOver, cleanCaptions, cleanRepost, repostDueAt, textFor, variationNote, type AccountText } from './repost.ts'
@@ -1427,18 +1427,29 @@ async function recheckCaptions(profile: Profile, body: Record<string, unknown>):
   if (!keys.anthropic) throw new Problem('Your Anthropic key is missing - paste it in Settings, Posting.')
   if (keys.anthropic === FAKE_CLAUDE) return reply({ phrases, changed: [], costCents: 0 })
 
+  const context = cleanContext(body.context)
+  // What the campaign's videos were about, from the captions Claude wrote
+  // for its last few posts - so it knows what the brand does.
+  const campaignId = typeof body.campaignId === 'string' ? body.campaignId.slice(0, 200) : ''
+  const { data: lately } = campaignId
+    ? await db
+        .from('cutter_posts')
+        .select('caption')
+        .eq('profile_id', profile.id)
+        .eq('campaign_id', campaignId)
+        .not('caption', 'is', null)
+        .order('created_at', { ascending: false })
+        .limit(5)
+    : { data: [] }
+  const earlier = ((lately ?? []) as Pick<Post, 'caption'>[]).map((p) => (p.caption ?? '').replace(/\s+/g, ' ').trim().slice(0, 300)).filter(Boolean)
+
   const client = new Anthropic({ apiKey: keys.anthropic, maxRetries: 2, timeout: 2 * MINUTE })
   const request = {
     model: MODEL,
     max_tokens: 8000,
     system: RECHECK_SYSTEM,
-    output_config: { effort: 'low', format: { type: 'json_schema', schema: RECHECK_SCHEMA } },
-    messages: [
-      {
-        role: 'user',
-        content: `Vocabulary: ${vocabulary.length > 0 ? vocabulary.join(', ') : '(none given)'}\n\nCaptions:\n${phrases.map((p, i) => `${i + 1}. ${p}`).join('\n')}`,
-      },
-    ],
+    output_config: { effort: 'medium', format: { type: 'json_schema', schema: RECHECK_SCHEMA } },
+    messages: [{ role: 'user', content: recheckMessage(context, vocabulary, earlier, phrases) }],
   }
   let response
   try {

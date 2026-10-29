@@ -738,10 +738,20 @@ export interface RecheckResult {
   error?: string
 }
 
-/** Claude's second look at a video's burned-in captions: fixes words that were
- *  misheard, using the campaign's names. Costs credits, so only on his tap. */
-export async function recheckCaptions(phrases: string[], vocabulary: string[]): Promise<RecheckResult> {
-  return call<RecheckResult>('recheck-captions', { profile: profileId(), phrases, vocabulary })
+/** What a video is for, for Claude to hear its captions the way he meant
+ *  them (postiz recheck.ts RecheckContext). */
+export interface RecheckContext {
+  campaign: string
+  brand: string[]
+  about: string
+  angle: string
+  headline: string
+}
+
+/** Claude's look at a video's burned-in captions with what the video is for:
+ *  puts back what the speech model misheard, by meaning as well as sound. */
+export async function recheckCaptions(phrases: string[], vocabulary: string[], campaignId?: string, context?: RecheckContext): Promise<RecheckResult> {
+  return call<RecheckResult>('recheck-captions', { profile: profileId(), phrases, vocabulary, campaignId, context })
 }
 
 /** The caption Claude would write for a video he posts by hand, from the

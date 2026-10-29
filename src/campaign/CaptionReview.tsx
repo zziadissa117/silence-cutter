@@ -127,6 +127,31 @@ function fit(box: HTMLTextAreaElement | null) {
   box.style.height = `${box.scrollHeight}px`
 }
 
+
+const CHECKED_KEY = 'cutter.captions.checked'
+
+/** The videos whose captions Claude has already checked on this phone. */
+function checkedKeys(): string[] {
+  try {
+    const list = JSON.parse(localStorage.getItem(CHECKED_KEY) ?? '[]')
+    return Array.isArray(list) ? list.filter((k): k is string => typeof k === 'string') : []
+  } catch {
+    return []
+  }
+}
+
+export function wasChecked(key: string): boolean {
+  return checkedKeys().includes(key)
+}
+
+export function markChecked(key: string): void {
+  try {
+    localStorage.setItem(CHECKED_KEY, JSON.stringify([...checkedKeys().filter((k) => k !== key), key].slice(-500)))
+  } catch {
+    // A private window: it may be checked again next time, nothing worse.
+  }
+}
+
 export function CaptionReview({
   name,
   file,
@@ -150,6 +175,7 @@ export function CaptionReview({
   captionStyle = 'word',
   onCaptionStyle,
   onRecheck,
+  recheckKey,
   vocabulary = [],
   riskSpans = [],
   pops,
@@ -189,6 +215,9 @@ export function CaptionReview({
   onCaptionStyle?: (style: CaptionStyle) => void
   /** Claude's second look at the captions (costs credits). Absent when posting is not set up. */
   onRecheck?: (phrases: string[]) => Promise<RecheckResult>
+  /** The video's own key: Claude checks its captions by itself the first
+   *  time they are opened, once (wasChecked/markChecked). */
+  recheckKey?: string
   /** The campaign's names, for spotting a name heard wrong. */
   vocabulary?: string[]
   /** Moments of sounds the cutter cut or was unsure about. */
@@ -203,6 +232,8 @@ export function CaptionReview({
   const [heard] = useState(() => phrasesOf(initial))
   const [asHeard] = useState(() => heard.map(textOf))
   const [texts, setTexts] = useState(asHeard)
+  const textsRef = useRef(texts)
+  textsRef.current = texts
   const phraseFor = (k: number, text: string) => (text === asHeard[k] ? heard[k] : retimePhrase(heard[k], text))
   const phrases = useMemo(() => heard.map((_, k) => phraseFor(k, texts[k])), [texts]) // eslint-disable-line react-hooks/exhaustive-deps
   const words = useMemo(() => phrases.flat(), [phrases])
@@ -387,8 +418,10 @@ export function CaptionReview({
     const before = texts
     try {
       const out = await onRecheck(texts)
-      const changed = new Set(out.changed)
-      if (changed.size > 0) applyTexts(out.phrases)
+      // A phrase he typed into meanwhile stays his.
+      const now = textsRef.current
+      const changed = new Set(out.changed.filter((k) => now[k] === before[k]))
+      if (changed.size > 0) applyTexts(now.map((t, k) => (changed.has(k) ? out.phrases[k] : t)))
       setRechecked({ changed, cents: out.costCents, before, error: out.error })
       if (changed.size > 0) setOnlyFlagged(true)
     } catch (e) {
@@ -397,6 +430,15 @@ export function CaptionReview({
       setChecking(false)
     }
   }
+
+  // Checked by itself as the captions open - his words (2026-10-29): the
+  // captions transcribed, "and then an AI looking at the actual logic". Once
+  // a video: reopened, his own edits stay as he left them.
+  useEffect(() => {
+    if (!onRecheck || !recheckKey || wasChecked(recheckKey)) return
+    markChecked(recheckKey)
+    void recheck()
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
   const flagged = useMemo(
     () =>
@@ -489,7 +531,7 @@ export function CaptionReview({
               'Claude is checking…'
             ) : (
               <>
-                Use Claude to re-check captions <span style={{ whiteSpace: 'nowrap', fontWeight: 400 }}>· about {centsLabel(estimateRecheckCents(texts, vocabulary))} of credits</span>
+                {recheckKey && wasChecked(recheckKey) ? 'Check again with Claude' : 'Check captions with Claude'} <span style={{ whiteSpace: 'nowrap', fontWeight: 400 }}>· about {centsLabel(estimateRecheckCents(texts, vocabulary))} of credits</span>
               </>
             )}
           </button>
@@ -508,7 +550,7 @@ export function CaptionReview({
                     type="button"
                     className="linkbtn"
                     onClick={() => {
-                      applyTexts(rechecked.before)
+                      applyTexts(texts.map((t, k) => (rechecked.changed.has(k) ? rechecked.before[k] : t)))
                       setRechecked({ ...rechecked, changed: new Set() })
                     }}
                   >

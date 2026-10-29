@@ -3,6 +3,27 @@
 Newest first. Every change says what it does, how to use it, and how it works
 underneath. Kept up to date with each commit.
 
+## Claude checks the captions by meaning, with what the video is about, by itself
+Needs deploying: run ./deploy-server.sh (./deploy.sh runs it by itself).
+**What he asked (2026-10-29):** when he talks to Claude, it understands everything because it knows the context;
+the captions should get the same - "the captions getting transcribed and then an AI looking at the actual logic of
+the captions". The re-check only fixed spellings, and only when he tapped it.
+**What was wrong:** Claude was told "fix spelling only" and given only the brand's words; anything more than a few
+letters' change was thrown away after (`acceptFix`). It never knew what the campaign or the video was about.
+**Now:**
+- **It knows what the video is for:** the campaign, the brand as it is written, the brand's caption rules (what it
+  is and does), the angle, the headline on screen, and how the campaign's last 5 posts were described - plus the
+  whole video's captions, as before.
+- **It fixes by meaning:** a word that sounds like what he said but makes no sense there is put back ("I use
+  virtues" to "I use Vertus", "go by it" to "go buy it", "twenty case" to "20K"). Still never rewords what he really
+  said; a change of more than a word or two is still turned down.
+- **It runs by itself** the first time a video's captions open (once a video on this phone); "Check again with
+  Claude" runs it again. What it changed is highlighted, with Undo. A phrase he types into while it checks stays
+  his. About 1-3 cents a video (his Anthropic key).
+- Server `recheck.ts` (`RECHECK_SYSTEM`, `acceptFix`, `cleanContext`, `recheckMessage`), `index.ts`
+  `recheckCaptions`; phone `posting.recheckCaptions`, `CampaignApp.recheckContextFor`, `CaptionReview`
+  (`recheckKey`, `wasChecked`). Tests: `recheck.test.ts`, `captionRecheck.test.tsx`. Not tried against Claude here.
+
 ## The Posts screen: one row per campaign, day by day, and every video can be watched
 Needs deploying: run ./deploy-server.sh (./deploy.sh runs it by itself).
 **What he said (2026-10-29):** the scheduling section is badly organized - a Loveable zi post from Tuesday with "The
