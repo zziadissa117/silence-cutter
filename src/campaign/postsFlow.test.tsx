@@ -100,10 +100,13 @@ const section = (title: string) => {
 }
 
 describe('the Posts screen', () => {
-  it('lists an approved post with the scheduled ones, with its time and a way to take it back', () => {
+  it('lists an approved post with the scheduled ones, with its time and a way to take it back', async () => {
     expect(host.querySelector('.list-title')?.parentElement?.textContent).not.toContain('Going to Postiz')
     const scheduled = section('Scheduled')!
     expect(host.textContent).toContain('Scheduled · 2')
+    // One campaign's: one row, opened.
+    expect(scheduled.textContent).toContain('Loveable zi · 2 videos')
+    await act(async () => (scheduled.querySelector('.batch-row .post-head') as HTMLButtonElement).click())
     expect(scheduled.textContent).toContain('Approved · @traderzi2')
     expect(scheduled.textContent).toContain("Postiz didn't take it yet")
     expect([...scheduled.querySelectorAll('button')].filter((b) => b.textContent === 'Take back')).toHaveLength(2)

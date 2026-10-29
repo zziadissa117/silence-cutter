@@ -68,6 +68,7 @@ import {
   type PostingRules,
 } from './caption.ts'
 import { RECHECK_SCHEMA, RECHECK_SYSTEM, acceptFix, costCents } from './recheck.ts'
+import { byteRange } from './range.ts'
 import { accountName, baseNote, failedRefs, missingAccounts, notPostedNote, reconnectedAs, youtubeDayStarts } from './failed.ts'
 import { carryOver, cleanCaptions, cleanRepost, repostDueAt, textFor, variationNote, type AccountText } from './repost.ts'
 import { FAKE_CLAUDE, FakeError, fakeCaption, fakePostiz, isFakePostiz } from './fake.ts'
@@ -1104,12 +1105,26 @@ async function serveVideo(req: Request, url: URL): Promise<Response> {
   const { data } = await db.from('cutter_posts').select('*').eq('id', id).maybeSingle()
   if (!data) return new Response('Not found', { status: 404, headers: CORS })
   const post = data as Post
-  const headers = { ...CORS, 'Content-Type': 'video/mp4', 'Content-Length': String(post.size), 'Cache-Control': 'no-store' }
-  if (req.method === 'HEAD') return new Response(null, { headers })
-  let next = 0
+  // A byte range when asked: Safari's player asks for one first and plays
+  // nothing from a server that answers with the whole file.
+  const range = byteRange(req.headers.get('Range'), post.size)
+  if (range === 'bad') return new Response(null, { status: 416, headers: { ...CORS, 'Content-Range': `bytes */${post.size}` } })
+  const [from, to] = range ?? [0, post.size - 1]
+  const headers: Record<string, string> = {
+    ...CORS,
+    'Content-Type': 'video/mp4',
+    'Content-Length': String(to - from + 1),
+    'Accept-Ranges': 'bytes',
+    'Cache-Control': 'no-store',
+    ...(range ? { 'Content-Range': `bytes ${from}-${to}/${post.size}` } : {}),
+  }
+  const status = range ? 206 : 200
+  if (req.method === 'HEAD') return new Response(null, { status, headers })
+  let next = Math.floor(from / PART_BYTES)
+  const last = Math.floor(to / PART_BYTES)
   const stream = new ReadableStream<Uint8Array>({
     async pull(controller) {
-      if (next >= post.parts) {
+      if (next > last) {
         controller.close()
         return
       }
@@ -1118,11 +1133,13 @@ async function serveVideo(req: Request, url: URL): Promise<Response> {
         controller.error(new Error(`part ${next} is missing`))
         return
       }
-      controller.enqueue(new Uint8Array(await blob.arrayBuffer()))
+      const start = next * PART_BYTES
+      const bytes = new Uint8Array(await blob.arrayBuffer())
+      controller.enqueue(bytes.subarray(Math.max(0, from - start), Math.min(bytes.length, to - start + 1)))
       next++
     },
   })
-  return new Response(stream, { headers })
+  return new Response(stream, { status, headers })
 }
 
 // --- Buffer, the backup (buffer.ts) -------------------------------------------------
@@ -2130,7 +2147,21 @@ async function listPosts(profile: Profile): Promise<Response> {
     )
     .sort((a, b) => (a.post_at ?? '').localeCompare(b.post_at ?? ''))
   for (const p of stuck.filter((p) => !postizBusyFor(profile.id, Boolean(p.batch))).slice(0, 3)) later(advance(p.id))
-  return reply({ posts: posts.map(postView), now: new Date().toISOString() })
+  const links = await Promise.all(posts.map(watchLink))
+  return reply({ posts: posts.map((p, i) => ({ ...postView(p), videoUrl: links[i] })), now: new Date().toISOString() })
+}
+
+/** Where the phone plays a post's video: Postiz's copy once it has one;
+ *  before that the server's own, signed - a batch video waits here until
+ *  half a day before its time and was made by the Cutter server, so it had
+ *  no copy he could watch and To approve said "no copy" (2026-10-29). The
+ *  link stays the same for hours, so the list read every 15 seconds doesn't
+ *  start a playing video over. */
+async function watchLink(post: Post): Promise<string | null> {
+  if (post.media?.path) return post.media.path
+  if (post.parts === 0 || !['writing', 'waiting', 'approved', 'scheduled'].includes(post.status)) return null
+  const window = 6 * 60 * MINUTE
+  return videoUrl(post, (Math.floor(Date.now() / window) + 2) * window)
 }
 
 /** Takes a scheduled post back out of Postiz: every post it made. Accounts
@@ -3215,6 +3246,21 @@ async function checkPosted(now: number): Promise<void> {
           // Two accounts can share a name: each keeps its own link.
           const account = post.accounts.find((a) => a.id === p.integration?.id)
           links[accountName(account?.name ?? p.integration.name, account?.platform ?? p.integration.providerIdentifier, post.accounts)] = p.releaseURL
+        }
+        // None of its posts in Postiz any more, well past its time: it never
+        // went out (2026-10-29: one of Loveable zi's sat in Scheduled for two
+        // days at the top of the list, Postiz saying "Post not found").
+        const lost = post.accounts.filter((a) => !a.held && (post.postiz_ids ?? []).some((ref) => ref.integration === a.id))
+        if (mine.length === 0 && lost.length > 0 && post.checks >= 6 && Date.parse(post.post_at!) < Date.now() - 60 * MINUTE) {
+          const names = [...new Set(lost.map((a) => accountName(a.name, a.platform, post.accounts)))].join(', ')
+          const saved = await update(post.id, {
+            status: 'error',
+            error: `Not posted to ${names}. Postiz no longer has it - Post again sends it now.`,
+            checked_at: new Date().toISOString(),
+            checks: post.checks + 1,
+          })
+          await notify(profileId, { title: `${post.campaign_name}: not posted`, body: saved.error ?? '', tag: `error-${post.id}` })
+          continue
         }
         const errored = mine.filter((p) => p.state === 'ERROR')
         const published = mine.length > 0 && mine.every((p) => p.state === 'PUBLISHED' || p.state === 'ERROR') && errored.length < mine.length

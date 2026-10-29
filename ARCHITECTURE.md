@@ -202,6 +202,13 @@ is posted to again by itself once, at 00:10 Pacific (`failed.ts` `youtubeDayStar
 starts over then; `missedFields` in `checkPosted`, `attempts` counts the tries made by itself). Every missed account
 sends a push (`checkPosted`, `checkBuffer`, `giveUpUnconfirmed`, `retryMissing`). A refused tap shows under its post.
 
+**The Posts screen** (`PostsView.tsx`, `postsList.ts`): To approve, Ready, Scheduled fold each campaign into one
+row (`foldCampaigns`; in To approve and Ready only batch videos - his own posts are read one by one), opened day by
+day (`byDay`). A campaign waiting for him shows its first 3 open with their video (`PREVIEW`) and "Approve all N".
+The list's `videoUrl` is Postiz's copy, or before Postiz has one the server's own, signed for a 6-hour window
+(`watchLink`); `serveVideo` answers byte ranges (`range.ts`) for Safari's player. A scheduled post none of whose
+Postiz posts exist any more an hour past its time is marked not posted (`checkPosted`).
+
 **Waiting past its time.** A post still `waiting` for his OK (or the brand's) whose
 `post_at` has gone is moved on by every tick (`moveOnWaiting`, `slots.ts`
 `laterWhileWaiting`): an hour later, again each hour the same day, and the step that

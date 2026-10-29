@@ -3,6 +3,29 @@
 Newest first. Every change says what it does, how to use it, and how it works
 underneath. Kept up to date with each commit.
 
+## The Posts screen: one row per campaign, day by day, and every video can be watched
+Needs deploying: run ./deploy-server.sh (./deploy.sh runs it by itself).
+**What he said (2026-10-29):** the scheduling section is badly organized - a Loveable zi post from Tuesday with "The
+caption couldn't be given the hashtags (Postiz said: Post not found)" first every time; Lovable Steve 9 videos,
+Lovable Zi 23, Lovable Zi 24, Lovable Steve 11 as separate rows ("one that shows every single post that Lovable
+Steve has scheduled, that I can open or close", "similar to a calendar"); watching a post says it isn't available
+("what's the point of making me approve them if I can't even see the post? I only want to see 3 posts at the
+start of every single batch").
+**Now:**
+- **One row per campaign** in To approve, Ready to post and Scheduled, whatever batches made them ("Lovable Steve ·
+  20 videos · Today to Sat, Oct 31 · next 3:15 PM"). Opened: every post, **day by day** under Today / Tomorrow /
+  the date. His own posts waiting for him stay one by one (each caption is read).
+- **To approve shows the first 3 of each campaign open, with the video playing**, and **Approve all N** for that
+  campaign; "Show the other N" for the rest.
+- **Every video can be watched:** a batch video waits on the server until 12 h before its time (made by the
+  Cutter server, so not on the phone) and Postiz didn't have it yet - nothing to play. The list now gives the
+  server's own copy until Postiz has one, and the server answers the partial reads Safari's player needs.
+- **The Tuesday post:** Postiz had lost it ("Post not found"), so it never went out and stayed Scheduled, first in
+  the list, for 3 days. A scheduled post Postiz no longer has, an hour past its time, is now marked **Not posted**
+  with a notification; Post again sends it now.
+- `postsList.ts` `foldCampaigns`, `byDay`; `PostsView` `BatchRow` (preview, Approve all, Days); server `watchLink`,
+  `range.ts` `byteRange`, `checkPosted`. Tests in `postsList.test.ts`, `postsView.test.tsx`, `range.test.ts`.
+
 ## Post now, beside Approve
 A post waiting for him has **Post now** next to Approve (his choice, 2026-10-29, over making Approve itself post
 at once): approved and sent to Postiz to go out straight away, whatever time it had. Underneath it is Approve with

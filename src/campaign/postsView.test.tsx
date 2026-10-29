@@ -34,6 +34,8 @@ const posts = [
   waitingPost('w1'),
   waitingPost('r1', true),
   ...Array.from({ length: 25 }, (_, i) => scheduled(`b${i}`, 'polsia', 'Polsia', 'big', i + 1)),
+  ...Array.from({ length: 2 }, (_, i) => scheduled(`c${i}`, 'polsia', 'Polsia', 'small', 30 + i)),
+  ...Array.from({ length: 5 }, (_, i) => ({ ...scheduled(`n${i}`, 'nova', 'Nova', 'new', 40 + i), status: 'waiting', caption: 'A caption', approval: 'you' }) as unknown as ServerPost),
   scheduled('one', 'inflow', 'Inflow', undefined, 2),
   { ...scheduled('half', 'wron', 'Wron', undefined, -3), status: 'posted', error: 'Not posted to Jake (Instagram).' } as ServerPost,
 ]
@@ -85,23 +87,44 @@ afterEach(() => {
 
 const scheduledRows = () => [...host.querySelectorAll('.list-title')].find((t) => t.textContent?.startsWith('Scheduled'))!.nextElementSibling!.children
 const rows = scheduledRows
+const polsiaRow = () => [...host.querySelectorAll('.batch-row')].find((r) => r.textContent?.includes('Polsia ·'))!
 const chip = (name: string) => [...host.querySelectorAll('.posts-filter button')].find((b) => b.textContent === name) as HTMLButtonElement
 
 describe('scheduled posts', () => {
   it('folds a batch of 25 into one row he can open', async () => {
     expect(rows()).toHaveLength(2)
-    expect(host.textContent).toContain('Polsia · 25 videos')
-    await act(async () => (host.querySelector('.batch-row .post-head') as HTMLButtonElement).click())
-    expect(host.querySelectorAll('.batch-inside > li')).toHaveLength(25)
+    expect(host.textContent).toContain('Polsia · 27 videos')
+    await act(async () => (polsiaRow().querySelector('.post-head') as HTMLButtonElement).click())
+    expect(polsiaRow().querySelectorAll('.batch-inside .day-group .post')).toHaveLength(27)
+    // Day by day, like a calendar.
+    expect(polsiaRow().querySelectorAll('.batch-inside .day-title').length).toBeGreaterThanOrEqual(1)
+  })
+
+  it('folds every batch of a campaign into one row', () => {
+    // Polsia's 25 come from one batch and its two more from another.
+    expect(host.textContent).not.toContain('Polsia · 2 videos')
   })
 
   it('shows one campaign at a time, and remembers it', async () => {
     await act(async () => chip('Inflow 1').click())
     expect(rows()).toHaveLength(1)
-    expect(host.textContent).not.toContain('Polsia · 25 videos')
+    expect(host.textContent).not.toContain('Polsia · 27 videos')
     expect(localStorage.getItem('cutter.posts.show')).toBe('inflow')
-    await act(async () => chip('All 29').click())
+    await act(async () => chip('All 36').click())
     expect(rows()).toHaveLength(2)
+  })
+})
+
+describe('a new batch to approve', () => {
+  const novaRow = () => [...host.querySelectorAll('.batch-row')].find((r) => r.textContent?.includes('Nova · 5 videos'))!
+
+  it('shows its first 3 open with their video, and approves all 5 in one tap', async () => {
+    expect(novaRow().querySelectorAll('.batch-inside > .post')).toHaveLength(3)
+    expect(novaRow().textContent).toContain('Show the other 2')
+    const all = [...novaRow().querySelectorAll('button')].find((b) => b.textContent === 'Approve all 5') as HTMLButtonElement
+    postAction.mockClear()
+    await act(async () => all.click())
+    expect(postAction.mock.calls.filter((c) => c[0] === 'approve').map((c) => c[1]).sort()).toEqual(['n0', 'n1', 'n2', 'n3', 'n4'])
   })
 })
 
@@ -109,7 +132,7 @@ describe('approve, post later', () => {
   const button = (name: string) => [...host.querySelectorAll('button')].filter((b) => b.textContent === name)
 
   it('sits next to Approve and holds the post instead of sending it', async () => {
-    expect(button('Approve')).toHaveLength(1)
+    expect(button('Approve').length).toBeGreaterThanOrEqual(1)
     await act(async () => button('Approve, post later')[0].click())
     expect(postAction).toHaveBeenCalledWith('ready', 'w1')
     expect(host.textContent).toContain('Ready to post · 2')
@@ -132,16 +155,16 @@ describe('approve, post later', () => {
 describe('redo captions', () => {
   it('adds the missing hashtags to the whole batch in one tap, after he says yes', async () => {
     const confirm = vi.spyOn(window, 'confirm').mockReturnValue(true)
-    const add = [...host.querySelectorAll('.batch-row button')].find((b) => b.textContent === 'Add missing hashtags') as HTMLButtonElement
+    const add = [...polsiaRow().querySelectorAll('button')].find((b) => b.textContent === 'Add missing hashtags') as HTMLButtonElement
     await act(async () => add.click())
-    expect(confirm).toHaveBeenCalledWith(expect.stringContaining('Add #polsia to the 25 posts of this Polsia batch? Captions stay as they are'))
-    expect(redoCaptions).toHaveBeenCalledWith('polsia', expect.objectContaining({ hashtags: ['#polsia'] }), Array.from({ length: 25 }, (_, i) => `b${i}`), 'hashtags')
-    expect(host.textContent).toContain('Adding #polsia to 25 Polsia posts - captions stay as they are')
+    expect(confirm).toHaveBeenCalledWith(expect.stringContaining('Add #polsia to these 27 Polsia posts? Captions stay as they are'))
+    expect(redoCaptions).toHaveBeenCalledWith('polsia', expect.objectContaining({ hashtags: ['#polsia'] }), [...Array.from({ length: 25 }, (_, i) => `b${i}`), 'c0', 'c1'], 'hashtags')
+    expect(host.textContent).toContain('Adding #polsia to 27 Polsia posts - captions stay as they are')
   })
 
   it('can still rewrite them, as a second choice', async () => {
     vi.spyOn(window, 'confirm').mockReturnValue(true)
-    const rewrite = [...host.querySelectorAll('.batch-row button')].find((b) => b.textContent === 'Rewrite captions') as HTMLButtonElement
+    const rewrite = [...polsiaRow().querySelectorAll('button')].find((b) => b.textContent === 'Rewrite captions') as HTMLButtonElement
     await act(async () => rewrite.click())
     expect(redoCaptions).toHaveBeenLastCalledWith('polsia', expect.anything(), expect.any(Array), 'rewrite')
   })

@@ -20,7 +20,7 @@ import { NewPost } from './NewPost'
 import { StopPicker } from './StopPicker'
 import { jobOfPostKey, EDIT_WINDOW_MS } from './store'
 import { MusicAfter } from './MusicAfter'
-import { campaignsIn, foldBatches, rememberShown, shownCampaign, type ListItem } from './postsList'
+import { byDay, campaignsIn, foldCampaigns, localDay, rememberShown, shownCampaign, type ListItem } from './postsList'
 import { canAddMusic } from './musicAfterSend'
 import { copyKind, forgetSend, localVideo, retryStuck, sending, tidySends, watchSending, type Sending } from './outbox'
 import {
@@ -45,6 +45,8 @@ import {
 const POLL_MS = 15_000
 /** Posted shows this many until he asks for the rest. */
 const POSTED_SHOWN = 10
+/** How many of a batch waiting for him are shown open, to check. */
+const PREVIEW = 3
 /** Where he disconnects and reconnects an account that won't post. */
 const POSTIZ_ACCOUNTS = 'https://platform.postiz.com/launches'
 
@@ -198,6 +200,7 @@ function WaitingPost({
   post,
   busy,
   problem,
+  watchFirst = false,
   onAct,
   editable,
   onEdit,
@@ -212,6 +215,8 @@ function WaitingPost({
   onChanged: (message: string) => void
   /** What his last tap on it came back with. */
   problem?: string
+  /** One of the first of its batch: shown with its video, to check it. */
+  watchFirst?: boolean
   onAct: (action: PostAction, fields?: { caption?: string; at?: string; captions?: Record<string, { caption?: string }> }) => void
 }) {
   // His own words while he types; null means the box shows the caption as
@@ -231,7 +236,7 @@ function WaitingPost({
   const [changingTime, setChangingTime] = useState(false)
   const [addingMusic, setAddingMusic] = useState(false)
   const [at, setAt] = useState(localInput(post.postAt))
-  const [watching, setWatching] = useState(false)
+  const [watching, setWatching] = useState(watchFirst)
   const brand = post.approval === 'brand'
   const paste = post.captionBy === 'paste'
   const edited = typed !== null && typed !== (post.caption ?? '')
@@ -464,25 +469,62 @@ function OtherPost({
   )
 }
 
-/** A batch folded into one row: the campaign, how many, which days and
- *  when the next one goes. Tap to open it and see each post. */
+/** "Today", "Tomorrow" or "Sat, Oct 31". */
+function dayTitle(date: string | null): string {
+  if (!date) return 'No time yet'
+  const today = localDay(new Date().toISOString())
+  if (date === today) return 'Today'
+  if (date === localDay(new Date(Date.now() + 24 * 3_600_000).toISOString())) return 'Tomorrow'
+  return dayLabel(date)
+}
+
+/** The posts listed day by day, like a calendar. */
+function Days({ posts, children }: { posts: ServerPost[]; children: (post: ServerPost) => ReactNode }) {
+  return (
+    <>
+      {byDay(posts).map(({ date, posts: day }) => (
+        <li key={date ?? 'none'} className="day-group">
+          <div className="day-title">
+            {dayTitle(date)} · {day.length}
+          </div>
+          <ul className="posts-list">{day.map((post) => children(post))}</ul>
+        </li>
+      ))}
+    </>
+  )
+}
+
+/** A campaign's posts folded into one row: how many, which days and when
+ *  the next one goes. Opened, every one of them, day by day. Waiting for him
+ *  (`preview`), the first few are open with their video to watch, and one tap
+ *  approves them all - "I only want to see 3 posts at the start of every
+ *  single batch to check if they're good" (2026-10-29). */
 function BatchRow({
   posts,
   children,
   onRedo,
+  preview = 0,
+  onApproveAll,
 }: {
   posts: ServerPost[]
-  children: (post: ServerPost) => ReactNode
-  /** Adds the campaign's missing hashtags to this batch's captions, or
-   *  rewrites them with its current rules. */
+  children: (post: ServerPost, first?: boolean) => ReactNode
+  /** Adds the campaign's missing hashtags to these captions, or rewrites
+   *  them with its current rules. */
   onRedo?: (mode: RedoMode) => Promise<void>
+  /** How many of the first are shown open, with their video. */
+  preview?: number
+  onApproveAll?: () => Promise<void>
 }) {
   const [redoing, setRedoing] = useState<RedoMode | null>(null)
+  const [approving, setApproving] = useState(false)
   const [open, setOpen] = useState(false)
-  const dates = posts.map((p) => p.batch?.date ?? '').filter(Boolean).sort()
-  const days = dates.length === 0 ? '' : dates[0] === dates[dates.length - 1] ? dayLabel(dates[0]) : `${dayLabel(dates[0])} to ${dayLabel(dates[dates.length - 1])}`
-  const next = posts.find((p) => p.postAt && Date.parse(p.postAt) > Date.now())
+  const inOrder = [...posts].sort((a, b) => (a.postAt ?? '\uffff').localeCompare(b.postAt ?? '\uffff'))
+  const dates = inOrder.map((p) => (p.postAt ? localDay(p.postAt) : '')).filter(Boolean)
+  const days = dates.length === 0 ? '' : dates[0] === dates[dates.length - 1] ? dayTitle(dates[0]) : `${dayTitle(dates[0])} to ${dayTitle(dates[dates.length - 1])}`
+  const next = inOrder.find((p) => p.postAt && Date.parse(p.postAt) > Date.now())
   const tone = posts.every((p) => p.status === 'posted') ? 'ok' : posts[0].status === 'waiting' ? 'now' : 'later'
+  const first = inOrder.slice(0, preview)
+  const rest = inOrder.slice(preview)
   return (
     <li className="post batch-row">
       <button type="button" className="post-head as-button" onClick={() => setOpen((o) => !o)} aria-expanded={open}>
@@ -490,31 +532,56 @@ function BatchRow({
         <span className="post-title">
           {posts[0].campaignName} · {posts.length} videos
         </span>
-        <span className="post-when">{open ? 'Hide' : 'Show'}</span>
+        <span className="post-when">{preview > 0 ? '' : open ? 'Hide' : 'Show'}</span>
       </button>
       <div className="post-line">
         {days}
         {next ? ` · next ${whenLabel(next.postAt)}` : ''}
       </div>
-      {onRedo ? (
+      {onApproveAll || onRedo ? (
         <div className="post-actions">
-          {(['hashtags', 'rewrite'] as const).map((mode) => (
+          {onApproveAll ? (
             <button
-              key={mode}
               type="button"
-              className={mode === 'hashtags' ? 'btn small' : 'linkbtn'}
-              disabled={redoing !== null}
+              className="btn small primary"
+              disabled={approving}
               onClick={() => {
-                setRedoing(mode)
-                void onRedo(mode).finally(() => setRedoing(null))
+                setApproving(true)
+                void onApproveAll().finally(() => setApproving(false))
               }}
             >
-              {redoing === mode ? 'Working…' : mode === 'hashtags' ? 'Add missing hashtags' : 'Rewrite captions'}
+              {approving ? 'Approving…' : `Approve all ${posts.length}`}
             </button>
-          ))}
+          ) : null}
+          {onRedo
+            ? (['hashtags', 'rewrite'] as const).map((mode) => (
+                <button
+                  key={mode}
+                  type="button"
+                  className={mode === 'hashtags' && !onApproveAll ? 'btn small' : 'linkbtn'}
+                  disabled={redoing !== null}
+                  onClick={() => {
+                    setRedoing(mode)
+                    void onRedo(mode).finally(() => setRedoing(null))
+                  }}
+                >
+                  {redoing === mode ? 'Working…' : mode === 'hashtags' ? 'Add missing hashtags' : 'Rewrite captions'}
+                </button>
+              ))
+            : null}
         </div>
       ) : null}
-      {open ? <ul className="posts-list batch-inside">{posts.map((post) => children(post))}</ul> : null}
+      {first.length > 0 ? <ul className="posts-list batch-inside">{first.map((post) => children(post, true))}</ul> : null}
+      {preview > 0 && rest.length > 0 ? (
+        <button type="button" className="linkbtn" onClick={() => setOpen((o) => !o)}>
+          {open ? 'Hide the others' : `Show the other ${rest.length}`}
+        </button>
+      ) : null}
+      {open && rest.length > 0 ? (
+        <ul className="posts-list batch-inside">
+          <Days posts={rest}>{(post) => children(post)}</Days>
+        </ul>
+      ) : null}
     </li>
   )
 }
@@ -703,7 +770,9 @@ export function PostsView({
     setBusy((b) => new Set(b).add(post.id))
     try {
       const next = await postAction(action, post.id, fields)
-      setPosts((ps) => ps.map((p) => (p.id === next.id ? next : p)))
+      // An action's reply carries Postiz's link only: the server's own, from
+      // the list, stays until the next read.
+      setPosts((ps) => ps.map((p) => (p.id === next.id ? { ...next, videoUrl: next.videoUrl ?? p.videoUrl } : p)))
       postProblem(post.id, next.status === 'waiting' && next.error && action === 'approve' ? next.error : null)
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error)
@@ -744,8 +813,8 @@ export function PostsView({
     }
     const ask =
       mode === 'hashtags'
-        ? `Add ${tags.join(' ')} to the ${batch.length} posts of this ${owner.name} batch? Captions stay as they are; times stay the same.`
-        : `Have Claude write the ${batch.length} captions of this ${owner.name} batch again with its caption rules${tags.length > 0 ? ` and ${tags.join(' ')}` : ''}? Times stay the same.`
+        ? `Add ${tags.join(' ')} to these ${batch.length} ${owner.name} posts? Captions stay as they are; times stay the same.`
+        : `Have Claude write these ${batch.length} ${owner.name} captions again with its caption rules${tags.length > 0 ? ` and ${tags.join(' ')}` : ''}? Times stay the same.`
     if (!window.confirm(ask)) return
     try {
       setSaid(redoSaid(owner.name, await redoCaptions(owner.id, owner.posting, batch.map((p) => p.id), mode), mode, tags))
@@ -755,12 +824,18 @@ export function PostsView({
       setProblem(/unknown action/i.test(message) ? 'Redoing captions needs the server updated first - run ./deploy-server.sh in silence-cutter.' : message)
     }
   }
-  const list = (items: ListItem[], row: (post: ServerPost) => ReactNode) =>
+  const list = (items: ListItem[], row: (post: ServerPost, first?: boolean) => ReactNode, toApprove = false) =>
     items.map((item) =>
       item.kind === 'post' ? (
         row(item.post)
       ) : (
-        <BatchRow key={item.id} posts={item.posts} onRedo={item.posts.some((p) => p.status !== 'posted') ? (mode) => redoBatch(item.posts, mode) : undefined}>
+        <BatchRow
+          key={item.id}
+          posts={item.posts}
+          preview={toApprove ? PREVIEW : 0}
+          onApproveAll={toApprove ? () => approveThese(item.posts.filter((p) => p.approval !== 'brand' && p.caption?.trim())) : undefined}
+          onRedo={item.posts.some((p) => p.status !== 'posted') ? (mode) => redoBatch(item.posts, mode) : undefined}
+        >
           {row}
         </BatchRow>
       ),
@@ -786,15 +861,18 @@ export function PostsView({
     .filter((p) => p.status === 'posted' || p.status === 'error')
     .sort((a, b) => byTime(b, a))
 
-  const approveAll = async () => {
-    setApprovingAll(true)
-    // Three at a time: each approval waits on the server putting the post
-    // into Postiz, and 25 one after another kept the screen on for minutes.
-    const queue = [...approvable]
+  /** Three at a time: each approval waits on the server putting the post
+   *  into Postiz, and 25 one after another kept the screen on for minutes. */
+  const approveThese = async (these: ServerPost[]) => {
+    const queue = [...these]
     const worker = async () => {
       for (let post = queue.shift(); post; post = queue.shift()) await act(post, 'approve')
     }
     await Promise.all([worker(), worker(), worker()])
+  }
+  const approveAll = async () => {
+    setApprovingAll(true)
+    await approveThese(approvable)
     setApprovingAll(false)
   }
 
@@ -888,9 +966,9 @@ export function PostsView({
         <>
           <div className="list-title">To approve</div>
           <ul className="posts-list">
-            {list(foldBatches(waiting), (post) => (
-              <WaitingPost key={post.id} editable={editable} onEdit={onEditAgain} campaigns={campaigns} onChanged={onMusicDone} post={post} busy={busy.has(post.id)} problem={postProblems[post.id]} onAct={(action, fields) => void act(post, action, fields)} />
-            ))}
+            {list(foldCampaigns(waiting, { own: false }), (post, first) => (
+              <WaitingPost key={post.id} watchFirst={first} editable={editable} onEdit={onEditAgain} campaigns={campaigns} onChanged={onMusicDone} post={post} busy={busy.has(post.id)} problem={postProblems[post.id]} onAct={(action, fields) => void act(post, action, fields)} />
+            ), true)}
           </ul>
         </>
       ) : null}
@@ -899,7 +977,7 @@ export function PostsView({
         <>
           <div className="list-title">Ready to post · {ready.length}</div>
           <ul className="posts-list">
-            {list(foldBatches(ready), (post) => (
+            {list(foldCampaigns(ready, { own: false }), (post) => (
               <WaitingPost key={post.id} editable={editable} onEdit={onEditAgain} campaigns={campaigns} onChanged={onMusicDone} post={post} busy={busy.has(post.id)} problem={postProblems[post.id]} onAct={(action, fields) => void act(post, action, fields)} />
             ))}
           </ul>
@@ -936,7 +1014,7 @@ export function PostsView({
         <>
           <div className="list-title">Scheduled · {scheduled.length}</div>
           <ul className="posts-list">
-            {list(foldBatches(scheduled), (post) => (
+            {list(foldCampaigns(scheduled), (post) => (
               <OtherPost key={post.id} editable={editable} onEdit={onEditAgain} campaigns={campaigns} onChanged={onMusicDone} post={post} busy={busy.has(post.id)} problem={postProblems[post.id]} onAct={(action) => void act(post, action)} />
             ))}
           </ul>
