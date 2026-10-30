@@ -3,6 +3,26 @@
 Newest first. Every change says what it does, how to use it, and how it works
 underneath. Kept up to date with each commit.
 
+## Sign-in links: tied to the person's phones, you told of each one, Pause and Remove
+Needs deploying: run ./deploy.sh (it runs ./deploy-server.sh too). The table `cutter_devices` is applied
+(migration `20261030120000_cutter_devices.sql`, under his "do whatever you want for the database").
+**What he asked (2026-10-30):** if the person shares their login secretly, "Am I going to know? ... Will he even be
+able to do it?" - "Add all the protection." (The first one: Stefan.)
+**Now, for every login made with a link (not his own):**
+- **At most 3 phones at once.** Each sign-in names the phone (an id it keeps) and the login works only there; a
+  phone's Safari and the Cutter on its Home Screen count as two, so 3 is one phone both ways and one more. A 4th is
+  refused: "This login is on 3 phones already. Ask Ziad to take one off."
+- **He is told:** a notification on his phone when the person opens their link, signs in on a new phone, or is
+  refused a 4th.
+- **Settings, People** shows each login's phones ("iPhone · Home Screen app, since Oct 30 · in use now"), **Remove**
+  on a phone (signed out at once, its place free) and **Pause** on the login (every phone refused, nothing deleted;
+  **Let go** to undo).
+- A copied token from another phone doesn't work there either: the phone's id is in it and checked on every call
+  (both functions). What no software stops: handing over the unlocked phone itself.
+- `cutter/invite.ts` (`MAX_DEVICES`, `deviceFrom`, `roomForDevice`), `cutter/index.ts` (`onDevice`, `notifyOwner`,
+  `pause`, `removeDevice`, token `d`), `postiz/index.ts` `spaceFor`; phone `cloud.thisDevice/deviceName/pauseLogin/
+  removeDevice`, `People.tsx`. Tests: `invite.test.ts`, `cloudDevice.test.ts`.
+
 ## YouTube no longer sent when its daily limit is used up - and spread over the day
 Needs deploying: run ./deploy-server.sh (server only - no Netlify needed).
 **What happened (2026-10-30):** Postiz again: "Error posting on youtube for MikeyAi - YouTube's daily upload quota is

@@ -56,7 +56,13 @@ first when something would be lost.
   { code, password } turns it `active` with that password and clears the code in
   the same update (one use). Nothing else creates a login; `create` is ignored.
   An invited or paused space can't sign in or use a token (`isActive`, in both
-  functions). Each login is its own space: campaigns, bank, posting profiles,
+  functions). Such a login is tied to its phones (`cutter_devices`, 2026-10-30):
+  every sign-in sends the phone's id (`cloud.thisDevice`), the token carries it
+  (`d`), both functions refuse a token whose phone is unknown or removed, at most
+  `MAX_DEVICES` (3: a phone's Safari and its Home Screen app count apart) at once,
+  and the owner gets a push for each new phone and each one refused
+  (`notifyOwner`). People shows the phones with Remove (`remove-device`) and the
+  login with Pause (`pause`). The owner's own login is not tied. Each login is its own space: campaigns, bank, posting profiles,
   posts - and its own music bank (`song@<space>:` rows; the owner's stay
   `song:`). Unknown name, wrong password and wrong admin password all answer
   `Wrong login or password.`; 5 wrong passwords lock 30 min.

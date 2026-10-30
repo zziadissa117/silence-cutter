@@ -187,16 +187,26 @@ async function hmacKey(): Promise<CryptoKey> {
   return crypto.subtle.importKey('raw', encoder.encode(SERVICE_KEY), { name: 'HMAC', hash: 'SHA-256' }, false, ['sign', 'verify'])
 }
 
+/** The oldest space: the owner's, the one login there was before links. */
+let ownerSpaceId: string | null = null
+
 async function spaceFor(token: unknown): Promise<string | null> {
   if (typeof token !== 'string' || !token.includes('.')) return null
   const [payload, signature] = token.split('.')
   try {
     const valid = await crypto.subtle.verify('HMAC', await hmacKey(), fromB64url(signature), encoder.encode(payload))
     if (!valid) return null
-    const { s, p } = JSON.parse(decoder.decode(fromB64url(payload))) as { s: string; p: string }
+    const { s, p, d } = JSON.parse(decoder.decode(fromB64url(payload))) as { s: string; p: string; d?: string }
     const { data } = await db.from('cutter_spaces').select('*').eq('id', s).maybeSingle()
     // A paused login can't post either (rows from before the status column are active).
-    return data && (data.status ?? 'active') === 'active' && data.pass_hash.startsWith(p) ? data.id : null
+    if (!data || (data.status ?? 'active') !== 'active' || !data.pass_hash.startsWith(p)) return null
+    // A login made with a link: only on a phone it signed in on and still has
+    // (cutter function, cutter_devices). The owner's own login isn't tied.
+    ownerSpaceId ??= (await db.from('cutter_spaces').select('id').order('created_at').limit(1).maybeSingle()).data?.id ?? null
+    if (data.id === ownerSpaceId) return data.id
+    if (typeof d !== 'string') return null
+    const { data: device } = await db.from('cutter_devices').select('removed_at').eq('space_id', data.id).eq('device_id', d).maybeSingle()
+    return device && !device.removed_at ? data.id : null
   } catch {
     return null
   }

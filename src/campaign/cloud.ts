@@ -114,7 +114,7 @@ export async function askShared<T>(action: string, body: Record<string, unknown>
  *  The first sign-in on a phone also sends everything already on it, so
  *  nothing set up before signing in is left behind. */
 export async function signIn(name: string, password: string): Promise<Session> {
-  const { token, name: signedAs } = await call<{ token: string; name: string }>('login', { name, password })
+  const { token, name: signedAs } = await call<{ token: string; name: string }>('login', { name, password, device: thisDevice() })
   const session = { name: signedAs, token }
   keepSession(session)
   await setMeta(LAST_PULL, null)
@@ -127,20 +127,61 @@ export async function signIn(name: string, password: string): Promise<Session> {
  *  sent up: a link opened on a phone that already holds someone's setups
  *  must not hand them to the new login. */
 export async function acceptInvite(code: string, password: string): Promise<Session> {
-  const { token, name } = await call<{ token: string; name: string }>('accept-invite', { code, password })
+  const { token, name } = await call<{ token: string; name: string }>('accept-invite', { code, password, device: thisDevice() })
   const session = { name, token }
   keepSession(session)
   await setMeta(LAST_PULL, null)
   return session
 }
 
-/** A login he made with a link: its name, whether the link was opened, and
- *  until when an unopened one works. */
+const DEVICE_KEY = 'cutter.device'
+
+/** This phone's own id, made once and kept: a login made with a link is tied
+ *  to the phones it signs in on (cutter function, cutter_devices). */
+export function thisDevice(): { id: string; name: string } {
+  let id: string | null = null
+  try {
+    id = localStorage.getItem(DEVICE_KEY)
+  } catch {
+    // Private window: a new id this time.
+  }
+  if (!id || !/^[\w-]{16,64}$/.test(id)) {
+    const bytes = crypto.getRandomValues(new Uint8Array(16))
+    id = btoa(String.fromCharCode(...bytes)).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '')
+    try {
+      localStorage.setItem(DEVICE_KEY, id)
+    } catch {
+      // Kept for this page only.
+    }
+  }
+  return { id, name: deviceName(navigator.userAgent, window.matchMedia?.('(display-mode: standalone)').matches === true) }
+}
+
+/** "iPhone · Home Screen app", "Mac · Chrome" - what the owner reads. */
+export function deviceName(agent: string, standalone: boolean): string {
+  const kind = /iPhone/.test(agent) ? 'iPhone' : /iPad/.test(agent) ? 'iPad' : /Android/.test(agent) ? 'Android' : /Macintosh/.test(agent) ? 'Mac' : /Windows/.test(agent) ? 'Windows' : 'Computer'
+  const how = standalone ? 'Home Screen app' : /CriOS|Chrome/.test(agent) ? 'Chrome' : /Firefox|FxiOS/.test(agent) ? 'Firefox' : /Safari/.test(agent) ? 'Safari' : 'browser'
+  return `${kind} · ${how}`
+}
+
+/** A login he made with a link: its name, whether the link was opened, until
+ *  when an unopened one works, and the phones it is on. */
 export interface Person {
   name: string
   status: 'active' | 'invited' | 'paused'
   until: string | null
   since: string
+  devices?: { id: string; name: string; firstSeen: string; lastSeen: string }[]
+}
+
+/** Pauses a login he made (every call refused, its data kept), or lets it go. */
+export async function pauseLogin(name: string, paused: boolean): Promise<Person[]> {
+  return (await askShared<{ people: Person[] }>('pause', { name, paused }))?.people ?? []
+}
+
+/** Signs one phone out of a login he made, at once. */
+export async function removeDevice(name: string, device: string): Promise<Person[]> {
+  return (await askShared<{ people: Person[] }>('remove-device', { name, device }))?.people ?? []
 }
 
 /** Makes a one-time sign-in link for a new login (the main login only). */

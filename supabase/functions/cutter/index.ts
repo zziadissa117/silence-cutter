@@ -31,7 +31,12 @@
 //   login          { name, password }           -> { token, name }
 //   invite         { token, name }              -> { code, until }  owner only: a one-time link's code
 //   accept-invite  { code, password }           -> { token, name }  the link opened: once, within 48 h
-//   people         { token }                    -> { people }       owner only: the logins he made
+//   people         { token }                    -> { people }       owner only: the logins he made, with their phones
+//   pause          { token, name, paused }      -> { people }       owner only: a login stopped, or let go again
+//   remove-device  { token, name, device }      -> { people }       owner only: a phone signed out of a login
+// A login made with a link is tied to its phones (cutter_devices): every
+// sign-in names the phone, its token carries it, at most MAX_DEVICES at once,
+// and the owner is told of each new one. The owner's own login is not limited.
 //   pull           { token, since? }            -> { items, until }
 //   push           { token, items }             -> { accepted }
 //   upload-urls    { token, files: [{ sha }] }  -> { uploads: [{ sha, url }] }
@@ -51,7 +56,8 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 
 import { MUSIC_DIR, cleanSong, sameSong, songsFrom, type SharedSong } from './songs.ts'
-import { INVITE_MS, cleanLoginName, isActive, songPrefix } from './invite.ts'
+import { INVITE_MS, MAX_DEVICES, cleanLoginName, deviceFrom, isActive, roomForDevice, songPrefix, type Device } from './invite.ts'
+import webpush from 'npm:web-push@3.6.7'
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!
 const SERVICE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
@@ -119,8 +125,8 @@ async function signingKey(): Promise<CryptoKey> {
 /** A token that keeps a phone signed in until it signs out. It names the
  *  space and a piece of its password hash, so changing the password signs
  *  every phone out. */
-async function makeToken(spaceId: string, passHash: string): Promise<string> {
-  const payload = b64url(encoder.encode(JSON.stringify({ s: spaceId, p: passHash.slice(0, 12) })))
+async function makeToken(spaceId: string, passHash: string, deviceId?: string): Promise<string> {
+  const payload = b64url(encoder.encode(JSON.stringify({ s: spaceId, p: passHash.slice(0, 12), ...(deviceId ? { d: deviceId } : {}) })))
   const signature = new Uint8Array(await crypto.subtle.sign('HMAC', await signingKey(), encoder.encode(payload)))
   return `${payload}.${b64url(signature)}`
 }
@@ -131,9 +137,18 @@ async function spaceFor(token: unknown): Promise<string | null> {
   try {
     const valid = await crypto.subtle.verify('HMAC', await signingKey(), fromB64url(signature), encoder.encode(payload))
     if (!valid) return null
-    const { s, p } = JSON.parse(new TextDecoder().decode(fromB64url(payload))) as { s: string; p: string }
+    const { s, p, d } = JSON.parse(new TextDecoder().decode(fromB64url(payload))) as { s: string; p: string; d?: string }
     const { data } = await db.from('cutter_spaces').select('*').eq('id', s).maybeSingle()
-    return data && isActive(data) && data.pass_hash.startsWith(p) ? data.id : null
+    if (!data || !isActive(data) || !data.pass_hash.startsWith(p)) return null
+    if (data.id === (await ownerSpace())) return data.id
+    // Any other login: only on a phone it signed in on, not taken off.
+    if (typeof d !== 'string') return null
+    const { data: device } = await db.from('cutter_devices').select('last_seen, removed_at').eq('space_id', data.id).eq('device_id', d).maybeSingle()
+    if (!device || device.removed_at) return null
+    if (Date.now() - Date.parse(device.last_seen) > 10 * 60_000) {
+      await db.from('cutter_devices').update({ last_seen: new Date().toISOString() }).eq('space_id', data.id).eq('device_id', d)
+    }
+    return data.id
   } catch {
     return null
   }
@@ -218,7 +233,12 @@ async function login(body: Record<string, unknown>): Promise<Response> {
       return reply(WRONG, 401)
     }
     if (space.failed_count > 0) await db.from('cutter_spaces').update({ failed_count: 0 }).eq('id', space.id)
-    return reply({ token: await makeToken(space.id, space.pass_hash), name })
+    if (space.id === (await ownerSpace())) return reply({ token: await makeToken(space.id, space.pass_hash), name })
+    const device = deviceFrom(body.device)
+    if (!device) return reply({ error: 'Close the Cutter and open it again to update it, then sign in.' }, 400)
+    const refused = await onDevice(space, device)
+    if (refused) return reply({ error: refused }, 403)
+    return reply({ token: await makeToken(space.id, space.pass_hash, device.id), name })
   }
 
   const admin = await adminLogin(name, password)
@@ -282,7 +302,9 @@ const LINK_DEAD = { error: 'This link has already been used or has expired. Ask 
 async function acceptInvite(body: Record<string, unknown>): Promise<Response> {
   const code = typeof body.code === 'string' && /^[\w-]{20,100}$/.test(body.code) ? body.code : null
   const password = typeof body.password === 'string' ? body.password : ''
+  const device = deviceFrom(body.device)
   if (!code) return reply(LINK_DEAD, 410)
+  if (!device) return reply({ error: 'Close the page and open the link again.' }, 400)
   if (password.length < MIN_PASSWORD) return reply({ error: `The password needs at least ${MIN_PASSWORD} characters.` }, 400)
   const salt = b64url(crypto.getRandomValues(new Uint8Array(16)))
   const passHash = await hashPassword(password, salt)
@@ -296,23 +318,114 @@ async function acceptInvite(body: Record<string, unknown>): Promise<Response> {
     .maybeSingle()
   if (error) return reply({ error: 'The server could not check the link. Try again.' }, 500)
   if (!data) return reply(LINK_DEAD, 410)
-  return reply({ token: await makeToken(data.id, data.pass_hash), name: data.name })
+  await onDevice({ id: data.id, name: data.name }, device, 'opened their sign-in link')
+  return reply({ token: await makeToken(data.id, data.pass_hash, device.id), name: data.name })
 }
 
-/** The logins he made: name, whether the link was opened, until when it works. */
+/** A phone signing in to a login made with a link: let in if it is one of
+ *  its phones or there is room - the owner told of every new one - or the
+ *  reason it isn't. */
+async function onDevice(space: { id: string; name: string }, device: Device, did = 'signed in on a new phone'): Promise<string | null> {
+  const { data } = await db.from('cutter_devices').select('device_id').eq('space_id', space.id).is('removed_at', null)
+  const room = roomForDevice((data ?? []) as { device_id: string }[], device)
+  if (room === 'full') {
+    await notifyOwner(`${space.name} tried a ${MAX_DEVICES + 1}th phone`, `Refused: ${device.name}. ${space.name} is on ${MAX_DEVICES} phones already - Settings, People to see them.`)
+    return `This login is on ${MAX_DEVICES} phones already. Ask Ziad to take one off.`
+  }
+  const now = new Date().toISOString()
+  // A phone taken off and signing in again is a new phone again.
+  await db.from('cutter_devices').upsert({ space_id: space.id, device_id: device.id, name: device.name, last_seen: now, removed_at: null, ...(room === 'new' ? { first_seen: now } : {}) })
+  if (room === 'new') await notifyOwner(`${space.name} ${did}`, `${device.name}. Settings, People shows every phone ${space.name} uses.`)
+  return null
+}
+
+let vapidReady: Promise<boolean> | null = null
+function vapid(): Promise<boolean> {
+  vapidReady ??= (async () => {
+    const c = await configValues(['vapid_public', 'vapid_private'])
+    if (!c.vapid_public || !c.vapid_private) return false
+    webpush.setVapidDetails('https://silence-cutter.netlify.app', c.vapid_public, c.vapid_private)
+    return true
+  })()
+  return vapidReady
+}
+
+/** A notification to the owner's phones - every posting profile of his login. */
+async function notifyOwner(title: string, body: string): Promise<void> {
+  try {
+    if (!(await vapid())) return
+    const owner = await ownerSpace()
+    const { data: profiles } = await db.from('cutter_profiles').select('id').eq('space_id', owner)
+    const ids = ((profiles ?? []) as { id: string }[]).map((p) => p.id)
+    if (ids.length === 0) return
+    const { data } = await db.from('cutter_push').select('endpoint, keys').in('profile_id', ids)
+    for (const row of data ?? []) {
+      await webpush
+        .sendNotification(
+          { endpoint: row.endpoint, keys: row.keys as { p256dh: string; auth: string } },
+          JSON.stringify({ title, body, tag: `people-${Date.now()}`, url: '/campaign.html#settings' }),
+          { TTL: 24 * 60 * 60, urgency: 'high' },
+        )
+        .catch(() => {})
+    }
+  } catch (error) {
+    console.error('telling the owner failed', error)
+  }
+}
+
+/** The logins he made: name, whether the link was opened, until when it
+ *  works, paused or not, and the phones each is on. */
 async function people(spaceId: string): Promise<Response> {
   const owner = await ownerSpace()
   if (spaceId !== owner) return reply(NOT_OWNER, 403)
   const { data, error } = await db.from('cutter_spaces').select('*').neq('id', owner).order('created_at')
   if (error) return reply({ error: 'The server could not read the logins.' }, 500)
+  const rows = data ?? []
+  const { data: devices } = rows.length > 0
+    ? await db.from('cutter_devices').select('*').in('space_id', rows.map((r) => r.id)).is('removed_at', null).order('first_seen')
+    : { data: [] }
   return reply({
-    people: (data ?? []).map((row) => ({
+    people: rows.map((row) => ({
       name: row.name,
       status: row.status ?? 'active',
       until: row.status === 'invited' ? row.invite_until : null,
       since: row.created_at,
+      devices: ((devices ?? []) as { space_id: string; device_id: string; name: string; first_seen: string; last_seen: string }[])
+        .filter((d) => d.space_id === row.id)
+        .map((d) => ({ id: d.device_id, name: d.name, firstSeen: d.first_seen, lastSeen: d.last_seen })),
     })),
   })
+}
+
+/** The owner's own lever on a login he made: pause it (every call refused,
+ *  its data kept) or let it go again. */
+async function pause(spaceId: string, body: Record<string, unknown>): Promise<Response> {
+  const owner = await ownerSpace()
+  if (spaceId !== owner) return reply(NOT_OWNER, 403)
+  const name = cleanLoginName(body.name)
+  if (!name) return reply({ error: 'Which login?' }, 400)
+  const { error } = await db
+    .from('cutter_spaces')
+    .update({ status: body.paused === true ? 'paused' : 'active' })
+    .eq('name', name)
+    .neq('id', owner)
+    .in('status', ['active', 'paused'])
+  if (error) return reply({ error: 'The server could not change the login.' }, 500)
+  return people(spaceId)
+}
+
+/** A phone taken off a login he made: signed out at once, a place free. */
+async function removeDevice(spaceId: string, body: Record<string, unknown>): Promise<Response> {
+  const owner = await ownerSpace()
+  if (spaceId !== owner) return reply(NOT_OWNER, 403)
+  const name = cleanLoginName(body.name)
+  const device = typeof body.device === 'string' ? body.device : ''
+  if (!name || !device) return reply({ error: 'Which phone?' }, 400)
+  const { data: space } = await db.from('cutter_spaces').select('id').eq('name', name).neq('id', owner).maybeSingle()
+  if (!space) return reply({ error: 'Which login?' }, 400)
+  const { error } = await db.from('cutter_devices').update({ removed_at: new Date().toISOString() }).eq('space_id', space.id).eq('device_id', device)
+  if (error) return reply({ error: 'The server could not take the phone off.' }, 500)
+  return people(spaceId)
 }
 
 async function pull(spaceId: string, body: Record<string, unknown>): Promise<Response> {
@@ -557,6 +670,10 @@ Deno.serve(async (req) => {
       return invite(spaceId, body)
     case 'people':
       return people(spaceId)
+    case 'pause':
+      return pause(spaceId, body)
+    case 'remove-device':
+      return removeDevice(spaceId, body)
     case 'songs':
       return songs(spaceId).catch((error) => reply({ error: (error as Error).message }, 500))
     case 'song-upload':
