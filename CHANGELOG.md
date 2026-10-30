@@ -3,6 +3,20 @@
 Newest first. Every change says what it does, how to use it, and how it works
 underneath. Kept up to date with each commit.
 
+## YouTube no longer sent when its daily limit is used up
+Needs deploying: run ./deploy-server.sh (server only - no Netlify needed).
+**What happened (2026-10-30):** Postiz again: "Error posting on youtube for MikeyAi - YouTube's daily upload quota is
+exhausted for today, please reschedule this post for a later time." Every evening, YouTube copies failed (the
+limit is Postiz's, shared, and starts over at midnight in California); the 3:10 AM retry posted them (both of
+2026-10-29's went), but late and after an error email.
+**Now:** a post whose time is from 3 PM California time (6 PM Toronto) to midnight there sends its YouTube copy
+as its own Postiz post just after YouTube's new day - 12:10 AM to 1:40 AM California (3:10 to 4:40 AM Toronto),
+in the evening's order. The other accounts go at the post's own time. The post says "YouTube goes at 3:17 AM,
+when its daily limit starts over." Earlier in the day nothing changes.
+- `failed.ts` `youtubeTime` (`YOUTUBE_FULL_FROM` 15); `index.ts` `schedule` makes one Postiz post per group and
+  saves each one's ids as it is made (a retry never makes a part twice); the YouTube ref keeps its time (`at`) so
+  `checkPosted` looks for it then. A YouTube copy that still fails gets the 3:10 AM retry as before.
+
 ## A one-time sign-in link for someone new, with their own Cutter
 Needs deploying: run ./deploy-server.sh (./deploy.sh runs it by itself) - after the migration
 `20261029120000_cutter_invites.sql` is applied (shown to him first).

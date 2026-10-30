@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { accountName, baseNote, failedRefs, missingAccounts, namesIn, notPostedNote, reconnectedAs, youtubeDayStarts } from './failed'
+import { accountName, baseNote, failedRefs, missingAccounts, namesIn, notPostedNote, reconnectedAs, youtubeDayStarts, youtubeTime } from './failed'
 
 const accounts = [
   { id: 'yt', name: 'Ilyan Hamdane', platform: 'youtube' },
@@ -129,5 +129,22 @@ describe('baseNote', () => {
     expect(baseNote("Postiz couldn't publish it to X. Open Postiz to see why. Still not posted: X needs reconnecting.")).toBe("Postiz couldn't publish it to X. Open Postiz to see why.")
     expect(baseNote('Not posted to Vazaziad.')).toBe('Not posted to Vazaziad.')
     expect([...namesIn("Not posted to Vazaziad. Posting again at 3:10 AM, when YouTube's daily limit starts over.")]).toEqual(['Vazaziad'])
+  })
+})
+
+describe('youtubeTime', () => {
+  it('keeps a time in the morning or early afternoon in California', () => {
+    // 10 AM Pacific, Oct 29 (17:00 UTC).
+    const at = Date.parse('2026-10-29T17:00:00Z')
+    expect(youtubeTime(at)).toBe(at)
+  })
+
+  it('moves an evening one to just after the new YouTube day, in order', () => {
+    // 6:44 PM Toronto = 3:44 PM Pacific (22:44 UTC): 44 minutes in -> 12:17 AM Pacific.
+    expect(new Date(youtubeTime(Date.parse('2026-10-29T22:44:00Z'))).toISOString()).toBe('2026-10-30T07:17:00.000Z')
+    // 8:06 PM Toronto = 5:06 PM Pacific: 126 min -> 12:31 AM Pacific.
+    expect(new Date(youtubeTime(Date.parse('2026-10-30T00:06:00Z'))).toISOString()).toBe('2026-10-30T07:31:00.000Z')
+    // 11:59 PM Pacific -> 1:40 AM Pacific.
+    expect(new Date(youtubeTime(Date.parse('2026-10-30T06:59:00Z'))).toISOString()).toBe('2026-10-30T08:40:00.000Z')
   })
 })

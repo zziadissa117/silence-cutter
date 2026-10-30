@@ -69,7 +69,7 @@ import {
 } from './caption.ts'
 import { RECHECK_SCHEMA, RECHECK_SYSTEM, acceptFix, cleanContext, costCents, recheckMessage } from './recheck.ts'
 import { byteRange } from './range.ts'
-import { accountName, baseNote, failedRefs, missingAccounts, notPostedNote, reconnectedAs, youtubeDayStarts } from './failed.ts'
+import { accountName, baseNote, failedRefs, missingAccounts, notPostedNote, reconnectedAs, youtubeDayStarts, youtubeTime } from './failed.ts'
 import { carryOver, cleanCaptions, cleanRepost, repostDueAt, textFor, variationNote, type AccountText } from './repost.ts'
 import { FAKE_CLAUDE, FakeError, fakeCaption, fakePostiz, isFakePostiz } from './fake.ts'
 import { approvalFor, batchChoices, batchInfo, batchReady, type BatchInfo } from './batch.ts'
@@ -537,7 +537,7 @@ interface Post {
   repost_at: string | null
   reposted_at: string | null
   media: Media | null
-  postiz_ids: { postId: string; integration: string }[] | null
+  postiz_ids: { postId: string; integration: string; at?: string }[] | null
   /** The accounts it went to through Buffer instead of Postiz, by account id. */
   buffer_ids: Record<string, BufferRef> | null
   release_urls: Record<string, string> | null
@@ -1944,30 +1944,56 @@ async function schedule(start: Post): Promise<Post> {
   const toPostiz = send.filter((account) => !post.buffer_ids?.[account.id])
   if (toPostiz.length === 0) return scheduled({})
 
+  // YouTube's daily limit (Postiz's) is used up from the afternoon in
+  // California: a YouTube copy due then goes just after YouTube's new day,
+  // as its own post, and the other accounts go at the time (youtubeTime).
+  const at = now ? Date.now() : new Date(date).getTime()
+  const youtubeAt = youtubeTime(at)
+  const later = youtubeAt > at ? toPostiz.filter((a) => a.platform === 'youtube') : []
+  const onTime = toPostiz.filter((a) => !later.includes(a))
+  const youtubeDate = new Date(youtubeAt).toISOString()
+  const youtubeNote = later.length > 0 ? `YouTube goes at ${new Intl.DateTimeFormat('en-US', { timeZone: profile.timezone, hour: 'numeric', minute: '2-digit' }).format(new Date(youtubeAt))}, when its daily limit starts over.` : null
+  const groups = [
+    ...(onTime.length > 0 ? [{ accounts: onTime, type: now ? 'now' : 'schedule', date }] : []),
+    ...(later.length > 0 ? [{ accounts: later, type: 'schedule', date: youtubeDate, at: youtubeDate }] : []),
+  ]
+  const withNote = (refs: { postId: string; integration: string; at?: string }[]) =>
+    scheduled({ postiz_ids: refs, ...(youtubeNote ? { error: [heldNote(held), youtubeNote].filter(Boolean).join(' ') } : {}) })
+
   try {
     if (!post.media) post = await mediaInPostiz(keys.postiz, post, toPostiz.some((a) => backupFor(profile)[a.id]))
+    // A part already in Postiz - saved as soon as it was made, or found there
+    // after a run that stopped half-way - is never made twice.
+    const made: { postId: string; integration: string; at?: string }[] = [...(post.postiz_ids ?? [])]
+    const has = (group: (typeof groups)[number]) => group.accounts.every((a) => made.some((ref) => ref.integration === a.id))
     if (post.creating_at) {
-      // A run before this one may have got as far as creating it.
-      const found = await findCreated(keys.postiz, { ...post, accounts: toPostiz }, date)
-      if (found) return scheduled({ postiz_ids: found })
+      for (const group of groups.filter((g) => !has(g))) {
+        const refs = await findCreated(keys.postiz, { ...post, accounts: group.accounts }, group.date)
+        if (refs) made.push(...refs.map((ref) => (group.at ? { ...ref, at: group.at } : ref)))
+      }
     }
+    if (groups.every(has)) return withNote(made)
     await update(post.id, { creating_at: new Date().toISOString() })
     const media = post.media!
-    const created = await postiz<{ postId: string; integration: string }[]>(keys.postiz, 'POST', '/posts', {
-      type: now ? 'now' : 'schedule',
-      date,
-      shortLink: false,
-      tags: [],
-      posts: toPostiz.map((account) => {
-        const text = textFor(post, account.id)
-        return {
-          integration: { id: account.id },
-          value: [{ content: text.caption, image: [{ id: media.id, path: media.path }] }],
-          settings: settingsFor(account.platform, finishTitle(text.title ?? '', [post.headline ?? '', post.campaign_name]), instagramPlace(profile.settings, post.campaign_id)),
-        }
-      }),
-    }, needOf(post))
-    return scheduled({ postiz_ids: Array.isArray(created) ? created : [] })
+    for (const group of groups.filter((g) => !has(g))) {
+      const created = await postiz<{ postId: string; integration: string }[]>(keys.postiz, 'POST', '/posts', {
+        type: group.type,
+        date: group.date,
+        shortLink: false,
+        tags: [],
+        posts: group.accounts.map((account) => {
+          const text = textFor(post, account.id)
+          return {
+            integration: { id: account.id },
+            value: [{ content: text.caption, image: [{ id: media.id, path: media.path }] }],
+            settings: settingsFor(account.platform, finishTitle(text.title ?? '', [post.headline ?? '', post.campaign_name]), instagramPlace(profile.settings, post.campaign_id)),
+          }
+        }),
+      }, needOf(post))
+      made.push(...(Array.isArray(created) ? created : []).map((ref) => (group.at ? { ...ref, at: group.at } : ref)))
+      if (groups.length > 1) await update(post.id, { postiz_ids: made })
+    }
+    return withNote(made)
   } catch (error) {
     if (!(error instanceof PostizProblem)) throw error
     // Postiz can't post it: the accounts Buffer backs up go through Buffer,
@@ -3247,7 +3273,8 @@ async function checkPosted(now: number): Promise<void> {
       const { postiz: key } = await keysFor(profileId)
       const { data: zone } = await db.from('cutter_profiles').select('timezone').eq('id', profileId).single()
       const tz = (zone as Pick<Profile, 'timezone'> | null)?.timezone ?? 'America/Toronto'
-      const times = posts.map((p) => new Date(p.post_at!).getTime())
+      // A YouTube copy moved to YouTube's new day is looked for at its own time.
+      const times = posts.flatMap((p) => [new Date(p.post_at!).getTime(), ...(p.postiz_ids ?? []).flatMap((ref) => (ref.at ? [Date.parse(ref.at)] : []))])
       const found = await postsAround(key, Math.min(...times) - 60 * MINUTE, Math.max(...times) + 60 * MINUTE, 'read')
       const byId = new Map(found.map((p) => [p.id, p]))
       for (const post of posts) {

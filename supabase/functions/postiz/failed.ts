@@ -2,7 +2,7 @@
 // failed, how each account is named on the post (two accounts can share a
 // name - "Ilyan Hamdane" on YouTube and on Instagram), and what the post says.
 
-import { addDays, localDate, zoned } from './slots.ts'
+import { addDays, localDate, localTime, zoned } from './slots.ts'
 
 export interface FailedAccount {
   id: string
@@ -13,6 +13,9 @@ export interface FailedAccount {
 export interface PostizRef {
   postId: string
   integration: string
+  /** When this one goes, when not at the post's own time (a YouTube copy
+   *  moved to YouTube's new day, youtubeTime). */
+  at?: string
 }
 
 export interface PostizState {
@@ -130,4 +133,22 @@ export function youtubeDayStarts(now: number): number {
  *  accounts it names (namesIn) stay first. */
 export function baseNote(note: string): string {
   return note.replace(/ (Posting again|Still not posted)\b.*$/s, '')
+}
+
+/** From this hour in California on, YouTube uploads through Postiz fail:
+ *  its daily limit is used up ("YouTube's daily upload quota is exhausted
+ *  for today", his posts every evening of 2026-10-25..30). */
+export const YOUTUBE_FULL_FROM = 15
+
+/** When a post's YouTube copy goes: at the post's own time while YouTube's
+ *  day still has room; from 3 PM in California, just after its new day
+ *  starts instead - 12:10 AM there, the evening's order kept, a minute for
+ *  every six of the evening (3 PM to midnight lands 12:10 to 1:40 AM). */
+export function youtubeTime(at: number): number {
+  const day = localDate(new Date(at), YOUTUBE_DAY_TZ)
+  const hour = Number(localTime(new Date(at), YOUTUBE_DAY_TZ).slice(0, 2))
+  if (hour < YOUTUBE_FULL_FROM) return at
+  const from = zoned(day, `${YOUTUBE_FULL_FROM}:00`, YOUTUBE_DAY_TZ).getTime()
+  const minutes = Math.round((at - from) / 60_000 / 6)
+  return zoned(addDays(day, 1), '00:10', YOUTUBE_DAY_TZ).getTime() + minutes * 60_000
 }
