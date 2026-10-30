@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { accountName, baseNote, failedRefs, missingAccounts, namesIn, notPostedNote, reconnectedAs, youtubeDayStarts, youtubeTime } from './failed'
+import { accountName, baseNote, failedRefs, missingAccounts, namesIn, notPostedNote, clearOfTaken, reconnectedAs, youtubeRetryTime, youtubeTime } from './failed'
 
 const accounts = [
   { id: 'yt', name: 'Ilyan Hamdane', platform: 'youtube' },
@@ -111,17 +111,6 @@ describe('namesIn', () => {
   })
 })
 
-describe('youtubeDayStarts', () => {
-  it('is ten past midnight in California, the next one', () => {
-    // 8 PM Pacific on Oct 28 (03:00 UTC Oct 29): 00:10 Pacific Oct 29 = 07:10 UTC.
-    expect(new Date(youtubeDayStarts(Date.parse('2026-10-29T03:00:00Z'))).toISOString()).toBe('2026-10-29T07:10:00.000Z')
-    // Just after it: the one a day later.
-    expect(new Date(youtubeDayStarts(Date.parse('2026-10-29T07:15:00Z'))).toISOString()).toBe('2026-10-30T07:10:00.000Z')
-    // Winter time (from Nov 1): 08:10 UTC.
-    expect(new Date(youtubeDayStarts(Date.parse('2026-11-05T03:00:00Z'))).toISOString()).toBe('2026-11-05T08:10:00.000Z')
-  })
-})
-
 describe('baseNote', () => {
   it('keeps the accounts a note names, without what was added about posting again', () => {
     expect(baseNote("Not posted to Vazaziad. Posting again at 3:10 AM, when YouTube's daily limit starts over.")).toBe('Not posted to Vazaziad.')
@@ -139,12 +128,32 @@ describe('youtubeTime', () => {
     expect(youtubeTime(at)).toBe(at)
   })
 
-  it('moves an evening one to just after the new YouTube day, in order', () => {
-    // 6:44 PM Toronto = 3:44 PM Pacific (22:44 UTC): 44 minutes in -> 12:17 AM Pacific.
-    expect(new Date(youtubeTime(Date.parse('2026-10-29T22:44:00Z'))).toISOString()).toBe('2026-10-30T07:17:00.000Z')
-    // 8:06 PM Toronto = 5:06 PM Pacific: 126 min -> 12:31 AM Pacific.
-    expect(new Date(youtubeTime(Date.parse('2026-10-30T00:06:00Z'))).toISOString()).toBe('2026-10-30T07:31:00.000Z')
-    // 11:59 PM Pacific -> 1:40 AM Pacific.
-    expect(new Date(youtubeTime(Date.parse('2026-10-30T06:59:00Z'))).toISOString()).toBe('2026-10-30T08:40:00.000Z')
+  it('moves an evening one into the next day, 8 AM to 4 PM Toronto, in order', () => {
+    // 3 PM Pacific -> 5 AM Pacific next day (8 AM Toronto).
+    expect(new Date(youtubeTime(Date.parse('2026-10-29T22:00:00Z'))).toISOString()).toBe('2026-10-30T12:00:00.000Z')
+    // 6:44 PM Toronto (3:44 PM Pacific) and 8:06 PM Toronto (5:06 PM Pacific): a morning apart.
+    const a = youtubeTime(Date.parse('2026-10-29T22:44:00Z'))
+    const b = youtubeTime(Date.parse('2026-10-30T00:06:00Z'))
+    expect(b - a).toBeGreaterThan(60 * 60_000)
+    expect(new Date(a).toISOString()).toBe('2026-10-30T12:39:00.000Z')
+    // Just before midnight Pacific -> just before 1 PM Pacific (4 PM Toronto).
+    expect(youtubeTime(Date.parse('2026-10-30T06:59:00Z'))).toBeLessThan(Date.parse('2026-10-30T20:00:00Z'))
+  })
+})
+
+describe('youtubeRetryTime', () => {
+  it('posts again in the next good hours, not in the night', () => {
+    // Failed at 6:44 PM Toronto; asked at 9:15 PM Toronto: tomorrow between 8 AM and 4 PM Toronto.
+    const t = youtubeRetryTime(Date.parse('2026-10-29T22:44:00Z'), Date.parse('2026-10-30T01:15:00Z'))
+    expect(t).toBeGreaterThanOrEqual(Date.parse('2026-10-30T12:00:00Z'))
+    expect(t).toBeLessThan(Date.parse('2026-10-30T20:00:00Z'))
+  })
+})
+
+describe('clearOfTaken', () => {
+  it('keeps the YouTube posts of an account at least 45 minutes apart', () => {
+    const at = Date.parse('2026-10-30T13:00:00Z')
+    expect(clearOfTaken(at, [], at + 3_600_000)).toBe(at)
+    expect(clearOfTaken(at, [at + 10 * 60_000], at + 5 * 3_600_000)).toBe(at + 60 * 60_000)
   })
 })

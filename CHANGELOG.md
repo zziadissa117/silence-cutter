@@ -3,19 +3,25 @@
 Newest first. Every change says what it does, how to use it, and how it works
 underneath. Kept up to date with each commit.
 
-## YouTube no longer sent when its daily limit is used up
+## YouTube no longer sent when its daily limit is used up - and spread over the day
 Needs deploying: run ./deploy-server.sh (server only - no Netlify needed).
 **What happened (2026-10-30):** Postiz again: "Error posting on youtube for MikeyAi - YouTube's daily upload quota is
-exhausted for today, please reschedule this post for a later time." Every evening, YouTube copies failed (the
-limit is Postiz's, shared, and starts over at midnight in California); the 3:10 AM retry posted them (both of
-2026-10-29's went), but late and after an error email.
-**Now:** a post whose time is from 3 PM California time (6 PM Toronto) to midnight there sends its YouTube copy
-as its own Postiz post just after YouTube's new day - 12:10 AM to 1:40 AM California (3:10 to 4:40 AM Toronto),
-in the evening's order. The other accounts go at the post's own time. The post says "YouTube goes at 3:17 AM,
-when its daily limit starts over." Earlier in the day nothing changes.
-- `failed.ts` `youtubeTime` (`YOUTUBE_FULL_FROM` 15); `index.ts` `schedule` makes one Postiz post per group and
-  saves each one's ids as it is made (a retry never makes a part twice); the YouTube ref keeps its time (`at`) so
-  `checkPosted` looks for it then. A YouTube copy that still fails gets the 3:10 AM retry as before.
+exhausted for today, please reschedule this post for a later time." Every evening, YouTube copies failed: the limit
+is Postiz's, shared, used up from the afternoon in California, and starts over at midnight there. His words: "schedule
+the Vaza and the Vertus videos, separate them throughout the day, but only the ones on YouTube ... this is making me
+lose at least $50 per day."
+**Now:**
+- A post whose time is from 3 PM California (6 PM Toronto) to midnight there sends its **YouTube copy the next day,
+  8 AM to 4 PM Toronto** (5 AM to 1 PM California) - the evening's 9 hours laid over those 8, so the order and
+  spacing stay - and at least 45 minutes from that account's other YouTube posts. The other accounts go at the
+  post's own time. The post says "YouTube goes Fri 9:39 AM - its daily limit is used up in the evening."
+- A YouTube copy that fails anyway is posted again once in the next good hours (not at 3 AM any more).
+- **Data, by hand (2026-10-30):** the 7 VAZA (Vazaziad) and Vertus (MikeyAi) posts that missed YouTube since
+  Oct 27 are queued to go to YouTube today 8:10 AM to 1:10 PM Toronto, the two accounts taking turns, 1 h 40 apart
+  each (`retry_at`; the live server's `retryMissing` posts them).
+- `failed.ts` `youtubeTime`, `youtubeRetryTime`, `clearOfTaken`, `goodHoursEnd`; `index.ts` `schedule` (one Postiz
+  post per group, each part's ids saved as made so a retry never makes one twice; `youtubeTaken`), `missedFields`;
+  the YouTube ref keeps its time (`at`) so `checkPosted` looks for it then.
 
 ## A one-time sign-in link for someone new, with their own Cutter
 Needs deploying: run ./deploy-server.sh (./deploy.sh runs it by itself) - after the migration

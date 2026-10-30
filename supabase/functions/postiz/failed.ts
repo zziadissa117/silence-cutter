@@ -121,14 +121,6 @@ export function reconnectedAs<T extends ConnectedAccount>(account: FailedAccount
  *  4 PM to midnight), and go again after it. */
 export const YOUTUBE_DAY_TZ = 'America/Los_Angeles'
 
-/** The first moment after `now` that YouTube's new day has started, with a
- *  few minutes' margin. */
-export function youtubeDayStarts(now: number): number {
-  const today = localDate(new Date(now), YOUTUBE_DAY_TZ)
-  const at = zoned(today, '00:10', YOUTUBE_DAY_TZ).getTime()
-  return at > now ? at : zoned(addDays(today, 1), '00:10', YOUTUBE_DAY_TZ).getTime()
-}
-
 /** A post's note without what was added about posting it again, so the
  *  accounts it names (namesIn) stay first. */
 export function baseNote(note: string): string {
@@ -140,15 +132,59 @@ export function baseNote(note: string): string {
  *  for today", his posts every evening of 2026-10-25..30). */
 export const YOUTUBE_FULL_FROM = 15
 
+/** YouTube copies moved off the evening go the next day in this part of
+ *  California's morning and midday (8 AM to 4 PM in Toronto): his audience
+ *  is awake, and YouTube's day still has room. His words (2026-10-30):
+ *  "separate them throughout the day ... only the ones on YouTube". */
+export const YOUTUBE_DAY_FROM = 5
+export const YOUTUBE_DAY_TO = 13
+
 /** When a post's YouTube copy goes: at the post's own time while YouTube's
- *  day still has room; from 3 PM in California, just after its new day
- *  starts instead - 12:10 AM there, the evening's order kept, a minute for
- *  every six of the evening (3 PM to midnight lands 12:10 to 1:40 AM). */
+ *  day still has room (before 3 PM in California); otherwise the next day,
+ *  the evening's 9 hours laid over the 8 good hours (5 AM to 1 PM there), so
+ *  they keep their order and spacing. */
 export function youtubeTime(at: number): number {
   const day = localDate(new Date(at), YOUTUBE_DAY_TZ)
   const hour = Number(localTime(new Date(at), YOUTUBE_DAY_TZ).slice(0, 2))
   if (hour < YOUTUBE_FULL_FROM) return at
   const from = zoned(day, `${YOUTUBE_FULL_FROM}:00`, YOUTUBE_DAY_TZ).getTime()
-  const minutes = Math.round((at - from) / 60_000 / 6)
-  return zoned(addDays(day, 1), '00:10', YOUTUBE_DAY_TZ).getTime() + minutes * 60_000
+  const share = (at - from) / ((24 - YOUTUBE_FULL_FROM) * 60 * 60_000)
+  return Math.round((dayHour(addDays(day, 1), YOUTUBE_DAY_FROM) + share * (YOUTUBE_DAY_TO - YOUTUBE_DAY_FROM) * 60 * 60_000) / 60_000) * 60_000
+}
+
+/** A YouTube copy that failed anyway, posted again: in the next good hours
+ *  in California (5 AM to 1 PM there) - now if it is within them - at the
+ *  same share of them as the post's time had of its own day. */
+export function youtubeRetryTime(at: number, now: number): number {
+  const minutes = Number(localTime(new Date(at), YOUTUBE_DAY_TZ).slice(0, 2)) * 60 + Number(localTime(new Date(at), YOUTUBE_DAY_TZ).slice(3))
+  const share = minutes / (24 * 60)
+  for (let d = 0; d < 3; d++) {
+    const day = addDays(localDate(new Date(now), YOUTUBE_DAY_TZ), d)
+    const from = dayHour(day, YOUTUBE_DAY_FROM)
+    const to = dayHour(day, YOUTUBE_DAY_TO)
+    const t = Math.round((from + share * (to - from)) / 60_000) * 60_000
+    if (t > now + 5 * 60_000) return t
+    if (to > now + 15 * 60_000) return now + 5 * 60_000
+  }
+  return now + 24 * 60 * 60_000
+}
+
+function dayHour(day: string, hour: number): number {
+  return zoned(day, `${String(hour).padStart(2, '0')}:00`, YOUTUBE_DAY_TZ).getTime()
+}
+
+/** A time at least `gap` from every one in `taken` (the account's other
+ *  YouTube posts), moved on a quarter of an hour at a time, never past `until`. */
+export function clearOfTaken(at: number, taken: readonly number[], until: number, gap = 45 * 60_000): number {
+  let t = at
+  for (let n = 0; n < 64 && taken.some((x) => Math.abs(x - t) < gap); n++) {
+    if (t + 15 * 60_000 > until) return t
+    t += 15 * 60_000
+  }
+  return t
+}
+
+/** The end of a day's good YouTube hours, for the day `at` falls on. */
+export function goodHoursEnd(at: number): number {
+  return dayHour(localDate(new Date(at), YOUTUBE_DAY_TZ), YOUTUBE_DAY_TO)
 }

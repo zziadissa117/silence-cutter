@@ -69,7 +69,7 @@ import {
 } from './caption.ts'
 import { RECHECK_SCHEMA, RECHECK_SYSTEM, acceptFix, cleanContext, costCents, recheckMessage } from './recheck.ts'
 import { byteRange } from './range.ts'
-import { accountName, baseNote, failedRefs, missingAccounts, notPostedNote, reconnectedAs, youtubeDayStarts, youtubeTime } from './failed.ts'
+import { accountName, baseNote, clearOfTaken, failedRefs, goodHoursEnd, missingAccounts, notPostedNote, reconnectedAs, youtubeRetryTime, youtubeTime } from './failed.ts'
 import { carryOver, cleanCaptions, cleanRepost, repostDueAt, textFor, variationNote, type AccountText } from './repost.ts'
 import { FAKE_CLAUDE, FakeError, fakeCaption, fakePostiz, isFakePostiz } from './fake.ts'
 import { approvalFor, batchChoices, batchInfo, batchReady, type BatchInfo } from './batch.ts'
@@ -1948,11 +1948,13 @@ async function schedule(start: Post): Promise<Post> {
   // California: a YouTube copy due then goes just after YouTube's new day,
   // as its own post, and the other accounts go at the time (youtubeTime).
   const at = now ? Date.now() : new Date(date).getTime()
-  const youtubeAt = youtubeTime(at)
+  let youtubeAt = youtubeTime(at)
   const later = youtubeAt > at ? toPostiz.filter((a) => a.platform === 'youtube') : []
+  // Apart from the account's other YouTube posts that day.
+  if (later.length > 0) youtubeAt = clearOfTaken(youtubeAt, await youtubeTaken(post, later.map((a) => a.id), youtubeAt), goodHoursEnd(youtubeAt))
   const onTime = toPostiz.filter((a) => !later.includes(a))
   const youtubeDate = new Date(youtubeAt).toISOString()
-  const youtubeNote = later.length > 0 ? `YouTube goes at ${new Intl.DateTimeFormat('en-US', { timeZone: profile.timezone, hour: 'numeric', minute: '2-digit' }).format(new Date(youtubeAt))}, when its daily limit starts over.` : null
+  const youtubeNote = later.length > 0 ? `YouTube goes ${new Intl.DateTimeFormat('en-US', { timeZone: profile.timezone, weekday: 'short', hour: 'numeric', minute: '2-digit' }).format(new Date(youtubeAt))} - its daily limit is used up in the evening.` : null
   const groups = [
     ...(onTime.length > 0 ? [{ accounts: onTime, type: now ? 'now' : 'schedule', date }] : []),
     ...(later.length > 0 ? [{ accounts: later, type: 'schedule', date: youtubeDate, at: youtubeDate }] : []),
@@ -2371,6 +2373,30 @@ async function retryAccounts(profile: Profile, post: Post, auto = false): Promis
   }
 }
 
+/** When these YouTube accounts already have posts going, within half a day
+ *  of `around`: each post's time, or its YouTube copy's own when it was
+ *  moved. */
+async function youtubeTaken(post: Post, accountIds: string[], around: number): Promise<number[]> {
+  const { data } = await db
+    .from('cutter_posts')
+    .select('post_at, accounts, postiz_ids')
+    .eq('profile_id', post.profile_id)
+    .neq('id', post.id)
+    .in('status', ['approved', 'scheduled', 'posted'])
+    .gte('post_at', new Date(around - 24 * 60 * MINUTE).toISOString())
+    .lte('post_at', new Date(around + 12 * 60 * MINUTE).toISOString())
+    .limit(1000)
+  const times: number[] = []
+  for (const row of (data ?? []) as Pick<Post, 'post_at' | 'accounts' | 'postiz_ids'>[]) {
+    for (const id of accountIds) {
+      if (!row.post_at || !row.accounts.some((a) => a.id === id)) continue
+      const moved = (row.postiz_ids ?? []).find((ref) => ref.integration === id && ref.at)
+      times.push(moved?.at ? Date.parse(moved.at) : Date.parse(row.post_at))
+    }
+  }
+  return times
+}
+
 /** A post that missed accounts, to be posted to them again by itself as
  *  soon as Postiz has room: its note says so. */
 async function postAgainSoon(post: Post, problem: Problem): Promise<Post> {
@@ -2410,13 +2436,13 @@ async function retryMissing(now: number): Promise<void> {
 }
 
 /** What a post that missed accounts says, and when it is posted to them
- *  again by itself: a YouTube account once, after YouTube's new day - the
- *  usual reason is its daily limit (youtubeDayStarts). */
+ *  again by itself: a YouTube account once, in YouTube's next good hours -
+ *  the usual reason is its daily limit (youtubeRetryTime). */
 function missedFields(post: Post, note: string, errored: PostAccount[], tz: string): Partial<Post> {
   if (post.attempts >= 1 || !errored.some((a) => a.platform === 'youtube')) return { error: note }
-  const at = youtubeDayStarts(Date.now())
-  const time = new Intl.DateTimeFormat('en-US', { timeZone: tz, hour: 'numeric', minute: '2-digit' }).format(new Date(at))
-  return { error: `${note} Posting again at ${time}, when YouTube's daily limit starts over.`, retry_at: new Date(at).toISOString() }
+  const at = youtubeRetryTime(Date.parse(post.post_at ?? new Date().toISOString()), Date.now())
+  const time = new Intl.DateTimeFormat('en-US', { timeZone: tz, weekday: 'short', hour: 'numeric', minute: '2-digit' }).format(new Date(at))
+  return { error: `${note} Posting again ${time}, when YouTube has room again.`, retry_at: new Date(at).toISOString() }
 }
 
 /** Accounts he reconnected in Postiz under a new id: the new one in every
