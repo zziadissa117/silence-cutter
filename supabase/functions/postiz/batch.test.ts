@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { approvalFor, batchChoices, batchInfo, batchReady, batchSpan } from './batch.ts'
+import { approvalFor, batchChoices, batchInfo, batchReady, batchSpan, freeBatchTimes } from './batch.ts'
 
 describe('a batch video', () => {
   it('is only taken as one with a real id, day, time and size', () => {
@@ -78,5 +78,25 @@ describe('the notification when a batch is up', () => {
     expect(batchInfo({ id: 'b1', date: '2026-10-26', time: '12:00', size: 2, last: true })?.last).toBe(true)
     expect(batchInfo({ id: 'b1', date: '2026-10-26', time: '12:00', size: 2 })).not.toHaveProperty('last')
     expect(batchInfo({ id: 'b1', date: '2026-10-26', time: '12:00', size: 2, last: 'yes' })).not.toHaveProperty('last')
+  })
+})
+
+describe('freeBatchTimes', () => {
+  const tz = 'America/Toronto'
+  const batch = { id: 'b-1', date: '2026-10-31', time: '03:43', size: 4 }
+
+  it('tries a quarter hour on, then before, further each time', () => {
+    expect(freeBatchTimes(batch, tz, []).slice(0, 4).map((c) => c.slot)).toEqual(['2026-10-31 03:58', '2026-10-31 03:28', '2026-10-31 04:13', '2026-10-31 03:13'])
+  })
+
+  it('never lands within 10 minutes of a video of the campaign already going', () => {
+    const going = [Date.parse('2026-10-31T07:58:00Z'), Date.parse('2026-10-31T07:28:00Z')]
+    const first = freeBatchTimes(batch, tz, going)[0]
+    expect(first.slot).toBe('2026-10-31 04:13')
+    for (const c of freeBatchTimes(batch, tz, going)) for (const t of going) expect(Math.abs(c.at.getTime() - t)).toBeGreaterThanOrEqual(10 * 60_000)
+  })
+
+  it('stays within the day', () => {
+    for (const c of freeBatchTimes({ ...batch, time: '23:50' }, tz, [])) expect(c.slot.startsWith('2026-10-31 ')).toBe(true)
   })
 })

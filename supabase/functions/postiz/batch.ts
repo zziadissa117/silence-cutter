@@ -98,3 +98,25 @@ export function approvalFor(
   if (batch) return 'me'
   return campaign
 }
+
+/** Times to try for a batch video when the campaign's own times that day
+ *  are all taken: a quarter of an hour on from its time, then before it,
+ *  further each time, within the day - and never within 10 minutes of a
+ *  video of the campaign already going (`taken`, ms). Four of his friend's
+ *  Playad videos went out at the same minute twice on 2026-10-31: the old
+ *  fallback was "its own time anyway". */
+export function freeBatchTimes(batch: BatchInfo, tz: string, taken: readonly number[]): { slot: string; at: Date }[] {
+  const [h, m] = batch.time.split(':').map(Number)
+  const own = h * 60 + m
+  const out: { slot: string; at: Date }[] = []
+  for (let k = 1; k <= 96; k++) {
+    for (const minutes of [own + 15 * k, own - 15 * k]) {
+      if (minutes < 0 || minutes >= 24 * 60) continue
+      const time = `${String(Math.floor(minutes / 60)).padStart(2, '0')}:${String(minutes % 60).padStart(2, '0')}`
+      const at = zoned(batch.date, time, tz)
+      if (taken.some((t) => Math.abs(t - at.getTime()) < 10 * 60_000)) continue
+      out.push({ slot: `${batch.date} ${time}`, at })
+    }
+  }
+  return out
+}

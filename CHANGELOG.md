@@ -3,6 +3,20 @@
 Newest first. Every change says what it does, how to use it, and how it works
 underneath. Kept up to date with each commit.
 
+## Fix: a campaign's batch videos never two at the same moment
+Needs deploying: run ./deploy-server.sh (server only).
+**What he said (2026-11-01):** his friend's Playad "kept posting even when he stopped it", even after removing posts
+in Postiz by hand.
+**What the database shows:** no Playad post was ever stopped in the Cutter. On 2026-10-25 his friend's phone and his
+new Cutter server (restarting on storage errors) made Playad batches four times over within two hours, and on Oct 31
+four Playad videos went out at 3:51 AM and four more at 6:04 AM. With all of a campaign's own times that day taken,
+the server let the next video go at its own time anyway - the same minute as the others - so removing one copy in
+Postiz left three. (The Batch tab's Stop only stops making videos - "the ones in Posts keep their times" - and the
+Cutter hands each batch video to Postiz 12 h before its time, so ones removed in Postiz are followed by the next.)
+**Now:** with every time taken, a batch video goes at the nearest free quarter hour that day, at least 10 minutes from
+any other video of its campaign (`batch.ts` `freeBatchTimes`, in `takeBatchSlot`). Nothing duplicated is scheduled
+now (checked).
+
 ## Sign-in links: tied to the person's phones, you told of each one, Pause and Remove
 Needs deploying: run ./deploy.sh (it runs ./deploy-server.sh too). The table `cutter_devices` is applied
 (migration `20261030120000_cutter_devices.sql`, under his "do whatever you want for the database").

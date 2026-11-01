@@ -72,7 +72,7 @@ import { byteRange } from './range.ts'
 import { accountName, baseNote, clearOfTaken, failedRefs, goodHoursEnd, missingAccounts, notPostedNote, reconnectedAs, youtubeRetryTime, youtubeTime } from './failed.ts'
 import { carryOver, cleanCaptions, cleanRepost, repostDueAt, textFor, variationNote, type AccountText } from './repost.ts'
 import { FAKE_CLAUDE, FakeError, fakeCaption, fakePostiz, isFakePostiz } from './fake.ts'
-import { approvalFor, batchChoices, batchInfo, batchReady, type BatchInfo } from './batch.ts'
+import { approvalFor, batchChoices, batchInfo, batchReady, freeBatchTimes, type BatchInfo } from './batch.ts'
 import { handFields } from './hand.ts'
 import { laterWhileWaiting, lastTimeToday, nextSlot, normalTimes, pickTime, sessionOf, spreadDay, spreadEnd, spreadUntil, timesFor, type OtherPost, type Spread, addDays, localDate, localTime, zoned } from './slots.ts'
 import { cleanWindow, type PostingWindow } from './window.ts'
@@ -1621,13 +1621,35 @@ async function mediaInPostiz(key: string, post: Post, keepCopy: boolean): Promis
 }
 
 /** A batch video's day and time: its own, or - taken by another video of
- *  the campaign - the day's next free one, then an earlier one. With every
- *  one of them taken it still goes at its own time. */
+ *  the campaign - the day's next free one, then an earlier one; with every
+ *  one of them taken, the nearest free quarter hour (freeBatchTimes). */
 async function takeBatchSlot(post: Post, profile: Profile): Promise<Post> {
   const batch = post.batch!
   const times = timesFor(profile.settings.campaigns?.[post.campaign_id], post.campaign_id)
   const choices = batchChoices(batch, times, profile.timezone)
   for (const choice of choices) {
+    const { data, error } = await db
+      .from('cutter_posts')
+      .update({ slot: choice.slot, post_at: choice.at.toISOString(), spread: null, updated_at: new Date().toISOString() })
+      .eq('id', post.id)
+      .select('*')
+      .single()
+    if (!error && data) return data as Post
+    if (error?.code !== '23505') throw new Problem('A time could not be saved for the post.', true, 500)
+  }
+  // Every one of the campaign's times that day taken: the nearest free time
+  // instead, clear of the campaign's other videos - never two at once.
+  const { data: others } = await db
+    .from('cutter_posts')
+    .select('post_at')
+    .eq('profile_id', post.profile_id)
+    .eq('campaign_id', post.campaign_id)
+    .neq('id', post.id)
+    .not('status', 'in', '(rejected,failed)')
+    .gte('post_at', new Date(zoned(batch.date, '00:00', profile.timezone).getTime() - 60 * MINUTE).toISOString())
+    .lte('post_at', new Date(zoned(batch.date, '23:59', profile.timezone).getTime() + 60 * MINUTE).toISOString())
+  const taken = ((others ?? []) as Pick<Post, 'post_at'>[]).flatMap((o) => (o.post_at ? [Date.parse(o.post_at)] : []))
+  for (const choice of freeBatchTimes(batch, profile.timezone, taken)) {
     const { data, error } = await db
       .from('cutter_posts')
       .update({ slot: choice.slot, post_at: choice.at.toISOString(), spread: null, updated_at: new Date().toISOString() })
