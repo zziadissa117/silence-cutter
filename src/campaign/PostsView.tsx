@@ -47,6 +47,8 @@ const POLL_MS = 15_000
 const POSTED_SHOWN = 10
 /** How many of a batch waiting for him are shown open, to check. */
 const PREVIEW = 3
+/** As the server's batch.ts BATCH_TRUST: his 3rd yes in a batch approves the rest. */
+const BATCH_TRUST = 3
 /** Where he disconnects and reconnects an account that won't post. */
 const POSTIZ_ACCOUNTS = 'https://platform.postiz.com/launches'
 
@@ -576,6 +578,9 @@ function BatchRow({
             : null}
         </div>
       ) : null}
+      {preview > 0 && posts.length > BATCH_TRUST ? (
+        <div className="post-line">Approve {BATCH_TRUST} and the rest of the batch goes by itself.</div>
+      ) : null}
       {first.length > 0 ? <ul className="posts-list batch-inside">{first.map((post) => children(post, true))}</ul> : null}
       {preview > 0 && rest.length > 0 ? (
         <button type="button" className="linkbtn" onClick={() => setOpen((o) => !o)}>
@@ -774,11 +779,16 @@ export function PostsView({
     }
     setBusy((b) => new Set(b).add(post.id))
     try {
-      const next = await postAction(action, post.id, fields)
+      const { alsoApproved, ...next } = await postAction(action, post.id, fields)
       // An action's reply carries Postiz's link only: the server's own, from
       // the list, stays until the next read.
       setPosts((ps) => ps.map((p) => (p.id === next.id ? { ...next, videoUrl: next.videoUrl ?? p.videoUrl } : p)))
       postProblem(post.id, next.status === 'waiting' && next.error && action === 'approve' ? next.error : null)
+      // His third yes in a batch approves the rest of it on the server.
+      if (alsoApproved) {
+        setSaid(`The other ${alsoApproved} of this batch are approved too.`)
+        void load(true)
+      }
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error)
       postProblem(

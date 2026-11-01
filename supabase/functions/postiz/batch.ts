@@ -1,8 +1,9 @@
 // A batch from the Batch tab: videos made days ahead from a campaign's bank
 // of reactions, product showcases, headlines and music, each for one of its
-// posting times on one day. They always wait for his approval, whatever the
-// campaign's own setting, and he hears about them once - when the whole
-// batch is up and ready - not once a video.
+// posting times on one day. They wait for his approval, whatever the
+// campaign's own setting - until he has approved 3 of a batch, then the rest
+// of it goes by itself (batchTrusted) - and he hears about them once, when
+// the whole batch is up and ready, not once a video.
 //
 // Plain TypeScript with no imports beyond slots.ts, for Deno and the tests.
 
@@ -99,6 +100,22 @@ export function approvalFor(
   if (hand || approveNow || (batch && scheduled)) return 'direct'
   if (batch) return 'me'
   return campaign
+}
+
+/** How many of a batch's videos he approves before the rest of it goes by
+ *  itself: "approve the first 3 and the rest go" (his pick, 2026-11-01). He
+ *  watches 3 of each batch on the Posts screen; once 3 have his yes, the
+ *  others - and any still being made for it - are approved for him. */
+export const BATCH_TRUST = 3
+
+/** What counts as his yes: approved, and everything an approved video goes
+ *  on to be. A held one ("post later"), a turned-down one or one still
+ *  waiting doesn't. */
+const SAID_YES = new Set(['approved', 'scheduled', 'posted', 'error'])
+
+/** Whether a batch has had enough of his yeses for the rest to go by itself. */
+export function batchTrusted(statuses: readonly string[]): boolean {
+  return statuses.filter((s) => SAID_YES.has(s)).length >= BATCH_TRUST
 }
 
 /** Times to try for a batch video when the campaign's own times that day

@@ -3,6 +3,20 @@
 Newest first. Every change says what it does, how to use it, and how it works
 underneath. Kept up to date with each commit.
 
+## Approve 3 of a batch and the rest of it goes by itself
+Needs deploying: run ./deploy.sh (it runs ./deploy-server.sh too).
+**What he picked (2026-11-01):** "approve the first 3, the rest go by themselves". He watches 3 videos of each
+batch in To approve; his third yes approves every other video of that batch still waiting, and any made for it
+later goes straight through too. Ones he turned down, held with Post later or that have no caption yet don't count
+and aren't approved. Posts says "The other N of this batch are approved too." and shows them scheduled; the
+campaign's row says "Approve 3 and the rest of the batch goes by itself."
+Underneath: `batch.ts` `BATCH_TRUST` (3) and `batchTrusted(statuses)` (approved, scheduled, posted, error count as
+his yes); `postiz/index.ts` `batchHasHisYes`, `approveRestOfBatch` after the `approve` action (reply
+`alsoApproved`), and `prepare` approves a batch video on arrival when its batch already has 3 yeses. The scheduler
+puts them into Postiz 12 h before their times as for any approved batch video. Phone: `postAction` passes
+`alsoApproved` on; `PostsView` reloads the list then. A video remade after a rejection is a new small batch and
+still waits for him.
+
 ## A rejected batch video is made again; a notification when the Cutter server stops
 Needs deploying: run ./deploy.sh (it runs ./deploy-server.sh too). The Cutter servers on Railway rebuild by
 themselves from this push.

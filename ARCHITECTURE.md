@@ -219,7 +219,7 @@ sends a push (`checkPosted`, `checkBuffer`, `giveUpUnconfirmed`, `retryMissing`)
 
 **The Posts screen** (`PostsView.tsx`, `postsList.ts`): To approve, Ready, Scheduled fold each campaign into one
 row (`foldCampaigns`; in To approve and Ready only batch videos - his own posts are read one by one), opened day by
-day (`byDay`). A campaign waiting for him shows its first 3 open with their video (`PREVIEW`) and "Approve all N".
+day (`byDay`). A campaign waiting for him shows its first 3 open with their video (`PREVIEW`) and "Approve all N". His 3rd yes in one batch approves the rest of it on the server (`batch.batchTrusted`, `postiz` `approveRestOfBatch`; later arrivals in `prepare`).
 The list's `videoUrl` is Postiz's copy, or before Postiz has one the server's own, signed for a 6-hour window
 (`watchLink`); `serveVideo` answers byte ranges (`range.ts`) for Safari's player. A scheduled post none of whose
 Postiz posts exist any more an hour past its time is marked not posted (`checkPosted`).

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { approvalFor, batchChoices, batchInfo, batchReady, batchSpan, freeBatchTimes } from './batch.ts'
+import { BATCH_TRUST, approvalFor, batchChoices, batchInfo, batchReady, batchSpan, batchTrusted, freeBatchTimes } from './batch.ts'
 
 describe('a batch video', () => {
   it('is only taken as one with a real id, day, time and size', () => {
@@ -98,5 +98,18 @@ describe('freeBatchTimes', () => {
 
   it('stays within the day', () => {
     for (const c of freeBatchTimes({ ...batch, time: '23:50' }, tz, [])) expect(c.slot.startsWith('2026-10-31 ')).toBe(true)
+  })
+})
+
+describe('batchTrusted', () => {
+  it('goes by itself once he has approved 3 of the batch', () => {
+    expect(BATCH_TRUST).toBe(3)
+    expect(batchTrusted(['approved', 'scheduled', 'waiting', 'waiting'])).toBe(false)
+    expect(batchTrusted(['approved', 'scheduled', 'posted', 'waiting'])).toBe(true)
+    expect(batchTrusted(['error', 'posted', 'approved'])).toBe(true)
+  })
+
+  it('does not count ones turned down, failed, held or still being made', () => {
+    expect(batchTrusted(['rejected', 'rejected', 'rejected', 'approved', 'failed', 'writing', 'waiting'])).toBe(false)
   })
 })

@@ -74,7 +74,7 @@ import { GONE_MS, serverTrouble, troubleNote, type ServerPing } from './serverWa
 import { accountName, baseNote, clearOfTaken, failedRefs, goodHoursEnd, missingAccounts, notPostedNote, reconnectedAs, youtubeRetryTime, youtubeTime } from './failed.ts'
 import { carryOver, cleanCaptions, cleanRepost, repostDueAt, textFor, variationNote, type AccountText } from './repost.ts'
 import { FAKE_CLAUDE, FakeError, fakeCaption, fakePostiz, isFakePostiz } from './fake.ts'
-import { approvalFor, batchChoices, batchInfo, batchReady, freeBatchTimes, type BatchInfo } from './batch.ts'
+import { approvalFor, batchChoices, batchInfo, batchReady, batchTrusted, freeBatchTimes, type BatchInfo } from './batch.ts'
 import { handFields } from './hand.ts'
 import { laterWhileWaiting, lastTimeToday, nextSlot, normalTimes, pickTime, sessionOf, spreadDay, spreadEnd, spreadUntil, timesFor, type OtherPost, type Spread, addDays, localDate, localTime, zoned } from './slots.ts'
 import { cleanWindow, type PostingWindow } from './window.ts'
@@ -1611,7 +1611,9 @@ async function prepare(start: Post): Promise<Post> {
   if (!post.post_at && !post.by_hand && !post.batch) post = await takeSlot(post, profile, { leadMinutes: 10 })
 
   const hasCaption = Boolean(post.caption?.trim())
-  const ready = (post.rules.approval === 'direct' || post.by_hand) && hasCaption
+  // A batch video arriving after he has approved 3 of its batch goes too.
+  const trusted = Boolean(post.batch) && post.rules.approval === 'me' && hasCaption && (await batchHasHisYes(post))
+  const ready = ((post.rules.approval === 'direct' || post.by_hand) && hasCaption) || trusted
   post = await update(post.id, {
     accounts,
     status: ready ? 'approved' : 'waiting',
@@ -1622,6 +1624,39 @@ async function prepare(start: Post): Promise<Post> {
   })
   if (post.status === 'waiting') await (post.batch ? notifyBatch(post.profile_id, post.batch.id) : notifyWaiting(post.profile_id))
   return post
+}
+
+/** Whether he has approved enough of this video's batch (BATCH_TRUST) for
+ *  the rest of it to go by itself. */
+async function batchHasHisYes(post: Post): Promise<boolean> {
+  if (!post.batch) return false
+  const { data } = await db.from('cutter_posts').select('status').eq('profile_id', post.profile_id).eq('batch->>id', post.batch.id)
+  return batchTrusted(((data ?? []) as Pick<Post, 'status'>[]).map((r) => r.status))
+}
+
+/** Once he has approved 3 of a batch, the rest of it waiting for him is
+ *  approved too ("approve the first 3, the rest go by themselves",
+ *  2026-11-01) - not one he held with Post later, not one without a caption
+ *  yet. The scheduler puts them into Postiz at their times, as for any he
+ *  approves. How many went. */
+async function approveRestOfBatch(post: Post): Promise<number> {
+  if (!post.batch || !(await batchHasHisYes(post))) return 0
+  const { data, error } = await db
+    .from('cutter_posts')
+    .update({ status: 'approved', error: null, attempts: 0, retry_at: null, updated_at: new Date().toISOString() })
+    .eq('profile_id', post.profile_id)
+    .eq('batch->>id', post.batch.id)
+    .eq('status', 'waiting')
+    .eq('rules->>approval', 'me')
+    .is('ready_at', null)
+    .not('caption', 'is', null)
+    .neq('caption', '')
+    .select('id')
+  if (error) {
+    console.error('approving the rest of the batch failed', post.batch.id, error)
+    return 0
+  }
+  return (data ?? []).length
 }
 
 /** The video into Postiz. The server's copy goes then - unless a Buffer
@@ -2303,7 +2338,9 @@ async function act(profile: Profile, action: string, body: Record<string, unknow
       const approved = await update(post.id, { ...fields, status: 'approved', ready_at: null, error: null, attempts: 0, retry_at: null })
       // Straight away when it can; if not, the scheduler keeps at it.
       await advance(approved.id)
-      return reply({ post: postView(await ownPost(profile, post.id)) })
+      // His third yes in a batch: the rest of it goes too.
+      const alsoApproved = await approveRestOfBatch(approved)
+      return reply({ post: postView(await ownPost(profile, post.id)), alsoApproved })
     }
     case 'ready': {
       // Approved, but held here until he taps Post (approve) - so he can save

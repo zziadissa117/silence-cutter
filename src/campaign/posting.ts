@@ -562,9 +562,10 @@ export async function postAction(
   action: PostAction,
   id: string,
   fields: { caption?: string; title?: string; at?: string; captions?: Record<string, { caption?: string; title?: string }>; disliked?: boolean } = {},
-): Promise<ServerPost> {
-  const { post } = await call<{ post: ServerPost }>(action, { profile: profileId(), id, ...fields })
-  return post
+): Promise<ServerPost & { alsoApproved?: number }> {
+  // alsoApproved: his 3rd yes in a batch approved that many more of it.
+  const { post, alsoApproved } = await call<{ post: ServerPost; alsoApproved?: number }>(action, { profile: profileId(), id, ...fields })
+  return alsoApproved ? { ...post, alsoApproved } : post
 }
 
 /** Stops every post of one campaign that has not gone out yet, at once.
