@@ -27,6 +27,7 @@ export function BatchStatus({
   freeGB,
   sending,
   stop,
+  stopAll,
 }: {
   state: BatchState
   where: keyof typeof WHERE
@@ -42,6 +43,9 @@ export function BatchStatus({
   /** Clips going up to the server, when they are. */
   sending: string | null
   stop: { label: string; busy: boolean; run: () => void } | null
+  /** Stops making and takes out every one of the batch's posts not out yet
+   *  (his ask, 2026-11-01: Stop alone leaves what is scheduled posting). */
+  stopAll?: { label: string; busy: boolean; run: () => void } | null
 }) {
   const ahead = days.reduce((n, d) => n + d.target, 0)
   const ready = days.reduce((n, d) => n + Math.min(d.ready, d.target || d.ready), 0)
@@ -118,10 +122,19 @@ export function BatchStatus({
           {freeGB !== null ? ` · ${freeGB} GB free` : ''}
         </p>
       ) : null}
-      {stop ? (
-        <button type="button" className="btn small status-stop" disabled={stop.busy} onClick={stop.run}>
-          {stop.label}
-        </button>
+      {stop || stopAll ? (
+        <div className="post-actions">
+          {stop ? (
+            <button type="button" className="btn small status-stop" disabled={stop.busy} onClick={stop.run}>
+              {stop.label}
+            </button>
+          ) : null}
+          {stopAll ? (
+            <button type="button" className="btn small danger" disabled={stopAll.busy} onClick={stopAll.run}>
+              {stopAll.label}
+            </button>
+          ) : null}
+        </div>
       ) : null}
     </div>
   )

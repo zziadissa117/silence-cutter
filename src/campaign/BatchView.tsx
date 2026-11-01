@@ -74,6 +74,8 @@ import {
   listPosts,
   ownDayTimes,
   placeFor,
+  stoppable as notOutYet,
+  stopPostsNow,
   timeLabel,
   type LocalPosting,
   type ServerPost,
@@ -632,6 +634,8 @@ export function BatchView({
   // with the batch stopped already (on a version whose Stop left them).
   const waitingHere = makingHere.filter((j) => j.batch && j.status === 'queued').length
   const stoppable = waitingHere > 0 && !onServer && !onEngine
+  // The batch's posts not out yet - what "Stop and take out" takes out.
+  const scheduledHere = notOutYet(posts).filter((p) => p.campaignId === campaign.id && p.batch).length
   const engineBusy = onEngine && (engineState?.status === 'waiting' || engineState?.status === 'making')
   const busyMaking = topping || makingHere.length > 0 || engineBusy
   const madeHereTotal = [...new Map(jobs.filter((j) => j.campaignId === campaign.id).map((j) => [j.batch!.id, j.batch!.size])).values()].reduce(
@@ -731,6 +735,31 @@ export function BatchView({
       })
       .catch((error: unknown) => setProblem(error instanceof Error ? error.message : String(error)))
       .finally(() => setSaving(null))
+  }
+
+  /** Stop, and every one of the batch's posts not out yet taken out too -
+   *  of the Cutter and of Postiz, the way Posts' Select then Stop does. Stop
+   *  alone leaves them posting (his ask, 2026-11-01: his friend's Playad
+   *  "kept posting even when he stopped it"). */
+  const stopEverything = async () => {
+    const fresh = await listPosts(true).catch(() => posts)
+    const going = notOutYet(fresh).filter((p) => p.campaignId === campaign.id && p.batch)
+    const ask = `Stop ${campaign.name}'s batch and take out its ${going.length} video${going.length === 1 ? '' : 's'} not out yet? They won't post, here or in Postiz. Nothing already out is touched.`
+    if (!window.confirm(ask)) return
+    if (running || stoppable) stop()
+    setProblem(null)
+    setSaving('Stopping…')
+    try {
+      const out = await stopPostsNow(going)
+      setNotice(
+        `Stopped, and ${out.stopped} scheduled video${out.stopped === 1 ? '' : 's'} taken out${out.unposting > 0 ? ` (${out.unposting} coming out of Postiz now)` : ''}.${out.failed.length > 0 ? ` ${out.failed.length} couldn't be: ${out.failed[0].reason}` : ''}`,
+      )
+      setPosts(await listPosts(true).catch(() => fresh))
+    } catch (error) {
+      setProblem(error instanceof Error ? error.message : String(error))
+    } finally {
+      setSaving(null)
+    }
   }
 
   /** He lowered the number: the extra videos come back out of the days
@@ -1211,6 +1240,9 @@ export function BatchView({
           freeGB={onServer ? (lastServerStatus()?.freeGB ?? null) : null}
           sending={onServer ? sending : null}
           stop={running || stoppable ? { label: running ? 'Stop' : `Stop the ${waitingHere} waiting to be made`, busy: saving === 'Stopping…', run: stop } : null}
+          stopAll={
+            scheduledHere > 0 ? { label: `Stop and take out the ${scheduledHere} scheduled`, busy: saving === 'Stopping…', run: () => void stopEverything() } : null
+          }
         />
       ) : null}
 

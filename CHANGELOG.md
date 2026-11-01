@@ -3,6 +3,12 @@
 Newest first. Every change says what it does, how to use it, and how it works
 underneath. Kept up to date with each commit.
 
+## Batch tab: "Stop and take out the N scheduled" beside Stop
+**What he chose (2026-11-01):** Stop stays as it is (nothing more made, what is scheduled keeps posting) and a second
+button beside it also takes out every one of the batch's posts not out yet - of the Cutter and of Postiz, the way
+Posts' Select then Stop does. It asks first, says how many, and says how many came out (`BatchView.stopEverything`,
+`BatchStatus` `stopAll`; test `batchStatusStop.test.tsx`).
+
 ## Fix: a campaign's batch videos never two at the same moment
 Needs deploying: run ./deploy-server.sh (server only).
 **What he said (2026-11-01):** his friend's Playad "kept posting even when he stopped it", even after removing posts
