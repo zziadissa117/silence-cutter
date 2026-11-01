@@ -23,7 +23,7 @@ import { perDayOn, withPerDay } from './batchRun'
 import type { Campaign } from './look'
 import { placeFor, type Insights, type Profile } from './posting'
 import { loadBatchBank, saveBatchBank } from './store'
-import { BestHoursCard, WhatWorks } from './WhatWorks'
+import { BestHoursCard, TroubleCard, WhatWorks } from './WhatWorks'
 
 export interface CampaignRow {
   campaign: Campaign
@@ -90,6 +90,9 @@ export function AnalyticsView({
   onTarget,
   onUseBest,
   onBestHoursOff,
+  onIdeas,
+  onAddHeadline,
+  onPauseAccount,
 }: {
   rows: CampaignRow[]
   profile: Profile | null
@@ -98,6 +101,11 @@ export function AnalyticsView({
   insights: Insights
   onUseBest: (campaignId: string, on: boolean) => void
   onBestHoursOff: (off: boolean) => void
+  /** Claude's new headlines like a campaign's best, and one added to its batch. */
+  onIdeas?: (campaign: Campaign, have: string[]) => Promise<{ headlines: string[]; error?: string }>
+  onAddHeadline?: (campaignId: string, headline: string) => Promise<void>
+  /** An account paused or let go again. */
+  onPauseAccount?: (accountId: string, paused: boolean) => Promise<void>
   /** He said yes (the new number) or not now (null) to a suggestion. */
   onAnswer: (campaignId: string, to: number | null) => void
   /** The views a video he wants before more a day; null for none. */
@@ -121,6 +129,13 @@ export function AnalyticsView({
         <h1>Analytics</h1>
       </div>
 
+      {onPauseAccount ? (
+        <TroubleCard
+          accounts={insights.trouble ?? []}
+          paused={new Set(Object.entries(profile.settings.limits?.accounts ?? {}).flatMap(([id, l]) => (l.paused ? [id] : [])))}
+          onPause={onPauseAccount}
+        />
+      ) : null}
       <BestHoursCard best={profile.bestHours ?? insights.bestHours} onOff={onBestHoursOff} />
 
       {rows.length === 0 ? (
@@ -158,7 +173,13 @@ export function AnalyticsView({
               </div>
             </div>
           ) : null}
-          <WhatWorks hooks={insights.campaigns.find((c) => c.id === campaign.id)} bank={bank} onUseBest={(on) => onUseBest(campaign.id, on)} />
+          <WhatWorks
+            hooks={insights.campaigns.find((c) => c.id === campaign.id)}
+            bank={bank}
+            onUseBest={(on) => onUseBest(campaign.id, on)}
+            onIdeas={onIdeas ? () => onIdeas(campaign, bank.headlines) : undefined}
+            onAddHeadline={onAddHeadline ? (headline) => onAddHeadline(campaign.id, headline) : undefined}
+          />
           <TargetField value={bank.viewTarget ?? null} onSave={(target) => onTarget(campaign.id, target)} />
         </div>
       ))}
@@ -212,4 +233,14 @@ export async function answerSuggestion(campaignId: string, to: number | null): P
 export async function saveTarget(campaignId: string, target: number | null): Promise<void> {
   const bank = await loadBatchBank(campaignId)
   if (bank) await saveBatchBank({ ...bank, viewTarget: target ?? undefined })
+}
+
+/** One of Claude's new headlines added to the campaign's batch, unless it
+ *  is there already. */
+export async function addHeadline(campaignId: string, headline: string): Promise<void> {
+  const bank = await loadBatchBank(campaignId)
+  if (!bank) throw new Error('This campaign has no batch.')
+  const key = (h: string) => h.trim().toLowerCase().replace(/\s+/g, ' ')
+  if (bank.headlines.some((h) => key(h) === key(headline))) return
+  await saveBatchBank({ ...bank, headlines: [...bank.headlines, headline.trim()] })
 }

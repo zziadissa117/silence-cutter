@@ -964,3 +964,10 @@ input[type='color']::-webkit-color-swatch { border: 0.5px solid var(--edge); bor
 .bar-row.best .bar-fill { background: var(--ok); }
 .bar-row.worst .bar-fill { background: var(--bad); }
 .bar-value { flex: none; min-width: 7.5em; font-size: 13px; font-variant-numeric: tabular-nums; }
+.trouble { border: 1px solid color-mix(in srgb, var(--bad) 45%, transparent); }
+.trouble-list { list-style: none; margin: 8px 0 0; padding: 0; display: grid; gap: 10px; }
+.trouble-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.ideas { margin-top: 10px; }
+.ideas-list { list-style: none; margin: 8px 0 0; padding: 0; display: grid; gap: 6px; }
+.idea-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.idea-text { flex: 1; min-width: 0; font-size: 14px; }

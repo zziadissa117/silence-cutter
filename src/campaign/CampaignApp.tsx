@@ -33,7 +33,7 @@ import { VideoBankView } from './VideoBankView'
 import { findSong, songFile, syncSongs } from './musicBank'
 import { BatchView } from './BatchView'
 import { dislikedBy, oneAtATime, overfull, settled, startOver, takenBy, topUp, trimDown, type BatchVideo } from './batchRun'
-import { AnalyticsView, answerSuggestion, saveTarget, useCampaignRows } from './AnalyticsView'
+import { AnalyticsView, addHeadline, answerSuggestion, saveTarget, useCampaignRows } from './AnalyticsView'
 import { FormatsView, type FormatClips } from './FormatsView'
 import { afterMixing, daysLine, mixesOf, spreadOver } from './formats'
 import type { ViewsByAccount } from './analytics'
@@ -126,6 +126,8 @@ import {
   listInsights,
   listViews,
   saveBestHoursOff,
+  headlineIdeas,
+  pauseAccount,
   attachAccounts,
   attachSummary,
   listPosts,
@@ -3898,6 +3900,9 @@ export function CampaignApp() {
         onTarget={setViewTarget}
         onUseBest={setUseBest}
         onBestHoursOff={setBestHoursOff}
+        onIdeas={(campaign, have) => headlineIdeas(campaign.id, campaign.name, have)}
+        onAddHeadline={(campaignId, headline) => addHeadline(campaignId, headline).then(() => setBankVersion((v) => v + 1))}
+        onPauseAccount={(accountId, paused) => pauseAccount(accountId, paused).then(() => setPosting(postingHere()))}
       />
     ) : tab === 'batch' ? (
       <BatchView

@@ -3,6 +3,21 @@
 Newest first. Every change says what it does, how to use it, and how it works
 underneath. Kept up to date with each commit.
 
+## A warning when an account stops getting views; new headlines like the best
+Needs deploying: run ./deploy.sh (it runs ./deploy-server.sh too).
+**What he picked (2026-11-01):** 2 and 4 of the ideas list.
+1. **Account in trouble (most often a shadowban).** Once a day the tick compares each account's videos from the last
+   3-7 days (read at three days) with its usual - videos 8-35 days old (read at a week) - by their middle number of
+   views (`postiz/deadAccounts.ts` `deadAccounts`): at least 4 and 8 videos, usually 100+ views, now under a quarter
+   of that. He gets a notification ("lovable.zi on TikTok may be shadowbanned", at most once a week per account) and
+   Analytics shows it at the top with Pause / Resume (the existing per-account pause, `posting.pauseAccount`). Kept in
+   `cutter_config` `dead:<profile>`; the `insights` reply carries `trouble`. Nothing pauses by itself. On Nov 1's
+   data no account was flagged.
+2. **Write more like the best** (What works, under Headlines): Claude writes 8 headlines in the style of the
+   campaign's best, steering away from the worst, none it already has, no new claims (`postiz/headlineIdeas.ts`,
+   action `headline-ideas`, his Anthropic key); each one goes into the batch's headlines with a tap
+   (`AnalyticsView.addHeadline`). Nothing is added without his tap.
+
 ## More at the best hours, by day of the week; what works, as graphs; Use the best hooks
 Needs deploying: run ./deploy.sh (it runs ./deploy-server.sh too). The Cutter servers rebuild by themselves.
 **What he asked (2026-11-01):** "a higher rate at certain hours, depending on the day of the week ... I still want it

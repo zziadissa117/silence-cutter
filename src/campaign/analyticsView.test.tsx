@@ -78,6 +78,11 @@ afterEach(() => {
 
 const row = (key: string, views: number, videos: number, mark?: 'best' | 'worst') => ({ key, label: key, views, videos, score: views, ...(mark ? { mark } : {}) })
 let insights: Insights = { campaigns: [], bestHours: null }
+const extra = {
+  onIdeas: vi.fn(async () => ({ headlines: ['POV: you found it', 'Nobody tells you this'] })),
+  onAddHeadline: vi.fn(async () => undefined),
+  onPauseAccount: vi.fn(async () => undefined),
+}
 
 function Screen({
   onAnswer,
@@ -101,6 +106,9 @@ function Screen({
       onTarget={onTarget}
       onUseBest={onUseBest}
       onBestHoursOff={onBestHoursOff}
+      onIdeas={extra.onIdeas}
+      onAddHeadline={extra.onAddHeadline}
+      onPauseAccount={extra.onPauseAccount}
     />
   )
 }
@@ -148,6 +156,29 @@ describe('what works and when to post', () => {
     expect(host.textContent).toContain('Songs are counted from videos made from Nov 1 on')
     await act(async () => button('Use the best hooks')!.click())
     expect(onUseBest).toHaveBeenCalledWith('inflow', true)
+  })
+
+  it('Write more like the best shows Claude\'s headlines, each added with a tap', async () => {
+    insights = {
+      campaigns: [{ id: 'inflow', name: 'Inflow', videos: 20, views: 900, rows: { headline: [row('i made $800 a day', 2100, 9, 'best')], reaction: [], song: [], look: [] } }],
+      bestHours: null,
+    }
+    await show()
+    await act(async () => button('Write more like the best')!.click())
+    expect(extra.onIdeas).toHaveBeenCalled()
+    expect(host.textContent).toContain('POV: you found it')
+    await act(async () => button('Add')!.click())
+    expect(extra.onAddHeadline).toHaveBeenCalledWith('inflow', 'POV: you found it')
+    expect(host.textContent).toContain('Added')
+  })
+
+  it('an account that stopped getting views shows with a Pause', async () => {
+    insights = { campaigns: [], bestHours: null, trouble: [{ id: 'tt', name: 'inflow.pay', platform: 'tiktok', recent: 40, usual: 1200, videos: 6 }] }
+    await show()
+    expect(host.textContent).toContain('Accounts that stopped getting views')
+    expect(host.textContent).toContain('inflow.pay · TikTok')
+    await act(async () => button('Pause')!.click())
+    expect(extra.onPauseAccount).toHaveBeenCalledWith('tt', true)
   })
 
   it('says it is still learning the hours until enough videos are in', async () => {

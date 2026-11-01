@@ -52,6 +52,8 @@
 //   insights       { profile }                  -> { campaigns, bestHours }   what works in each batch campaign's
 //                  videos (hookInsights.ts) and when they do best (bestHours.ts)
 //   best-hours     { profile, off }             -> profile    posting more at the best hours, on or off
+//   headline-ideas { profile, campaignId, have } -> { headlines, costCents }   new headlines like the best
+//                  (headlineIdeas.ts); insights also carries `trouble`, accounts whose views fell away (deadAccounts.ts)
 //   tick           { secret }                   (the scheduler; no token)
 //   channels       { cutterCampaignId }         (the planner's server; no token - see bridgeAllowed)
 //                  -> { profiles: [{ id, inUse, accounts }] }  which Postiz channels a campaign holds
@@ -84,6 +86,8 @@ import { cleanWindow, type PostingWindow } from './window.ts'
 import { planRespread, type RespreadRow } from './respread.ts'
 import { MIN_AGE_DAYS as HOURS_MIN_AGE_DAYS, LOOK_BACK_DAYS as HOURS_LOOK_BACK_DAYS, hoursOn, learnHours, parseHours, type BestHours } from './bestHours.ts'
 import { LOOK_BACK_DAYS as HOOKS_LOOK_BACK_DAYS, hookInsights } from './hookInsights.ts'
+import { TELL_AGAIN_DAYS, USUAL_TO, deadAccounts, deadNote, type DeadAccount } from './deadAccounts.ts'
+import { IDEAS_SCHEMA, IDEAS_SYSTEM, cleanIdeas, ideasMessage } from './headlineIdeas.ts'
 import { cleanPlace, instagramPlace, type Place } from './place.ts'
 import { attachMove, summarise, type AttachMove } from './attach.ts'
 import { cleanMode, pickRecaption, recaptionMode } from './recaption.ts'
@@ -652,6 +656,110 @@ async function saveBestHours(profile: Profile, body: Record<string, unknown>): P
   return reply(await profileView(profile))
 }
 
+interface AccountTrouble {
+  /** The day it was last worked out, his clock. */
+  date: string
+  accounts: DeadAccount[]
+  /** When he was last told about each, by account id. */
+  told: Record<string, string>
+}
+
+async function troubleFor(profileId: string): Promise<AccountTrouble | null> {
+  const { data } = await db.from('cutter_config').select('value').eq('key', `dead:${profileId}`).maybeSingle()
+  try {
+    const v = JSON.parse((data as { value: string } | null)?.value ?? '') as AccountTrouble
+    return v && Array.isArray(v.accounts) ? { ...v, told: v.told ?? {} } : null
+  } catch {
+    return null
+  }
+}
+
+/** Once a day for each profile: accounts whose videos suddenly stopped
+ *  getting views (deadAccounts.ts) - he is told about each, at most once a
+ *  week, and Analytics shows them with a Pause. */
+async function watchAccounts(now: number): Promise<void> {
+  const { data: profiles } = await db.from('cutter_profiles').select('id, timezone')
+  for (const profile of (profiles ?? []) as Pick<Profile, 'id' | 'timezone'>[]) {
+    const today = localDate(new Date(now), profile.timezone)
+    const before = await troubleFor(profile.id)
+    if (before?.date === today) continue
+    const { data } = await db
+      .from('cutter_posts')
+      .select('post_at, accounts, views')
+      .eq('profile_id', profile.id)
+      .in('status', ['posted', 'error'])
+      .not('views', 'is', null)
+      .gte('post_at', new Date(now - (USUAL_TO + 1) * 86_400_000).toISOString())
+      .limit(10000)
+    const accounts = deadAccounts((data ?? []) as Parameters<typeof deadAccounts>[0], now)
+    const told = { ...(before?.told ?? {}) }
+    const fresh = accounts.filter((a) => !told[a.id] || now - Date.parse(told[a.id]) > TELL_AGAIN_DAYS * 86_400_000)
+    for (const a of fresh) told[a.id] = new Date(now).toISOString()
+    await db.from('cutter_config').upsert({ key: `dead:${profile.id}`, value: JSON.stringify({ date: today, accounts, told }) }, { onConflict: 'key' })
+    for (const a of fresh) await notify(profile.id, { ...deadNote(a), tag: `dead-${a.id}` })
+  }
+}
+
+/** New headlines in the style of the campaign's best, for him to pick from
+ *  (headlineIdeas.ts). `have`: the batch's headlines now. */
+async function headlineIdeas(profile: Profile, body: Record<string, unknown>): Promise<Response> {
+  const campaignId = typeof body.campaignId === 'string' ? body.campaignId.slice(0, 200) : ''
+  if (!campaignId) throw new Problem('Which campaign?')
+  const have = (Array.isArray(body.have) ? body.have : [])
+    .filter((h): h is string => typeof h === 'string' && h.trim() !== '')
+    .slice(0, 200)
+    .map((h) => h.trim().slice(0, 200))
+  const keys = await keysFor(profile.id)
+  if (!keys.anthropic) throw new Problem('Your Anthropic key is missing - paste it in Settings, Posting.')
+  const now = Date.now()
+  const { data } = await db
+    .from('cutter_posts')
+    .select('campaign_id, campaign_name, headline, file_name, batch, views, post_at')
+    .eq('profile_id', profile.id)
+    .eq('campaign_id', campaignId)
+    .in('status', ['posted', 'error'])
+    .not('batch', 'is', null)
+    .not('views', 'is', null)
+    .gte('post_at', new Date(now - HOOKS_LOOK_BACK_DAYS * 86_400_000).toISOString())
+    .limit(5000)
+  const hooks = hookInsights((data ?? []) as Parameters<typeof hookInsights>[0], now)[0]
+  const scored = (hooks?.rows.headline ?? []).filter((r) => r.key !== 'formula').map((r) => ({ text: r.label, views: r.views, videos: r.videos }))
+  if (scored.length === 0 && have.length === 0) throw new Problem('Write a headline or two first - new ones are written in their style.')
+  if (keys.anthropic === FAKE_CLAUDE) return reply({ headlines: cleanIdeas({ headlines: ['A fake idea', 'Another fake idea'] }, have), costCents: 0 })
+  const name = typeof body.campaignName === 'string' ? body.campaignName : (hooks?.name ?? '')
+  const client = new Anthropic({ apiKey: keys.anthropic, maxRetries: 2, timeout: 2 * MINUTE })
+  const request = {
+    model: MODEL,
+    max_tokens: 4000,
+    system: IDEAS_SYSTEM,
+    output_config: { effort: 'medium', format: { type: 'json_schema', schema: IDEAS_SCHEMA } },
+    messages: [{ role: 'user', content: ideasMessage(name, scored, have) }],
+  }
+  let response
+  try {
+    response = await client.beta.messages.create({ ...request, betas: ['server-side-fallback-2026-07-01'], fallbacks: 'default' } as never)
+  } catch (error) {
+    if (error instanceof Anthropic.BadRequestError && /fallback/i.test(error.message)) {
+      response = await client.beta.messages.create(request as never).catch(anthropicProblem)
+    } else anthropicProblem(error)
+  }
+  const message = response as { content: { type: string; text?: string }[]; usage?: { input_tokens?: number; output_tokens?: number } }
+  const said = message.content
+    .filter((b) => b.type === 'text')
+    .map((b) => b.text ?? '')
+    .join('')
+  let parsed: unknown = null
+  try {
+    parsed = JSON.parse(said)
+  } catch {
+    parsed = null
+  }
+  const headlines = cleanIdeas(parsed, have)
+  const cost = costCents(message.usage?.input_tokens ?? 0, message.usage?.output_tokens ?? 0)
+  if (headlines.length === 0) return reply({ headlines, costCents: cost, error: "Claude's ideas were all ones you have already. Try again." })
+  return reply({ headlines, costCents: cost })
+}
+
 /** What works in each batch campaign's videos (hookInsights.ts). */
 async function insights(profile: Profile): Promise<Response> {
   const now = Date.now()
@@ -665,7 +773,8 @@ async function insights(profile: Profile): Promise<Response> {
     .gte('post_at', new Date(now - HOOKS_LOOK_BACK_DAYS * 86_400_000).toISOString())
     .limit(10000)
   if (error) throw new Problem('The numbers could not be read. Try again.', true, 500)
-  return reply({ campaigns: hookInsights((data ?? []) as Parameters<typeof hookInsights>[0], now), bestHours: await bestHoursFor(profile.id) })
+  const [bestHours, trouble] = await Promise.all([bestHoursFor(profile.id), troubleFor(profile.id)])
+  return reply({ campaigns: hookInsights((data ?? []) as Parameters<typeof hookInsights>[0], now), bestHours, trouble: trouble?.accounts ?? [] })
 }
 
 /** Like update, but only while the post is still in `status` - null when it
@@ -3300,6 +3409,7 @@ async function tick(): Promise<void> {
   await dailySummary(now).catch((error) => console.error('the morning summary failed', error))
   await watchServers(now).catch((error) => console.error('watching the Cutter servers failed', error))
   await learnBestHours(now).catch((error) => console.error('working out the best hours failed', error))
+  await watchAccounts(now).catch((error) => console.error('watching the accounts failed', error))
   await releaseHeld(now)
   // Stopped posts Postiz still holds - a stop's own run may have been cut off.
   await unpostStopped()
@@ -4003,6 +4113,8 @@ Deno.serve(async (req) => {
         return await insights(profile)
       case 'best-hours':
         return await saveBestHours(profile, body)
+      case 'headline-ideas':
+        return await headlineIdeas(profile, body)
       default:
         return reply({ error: 'Unknown action.' }, 400)
     }

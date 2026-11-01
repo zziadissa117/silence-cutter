@@ -14,6 +14,7 @@ import { cleanPlace, type Place } from '../../supabase/functions/postiz/place.ts
 import { timesFor, timesOn } from '../../supabase/functions/postiz/slots.ts'
 import { hoursOn, type BestHours } from '../../supabase/functions/postiz/bestHours.ts'
 import type { CampaignHooks } from '../../supabase/functions/postiz/hookInsights.ts'
+import type { DeadAccount } from '../../supabase/functions/postiz/deadAccounts.ts'
 import { PUBLISHABLE_KEY, currentSession } from './cloud'
 import type { Campaign, CampaignPosting } from './look'
 import { dayTimes, spreadPick } from './batch'
@@ -577,6 +578,24 @@ const INSIGHTS_KEY = 'cutter.insights'
 export interface Insights {
   campaigns: CampaignHooks[]
   bestHours: BestHours | null
+  /** Accounts whose videos suddenly stopped getting views (postiz/deadAccounts.ts). */
+  trouble?: DeadAccount[]
+}
+
+/** New headlines in the style of a campaign's best, for him to pick from
+ *  (postiz/headlineIdeas.ts). `have`: the batch's headlines now. */
+export async function headlineIdeas(campaignId: string, campaignName: string, have: readonly string[]): Promise<{ headlines: string[]; error?: string }> {
+  return call<{ headlines: string[]; error?: string }>('headline-ideas', { profile: profileId(), campaignId, campaignName, have })
+}
+
+/** One account's posting paused (or let go again): the server holds its
+ *  posts and sends them once it is let go (limits.ts). */
+export async function pauseAccount(accountId: string, paused: boolean): Promise<Profile> {
+  const limits = postingHere()?.profile.settings.limits ?? {}
+  const accounts = { ...(limits.accounts ?? {}) }
+  accounts[accountId] = { ...(accounts[accountId] ?? {}), paused }
+  if (!paused) delete accounts[accountId].paused
+  return saveLimits({ ...limits, accounts })
 }
 
 /** What works, as last read - for offline. */
@@ -593,7 +612,7 @@ export function lastInsights(): Insights {
  *  (postiz/hookInsights.ts, bestHours.ts). */
 export const listInsights = shared(async (): Promise<Insights> => {
   const got = await call<Insights>('insights', { profile: profileId() })
-  const insights = { campaigns: got.campaigns ?? [], bestHours: got.bestHours ?? null }
+  const insights = { campaigns: got.campaigns ?? [], bestHours: got.bestHours ?? null, trouble: got.trouble ?? [] }
   try {
     localStorage.setItem(INSIGHTS_KEY, JSON.stringify(insights))
   } catch {

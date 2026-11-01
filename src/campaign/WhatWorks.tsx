@@ -7,6 +7,8 @@
 
 import { useState } from 'react'
 
+import { platformName, type DeadAccount } from '../../supabase/functions/postiz/deadAccounts.ts'
+
 import { bestRuns, dayOfWeek, type BestHours } from '../../supabase/functions/postiz/bestHours.ts'
 import type { CampaignHooks, HookKind, HookRow } from '../../supabase/functions/postiz/hookInsights.ts'
 import { shortNumber } from './analytics'
@@ -141,9 +143,122 @@ function Bars({ rows, none }: { rows: HookRow[]; none: string }) {
   )
 }
 
+/** Accounts whose videos suddenly stopped getting views - most often a
+ *  shadowban (postiz/deadAccounts.ts) - each with a Pause. */
+export function TroubleCard({
+  accounts,
+  paused,
+  onPause,
+}: {
+  accounts: readonly DeadAccount[]
+  /** Account ids paused now. */
+  paused: ReadonlySet<string>
+  onPause: (accountId: string, paused: boolean) => Promise<void>
+}) {
+  const [busy, setBusy] = useState<string | null>(null)
+  const [problem, setProblem] = useState<string | null>(null)
+  if (accounts.length === 0) return null
+  const tap = (id: string, pause: boolean) => {
+    setBusy(id)
+    setProblem(null)
+    void onPause(id, pause)
+      .catch((error: unknown) => setProblem(error instanceof Error ? error.message : String(error)))
+      .finally(() => setBusy(null))
+  }
+  return (
+    <div className="group analytics-campaign trouble">
+      <div className="group-title">Accounts that stopped getting views</div>
+      <p className="hint">Most often a shadowban. Check the account in its app; pausing holds its videos until you resume.</p>
+      <ul className="trouble-list">
+        {accounts.map((a) => (
+          <li key={a.id} className="trouble-row">
+            <div>
+              <div className="label">
+                {a.name} · {platformName(a.platform)}
+              </div>
+              <div className="hint">
+                About {shortNumber(a.recent)} views a video lately - it usually gets {shortNumber(a.usual)}.
+              </div>
+            </div>
+            <button type="button" className={`btn small${paused.has(a.id) ? '' : ' primary'}`} disabled={busy === a.id} onClick={() => tap(a.id, !paused.has(a.id))}>
+              {busy === a.id ? '…' : paused.has(a.id) ? 'Resume' : 'Pause'}
+            </button>
+          </li>
+        ))}
+      </ul>
+      {problem ? <p className="hint warn">{problem}</p> : null}
+    </div>
+  )
+}
+
+/** "Write more like the best": Claude's new headlines in the style of the
+ *  campaign's best (postiz/headlineIdeas.ts), each added with a tap. */
+function HeadlineIdeas({ onIdeas, onAdd }: { onIdeas: () => Promise<{ headlines: string[]; error?: string }>; onAdd: (headline: string) => Promise<void> }) {
+  const [ideas, setIdeas] = useState<string[] | null>(null)
+  const [added, setAdded] = useState<Set<string>>(new Set())
+  const [working, setWorking] = useState(false)
+  const [problem, setProblem] = useState<string | null>(null)
+  const ask = () => {
+    setWorking(true)
+    setProblem(null)
+    void onIdeas()
+      .then((got) => {
+        setIdeas(got.headlines)
+        setAdded(new Set())
+        if (got.error) setProblem(got.error)
+      })
+      .catch((error: unknown) => setProblem(error instanceof Error ? error.message : String(error)))
+      .finally(() => setWorking(false))
+  }
+  const add = (headline: string) => {
+    setAdded((a) => new Set(a).add(headline))
+    void onAdd(headline).catch((error: unknown) => {
+      setAdded((a) => {
+        const rest = new Set(a)
+        rest.delete(headline)
+        return rest
+      })
+      setProblem(error instanceof Error ? error.message : String(error))
+    })
+  }
+  return (
+    <div className="ideas">
+      <button type="button" className="btn small" disabled={working} onClick={ask}>
+        {working ? 'Writing…' : ideas ? 'Write others' : 'Write more like the best'}
+      </button>
+      {ideas && ideas.length > 0 ? (
+        <ul className="ideas-list">
+          {ideas.map((idea) => (
+            <li key={idea} className="idea-row">
+              <span className="idea-text">{idea}</span>
+              <button type="button" className="btn small" disabled={added.has(idea)} onClick={() => add(idea)}>
+                {added.has(idea) ? 'Added' : 'Add'}
+              </button>
+            </li>
+          ))}
+        </ul>
+      ) : null}
+      {problem ? <p className="hint warn">{problem}</p> : null}
+    </div>
+  )
+}
+
 /** A campaign's "what works": each kind's bars, and the button that makes
  *  more videos with the best. */
-export function WhatWorks({ hooks, bank, onUseBest }: { hooks: CampaignHooks | undefined; bank: BatchBank; onUseBest: (on: boolean) => void }) {
+export function WhatWorks({
+  hooks,
+  bank,
+  onUseBest,
+  onIdeas,
+  onAddHeadline,
+}: {
+  hooks: CampaignHooks | undefined
+  bank: BatchBank
+  onUseBest: (on: boolean) => void
+  /** Claude's new headlines like the best, and one of them added to the batch. */
+  onIdeas?: () => Promise<{ headlines: string[]; error?: string }>
+  onAddHeadline?: (headline: string) => Promise<void>
+}) {
   if (!hooks) {
     return <p className="hint">What works shows here once this campaign's batch videos are 3 days old and their views are read.</p>
   }
@@ -180,6 +295,7 @@ export function WhatWorks({ hooks, bank, onUseBest }: { hooks: CampaignHooks | u
         <div key={kind} className="what-kind">
           <div className="what-title">{title}</div>
           <Bars rows={hooks.rows[kind]} none={none} />
+          {kind === 'headline' && onIdeas && onAddHeadline ? <HeadlineIdeas onIdeas={onIdeas} onAdd={onAddHeadline} /> : null}
         </div>
       ))}
     </div>
