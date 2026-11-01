@@ -22,6 +22,8 @@ export interface BatchInfo {
   /** The hook's look it was made with, for the phone to count how each
    *  hook does. */
   look?: 'box' | 'outline' | 'snap' | 'formula'
+  /** He turned it down in To approve: the batch makes another for its day. */
+  disliked?: boolean
 }
 
 const LOOKS = new Set(['box', 'outline', 'snap', 'formula'])

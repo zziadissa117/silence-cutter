@@ -217,7 +217,7 @@ function WaitingPost({
   problem?: string
   /** One of the first of its batch: shown with its video, to check it. */
   watchFirst?: boolean
-  onAct: (action: PostAction, fields?: { caption?: string; at?: string; captions?: Record<string, { caption?: string }> }) => void
+  onAct: (action: PostAction, fields?: { caption?: string; at?: string; captions?: Record<string, { caption?: string }>; disliked?: boolean }) => void
 }) {
   // His own words while he types; null means the box shows the caption as
   // the server has it - so a caption the server rewrites or re-tags
@@ -343,7 +343,10 @@ function WaitingPost({
           type="button"
           className="linkbtn danger"
           disabled={busy}
-          onClick={() => window.confirm(`Reject this ${post.campaignName} post? It won't be posted.`) && onAct('reject')}
+          onClick={() =>
+            window.confirm(`Reject this ${post.campaignName} post? It won't be posted.${post.batch ? ' The batch makes another in its place.' : ''}`) &&
+            onAct('reject', { disliked: true })
+          }
         >
           Reject
         </button>
@@ -761,7 +764,7 @@ export function PostsView({
     if (sentCount > 0) void load(true)
   }, [sentCount, load])
 
-  const act = async (post: ServerPost, action: PostAction, fields?: { caption?: string; at?: string }) => {
+  const act = async (post: ServerPost, action: PostAction, fields?: { caption?: string; at?: string; disliked?: boolean }) => {
     // Saving an edit happens as he leaves the box - often by tapping
     // Approve, which carries the same words. It never holds the buttons,
     // or that tap would land on a disabled one and be lost.

@@ -314,6 +314,35 @@ async function sweepFiles() {
 }
 setInterval(() => void sweepFiles().catch((error) => log('sweep', error instanceof Error ? error.message : error)), 60 * 60 * 1000)
 
+// "Still here", to the Cutter's login function every 10 minutes, with what
+// it is up to: the posting function tells him when it goes quiet, when the
+// page inside stops, or when the disk is nearly full (his ask, 2026-11-01).
+const PING_EVERY_MS = 10 * 60 * 1000
+async function ping() {
+  const session = await readJson(sessionFile, null)
+  if (!session?.token) return
+  const status = await readJson(dir('status.json'), null)
+  const { freeGB } = await room()
+  await fetch(CUTTER_URL, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', apikey: PUBLISHABLE_KEY },
+    body: JSON.stringify({
+      action: 'server-ping',
+      token: session.token,
+      profile: session.posting?.profile?.id ?? null,
+      version: VERSION,
+      chrome: chrome ? 'running' : 'off',
+      freeGB,
+      pageAt: status?.at ?? null,
+      signedIn: status?.signedIn ?? null,
+      posting: status?.posting ?? null,
+    }),
+    signal: AbortSignal.timeout(30_000),
+  })
+}
+setTimeout(() => void ping().catch(() => {}), 60_000)
+setInterval(() => void ping().catch((error) => log('ping', error instanceof Error ? error.message : error)), PING_EVERY_MS)
+
 // --- The phone's settings and asks ----------------------------------------
 
 async function inbox() {

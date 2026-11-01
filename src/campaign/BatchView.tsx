@@ -101,6 +101,7 @@ import {
   startOver,
   takeOutHook,
   changeLook,
+  dislikedBy,
   takenBy,
   topUp,
   trimDown,
@@ -592,7 +593,8 @@ export function BatchView({
   }
 
   // The days the batch is still missing, up to AHEAD_DAYS ahead.
-  const due = bank ? runSlots({ bank, place, campaignId: campaign.id, taken: takenOn }) : []
+  const dislikedOn = dislikedBy(posts, campaign.id)
+  const due = bank ? runSlots({ bank, place, campaignId: campaign.id, taken: takenOn, disliked: dislikedOn }) : []
   const green = bank?.layout === 'greenscreen'
   const onEngine = bank?.layout === 'engine'
   // Made on the Cutter server (serverLink.ts), or about to be: nothing is made here.
@@ -657,6 +659,7 @@ export function BatchView({
         place,
         profileId: profile.id,
         taken: takenOn,
+        disliked: dislikedOn,
         save: async (next) => {
           setBank(next)
           bankRef.current = next
@@ -984,7 +987,7 @@ export function BatchView({
   // own (WhenDue): days over it lose the extra first, then a day gone by or
   // a higher number is made.
   // On the server, the server does both.
-  const over = running && bank && !onServer ? overfull(bank) : []
+  const over = running && bank && !onServer ? overfull(bank, new Date(), dislikedOn) : []
   const trimNow = over.length > 0 && saving === null && !topping
   const dueNow = running && !onServer && over.length === 0 && due.length > 0 && missing.length === 0 && saving === null && !topping
   const setPerDay = (n: number) => {

@@ -32,7 +32,7 @@ import { MusicBankView } from './MusicBankView'
 import { VideoBankView } from './VideoBankView'
 import { findSong, songFile, syncSongs } from './musicBank'
 import { BatchView } from './BatchView'
-import { oneAtATime, overfull, settled, startOver, takenBy, topUp, trimDown, type BatchVideo } from './batchRun'
+import { dislikedBy, oneAtATime, overfull, settled, startOver, takenBy, topUp, trimDown, type BatchVideo } from './batchRun'
 import { AnalyticsView, answerSuggestion, saveTarget, useCampaignRows } from './AnalyticsView'
 import { FormatsView, type FormatClips } from './FormatsView'
 import { afterMixing, daysLine, mixesOf, spreadOver } from './formats'
@@ -2593,7 +2593,7 @@ export function CampaignApp() {
           let bank = await loadBatchBank(owner.id)
           // A batch moved to the Cutter server is made there, never here too.
           if (!alive || !bank?.running || (bank.where === 'server' && !SERVER_MODE)) return null
-          if (overfull(bank).length > 0) {
+          if (overfull(bank, new Date(), dislikedBy(lastPosts(), owner.id)).length > 0) {
             ;({ bank } = await trimDown({ bank, campaignId: owner.id, jobs: jobsRef.current, removeJob, save: saveBatchBank }))
           }
           const angle = owner.angles.find((a) => a.id === bank.angleId) ?? owner.angles[0]
@@ -2603,6 +2603,7 @@ export function CampaignApp() {
             place,
             profileId: profile.id,
             taken: takenBy(lastPosts(), jobsRef.current, owner.id),
+            disliked: dislikedBy(lastPosts(), owner.id),
             save: saveBatchBank,
             make: (videos, retire) => addBatchRef.current(owner, angle, videos, retire),
           })

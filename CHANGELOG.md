@@ -3,6 +3,22 @@
 Newest first. Every change says what it does, how to use it, and how it works
 underneath. Kept up to date with each commit.
 
+## A rejected batch video is made again; a notification when the Cutter server stops
+Needs deploying: run ./deploy.sh (it runs ./deploy-server.sh too). The Cutter servers on Railway rebuild by
+themselves from this push.
+**What he picked (2026-11-01):** 1 and 2 of the next list.
+1. **Reject in To approve makes another.** Rejecting a batch video there now marks it (`batch.disliked`, the `reject`
+   action's `disliked`), and the batch counts it out of its day (`batchRun.dislikedBy` in `runSlots`), so a
+   different mix is made for that day. The day's "too many" trim leaves the new one alone (`overfull` and
+   `trimPlan` take the same count; the saved count stays every video made). A stop, an edit (Edit again) or a new
+   version (music) rejects too but is not made again. The Reject question says so.
+2. **The Cutter server is watched.** Every 10 minutes it says "still here" to the login function (`server-ping`,
+   kept as `server:<space>:<profile>`), with whether its page is going, its free disk and whether it is signed in.
+   The posting function's tick (`watchServers`, `serverWatch.ts`) tells him once when it goes quiet for 30 minutes,
+   its page stops, its disk is under 0.5 GB, or it is signed out - and once when it is right again. Each server
+   (his, his friend's) to its own posting profile.
+Tests: `batchDisliked.test.ts`, `serverWatch.test.ts`.
+
 ## Most posts a day per campaign, YouTube through Buffer in the evening, a morning summary
 Needs deploying: run ./deploy.sh (it runs ./deploy-server.sh too).
 **What he picked (2026-11-01):** from the list of what to add next - 1, 2 and 3.

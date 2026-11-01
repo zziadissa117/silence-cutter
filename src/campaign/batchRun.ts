@@ -167,12 +167,15 @@ export function runSlots({
   place,
   campaignId,
   taken = () => [],
+  disliked = () => 0,
   now = new Date(),
 }: {
   bank: Pick<BatchBank, 'perDay' | 'filled' | 'madeThrough' | 'lastPerDay' | 'growth' | 'growthFrom'>
   place: CampaignPlace
   campaignId: string
   taken?: (date: string) => readonly string[]
+  /** Videos of the day he turned down in To approve: made again (dislikedBy). */
+  disliked?: (date: string) => number
   now?: Date
 }): BatchSlot[] {
   const today = todayHere(now)
@@ -180,7 +183,9 @@ export function runSlots({
   const slots: BatchSlot[] = []
   for (let d = 0; d < AHEAD_DAYS; d++) {
     const date = addDays(today, d)
-    const have = filledOn(bank, date)
+    // The day's count holds every video made for it; the ones he turned
+    // down are made again, a different mix each (his ask, 2026-11-01).
+    const have = Math.max(0, filledOn(bank, date) - disliked(date))
     const wanted = perDayOn(bank, date)
     const need = wanted - have
     if (need <= 0) continue
@@ -351,6 +356,17 @@ export function isToppingUp(campaignId: string): boolean {
 
 /** The times a campaign's days already hold: its posts on the server, and
  *  its batch videos still being made on this phone. */
+/** How many of a campaign's batch videos for each day he turned down in To
+ *  approve - each made again in its place (runSlots). */
+export function dislikedBy(posts: readonly ServerPost[], campaignId: string): (date: string) => number {
+  const count = new Map<string, number>()
+  for (const post of posts) {
+    if (post.campaignId !== campaignId || post.status !== 'rejected' || !post.batch?.disliked) continue
+    count.set(post.batch.date, (count.get(post.batch.date) ?? 0) + 1)
+  }
+  return (date) => count.get(date) ?? 0
+}
+
 export function takenBy(posts: readonly ServerPost[], jobs: readonly Job[], campaignId: string): (date: string) => string[] {
   const taken = takenTimes(posts, campaignId)
   for (const job of jobs) {
@@ -374,6 +390,7 @@ export async function topUp({
   place,
   profileId,
   taken,
+  disliked,
   save,
   make,
   say = () => {},
@@ -385,6 +402,8 @@ export async function topUp({
   place: CampaignPlace
   profileId: string
   taken?: (date: string) => readonly string[]
+  /** Videos of the day he turned down: made again (dislikedBy). */
+  disliked?: (date: string) => number
   save: (bank: BatchBank) => Promise<void>
   make: (videos: BatchVideo[], retire: string[]) => void
   say?: (line: string | null) => void
@@ -395,7 +414,7 @@ export async function topUp({
   // serverMode.ts), never here too.
   if (!SERVER_MODE && (bank.where === 'server' || (serverConnected() && bank.layout !== 'engine'))) return null
   if (!bank.running || missingFor(bank).length > 0) return null
-  const slots = runSlots({ bank, place, campaignId: campaign.id, taken, now })
+  const slots = runSlots({ bank, place, campaignId: campaign.id, taken, disliked, now })
   if (slots.length === 0) return null
   const id = `b-${now.getTime().toString(36)}`
   const plan = planVideos(bank, slots, { id, now })
@@ -466,11 +485,16 @@ export function dayVideos(posts: readonly ServerPost[], jobs: readonly Job[], ca
 }
 
 /** The days holding more than his number, from today on. */
-export function overfull(bank: Pick<BatchBank, 'perDay' | 'filled' | 'madeThrough' | 'lastPerDay' | 'growth' | 'growthFrom'>, now = new Date()): string[] {
+export function overfull(
+  bank: Pick<BatchBank, 'perDay' | 'filled' | 'madeThrough' | 'lastPerDay' | 'growth' | 'growthFrom'>,
+  now = new Date(),
+  /** Videos he turned down: made again, so not over the number (dislikedBy). */
+  disliked: (date: string) => number = () => 0,
+): string[] {
   const today = todayHere(now)
   const dates = new Set(Object.keys(bank.filled ?? {}).filter((d) => d >= today))
   for (let d = 0; d < AHEAD_DAYS; d++) dates.add(addDays(today, d))
-  return [...dates].filter((date) => filledOn(bank, date) > perDayOn(bank, date)).sort()
+  return [...dates].filter((date) => filledOn(bank, date) - disliked(date) > perDayOn(bank, date)).sort()
 }
 
 /** Which videos to take out so each day holds no more than his number: the
@@ -481,15 +505,18 @@ export function trimPlan(
   bank: Pick<BatchBank, 'perDay' | 'filled' | 'madeThrough' | 'lastPerDay' | 'growth' | 'growthFrom'>,
   videos: readonly DayVideo[],
   now = new Date(),
+  disliked: (date: string) => number = () => 0,
 ): { remove: DayVideo[]; filled: Record<string, number> } {
   const today = todayHere(now)
   const filled: Record<string, number> = {}
   for (const [date, n] of Object.entries(bank.filled ?? {})) if (date >= today) filled[date] = n
   const remove: DayVideo[] = []
-  for (const date of overfull(bank, now)) {
+  for (const date of overfull(bank, now, disliked)) {
+    // The count kept is every video made for the day; the ones he turned
+    // down are not over his number - they were made again.
     const count = filledOn(bank, date)
     const wanted = perDayOn(bank, date)
-    const excess = count - wanted
+    const excess = count - disliked(date) - wanted
     const day = videos.filter((v) => v.date === date).sort((a, b) => a.time.localeCompare(b.time))
     const keep = new Set<number>()
     for (let i = 0; i < wanted; i++) keep.add(Math.min(day.length - 1, Math.round((i * day.length) / wanted)))
@@ -819,7 +846,7 @@ export async function trimDown({
   }
   const posts = await listPosts(true)
   const videos = dayVideos(posts, jobs, campaignId)
-  const plan = trimPlan(stoppedEngine ? { ...bank, filled: countedDays(videos) } : bank, videos)
+  const plan = trimPlan(stoppedEngine ? { ...bank, filled: countedDays(videos) } : bank, videos, new Date(), stoppedEngine ? () => 0 : dislikedBy(posts, campaignId))
   for (const v of plan.remove) if (v.kind === 'job') removeJob(v.id)
   const outcome = await stopPostsNow(plan.remove.flatMap((v) => (v.post ? [v.post] : [])))
   const filled = { ...plan.filled }

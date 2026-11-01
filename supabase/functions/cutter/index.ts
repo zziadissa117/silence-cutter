@@ -34,6 +34,7 @@
 //   people         { token }                    -> { people }       owner only: the logins he made, with their phones
 //   pause          { token, name, paused }      -> { people }       owner only: a login stopped, or let go again
 //   remove-device  { token, name, device }      -> { people }       owner only: a phone signed out of a login
+//   server-ping    { token, profile, ... }      -> { ok }           the Cutter server's "still here", every 10 min
 // A login made with a link is tied to its phones (cutter_devices): every
 // sign-in names the phone, its token carries it, at most MAX_DEVICES at once,
 // and the owner is told of each new one. The owner's own login is not limited.
@@ -397,6 +398,27 @@ async function people(spaceId: string): Promise<Response> {
   })
 }
 
+/** The Cutter server's "still here" (server/main.mjs, every 10 minutes),
+ *  kept for the posting function to watch: `server:<space>:<profile>`. */
+async function serverPing(spaceId: string, body: Record<string, unknown>): Promise<Response> {
+  const profile = typeof body.profile === 'string' && /^[0-9a-f-]{36}$/.test(body.profile) ? body.profile : null
+  if (!profile) return reply({ error: 'Which posting profile?' }, 400)
+  const { data: owned } = await db.from('cutter_profiles').select('id').eq('id', profile).eq('space_id', spaceId).maybeSingle()
+  if (!owned) return reply({ error: 'Which posting profile?' }, 400)
+  const at = (v: unknown) => (typeof v === 'string' && !Number.isNaN(Date.parse(v)) ? v : null)
+  const value = {
+    at: new Date().toISOString(),
+    version: typeof body.version === 'string' ? body.version.slice(0, 40) : null,
+    chrome: body.chrome === 'running' ? 'running' : 'off',
+    freeGB: typeof body.freeGB === 'number' && Number.isFinite(body.freeGB) ? body.freeGB : null,
+    pageAt: at(body.pageAt),
+    signedIn: typeof body.signedIn === 'boolean' ? body.signedIn : null,
+    posting: typeof body.posting === 'boolean' ? body.posting : null,
+  }
+  await setConfig(`server:${spaceId}:${profile}`, JSON.stringify(value))
+  return reply({ ok: true })
+}
+
 /** The owner's own lever on a login he made: pause it (every call refused,
  *  its data kept) or let it go again. */
 async function pause(spaceId: string, body: Record<string, unknown>): Promise<Response> {
@@ -670,6 +692,8 @@ Deno.serve(async (req) => {
       return invite(spaceId, body)
     case 'people':
       return people(spaceId)
+    case 'server-ping':
+      return serverPing(spaceId, body)
     case 'pause':
       return pause(spaceId, body)
     case 'remove-device':

@@ -70,6 +70,7 @@ import {
 import { RECHECK_SCHEMA, RECHECK_SYSTEM, acceptFix, cleanContext, costCents, recheckMessage } from './recheck.ts'
 import { byteRange } from './range.ts'
 import { SUMMARY_HOUR, summaryText, type DayPost } from './summary.ts'
+import { GONE_MS, serverTrouble, troubleNote, type ServerPing } from './serverWatch.ts'
 import { accountName, baseNote, clearOfTaken, failedRefs, goodHoursEnd, missingAccounts, notPostedNote, reconnectedAs, youtubeRetryTime, youtubeTime } from './failed.ts'
 import { carryOver, cleanCaptions, cleanRepost, repostDueAt, textFor, variationNote, type AccountText } from './repost.ts'
 import { FAKE_CLAUDE, FakeError, fakeCaption, fakePostiz, isFakePostiz } from './fake.ts'
@@ -655,7 +656,9 @@ function postView(post: Post) {
     createdAt: post.created_at,
     byHand: post.by_hand,
     ready: Boolean(post.ready_at),
-    batch: post.batch ? { id: post.batch.id, date: post.batch.date, time: post.batch.time, size: post.batch.size, ...(post.batch.look ? { look: post.batch.look } : {}) } : null,
+    batch: post.batch
+      ? { id: post.batch.id, date: post.batch.date, time: post.batch.time, size: post.batch.size, ...(post.batch.look ? { look: post.batch.look } : {}), ...(post.batch.disliked ? { disliked: true } : {}) }
+      : null,
     ...(post.views ? { views: post.views } : {}),
   }
 }
@@ -2327,7 +2330,11 @@ async function act(profile: Profile, action: string, body: Record<string, unknow
       }
       // Its parts, or the copy kept for a Buffer backup.
       await removeParts(post).catch(() => {})
-      return reply({ post: postView(await update(post.id, { status: 'rejected', error: stopping, retry_at: null, ...(stopping ? { attempts: 0 } : {}) })) })
+      // He turned a batch video down in To approve: the batch makes another
+      // in its place (batchRun dislikedBy) - unlike a stop, an edit or a new
+      // version, which all reject too.
+      const disliked = body.disliked === true && post.batch ? { batch: { ...post.batch, disliked: true } } : {}
+      return reply({ post: postView(await update(post.id, { status: 'rejected', error: stopping, retry_at: null, ...disliked, ...(stopping ? { attempts: 0 } : {}) })) })
     }
     case 'unschedule': {
       // Approved is scheduled to him (the Posts screen lists them together):
@@ -3186,6 +3193,7 @@ async function tick(): Promise<void> {
   await moveOnWaiting(now)
   await retryMissing(now).catch((error) => console.error('posting again to missed accounts failed', error))
   await dailySummary(now).catch((error) => console.error('the morning summary failed', error))
+  await watchServers(now).catch((error) => console.error('watching the Cutter servers failed', error))
   await releaseHeld(now)
   // Stopped posts Postiz still holds - a stop's own run may have been cut off.
   await unpostStopped()
@@ -3208,6 +3216,35 @@ async function tick(): Promise<void> {
   // "Posts to approve" held back while he was told a moment ago.
   const { data: pending } = await db.from('cutter_profiles').select('id').eq('push_pending', true).limit(20)
   for (const row of pending ?? []) await sendWaiting(row.id)
+}
+
+/** Each Cutter server's last "still here" (serverWatch.ts): he hears once when
+ *  something goes wrong - quiet, its page stopped, its disk nearly full,
+ *  signed out - and once when it is right again. What he was last told is
+ *  kept in `server-said:<space>:<profile>`. */
+async function watchServers(now: number): Promise<void> {
+  const { data } = await db.from('cutter_config').select('key, value').like('key', 'server:%')
+  for (const row of (data ?? []) as { key: string; value: string }[]) {
+    let ping: ServerPing
+    try {
+      ping = JSON.parse(row.value) as ServerPing
+    } catch {
+      continue
+    }
+    if (now - Date.parse(ping.at) > GONE_MS) continue
+    const profileId = row.key.split(':')[2]
+    if (!profileId) continue
+    const trouble = serverTrouble(ping, now)
+    const saidKey = `server-said:${row.key.slice('server:'.length)}`
+    const { data: said } = await db.from('cutter_config').select('value').eq('key', saidKey).maybeSingle()
+    const before = said?.value ?? 'ok'
+    const nowSays = trouble ?? 'ok'
+    if (before === nowSays) continue
+    await db.from('cutter_config').upsert({ key: saidKey, value: nowSays }, { onConflict: 'key' })
+    // Back to well after nothing was said (the first ping): nothing to say.
+    if (nowSays === 'ok' && !said) continue
+    await notify(profileId, { ...troubleNote(trouble, ping, now), tag: `server-${profileId}` })
+  }
 }
 
 /** The morning summary (summary.ts): once a day for each login's posting

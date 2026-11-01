@@ -126,7 +126,7 @@ export interface ServerPost {
   ready?: boolean
   /** Made from the Batch tab, for this day and time - and with this hook
    *  look, on videos made since looks were carried. */
-  batch?: { id: string; date: string; time: string; size: number; look?: 'box' | 'outline' | 'snap' | 'formula' } | null
+  batch?: { id: string; date: string; time: string; size: number; look?: 'box' | 'outline' | 'snap' | 'formula'; disliked?: boolean } | null
   /** Its views on each account it went to (by account name), as the server
    *  last read them from Postiz; absent until read. */
   views?: Record<string, number> | null
@@ -561,7 +561,7 @@ export type PostAction = 'edit' | 'approve' | 'ready' | 'reject' | 'unschedule' 
 export async function postAction(
   action: PostAction,
   id: string,
-  fields: { caption?: string; title?: string; at?: string; captions?: Record<string, { caption?: string; title?: string }> } = {},
+  fields: { caption?: string; title?: string; at?: string; captions?: Record<string, { caption?: string; title?: string }>; disliked?: boolean } = {},
 ): Promise<ServerPost> {
   const { post } = await call<{ post: ServerPost }>(action, { profile: profileId(), id, ...fields })
   return post
