@@ -69,6 +69,7 @@ import {
 } from './caption.ts'
 import { RECHECK_SCHEMA, RECHECK_SYSTEM, acceptFix, cleanContext, costCents, recheckMessage } from './recheck.ts'
 import { byteRange } from './range.ts'
+import { SUMMARY_HOUR, summaryText, type DayPost } from './summary.ts'
 import { accountName, baseNote, clearOfTaken, failedRefs, goodHoursEnd, missingAccounts, notPostedNote, reconnectedAs, youtubeRetryTime, youtubeTime } from './failed.ts'
 import { carryOver, cleanCaptions, cleanRepost, repostDueAt, textFor, variationNote, type AccountText } from './repost.ts'
 import { FAKE_CLAUDE, FakeError, fakeCaption, fakePostiz, isFakePostiz } from './fake.ts'
@@ -462,7 +463,7 @@ interface Profile {
   accounts: Account[]
   accounts_at: string | null
   settings: {
-    campaigns?: Record<string, { accounts?: string[]; times?: string[]; window?: PostingWindow; instagramPlace?: Place }>
+    campaigns?: Record<string, { accounts?: string[]; times?: string[]; window?: PostingWindow; instagramPlace?: Place; mostPerDay?: number }>
     /** The place every Instagram post is tagged with, unless its campaign has its own (place.ts). */
     instagramPlace?: Place
     limits?: Limits
@@ -762,9 +763,12 @@ async function saveCampaign(profile: Profile, body: Record<string, unknown>): Pr
   const window = times.length === 0 ? cleanWindow(body.window) : null
   // Its own Instagram place, over the default (place.ts).
   const ownPlace = cleanPlace(body.instagramPlace)
+  // The brand's most posts a day (Vertus pays for 2), over every account.
+  const most = Number(body.mostPerDay)
+  const mostPerDay = Number.isInteger(most) && most >= 1 && most <= 50 ? most : null
   const campaigns = { ...(profile.settings.campaigns ?? {}) }
-  if (accounts.length === 0 && times.length === 0 && !window && !ownPlace) delete campaigns[campaignId]
-  else campaigns[campaignId] = { accounts, times, ...(window ? { window } : {}), ...(ownPlace ? { instagramPlace: ownPlace } : {}) }
+  if (accounts.length === 0 && times.length === 0 && !window && !ownPlace && !mostPerDay) delete campaigns[campaignId]
+  else campaigns[campaignId] = { accounts, times, ...(window ? { window } : {}), ...(ownPlace ? { instagramPlace: ownPlace } : {}), ...(mostPerDay ? { mostPerDay } : {}) }
   const { data, error } = await db
     .from('cutter_profiles')
     .update({ settings: { ...profile.settings, campaigns }, updated_at: new Date().toISOString() })
@@ -1235,7 +1239,14 @@ async function toBuffer(
     }
     try {
       url ??= await bufferVideoUrl(post)
-      const made = await createBufferPost(key, { channel, caption: textFor(post, account.id).caption ?? '', videoUrl: url, dueAt })
+      const text = textFor(post, account.id)
+      const made = await createBufferPost(key, {
+        channel,
+        caption: text.caption ?? '',
+        videoUrl: url,
+        dueAt,
+        title: finishTitle(text.title ?? '', [post.headline ?? '', post.campaign_name]),
+      })
       const ref: BufferRef = { postId: made.id, channelId: channel.id, at: new Date(dueAt ?? Date.now()).toISOString(), status: made.status }
       post = await update(post.id, { buffer_ids: { ...(post.buffer_ids ?? {}), [account.id]: ref } })
       room.set(channel.id, (room.get(channel.id) ?? 0) - 1)
@@ -1933,6 +1944,14 @@ async function schedule(start: Post): Promise<Post> {
   const now = !post.post_at
   const date = now ? new Date().toISOString() : post.post_at!
 
+  // The campaign's most a day (the brand's): a day already holding that many
+  // of its posts sends this one to the first day with room, same time of day.
+  const most = profile.settings.campaigns?.[post.campaign_id]?.mostPerDay
+  if (most) {
+    const moved = await toDayWithRoom(post, profile, date, most)
+    if (moved) return moved
+  }
+
   // A batch video waits here, ready, until half a day before its time - not
   // into Postiz the moment it is made: a night's videos for days ahead used
   // all of Postiz's hour, and his own posts couldn't get in (2026-10-27). One
@@ -1972,14 +1991,27 @@ async function schedule(start: Post): Promise<Post> {
     if (made.length > 0 && current.status !== 'scheduled') await deleteScheduled(keys.postiz, { ...current, postiz_ids: made }).catch(() => {})
     return current
   }
+  // YouTube's daily limit (Postiz's) is used up from the afternoon in
+  // California. A YouTube copy due then goes through Buffer at its own time
+  // when Buffer has that channel (its own limit); if not, or if Buffer turns
+  // it down, the next day in the good hours, as its own Postiz post
+  // (youtubeTime) - the other accounts go at the time either way.
+  const at = now ? Date.now() : new Date(date).getTime()
+  if (youtubeTime(at) > at) {
+    const viaBuffer = send.filter((a) => a.platform === 'youtube' && !post.buffer_ids?.[a.id] && backupFor(profile)[a.id])
+    if (viaBuffer.length > 0) {
+      const handed = await toBuffer(profile, post, viaBuffer, now ? null : at, await bufferRoom(profile)).catch((error) => {
+        console.error('YouTube through Buffer failed', post.id, error instanceof Error ? error.message : String(error))
+        return null
+      })
+      if (handed) post = handed.post
+    }
+  }
+
   // The accounts already sent through Buffer stay there.
   const toPostiz = send.filter((account) => !post.buffer_ids?.[account.id])
   if (toPostiz.length === 0) return scheduled({})
 
-  // YouTube's daily limit (Postiz's) is used up from the afternoon in
-  // California: a YouTube copy due then goes just after YouTube's new day,
-  // as its own post, and the other accounts go at the time (youtubeTime).
-  const at = now ? Date.now() : new Date(date).getTime()
   let youtubeAt = youtubeTime(at)
   const later = youtubeAt > at ? toPostiz.filter((a) => a.platform === 'youtube') : []
   // Apart from the account's other YouTube posts that day.
@@ -1995,7 +2027,9 @@ async function schedule(start: Post): Promise<Post> {
     scheduled({ postiz_ids: refs, ...(youtubeNote ? { error: [heldNote(held), youtubeNote].filter(Boolean).join(' ') } : {}) })
 
   try {
-    if (!post.media) post = await mediaInPostiz(keys.postiz, post, toPostiz.some((a) => backupFor(profile)[a.id]))
+    // The server keeps its copy while Buffer may still fetch it (an account
+    // handed to Buffer, or one Buffer backs up).
+    if (!post.media) post = await mediaInPostiz(keys.postiz, post, Boolean(post.buffer_ids) || toPostiz.some((a) => backupFor(profile)[a.id]))
     // A part already in Postiz - saved as soon as it was made, or found there
     // after a run that stopped half-way - is never made twice.
     const made: { postId: string; integration: string; at?: string }[] = [...(post.postiz_ids ?? [])]
@@ -2403,6 +2437,46 @@ async function retryAccounts(profile: Profile, post: Post, auto = false): Promis
   } finally {
     await release(post.id)
   }
+}
+
+/** How many of a campaign's posts go on a day of his: scheduled, out, or
+ *  approved and waiting for their time. */
+async function campaignOnDay(post: Post, profile: Profile, day: string): Promise<number> {
+  const { count } = await db
+    .from('cutter_posts')
+    .select('id', { count: 'exact', head: true })
+    .eq('profile_id', post.profile_id)
+    .eq('campaign_id', post.campaign_id)
+    .neq('id', post.id)
+    .in('status', ['approved', 'scheduled', 'posted'])
+    .gte('post_at', zoned(day, '00:00', profile.timezone).toISOString())
+    .lt('post_at', zoned(addDays(day, 1), '00:00', profile.timezone).toISOString())
+  return count ?? 0
+}
+
+/** A post whose day already holds the campaign's most a day, moved to the
+ *  first day with room at the same time of day - his words (2026-10-30):
+ *  "make sure it's only 2 per day because he's not going to pay me if I post
+ *  more". Null when its day has room. */
+async function toDayWithRoom(post: Post, profile: Profile, date: string, most: number): Promise<Post | null> {
+  const day = localDate(new Date(date), profile.timezone)
+  if ((await campaignOnDay(post, profile, day)) < most) return null
+  const time = localTime(new Date(date), profile.timezone)
+  for (let d = 1; d <= 30; d++) {
+    const next = addDays(day, d)
+    if ((await campaignOnDay(post, profile, next)) >= most) continue
+    const at = zoned(next, time, profile.timezone)
+    const when = new Intl.DateTimeFormat('en-US', { timeZone: profile.timezone, weekday: 'short', hour: 'numeric', minute: '2-digit' }).format(at)
+    return update(post.id, {
+      post_at: at.toISOString(),
+      spread: null,
+      slot: null,
+      ...(post.batch ? { batch: { ...post.batch, date: next } } : {}),
+      retry_at: null,
+      error: `${post.campaign_name}: ${most} a day - moved to ${when}.`,
+    })
+  }
+  return null
 }
 
 /** When these YouTube accounts already have posts going, within half a day
@@ -3111,6 +3185,7 @@ async function tick(): Promise<void> {
 
   await moveOnWaiting(now)
   await retryMissing(now).catch((error) => console.error('posting again to missed accounts failed', error))
+  await dailySummary(now).catch((error) => console.error('the morning summary failed', error))
   await releaseHeld(now)
   // Stopped posts Postiz still holds - a stop's own run may have been cut off.
   await unpostStopped()
@@ -3133,6 +3208,39 @@ async function tick(): Promise<void> {
   // "Posts to approve" held back while he was told a moment ago.
   const { data: pending } = await db.from('cutter_profiles').select('id').eq('push_pending', true).limit(20)
   for (const row of pending ?? []) await sendWaiting(row.id)
+}
+
+/** The morning summary (summary.ts): once a day for each login's posting
+ *  profile, from 9 AM its time, how yesterday went. Kept in cutter_config
+ *  `summary:<profile>` (the day last told), so it goes once. */
+async function dailySummary(now: number): Promise<void> {
+  const { data: profiles } = await db.from('cutter_profiles').select('id, timezone, settings')
+  for (const profile of (profiles ?? []) as Pick<Profile, 'id' | 'timezone' | 'settings'>[]) {
+    const today = localDate(new Date(now), profile.timezone)
+    if (Number(localTime(new Date(now), profile.timezone).slice(0, 2)) < SUMMARY_HOUR) continue
+    const key = `summary:${profile.id}`
+    const { data: told } = await db.from('cutter_config').select('value').eq('key', key).maybeSingle()
+    if (told?.value === today) continue
+    // Marked first: a summary is never sent twice, even if this run stops.
+    await db.from('cutter_config').upsert({ key, value: today }, { onConflict: 'key' })
+    const yesterday = addDays(today, -1)
+    const { data: rows } = await db
+      .from('cutter_posts')
+      .select('campaign_id, campaign_name, status, error, retry_at')
+      .eq('profile_id', profile.id)
+      .gte('post_at', zoned(yesterday, '00:00', profile.timezone).toISOString())
+      .lt('post_at', zoned(today, '00:00', profile.timezone).toISOString())
+      .limit(2000)
+    const list = (rows ?? []) as Pick<Post, 'campaign_id' | 'campaign_name' | 'status' | 'error' | 'retry_at'>[]
+    const posts: DayPost[] = list.map((r) => ({ campaign: r.campaign_name, status: r.status, error: r.error, again: Boolean(r.retry_at) }))
+    const most: Record<string, number> = {}
+    for (const [id, place] of Object.entries(profile.settings.campaigns ?? {})) {
+      const name = list.find((r) => r.campaign_id === id)?.campaign_name
+      if (place.mostPerDay && name) most[name] = place.mostPerDay
+    }
+    const text = summaryText(posts, most)
+    if (text) await notify(profile.id, { ...text, tag: `summary-${today}` })
+  }
 }
 
 /** Posts still waiting for his OK whose time has gone: moved on an hour, and

@@ -30,16 +30,22 @@ export function BufferBackup({ profile, onChanged }: { profile: Profile; onChang
   }
 
   const keys = backup?.keys ?? 0
-  const backedUp = Object.entries(backup?.matched ?? {}).map(([id, channel]) => {
-    const account = profile.accounts.find((a) => a.id === id)
-    return account ? `@${handleOf(account) || account.name}` : channel
-  })
+  const matched = Object.entries(backup?.matched ?? {}).map(([id, channel]) => ({ id, channel, account: profile.accounts.find((a) => a.id === id) }))
+  const named = (m: (typeof matched)[number]) => (m.account ? (m.account.platform === 'youtube' ? m.account.name : `@${handleOf(m.account) || m.account.name}`) : m.channel)
+  const backedUp = matched.filter((m) => m.account?.platform !== 'youtube').map(named)
+  const youtube = matched.filter((m) => m.account?.platform === 'youtube').map(named)
   const instagram = (backup?.channels ?? []).filter((c) => c.service === 'instagram').map((c) => c.name)
   const line =
     keys === 0
       ? 'Not set up. Paste a Buffer API key (in Buffer: Settings, API) - the accounts it backs up are found by themselves.'
-      : backedUp.length > 0
-        ? `Backs up ${backedUp.join(', ')} on Instagram. A video Postiz can't take goes through Buffer by itself.`
+      : backedUp.length > 0 || youtube.length > 0
+        ? [
+            backedUp.length > 0 ? `Backs up ${backedUp.join(', ')} on Instagram. A video Postiz can't take goes through Buffer by itself.` : '',
+            // YouTube's daily limit through Postiz runs out in the evening: Buffer posts those on time.
+            youtube.length > 0 ? `Posts ${youtube.join(', ')} on YouTube in the evening, when YouTube's limit through Postiz is used up.` : '',
+          ]
+            .filter(Boolean)
+            .join(' ')
         : instagram.length > 0
           ? `Buffer has ${instagram.join(', ')}, but none of them is one of your Instagram accounts in Postiz.`
           : 'This Buffer key has no Instagram account. Connect the Instagram account in Buffer, then add the key again.'

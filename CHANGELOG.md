@@ -3,6 +3,27 @@
 Newest first. Every change says what it does, how to use it, and how it works
 underneath. Kept up to date with each commit.
 
+## Most posts a day per campaign, YouTube through Buffer in the evening, a morning summary
+Needs deploying: run ./deploy.sh (it runs ./deploy-server.sh too).
+**What he picked (2026-11-01):** from the list of what to add next - 1, 2 and 3.
+1. **Most posts a day, per campaign.** Each campaign's Posting has "Most posts a day" (the brand's limit; empty = none),
+   kept with his accounts and times (`settings.campaigns[id].mostPerDay`, `save-campaign`). A post whose day already
+   holds that many of the campaign's posts (scheduled, out, or approved for that day) goes to the first day with
+   room at the same time, and says so ("Vertus: 2 a day - moved to Sat 11:00 AM.") - over every account, a TikTok
+   shared with another campaign too (`schedule` -> `toDayWithRoom`, `campaignOnDay`). **Set for Vertus: 2** (by hand,
+   his ask of 2026-10-30).
+2. **YouTube through Buffer.** A YouTube account with a Buffer YouTube channel of the same name is now matched
+   (`buffer.ts` `matchChannels`), and a YouTube copy due from 3 PM California on goes through Buffer at its own
+   time (Buffer has its own YouTube limit) with a title (`youtubeTitle`, category People & Blogs). Buffer turning
+   it down, or no such channel: the next day's good hours as before. **He has to connect the YouTube channels in
+   Buffer** (free plan: 3 channels). Buffer's YouTube fields (`metadata.youtube.title/categoryId`) could not be
+   checked against its docs from here (developers.buffer.com blocked) - the fallback covers a refusal. The Buffer
+   screen says which YouTube channels it posts.
+3. **A morning summary** at 9 AM his time: "Yesterday: 61 posted, 2 missed" and each miss with what is being done,
+   then each campaign with a most a day ("Vertus 2/2") (`summary.ts`, `dailySummary`, once a day per profile -
+   `cutter_config` `summary:<profile>`).
+Tests: `summary.test.ts`, `buffer.test.ts`.
+
 ## Batch tab: "Stop and take out the N scheduled" beside Stop
 **What he chose (2026-11-01):** Stop stays as it is (nothing more made, what is scheduled keeps posting) and a second
 button beside it also takes out every one of the batch's posts not out yet - of the Cutter and of Postiz, the way

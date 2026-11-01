@@ -119,13 +119,21 @@ export function handleOf(text: string): string {
 const isInstagram = (platform: string) => platform.startsWith('instagram')
 
 /** Postiz account id -> the Buffer channel posting for it: an Instagram
- *  account and an Instagram channel with the same username. */
+ *  account and an Instagram channel with the same username - or a YouTube
+ *  account and a YouTube channel with the same name (2026-11-01: YouTube's
+ *  daily limit through Postiz runs out every evening; Buffer has its own). */
 export function matchChannels(
-  accounts: readonly { id: string; platform: string; profile: string; disabled?: boolean }[],
+  accounts: readonly { id: string; platform: string; profile: string; name?: string; disabled?: boolean }[],
   channels: readonly BufferChannel[],
 ): Record<string, BufferChannel> {
   const matched: Record<string, BufferChannel> = {}
   for (const account of accounts) {
+    if (account.platform === 'youtube') {
+      const names = [account.profile, (account as { name?: string }).name ?? ''].filter(Boolean).map(handleOf)
+      const channel = channels.find((c) => c.service === 'youtube' && names.some((n) => n === handleOf(c.name) || n === handleOf(c.displayName)))
+      if (channel) matched[account.id] = channel
+      continue
+    }
     if (!isInstagram(account.platform) || !account.profile) continue
     const handle = handleOf(account.profile)
     const channel = channels.find((c) => c.service === 'instagram' && (handleOf(c.name) === handle || handleOf(c.displayName) === handle))
@@ -142,6 +150,7 @@ export function postInput({
   videoUrl,
   dueAt,
   instagramType = 'reel',
+  title = '',
 }: {
   channel: Pick<BufferChannel, 'id' | 'service'>
   caption: string
@@ -149,6 +158,8 @@ export function postInput({
   /** Null: straight away. */
   dueAt: number | null
   instagramType?: 'reel' | 'post'
+  /** A YouTube video's title (YouTube needs one). */
+  title?: string
 }): Record<string, unknown> {
   return {
     channelId: channel.id,
@@ -158,7 +169,16 @@ export function postInput({
     ...(dueAt === null ? {} : { dueAt: new Date(dueAt).toISOString() }),
     assets: [{ video: { url: videoUrl } }],
     ...(channel.service === 'instagram' ? { metadata: { instagram: { type: instagramType, shouldShareToFeed: true } } } : {}),
+    // People & Blogs, YouTube's everyday category.
+    ...(channel.service === 'youtube' ? { metadata: { youtube: { title: youtubeTitle(title, caption), categoryId: '22' } } } : {}),
   }
+}
+
+/** A YouTube title: the post's own, else its caption's first line - at most
+ *  100 characters, YouTube's limit, never empty. */
+export function youtubeTitle(title: string, caption: string): string {
+  const first = (title.trim() || caption.split('\n').find((l) => l.trim()) || 'New video').replace(/\s+/g, ' ').trim()
+  return first.length > 100 ? `${first.slice(0, 99).trimEnd()}…` : first
 }
 
 const CREATE = `mutation CreatePost($input: CreatePostInput!) {

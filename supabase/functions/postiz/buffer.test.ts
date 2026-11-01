@@ -13,6 +13,7 @@ import {
   listChannels,
   matchChannels,
   postInput,
+  youtubeTitle,
   roomLeft,
   type BufferChannel,
 } from './buffer.ts'
@@ -141,5 +142,25 @@ describe("an account posting 25 a day on Buffer's free plan (10 waiting at once)
   it("tells Buffer's own 'full' apart from a post it turns down", () => {
     expect(isFull("You've reached your queue limit of 10 posts. Upgrade to schedule more.")).toBe(true)
     expect(isFull('Video could not be downloaded')).toBe(false)
+  })
+})
+
+describe('YouTube through Buffer', () => {
+  const yt = { key: 0, id: 'c-yt', name: 'MikeyAi', displayName: 'MikeyAi', service: 'youtube' }
+
+  it('matches a YouTube account to the YouTube channel of the same name', () => {
+    const accounts = [{ id: 'y1', platform: 'youtube', profile: '', name: 'MikeyAi' }, { id: 'y2', platform: 'youtube', profile: 'other', name: 'Other' }]
+    expect(matchChannels(accounts, [yt])).toEqual({ y1: yt })
+  })
+
+  it('gives YouTube a title and a category', () => {
+    const input = postInput({ channel: yt, caption: 'Line one\nmore', videoUrl: 'https://x/v.mp4', dueAt: null, title: 'I tried Vertus' })
+    expect(input.metadata).toEqual({ youtube: { title: 'I tried Vertus', categoryId: '22' } })
+  })
+
+  it('makes a title from the caption when there is none, at most 100 characters', () => {
+    expect(youtubeTitle('', '\nFirst line here\nsecond')).toBe('First line here')
+    expect(youtubeTitle('x'.repeat(150), '').length).toBe(100)
+    expect(youtubeTitle('', '')).toBe('New video')
   })
 })

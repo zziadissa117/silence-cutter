@@ -38,6 +38,9 @@ export interface CampaignPlace {
   window?: PostingWindow
   /** Its own place for Instagram posts, over the default (place.ts). */
   instagramPlace?: Place
+  /** The brand's most posts a day: a day holding that many sends the next one
+   *  to the first day with room (the server's schedule). */
+  mostPerDay?: number
 }
 
 /** Pause and posts-a-day, per platform and per account. The server holds a

@@ -114,7 +114,7 @@ export function PostingEditor({
           const hashtags = tags
           // Own times and a window never both: whichever he picked is saved.
           // Its own Instagram place goes with either.
-          const own = place.instagramPlace ? { instagramPlace: place.instagramPlace } : {}
+          const own = { ...(place.instagramPlace ? { instagramPlace: place.instagramPlace } : {}), ...(place.mostPerDay ? { mostPerDay: place.mostPerDay } : {}) }
           let saved: CampaignPlace = { accounts: place.accounts, times: place.times, ...own }
           const window = timing === 'random' ? cleanWindow(windowDraft) : null
           if (window) saved = { accounts: place.accounts, times: [], window, ...own }
@@ -164,6 +164,23 @@ export function PostingEditor({
               </button>
             </div>
             {refreshProblem ? <div className="error">{refreshProblem}</div> : null}
+            <label className="field">
+              <span className="label">Most posts a day</span>
+              <input
+                type="number"
+                inputMode="numeric"
+                min={1}
+                max={50}
+                placeholder="No limit"
+                value={place.mostPerDay ?? ''}
+                aria-label="Most posts a day"
+                onChange={(e) => {
+                  const n = Number(e.target.value)
+                  setPlace((p) => ({ ...p, mostPerDay: Number.isInteger(n) && n >= 1 && n <= 50 ? n : undefined }))
+                }}
+              />
+              <span className="hint">The brand's limit, if it has one. A day that has that many sends the next video to the first day with room.</span>
+            </label>
             {behind.videos > 0 ? (
               <label className="toggle">
                 <input type="checkbox" checked={catchUpOn} onChange={() => setCatchUpOn((on) => !on)} />
