@@ -14,7 +14,7 @@
 
 import { batchJitter } from './batch.ts'
 import { localDate, localTime, zoned } from './slots.ts'
-import { evenTimes } from './window.ts'
+import { evenTimes, weightScale } from './window.ts'
 
 /** A post this close to going out stays where it is. */
 export const RESPREAD_LEAD_MS = 20 * 60_000
@@ -48,7 +48,10 @@ export interface RespreadMove {
  *  were made, so the plan is the same however often it is worked out, and a
  *  video already at its place isn't moved. `pending`: days left for later,
  *  one of whose videos is being put into Postiz right now. */
-export function planRespread(rows: readonly RespreadRow[], { now, tz }: { now: number; tz: string }): { moves: RespreadMove[]; pending: number } {
+export function planRespread(
+  rows: readonly RespreadRow[],
+  { now, tz, hours }: { now: number; tz: string; hours?: (date: string) => readonly number[] | undefined },
+): { moves: RespreadMove[]; pending: number } {
   const today = localDate(new Date(now), tz)
   const soon = now + RESPREAD_LEAD_MS
   const days = new Map<string, RespreadRow[]>()
@@ -78,10 +81,11 @@ export function planRespread(rows: readonly RespreadRow[], { now, tz }: { now: n
     // is. Worked out afresh, today's rest moved a little with every go, and
     // so did each new day, whose even times differ from these - each one in
     // Postiz taken out and put back for nothing (2026-10-26).
-    if (evenAlready(moving.map((r) => minutesOf(r.batch!.time)), from)) continue
+    const dayHours = hours?.(date)
+    if (evenAlready(moving.map((r) => minutesOf(r.batch!.time)), from, dayHours)) continue
     // Today's videos due soon or gone, and any other that stays, keep their minutes.
     const kept = new Set(day.filter(stays).map((r) => r.batch!.time))
-    const times = evenTimes(moving.length, `${campaignId}|respread`, date, from).map((t) => clearOf(t, kept))
+    const times = evenTimes(moving.length, `${campaignId}|respread`, date, from, DAY, dayHours).map((t) => clearOf(t, kept))
     moving.forEach((row, i) => {
       const time = times[i]
       // Late at night, with more left today than minutes: the rest stay put.
@@ -108,9 +112,12 @@ const DAY = 24 * 60
  *  out and put back, would spend days of Postiz's hourly requests
  *  (2026-10-26: 25 a day going to 48 for a campaign ending). Shared with the
  *  phone (keepEven.ts). */
-export function evenAlready(times: readonly number[], from: number): boolean {
+export function evenAlready(times: readonly number[], from: number, hours?: readonly number[]): boolean {
   if (times.length < 2) return true
-  const t = [...times].sort((a, b) => a - b)
+  // With the day's best hours (bestHours.ts), even is even in their weight:
+  // closer at the best hours, further at the weakest, as evenTimes made them.
+  const scale = weightScale(hours, from, DAY, (DAY - from) / times.length)
+  const t = times.map((m) => scale.placeOf(m)).sort((a, b) => a - b)
   const gaps = t.slice(1).map((m, i) => m - t[i])
   if (from === 0) gaps.push(DAY - t[t.length - 1] + t[0])
   const mean = gaps.reduce((a, b) => a + b, 0) / gaps.length

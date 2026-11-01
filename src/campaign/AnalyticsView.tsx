@@ -1,6 +1,7 @@
-// The Analytics tab: only the campaigns he runs batches for (the CPM ones -
-// Lovable, OpenArt), how their videos are doing - views per video and how
-// that moved on last week - and, when a batch is doing well (or falling
+// The Analytics tab: when to post (a week of hours), then only the campaigns
+// he runs batches for (the CPM ones - Lovable, OpenArt), how their videos are
+// doing - views per video and how that moved on last week, what works in them
+// (WhatWorks.tsx) - and, when a batch is doing well (or falling
 // away), a suggestion to change its videos a day, answered with one tap.
 // Everything else was noise to him. The numbers are read from Postiz by the
 // server, about once a day per account (analytics.ts, views.ts).
@@ -20,8 +21,9 @@ import {
 import { todayHere, type BatchBank } from './batch'
 import { perDayOn, withPerDay } from './batchRun'
 import type { Campaign } from './look'
-import { placeFor, type Profile } from './posting'
+import { placeFor, type Insights, type Profile } from './posting'
 import { loadBatchBank, saveBatchBank } from './store'
+import { BestHoursCard, WhatWorks } from './WhatWorks'
 
 export interface CampaignRow {
   campaign: Campaign
@@ -83,12 +85,19 @@ export function AnalyticsView({
   rows,
   profile,
   loading,
+  insights,
   onAnswer,
   onTarget,
+  onUseBest,
+  onBestHoursOff,
 }: {
   rows: CampaignRow[]
   profile: Profile | null
   loading: boolean
+  /** What works in each campaign, and when to post (WhatWorks.tsx). */
+  insights: Insights
+  onUseBest: (campaignId: string, on: boolean) => void
+  onBestHoursOff: (off: boolean) => void
   /** He said yes (the new number) or not now (null) to a suggestion. */
   onAnswer: (campaignId: string, to: number | null) => void
   /** The views a video he wants before more a day; null for none. */
@@ -111,6 +120,8 @@ export function AnalyticsView({
       <div className="screen-head">
         <h1>Analytics</h1>
       </div>
+
+      <BestHoursCard best={profile.bestHours ?? insights.bestHours} onOff={onBestHoursOff} />
 
       {rows.length === 0 ? (
         <p className="empty">Your batch campaigns show up here - like Lovable and OpenArt - once their batch is running.</p>
@@ -147,6 +158,7 @@ export function AnalyticsView({
               </div>
             </div>
           ) : null}
+          <WhatWorks hooks={insights.campaigns.find((c) => c.id === campaign.id)} bank={bank} onUseBest={(on) => onUseBest(campaign.id, on)} />
           <TargetField value={bank.viewTarget ?? null} onSave={(target) => onTarget(campaign.id, target)} />
         </div>
       ))}

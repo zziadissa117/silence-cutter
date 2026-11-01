@@ -49,6 +49,9 @@
 //                  (buffer.ts): a key pasted, the keys taken out, or "Postiz is down" switched on or off
 //   views          { profile }                  -> { accounts: { [accountId]: AccountViews } }  how each account's
 //                  videos are doing (views.ts), read from Postiz one account per tick, about once a day each
+//   insights       { profile }                  -> { campaigns, bestHours }   what works in each batch campaign's
+//                  videos (hookInsights.ts) and when they do best (bestHours.ts)
+//   best-hours     { profile, off }             -> profile    posting more at the best hours, on or off
 //   tick           { secret }                   (the scheduler; no token)
 //   channels       { cutterCampaignId }         (the planner's server; no token - see bridgeAllowed)
 //                  -> { profiles: [{ id, inUse, accounts }] }  which Postiz channels a campaign holds
@@ -79,6 +82,8 @@ import { handFields } from './hand.ts'
 import { laterWhileWaiting, lastTimeToday, nextSlot, normalTimes, pickTime, sessionOf, spreadDay, spreadEnd, spreadUntil, timesFor, type OtherPost, type Spread, addDays, localDate, localTime, zoned } from './slots.ts'
 import { cleanWindow, type PostingWindow } from './window.ts'
 import { planRespread, type RespreadRow } from './respread.ts'
+import { MIN_AGE_DAYS as HOURS_MIN_AGE_DAYS, LOOK_BACK_DAYS as HOURS_LOOK_BACK_DAYS, hoursOn, learnHours, parseHours, type BestHours } from './bestHours.ts'
+import { LOOK_BACK_DAYS as HOOKS_LOOK_BACK_DAYS, hookInsights } from './hookInsights.ts'
 import { cleanPlace, instagramPlace, type Place } from './place.ts'
 import { attachMove, summarise, type AttachMove } from './attach.ts'
 import { cleanMode, pickRecaption, recaptionMode } from './recaption.ts'
@@ -576,11 +581,15 @@ async function profileFor(spaceId: string, profileId: unknown): Promise<Profile>
 }
 
 async function profileView(profile: Profile) {
-  const [{ data: secret }, { data: vapid }] = await Promise.all([
+  const [{ data: secret }, { data: vapid }, bestHours] = await Promise.all([
     db.from('cutter_profile_secrets').select('anthropic_key').eq('profile_id', profile.id).maybeSingle(),
     db.from('cutter_config').select('value').eq('key', 'vapid_public').maybeSingle(),
+    bestHoursFor(profile.id),
   ])
   return {
+    // When its videos do best, by day and hour (bestHours.ts): the batch's
+    // times come closer together then.
+    bestHours,
     id: profile.id,
     accounts: profile.accounts,
     settings: profile.settings,
@@ -599,6 +608,64 @@ async function profileView(profile: Profile) {
         }
       : null,
   }
+}
+
+/** The profile's best hours as last worked out (learnBestHours), or null. */
+async function bestHoursFor(profileId: string): Promise<BestHours | null> {
+  const { data } = await db.from('cutter_config').select('value').eq('key', `hours:${profileId}`).maybeSingle()
+  return parseHours((data as { value: string } | null)?.value)
+}
+
+/** Once a day for each profile: when its videos do best, by day and hour,
+ *  from their views (bestHours.ts). What he turned off stays off. */
+async function learnBestHours(now: number): Promise<void> {
+  const { data: profiles } = await db.from('cutter_profiles').select('id, timezone')
+  for (const profile of (profiles ?? []) as Pick<Profile, 'id' | 'timezone'>[]) {
+    const before = await bestHoursFor(profile.id)
+    if (before?.at && localDate(new Date(before.at), profile.timezone) === localDate(new Date(now), profile.timezone)) continue
+    const { data } = await db
+      .from('cutter_posts')
+      .select('campaign_id, post_at, views')
+      .eq('profile_id', profile.id)
+      .in('status', ['posted', 'error'])
+      .not('views', 'is', null)
+      .gte('post_at', new Date(now - HOURS_LOOK_BACK_DAYS * 86_400_000).toISOString())
+      .lte('post_at', new Date(now - HOURS_MIN_AGE_DAYS * 86_400_000).toISOString())
+      .limit(5000)
+    const videos = ((data ?? []) as Pick<Post, 'campaign_id' | 'post_at' | 'views'>[]).flatMap((r) => {
+      const counts = Object.values(r.views ?? {})
+      return r.post_at && counts.length > 0 ? [{ campaign: r.campaign_id, at: r.post_at, views: counts.reduce((a, b) => a + b, 0) }] : []
+    })
+    const learnt = learnHours(videos, { now, tz: profile.timezone })
+    // Too few yet: a note of today's try, so it is tried again tomorrow.
+    const value: BestHours = learnt ?? { weights: before?.weights ?? [], videos: videos.length, at: new Date(now).toISOString() }
+    await db.from('cutter_config').upsert({ key: `hours:${profile.id}`, value: JSON.stringify({ ...value, ...(before?.off ? { off: true } : {}) }) }, { onConflict: 'key' })
+  }
+}
+
+/** Turns posting more at the best hours on or off. */
+async function saveBestHours(profile: Profile, body: Record<string, unknown>): Promise<Response> {
+  const before = (await bestHoursFor(profile.id)) ?? { weights: [], videos: 0, at: '' }
+  const next: BestHours = { ...before, off: body.off === true }
+  if (!next.off) delete next.off
+  await db.from('cutter_config').upsert({ key: `hours:${profile.id}`, value: JSON.stringify(next) }, { onConflict: 'key' })
+  return reply(await profileView(profile))
+}
+
+/** What works in each batch campaign's videos (hookInsights.ts). */
+async function insights(profile: Profile): Promise<Response> {
+  const now = Date.now()
+  const { data, error } = await db
+    .from('cutter_posts')
+    .select('campaign_id, campaign_name, headline, file_name, batch, views, post_at')
+    .eq('profile_id', profile.id)
+    .in('status', ['posted', 'error'])
+    .not('batch', 'is', null)
+    .not('views', 'is', null)
+    .gte('post_at', new Date(now - HOOKS_LOOK_BACK_DAYS * 86_400_000).toISOString())
+    .limit(10000)
+  if (error) throw new Problem('The numbers could not be read. Try again.', true, 500)
+  return reply({ campaigns: hookInsights((data ?? []) as Parameters<typeof hookInsights>[0], now), bestHours: await bestHoursFor(profile.id) })
 }
 
 /** Like update, but only while the post is still in `status` - null when it
@@ -2810,7 +2877,8 @@ async function respreadBatches(profile: Profile, body: Record<string, unknown>):
   const { data, error } = await query
   if (error) throw new Problem('The posts could not be read. Try again.', true, 500)
   const rows = (data ?? []) as Post[]
-  const { moves, pending } = planRespread(rows as unknown as RespreadRow[], { now: Date.now(), tz: profile.timezone })
+  const best = await bestHoursFor(profile.id)
+  const { moves, pending } = planRespread(rows as unknown as RespreadRow[], { now: Date.now(), tz: profile.timezone, hours: (date) => hoursOn(best, date) })
   // Their slots freed first: a time one takes may still be another's old one
   // (one video a slot - cutter_posts_one_per_slot).
   const ids = moves.map((m) => m.id)
@@ -3231,6 +3299,7 @@ async function tick(): Promise<void> {
   await retryMissing(now).catch((error) => console.error('posting again to missed accounts failed', error))
   await dailySummary(now).catch((error) => console.error('the morning summary failed', error))
   await watchServers(now).catch((error) => console.error('watching the Cutter servers failed', error))
+  await learnBestHours(now).catch((error) => console.error('working out the best hours failed', error))
   await releaseHeld(now)
   // Stopped posts Postiz still holds - a stop's own run may have been cut off.
   await unpostStopped()
@@ -3930,6 +3999,10 @@ Deno.serve(async (req) => {
         return await saveBackup(profile, body)
       case 'views':
         return await views(profile)
+      case 'insights':
+        return await insights(profile)
+      case 'best-hours':
+        return await saveBestHours(profile, body)
       default:
         return reply({ error: 'Unknown action.' }, 400)
     }

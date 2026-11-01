@@ -163,3 +163,52 @@ describe('already evenly apart', () => {
     expect(evenAlready([700], 0)).toBe(true)
   })
 })
+
+describe('more at the best hours', () => {
+  const peak = Array.from({ length: 24 }, (_, h) => (h >= 13 && h < 16 ? 2 : 0.8))
+  const mins = (t: string) => Number(t.slice(0, 2)) * 60 + Number(t.slice(3, 5))
+  const inPeak = (ts: string[]) => ts.filter((t) => mins(t) >= 13 * 60 && mins(t) < 16 * 60).length
+
+  it('without weights, the same times as ever', () => {
+    expect(evenTimes(25, 'c1', '2026-11-03', 0, 1440, undefined)).toEqual(evenTimes(25, 'c1', '2026-11-03'))
+    expect(evenTimes(25, 'c1', '2026-11-03', 0, 1440, Array(24).fill(1))).toEqual(evenTimes(25, 'c1', '2026-11-03'))
+  })
+
+  it('more of the day at its best hours, still all around the clock, never back to back', () => {
+    const plain = evenTimes(48, 'c1', '2026-11-03')
+    const weighted = evenTimes(48, 'c1', '2026-11-03', 0, 1440, peak)
+    expect(weighted).toHaveLength(48)
+    expect(inPeak(weighted)).toBeGreaterThan(inPeak(plain) * 1.6)
+    expect(weighted[0] < '02:00').toBe(true)
+    expect(weighted[47] > '22:00').toBe(true)
+    // Every hour of the day still has its videos.
+    for (let h = 0; h < 24; h++) expect(weighted.some((t) => mins(t) >= h * 60 && mins(t) < h * 60 + 60)).toBe(true)
+    for (let i = 1; i < weighted.length; i++) expect(mins(weighted[i]) - mins(weighted[i - 1])).toBeGreaterThanOrEqual(8)
+  })
+
+  it('a day made that way is left as it is; an evenly spread one is moved onto them', () => {
+    expect(evenAlready(evenTimes(30, 'c1', '2026-11-03', 0, 1440, peak).map(mins), 0, peak)).toBe(true)
+    expect(evenAlready(evenTimes(30, 'c1', '2026-11-03').map(mins), 0, peak)).toBe(false)
+  })
+
+  it('a squeezed day the server moves goes onto them', () => {
+    const now = zoned('2026-11-01', '14:00', TZ).getTime()
+    const rows: RespreadRow[] = Array.from({ length: 30 }, (_, i) => {
+      const time = `${String(9 + Math.floor(i / 6)).padStart(2, '0')}:${String((i % 6) * 9 + 1).padStart(2, '0')}`
+      return {
+        id: `q${String(i).padStart(2, '0')}`,
+        campaign_id: 'c1',
+        status: 'approved',
+        post_at: zoned('2026-11-03', time, TZ).toISOString(),
+        created_at: new Date(Date.UTC(2026, 9, 30, 0, i)).toISOString(),
+        creating_at: null,
+        slot: `2026-11-03 ${time}`,
+        batch: { date: '2026-11-03', time },
+      }
+    })
+    const weighted = planRespread(rows, { now, tz: TZ, hours: () => peak }).moves.map((m) => m.time)
+    const plain = planRespread(rows, { now, tz: TZ }).moves.map((m) => m.time)
+    expect(weighted).toHaveLength(30)
+    expect(inPeak(weighted)).toBeGreaterThan(inPeak(plain))
+  })
+})

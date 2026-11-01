@@ -145,21 +145,79 @@ export function windowTimes(window: PostingWindow, key: string, date: string, ga
  *  apart. With a step of a few minutes or more, a time never lands on a minute
  *  ending in 0 or 5: those are his own round times, which the server nudges
  *  0-9 minutes (batch.ts batchChoices), and these must stay where they are. */
-export function evenTimes(count: number, key: string, date: string, from = 0, to = DAY_MINUTES): string[] {
+export function evenTimes(count: number, key: string, date: string, from = 0, to = DAY_MINUTES, hours?: readonly number[]): string[] {
   const room = Math.max(0, to - from)
   const n = Math.max(0, Math.min(Math.floor(count), room))
   if (n === 0) return []
   const step = room / n
   // One a minute or two: the plain grid.
   if (step < 3) return Array.from({ length: n }, (_, i) => hhmm(from + Math.floor(i * step)))
+  // More at the day's best hours (bestHours.ts): evenly apart in the hours'
+  // weight, so closer where it is high and further where it is low - never
+  // closer than LEAST_EVEN_GAP while the day allows it.
+  const scale = weightScale(hours, from, to, step)
   const random = seeded(`${key}|${date}|even`)
   const phase = step * (0.25 + 0.5 * random())
   const out: number[] = []
   for (let i = 0; i < n; i++) {
-    let m = Math.round(from + phase + i * step + (random() - 0.5) * 0.2 * step)
+    let m = Math.round(scale.minuteAt(from + phase + i * step + (random() - 0.5) * 0.2 * step))
     if (m % 5 === 0) m += random() < 0.5 ? -1 : 1
     m = Math.min(to - 1, Math.max(from, m, (out[i - 1] ?? from - 1) + 1))
     out.push(m)
   }
   return out.map(hhmm)
+}
+
+/** The closest two of a campaign's times come at its best hours, while the
+ *  day's even step allows it: posting back to back gets accounts flagged
+ *  (his words, 2026-11-01). */
+export const LEAST_EVEN_GAP = 8
+/** The most an hour's weight raises or lowers its rate: twice the day's
+ *  usual at the best hours, half at the weakest - it always keeps posting. */
+export const MOST_WEIGHT = 2
+
+/** A day's hours (24 weights, 1 the day's usual rate) made safe to use: none
+ *  or the wrong shape is no weighting; above all, each pulled toward 1 just
+ *  enough that the best hour's gap stays LEAST_EVEN_GAP or more. */
+export function usableHours(hours: readonly number[] | undefined, step: number): number[] | null {
+  if (!hours || hours.length !== 24 || hours.some((w) => !Number.isFinite(w) || w <= 0)) return null
+  const mean = hours.reduce((a, b) => a + b, 0) / 24
+  const clamped = hours.map((w) => Math.min(MOST_WEIGHT, Math.max(1 / MOST_WEIGHT, w / mean)))
+  const top = Math.min(MOST_WEIGHT, Math.max(1, step / LEAST_EVEN_GAP))
+  const high = Math.max(...clamped)
+  const pull = high > top ? (top - 1) / (high - 1) : 1
+  const out = clamped.map((w) => 1 + (w - 1) * pull)
+  return out.every((w) => Math.abs(w - 1) < 1e-6) ? null : out
+}
+
+/** Between the clock and the day's hours' weight, over `from` to `to`:
+ *  `minuteAt` takes a place spread evenly over the span to the minute it
+ *  falls on, `placeOf` a minute back. Without weights, both are the minute
+ *  itself. */
+export function weightScale(hours: readonly number[] | undefined, from: number, to: number, step: number) {
+  const w = usableHours(hours, step)
+  if (!w || to - from < 2) return { minuteAt: (x: number) => x, placeOf: (m: number) => m }
+  const room = to - from
+  // Weight before each minute of the span, then scaled to the span's length.
+  const cum = new Float64Array(room + 1)
+  for (let i = 0; i < room; i++) cum[i + 1] = cum[i] + w[Math.floor(((from + i) % DAY_MINUTES) / 60)]
+  const total = cum[room]
+  const placeOf = (m: number) => {
+    const x = Math.min(room, Math.max(0, m - from))
+    const i = Math.min(room - 1, Math.floor(x))
+    return from + ((cum[i] + (cum[i + 1] - cum[i]) * (x - i)) / total) * room
+  }
+  const minuteAt = (place: number) => {
+    const target = (Math.min(room, Math.max(0, place - from)) / room) * total
+    let lo = 0
+    let hi = room
+    while (hi - lo > 1) {
+      const mid = (lo + hi) >> 1
+      if (cum[mid] <= target) lo = mid
+      else hi = mid
+    }
+    const part = cum[hi] - cum[lo]
+    return from + lo + (part > 0 ? (target - cum[lo]) / part : 0)
+  }
+  return { minuteAt, placeOf }
 }

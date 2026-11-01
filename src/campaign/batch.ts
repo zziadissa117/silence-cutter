@@ -126,11 +126,30 @@ export interface BatchBank {
   /** When he last tapped Start: what stopped the batch before (every video
    *  made, a problem) is behind it - read by fromPhone. */
   startedAt?: string
+  /** "Use the best hooks" (Analytics): the headlines, looks, reactions and
+   *  songs whose videos do best (postiz/hookInsights.ts) go into more of the
+   *  videos - each comes round FAVOUR times as often - and follow the
+   *  numbers as they change (batchFavour.ts). Off: everything evenly. */
+  useBest?: boolean
+  favour?: Favour
   /** When he last tapped Start anyway: the mixes made before were forgotten
    *  then, so the same clips make the same videos again - read by fromPhone,
    *  which takes the phone's `made` for that Start. */
   anyway?: string
 }
+
+/** What "Use the best hooks" makes more of: headlines by their words in
+ *  small letters (batchHooks.wordsKey), looks, and reactions and songs by
+ *  their file's name without its ending - as the server's numbers name them. */
+export interface Favour {
+  headlines: string[]
+  looks: BatchLook[]
+  reactions: string[]
+  songs: string[]
+}
+
+/** How many times as often a favoured one comes round. */
+export const FAVOUR = 2
 
 /** What the making of a batch has done so far - what was made, used, put on
  *  which day, why it stopped. On the server these are the server's own; every
@@ -426,7 +445,31 @@ const REMEMBERED = 5_000
 
 /** What a bank's videos are mixed from: the reactions, the product - one
  *  list, or one per step - the hooks and the tracks (none: one empty). */
-type MixBank = Pick<BatchBank, 'reactions' | 'products' | 'headlines' | 'music' | 'layout' | 'steps' | 'formula'> & LookFields
+type MixBank = Pick<BatchBank, 'reactions' | 'products' | 'headlines' | 'music' | 'layout' | 'steps' | 'formula' | 'useBest' | 'favour'> & LookFields
+
+/** A file's name as the server's numbers have it: without its ending. */
+export const bareName = (name: string) => name.replace(/\.[^./]+$/, '').trim()
+
+/** How many times as often each item comes round, by the key the mixing
+ *  counts it by: FAVOUR for the ones "Use the best hooks" picked, 1 (absent)
+ *  for the rest. */
+function boostsOf(bank: MixBank, hooks: readonly Hook[]): { item: Map<string, number>; look: Map<BatchLook, number> } {
+  const item = new Map<string, number>()
+  const look = new Map<BatchLook, number>()
+  const f = bank.useBest ? bank.favour : undefined
+  if (!f) return { item, look }
+  const reactions = new Set(f.reactions)
+  const songs = new Set(f.songs)
+  const headlines = new Set(f.headlines)
+  for (const r of bank.reactions) if (reactions.has(bareName(r.name))) item.set(r.id, FAVOUR)
+  for (const m of bank.music) if (songs.has(bareName(m.name))) item.set(m.id, FAVOUR)
+  for (const h of hooks) {
+    const words = h.text.trim().toLowerCase().replace(/\s+/g, ' ')
+    if (h.look === 'formula' ? f.headlines.includes('formula') : headlines.has(words)) item.set(h.key, FAVOUR)
+  }
+  for (const l of f.looks) look.set(l, FAVOUR)
+  return { item, look }
+}
 
 /** A look as the mixing counts it. */
 const lookKey = (look: BatchLook) => `s:${look}`
@@ -529,7 +572,10 @@ export function pickBatch(
     const live = liveKeys(dims)
     for (const key of made) if (!live.has(key)) made.delete(key)
   }
-  const usedOf = (key: string | null) => (key ? (used[key] ?? 0) : 0)
+  // The best ones (Use the best hooks) count each use as a share of one, so
+  // they come round more often.
+  const boosts = boostsOf(bank, hooks)
+  const usedOf = (key: string | null) => (key ? (used[key] ?? 0) / (boosts.item.get(key) ?? 1) : 0)
   // Each look's videos this round (all along, for a bank too big to list).
   const inRound = new Map<string, number>()
   const countRound = () => {
@@ -540,7 +586,7 @@ export function pickBatch(
   const doneOf = (look: BatchLook) => (listed ? (inRound.get(look) ?? 0) : usedOf(lookKey(look)))
   /** Of `looks`, the one furthest behind its share; ties at random. */
   const behind = (looks: BatchLook[]): BatchLook => {
-    const due = (look: BatchLook) => (doneOf(look) + 1) / parts.get(look)!
+    const due = (look: BatchLook) => (doneOf(look) + 1) / (parts.get(look)! * (boosts.look.get(look) ?? 1))
     const low = Math.min(...looks.map(due))
     const ties = looks.filter((look) => due(look) === low)
     return ties[Math.min(ties.length - 1, Math.floor(rand() * ties.length))]
@@ -585,8 +631,8 @@ export function pickBatch(
       const lookHooks = hooks.filter((h) => h.look === look)
       const least = (keys: string[], avoid?: string) => {
         const pool = keys.filter((k) => k !== avoid).length > 0 ? keys.filter((k) => k !== avoid) : keys
-        const low = Math.min(...pool.map((k) => used[k] ?? 0))
-        const ties = pool.filter((k) => (used[k] ?? 0) === low)
+        const low = Math.min(...pool.map((k) => usedOf(k)))
+        const ties = pool.filter((k) => usedOf(k) === low)
         return ties[Math.min(ties.length - 1, Math.floor(rand() * ties.length))]
       }
       const draw = (): Choice => {

@@ -3,6 +3,34 @@
 Newest first. Every change says what it does, how to use it, and how it works
 underneath. Kept up to date with each commit.
 
+## More at the best hours, by day of the week; what works, as graphs; Use the best hooks
+Needs deploying: run ./deploy.sh (it runs ./deploy-server.sh too). The Cutter servers rebuild by themselves.
+**What he asked (2026-11-01):** "a higher rate at certain hours, depending on the day of the week ... I still want it
+to be spread evenly around the clock, but just have a higher rate concentrated around the hour that has the most
+views" - not back to back, "it's going to flag it"; and "very, very tracking-oriented, with a very visible graph of
+the best hooks", with a button that "makes a higher percentage of using those hooks".
+1. **When to post** (top of Analytics): a week of hours, darker where more of the day's videos go, today's best hours
+   in words, tap an hour for its number, Turn off/on. The server works it out once a day from every video's views
+   (`postiz/bestHours.ts` `learnHours`: videos 3-35 days old, each over its campaign's usual so a strong campaign
+   doesn't make its hours look good, each hour of the week leaning on the same hour of the other days and the hours
+   beside it; nothing until 150 videos are in - his had 241 on Nov 1, a gentle 0.8x-1.4x so far). Kept in
+   `cutter_config` `hours:<profile>`, sent with the profile (`bestHours`). A day's batch times are evenly apart in the
+   hours' weight (`window.ts` `evenTimes` with `hours`, `weightScale`): up to twice the day's usual at its best hours,
+   at least half at its weakest, every hour still posting, and never closer than 8 minutes while the day allows
+   (`LEAST_EVEN_GAP`, `usableHours`). Used by `posting.batchTimesOn`/`stackTimesOn` (`hoursHere`), the server's
+   respread (`planRespread` `hours`) and `evenAlready` (judged in the weight), so `keepEven` moves days already
+   scheduled (not yet in Postiz) onto them. Actions `insights`, `best-hours {off}`.
+2. **What works** (each batch campaign in Analytics): bars of views a video for its headlines, reactions, songs and
+   headline looks, best first, the best (★ Best, green) and worst (red) marked, from batch videos 3-30 days old
+   (`postiz/hookInsights.ts`: each thing's number leans on the campaign's average, 3 videos' worth, so one lucky video
+   isn't "best"). The reaction is read from the video's name (all old videos count); the song is carried with each
+   video from now on (`JobBatch.song`, `batch.song` on the server).
+3. **Use the best hooks**: one tap; the ★ Best headlines, looks, reactions and songs go into twice as many of the new
+   videos (`batch.ts` `favour`, `useBest`, `FAVOUR`; `pickBatch` counts each use of one as a half), and it follows
+   the numbers by itself each time they are read (`batchFavour.followFavour`, in `CampaignApp`). Each different video
+   is still made only once. "Back to even" turns it off.
+UI: `WhatWorks.tsx` (`BestHoursCard`, `WhatWorks`), `AnalyticsView.tsx`.
+
 ## Approve 3 of a batch and the rest of it goes by itself
 Needs deploying: run ./deploy.sh (it runs ./deploy-server.sh too).
 **What he picked (2026-11-01):** "approve the first 3, the rest go by themselves". He watches 3 videos of each

@@ -37,7 +37,8 @@ import { AnalyticsView, answerSuggestion, saveTarget, useCampaignRows } from './
 import { FormatsView, type FormatClips } from './FormatsView'
 import { afterMixing, daysLine, mixesOf, spreadOver } from './formats'
 import type { ViewsByAccount } from './analytics'
-import { filesOf, stepTitle, styleFor, stylesOf, type BankFile, type BatchBank } from './batch'
+import { bareName, filesOf, stepTitle, styleFor, stylesOf, type BankFile, type BatchBank } from './batch'
+import { followFavour } from './batchFavour'
 import { playsWhole } from './stepPiece'
 import { CampaignsView } from './CampaignsView'
 import { CloudError, currentSession, signOut, syncNow, type Session, type SyncState } from './cloud'
@@ -120,8 +121,11 @@ import {
   disconnect as disconnectPosting,
   isBeingRemade,
   lastPosts,
+  lastInsights,
   lastViews,
+  listInsights,
   listViews,
+  saveBestHoursOff,
   attachAccounts,
   attachSummary,
   listPosts,
@@ -2513,7 +2517,12 @@ export function CampaignApp() {
         music: 'bank',
       },
       // Its look goes with it, for how each hook does (batchHooks.ts).
-      batch: { ...v.batch, look: v.formula ? ('formula' as const) : (v.headlineStyle ?? ownerAngle.headline.style) },
+      batch: {
+        ...v.batch,
+        look: v.formula ? ('formula' as const) : (v.headlineStyle ?? ownerAngle.headline.style),
+        // Its song too, for how each song does (Analytics).
+        ...(v.music ? { song: bareName(v.music.name) } : {}),
+      },
     }))
     setJobs((current) => [...current, ...added])
     for (const job of added) {
@@ -2713,6 +2722,8 @@ export function CampaignApp() {
   // fetched when the app opens, comes back on screen, and every half hour.
   const [accountViews, setAccountViews] = useState<ViewsByAccount>(() => lastViews())
   const [viewsLoading, setViewsLoading] = useState(false)
+  // What works in each batch campaign (hookInsights.ts), with the views.
+  const [insights, setInsights] = useState(() => lastInsights())
   /** Bumped to read the batches again: after a change from Analytics, and
    *  whenever Analytics opens (the Batch tab changes them too). */
   const [bankVersion, setBankVersion] = useState(0)
@@ -2721,6 +2732,23 @@ export function CampaignApp() {
     let alive = true
     const load = () => {
       setViewsLoading(true)
+      void listInsights()
+        .then(async (got) => {
+          if (!alive) return
+          setInsights(got)
+          // "Use the best hooks" follows the numbers as they change.
+          let changed = false
+          for (const hooks of got.campaigns) {
+            const bank = await loadBatchBank(hooks.id).catch(() => null)
+            const next = bank ? followFavour(bank, hooks) : null
+            if (next) {
+              await saveBatchBank(next)
+              changed = true
+            }
+          }
+          if (changed && alive) setBankVersion((v) => v + 1)
+        })
+        .catch(() => {})
       void listViews()
         .then((got) => {
           if (alive) setAccountViews(got)
@@ -2754,6 +2782,21 @@ export function CampaignApp() {
       if (to !== null) runBatchesRef.current()
     })
   const setViewTarget = (campaignId: string, target: number | null) => void saveTarget(campaignId, target).then(() => setBankVersion((v) => v + 1))
+  /** "Use the best hooks" on (with what the numbers say now) or off. */
+  const setUseBest = (campaignId: string, on: boolean) =>
+    void (async () => {
+      const bank = await loadBatchBank(campaignId)
+      if (!bank) return
+      const hooks = insights.campaigns.find((c) => c.id === campaignId)
+      const next = on ? (followFavour({ ...bank, useBest: true, favour: undefined }, hooks) ?? { ...bank, useBest: true }) : { ...bank, useBest: false }
+      await saveBatchBank(next)
+      setBankVersion((v) => v + 1)
+    })()
+  /** Posting more at the best hours, on or off. */
+  const setBestHoursOff = (off: boolean) =>
+    void saveBestHoursOff(off)
+      .then(() => setPosting(postingHere()))
+      .catch(() => {})
 
   /** Recordings he joined before adding: one video, put together first,
    *  then heard and sorted like any other he drops in. */
@@ -3850,8 +3893,11 @@ export function CampaignApp() {
         rows={analyticsRows}
         profile={posting?.profile ?? null}
         loading={viewsLoading}
+        insights={insights}
         onAnswer={answerRate}
         onTarget={setViewTarget}
+        onUseBest={setUseBest}
+        onBestHoursOff={setBestHoursOff}
       />
     ) : tab === 'batch' ? (
       <BatchView

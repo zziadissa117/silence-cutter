@@ -937,3 +937,30 @@ input[type='color']::-webkit-color-swatch { border: 0.5px solid var(--edge); bor
 .status-legend .key { display: inline-block; width: 10px; height: 6px; border-radius: 2px; }
 .status-foot { margin: 0; font-size: 13px; color: var(--muted); }
 .status-stop { align-self: flex-start; }
+
+/* Analytics: when to post (a week of hours) and what works (WhatWorks.tsx). */
+.heat { display: grid; gap: 2px; margin: 10px 0 6px; }
+.heat.off { filter: grayscale(1); opacity: 0.5; }
+.heat-row { display: grid; grid-template-columns: 30px repeat(24, minmax(0, 1fr)); gap: 2px; align-items: center; }
+.heat-day { font-size: 11px; color: var(--muted); }
+.heat-row.today .heat-day { color: var(--text); font-weight: 600; }
+.heat-hour { font-size: 9px; color: var(--muted); white-space: nowrap; overflow: visible; }
+.heat-cell { height: 18px; padding: 0; border: 0; border-radius: 3px; background: var(--accent); }
+.heat-cell.picked { outline: 2px solid var(--text); outline-offset: 1px; }
+.what-works { margin-top: 14px; }
+.what-works .actions-row { margin: 8px 0; align-items: center; }
+.what-kind { margin-top: 14px; }
+.what-title { font-size: 13px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em; color: var(--muted); margin-bottom: 6px; }
+.bars { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
+.bar-gap { display: block; color: var(--muted); font-size: 12px; margin-bottom: 4px; }
+.bar-label { display: flex; align-items: baseline; gap: 8px; min-width: 0; }
+.bar-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 14px; }
+.bar-mark { flex: none; font-size: 12px; font-weight: 600; }
+.bar-mark.best { color: var(--ok); }
+.bar-mark.worst { color: var(--bad); }
+.bar-line { display: flex; align-items: center; gap: 8px; margin-top: 3px; }
+.bar-track { flex: 1; height: 10px; border-radius: 4px; background: var(--field); overflow: hidden; }
+.bar-fill { display: block; height: 100%; border-radius: 0 4px 4px 0; background: var(--accent); }
+.bar-row.best .bar-fill { background: var(--ok); }
+.bar-row.worst .bar-fill { background: var(--bad); }
+.bar-value { flex: none; min-width: 7.5em; font-size: 13px; font-variant-numeric: tabular-nums; }

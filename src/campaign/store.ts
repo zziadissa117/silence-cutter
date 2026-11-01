@@ -228,6 +228,10 @@ export interface JobBatch {
   /** The hook's look it was made with (batch.BatchLook), so how each hook
    *  does can be counted (batchHooks.ts). Absent on videos from before. */
   look?: 'box' | 'outline' | 'snap' | 'formula'
+  /** The song under it, by name without its ending, so how each song does
+   *  can be counted (postiz/hookInsights.ts). Absent on videos from before
+   *  2026-11-01 and on ones without music. */
+  song?: string
 }
 
 /** A clips-and-music video's other files, by name and type: the clips after

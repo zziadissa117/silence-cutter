@@ -458,6 +458,14 @@ running batch suggests a small step (`suggestRate`: up a fifth or at `BatchBank.
 more; down almost a third -> fewer; quiet 3 days after an answer). Yes saves the bank's
 `perDay` and runs the app's batch runner (`runBatchesRef`), which trims or tops up at once.
 
+When to post and what works (`WhatWorks.tsx`): the tick works out once a day per profile when videos do best by
+day of the week and hour (`postiz/bestHours.ts` -> `cutter_config` `hours:<profile>`, `profile.bestHours`); a batch
+day's times are evenly apart in those hours' weight (`window.ts` `evenTimes(..., hours)`, `weightScale`, at most 2x
+and at least 0.5x, gap >= `LEAST_EVEN_GAP`) on the phone (`posting.hoursHere`) and in the respread (`planRespread`,
+`evenAlready`). The `insights` action gives each batch campaign's views a video by headline, look, reaction (first
+clip of the file name) and song (`batch.song`) (`postiz/hookInsights.ts`); "Use the best hooks" sets the bank's
+`useBest`/`favour` (`batchFavour.ts`), which `pickBatch` brings round `FAVOUR` (2) times as often.
+
 ## The music bank, shared (`musicBank.ts`, `MusicBankView.tsx`, server `cutter/songs.ts`)
 
 Songs for every campaign, the same on every phone signed in to a login (each login has its own bank, `invite.ts` `songPrefix`). Each

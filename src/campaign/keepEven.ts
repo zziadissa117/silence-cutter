@@ -1,14 +1,15 @@
 // A batch's days kept evenly spread over the whole day, with nothing for him
 // to do (2026-10-26: "it all has to be evenly separated and operated over a
 // 24-hour period", "I'm not doing that manually"). New days are made even
-// (posting.ts batchTimesOn); what is already scheduled is moved by the
+// (posting.ts batchTimesOn) - closer together at the day's best hours once
+// they are known (bestHours.ts); what is already scheduled is moved by the
 // posting function (respread-batches): once for everything after this
 // update, then for any campaign whose coming days have come out uneven - a
 // raised number a day stacked onto days already made, say.
 
 import { evenAlready } from '../../supabase/functions/postiz/respread.ts'
 import { addDays, todayHere } from './batch'
-import { listPosts, respreadBatches, type ServerPost } from './posting'
+import { hoursHere, listPosts, respreadBatches, type ServerPost } from './posting'
 
 const DONE_KEY = 'cutter.evenDays'
 /** Bumped to move everything again once. */
@@ -34,7 +35,7 @@ export function unevenCampaigns(posts: readonly ServerPost[], now = new Date()):
   }
   const uneven = new Set<string>()
   for (const [key, times] of days) {
-    if (times.length >= 3 && !evenAlready(times, 0)) uneven.add(key.split('|')[0])
+    if (times.length >= 3 && !evenAlready(times, 0, hoursHere(key.split('|')[1]))) uneven.add(key.split('|')[0])
   }
   return [...uneven]
 }

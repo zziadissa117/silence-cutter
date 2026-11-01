@@ -12,6 +12,8 @@ import type { ViewsByAccount } from './analytics'
 import { DEFAULT_WINDOW, LEAST_GAP_MINUTES, cleanWindow, evenTimes, windowTimes, type PostingWindow } from '../../supabase/functions/postiz/window.ts'
 import { cleanPlace, type Place } from '../../supabase/functions/postiz/place.ts'
 import { timesFor, timesOn } from '../../supabase/functions/postiz/slots.ts'
+import { hoursOn, type BestHours } from '../../supabase/functions/postiz/bestHours.ts'
+import type { CampaignHooks } from '../../supabase/functions/postiz/hookInsights.ts'
 import { PUBLISHABLE_KEY, currentSession } from './cloud'
 import type { Campaign, CampaignPosting } from './look'
 import { dayTimes, spreadPick } from './batch'
@@ -73,6 +75,9 @@ export interface Profile {
   vapidPublic: string | null
   /** Buffer as a backup for Postiz (postiz/buffer.ts); null until a key is pasted. */
   backup?: BackupView | null
+  /** When its videos do best, by day of the week and hour (postiz/bestHours.ts):
+   *  a batch's times come closer together then. None until enough are read. */
+  bestHours?: BestHours | null
 }
 
 /** What the phone is told about the Buffer backup - never the keys. */
@@ -280,6 +285,17 @@ export function accountsBehind(
   return { accounts: [...missing], videos }
 }
 
+/** Posting more at the best hours, on (the default) or off. */
+export async function saveBestHoursOff(off: boolean): Promise<Profile> {
+  return remember(await call<Profile>('best-hours', { profile: profileId(), off }))
+}
+
+/** A date's hour weights for this phone's posting, or none: off, not
+ *  learnt yet, or posting not set up. */
+export function hoursHere(date: string): number[] | undefined {
+  return hoursOn(postingHere()?.profile.bestHours, date)
+}
+
 export async function saveLimits(limits: Limits): Promise<Profile> {
   return remember(await call<Profile>('save-limits', { profile: profileId(), limits }))
 }
@@ -368,7 +384,7 @@ export const BATCH_DAY: PostingWindow = { from: '00:00', to: '00:00', perDay: 1 
 export function batchTimesOn(place: CampaignPlace, campaignId: string, date: string, perDay: number): string[] {
   const count = perDay
   const own = ownDayTimes(place)
-  if (own.length === 0) return evenTimes(count, campaignId, date)
+  if (own.length === 0) return evenTimes(count, campaignId, date, 0, 24 * 60, hoursHere(date))
   if (count <= own.length) return dayTimes(own, count)
   // His times stay; the rest where the day's whole number would sit evenly,
   // farthest from his (stackTimesOn) - each once.
@@ -400,7 +416,7 @@ export function stackTimesOn(
   // farthest from the times it already has: as even as the day can be
   // without moving what is there (batchRespread in the posting function
   // moves those too).
-  const grid = evenTimes(taken.length + count, `${campaignId}|stack`, date).filter((t) => usable(t) && away(t) >= LEAST_GAP_MINUTES)
+  const grid = evenTimes(taken.length + count, `${campaignId}|stack`, date, 0, 24 * 60, hoursHere(date)).filter((t) => usable(t) && away(t) >= LEAST_GAP_MINUTES)
   const picked = [...grid].sort((a, b) => away(b) - away(a)).slice(0, count)
   if (picked.length >= count) return picked.sort()
   // A crowded day: anything clear of the rest, around the clock (BATCH_DAY).
@@ -554,6 +570,36 @@ export const listViews = shared(async (): Promise<ViewsByAccount> => {
     // Just won't be there offline.
   }
   return accounts ?? {}
+}, 60_000)
+
+const INSIGHTS_KEY = 'cutter.insights'
+
+export interface Insights {
+  campaigns: CampaignHooks[]
+  bestHours: BestHours | null
+}
+
+/** What works, as last read - for offline. */
+export function lastInsights(): Insights {
+  try {
+    const got = JSON.parse(localStorage.getItem(INSIGHTS_KEY) ?? 'null') as Insights | null
+    return got && Array.isArray(got.campaigns) ? got : { campaigns: [], bestHours: null }
+  } catch {
+    return { campaigns: [], bestHours: null }
+  }
+}
+
+/** What works in each batch campaign's videos, and when they do best
+ *  (postiz/hookInsights.ts, bestHours.ts). */
+export const listInsights = shared(async (): Promise<Insights> => {
+  const got = await call<Insights>('insights', { profile: profileId() })
+  const insights = { campaigns: got.campaigns ?? [], bestHours: got.bestHours ?? null }
+  try {
+    localStorage.setItem(INSIGHTS_KEY, JSON.stringify(insights))
+  } catch {
+    // Just won't be there offline.
+  }
+  return insights
 }, 60_000)
 
 export type PostAction = 'edit' | 'approve' | 'ready' | 'reject' | 'unschedule' | 'retry' | 'retry-accounts'

@@ -25,6 +25,8 @@ export interface BatchInfo {
   look?: 'box' | 'outline' | 'snap' | 'formula'
   /** He turned it down in To approve: the batch makes another for its day. */
   disliked?: boolean
+  /** The song under it, by name, for how each song does (hookInsights.ts). */
+  song?: string
 }
 
 const LOOKS = new Set(['box', 'outline', 'snap', 'formula'])
@@ -39,7 +41,8 @@ export function batchInfo(value: unknown): BatchInfo | null {
   const size = Number(v.size)
   if (!id || !date || !time || !Number.isInteger(size) || size < 1 || size > 500) return null
   const look = typeof v.look === 'string' && LOOKS.has(v.look) ? (v.look as BatchInfo['look']) : undefined
-  return { id, date, time, size, ...(v.last === true ? { last: true } : {}), ...(look ? { look } : {}) }
+  const song = typeof v.song === 'string' ? v.song.trim().slice(0, 120) : ''
+  return { id, date, time, size, ...(v.last === true ? { last: true } : {}), ...(look ? { look } : {}), ...(song ? { song } : {}) }
 }
 
 /** Where a batch video goes: its own time first, then the day's other

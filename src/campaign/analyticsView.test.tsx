@@ -18,7 +18,7 @@ vi.mock('./store', async (original) => {
 import { AnalyticsView, answerSuggestion, useCampaignRows } from './AnalyticsView'
 import type { ViewsByAccount } from './analytics'
 import type { Campaign } from './look'
-import type { Profile } from './posting'
+import type { Insights, Profile } from './posting'
 
 ;(globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true
 
@@ -76,18 +76,97 @@ afterEach(() => {
   host.remove()
 })
 
-function Screen({ onAnswer, onTarget }: { onAnswer: (id: string, to: number | null) => void; onTarget: (id: string, t: number | null) => void }) {
+const row = (key: string, views: number, videos: number, mark?: 'best' | 'worst') => ({ key, label: key, views, videos, score: views, ...(mark ? { mark } : {}) })
+let insights: Insights = { campaigns: [], bestHours: null }
+
+function Screen({
+  onAnswer,
+  onTarget,
+  onUseBest,
+  onBestHoursOff,
+}: {
+  onAnswer: (id: string, to: number | null) => void
+  onTarget: (id: string, t: number | null) => void
+  onUseBest: (id: string, on: boolean) => void
+  onBestHoursOff: (off: boolean) => void
+}) {
   const rows = useCampaignRows([campaign], profile, views, 0)
-  return <AnalyticsView rows={rows} profile={profile} loading={false} onAnswer={onAnswer} onTarget={onTarget} />
+  return (
+    <AnalyticsView
+      rows={rows}
+      profile={profile}
+      loading={false}
+      insights={insights}
+      onAnswer={onAnswer}
+      onTarget={onTarget}
+      onUseBest={onUseBest}
+      onBestHoursOff={onBestHoursOff}
+    />
+  )
 }
 
 async function show() {
   const onAnswer = vi.fn()
   const onTarget = vi.fn()
-  await act(async () => root.render(<Screen onAnswer={onAnswer} onTarget={onTarget} />))
+  const onUseBest = vi.fn()
+  const onBestHoursOff = vi.fn()
+  await act(async () => root.render(<Screen onAnswer={onAnswer} onTarget={onTarget} onUseBest={onUseBest} onBestHoursOff={onBestHoursOff} />))
   await act(async () => {})
-  return { onAnswer, onTarget }
+  return { onAnswer, onTarget, onUseBest, onBestHoursOff }
 }
+
+const button = (text: string) => [...host.querySelectorAll('button')].find((b) => b.textContent?.trim() === text)
+
+describe('what works and when to post', () => {
+  beforeEach(() => {
+    insights = { campaigns: [], bestHours: null }
+  })
+
+  it('shows each kind best first, marked, and Use the best hooks turns it on', async () => {
+    insights = {
+      campaigns: [
+        {
+          id: 'inflow',
+          name: 'Inflow',
+          videos: 40,
+          views: 900,
+          rows: {
+            headline: [row('i made $800 a day', 2100, 9, 'best'), row('nobody talks about this', 800, 8), row('stop scrolling', 200, 7, 'worst')],
+            reaction: [row('IMG_0249', 1500, 12, 'best'), row('IMG_0330', 400, 10)],
+            song: [],
+            look: [],
+          },
+        },
+      ],
+      bestHours: null,
+    }
+    const { onUseBest } = await show()
+    expect(host.textContent).toContain('Headlines')
+    expect(host.textContent).toContain('i made $800 a day')
+    expect(host.textContent).toContain('★ Best')
+    expect(host.textContent).toContain('Worst')
+    expect(host.textContent).toContain('Songs are counted from videos made from Nov 1 on')
+    await act(async () => button('Use the best hooks')!.click())
+    expect(onUseBest).toHaveBeenCalledWith('inflow', true)
+  })
+
+  it('says it is still learning the hours until enough videos are in', async () => {
+    insights = { campaigns: [], bestHours: { weights: [], videos: 40, at: new Date().toISOString() } }
+    await show()
+    expect(host.textContent).toContain('When to post')
+    expect(host.textContent).toContain('40 so far')
+  })
+
+  it('shows the week of hours once learnt, with a switch', async () => {
+    const day = Array.from({ length: 24 }, (_, h) => (h >= 13 && h < 16 ? 2 : 0.85))
+    insights = { campaigns: [], bestHours: { weights: Array.from({ length: 7 }, () => day), videos: 400, at: new Date().toISOString() } }
+    const { onBestHoursOff } = await show()
+    expect(host.querySelectorAll('.heat-cell')).toHaveLength(7 * 24)
+    expect(host.textContent).toContain('most at 1 PM - 4 PM')
+    await act(async () => button('Turn off')!.click())
+    expect(onBestHoursOff).toHaveBeenCalledWith(true)
+  })
+})
 
 describe('the Analytics tab', () => {
   it("shows a batch campaign's views a video and its trend - and nothing account by account", async () => {
