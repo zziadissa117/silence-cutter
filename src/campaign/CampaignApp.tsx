@@ -43,7 +43,7 @@ import { CampaignsView } from './CampaignsView'
 import { CloudError, currentSession, signOut, syncNow, type Session, type SyncState } from './cloud'
 import { AngleEditor, CampaignEditor } from './Editors'
 import { ChevronRight, UploadIcon } from './icons'
-import { JobRow } from './JobRow'
+import { HeadlineLook, JobRow } from './JobRow'
 import type { PopReview } from './CaptionReview'
 import { CutsEditor } from './CutsEditor'
 import { EditScreen, type EditedCuts } from './EditScreen'
@@ -371,6 +371,26 @@ export function CampaignApp() {
   const [angleId, setAngleId] = useState<string | null>(null)
   const [editing, setEditing] = useState<Editing | null>(null)
   const [headlineText, setHeadlineText] = useState('')
+  // The look of the headline on reaction videos made from Videos - White box,
+  // Outline or Snapchat (his ask, 2026-11-02) - remembered per campaign, so
+  // the one he picked is there next time. Absent: the angle's own.
+  const [reactionLooks, setReactionLooks] = useState<Record<string, HeadlineStyle>>(() => {
+    try {
+      return JSON.parse(localStorage.getItem('cutter.reactionLook') ?? '{}') as Record<string, HeadlineStyle>
+    } catch {
+      return {}
+    }
+  })
+  const pickReactionLook = (campaignId: string, style: HeadlineStyle) =>
+    setReactionLooks((all) => {
+      const next = { ...all, [campaignId]: style }
+      try {
+        localStorage.setItem('cutter.reactionLook', JSON.stringify(next))
+      } catch {
+        // Kept for this visit only.
+      }
+      return next
+    })
   // The product clip for the reaction videos being added: picked once, used
   // for every reaction clip added after it until he picks another.
   const [product, setProduct] = useState<{ id: string; file: File } | null>(null)
@@ -2432,6 +2452,9 @@ export function CampaignApp() {
     }
     const settings = { ...PRESETS[preset] }
     const parts = { productId: product.id, productName: product.file.name, productType: product.file.type }
+    // The headline look picked above the clips, when it isn't the angle's own.
+    const look = reactionLooks[campaign.id]
+    const headlineStyle = look && look !== angle.headline.style ? { headlineStyle: look } : {}
     const added: Job[] = picked.map((file) => ({
       id: `${Date.now()}-${nextId++}`,
       name: file.name,
@@ -2445,7 +2468,7 @@ export function CampaignApp() {
       status: 'queued',
       phase: 'cutting',
       progress: 0,
-      day: { approved: false, chosen: true },
+      day: { approved: false, chosen: true, ...headlineStyle },
       reaction: { ...parts, productFile: product.file },
       ...(laterNow ? { later: true } : {}),
     }))
@@ -3131,6 +3154,9 @@ export function CampaignApp() {
               onChange={(e) => setHeadlineText(e.target.value)}
             />
           )}
+          {isReaction(campaign) && headlineText.trim() ? (
+            <HeadlineLook value={reactionLooks[campaign.id] ?? angle.headline.style ?? 'box'} onPick={(style) => pickReactionLook(campaign.id, style)} />
+          ) : null}
           {isReaction(campaign) ? (
             <>
               <div className="product-row">

@@ -3,6 +3,14 @@
 Newest first. Every change says what it does, how to use it, and how it works
 underneath. Kept up to date with each commit.
 
+## Reaction videos: pick the headline's look (White box, Outline, Snapchat)
+App only: run ./deploy.sh.
+**What he asked (2026-11-02):** in Videos, a reaction video's headline in Snapchat text or Outline or the box.
+Under the headline box on Videos -> Reaction video, once a headline is written: White box / Outline / Snapchat
+(`JobRow.HeadlineLook`). Every reaction added after takes it (`day.headlineStyle`, the per-video look the edit
+screen already had, read by the render), and the pick is remembered per campaign on the phone
+(`cutter.reactionLook`). Nothing picked: the angle's own look, as before.
+
 ## Simpler to find your way: five tabs, Posts its own tab, fewer buttons at once; Analytics fits the screen
 App only: run ./deploy.sh.
 **What he asked (2026-11-02):** "it's very confusing because there are like a million different types of things,
