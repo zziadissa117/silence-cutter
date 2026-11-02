@@ -72,7 +72,7 @@ import {
   normalTag,
   type PostingRules,
 } from './caption.ts'
-import { RECHECK_SCHEMA, RECHECK_SYSTEM, acceptFix, cleanContext, costCents, recheckMessage } from './recheck.ts'
+import { RECHECK_SCHEMA, RECHECK_SYSTEM, acceptFix, cleanContext, cleanUnsure, costCents, recheckMessage } from './recheck.ts'
 import { byteRange } from './range.ts'
 import { SUMMARY_HOUR, summaryText, type DayPost } from './summary.ts'
 import { GONE_MS, serverTrouble, troubleNote, type ServerPing } from './serverWatch.ts'
@@ -1649,7 +1649,8 @@ async function recheckCaptions(profile: Profile, body: Record<string, unknown>):
     model: MODEL,
     max_tokens: 8000,
     system: RECHECK_SYSTEM,
-    output_config: { effort: 'medium', format: { type: 'json_schema', schema: RECHECK_SCHEMA } },
+    // High: he wants to not touch captions at all (2026-11-02); a careful read costs a cent or two more.
+    output_config: { effort: 'high', format: { type: 'json_schema', schema: RECHECK_SCHEMA } },
     messages: [{ role: 'user', content: recheckMessage(context, vocabulary, earlier, phrases) }],
   }
   let response
@@ -1673,7 +1674,7 @@ async function recheckCaptions(profile: Profile, body: Record<string, unknown>):
     .filter((b) => b.type === 'text')
     .map((b) => b.text ?? '')
     .join('')
-  let parsed: { phrases?: unknown } = {}
+  let parsed: { phrases?: unknown; unsure?: unknown } = {}
   try {
     parsed = JSON.parse(said)
   } catch {
@@ -1688,7 +1689,7 @@ async function recheckCaptions(profile: Profile, body: Record<string, unknown>):
   }
   const result = phrases.map((original, i) => acceptFix(original, fixed[i]))
   const changed = result.flatMap((text, i) => (text !== phrases[i] ? [i] : []))
-  return reply({ phrases: result, changed, costCents: cost })
+  return reply({ phrases: result, changed, unsure: cleanUnsure(parsed.unsure, phrases.length), costCents: cost })
 }
 
 async function sent(profile: Profile, body: Record<string, unknown>): Promise<Response> {

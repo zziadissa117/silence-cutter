@@ -73,6 +73,9 @@ export function EditScreen({
   appliedRef.current = applied
   const settle = useRef(0)
   const [typing, setTyping] = useState(false)
+  // Opens on the quick check: the video and the captions to look at, one at a
+  // time. The timeline and its tools only when he asks (2026-11-02).
+  const [quick, setQuick] = useState(true)
   const control = useRef<CutsControl | null>(null)
 
   // The captions drawn on the video: his, as he types them.
@@ -162,6 +165,7 @@ export function EditScreen({
       control={control}
       headActions={null}
       typing={typing}
+      quick={quick}
       below={
         <CaptionReview
           key={`${id}:${JSON.stringify(applied)}`}
@@ -170,6 +174,11 @@ export function EditScreen({
           file={null}
           initial={shown}
           embedded={embedded}
+          quick={quick}
+          onTimeline={() => {
+            setQuick(false)
+            window.scrollTo({ top: 0 })
+          }}
           onChange={(next) => {
             words.current = next
             control.current?.repaint()

@@ -396,6 +396,7 @@ export function CutsEditor({
   control,
   headActions,
   typing = false,
+  quick = false,
 }: {
   name: string
   /** The recording, or null while it is being fetched from storage. */
@@ -450,6 +451,9 @@ export function CutsEditor({
   headActions?: ReactNode
   /** He is typing below: the video is made smaller to leave room. */
   typing?: boolean
+  /** The quick check (EditScreen): only the video, big - the timeline and
+   *  its tools stay hidden until he asks for the timeline editor. */
+  quick?: boolean
 }) {
   const [keep, setKeep] = useState(initial)
   const [history, setHistory] = useState<Range[][]>([])
@@ -1243,7 +1247,7 @@ export function CutsEditor({
   const marksTo = Math.min(duration, (around + 3) * chunk)
 
   return (
-    <section className={`screen cuts${typing ? ' typing' : ''}`} aria-label={`Cuts for ${name}`}>
+    <section className={`screen cuts${typing ? ' typing' : ''}${quick ? ' quick' : ''}`} aria-label={`Cuts for ${name}`}>
       <div className="review-top" ref={top}>
         <div className="review-head">
           <button type="button" className="back" onClick={onCancel}>

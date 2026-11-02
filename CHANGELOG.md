@@ -3,6 +3,21 @@
 Newest first. Every change says what it does, how to use it, and how it works
 underneath. Kept up to date with each commit.
 
+## Quick caption check: only what needs a look, one card at a time; then Approve or the timeline editor
+Needs deploying: run ./deploy.sh (it runs ./deploy-server.sh too).
+**What he asked (2026-11-02):** "I want you to find a way to check the captions quicker, so I can just say, 'Okay,
+good, good, good, next'" - no scrolling every phrase with the keyboard up; ready -> approve and send; not ready ->
+"Go to timeline editor".
+- Check now opens on the **quick check** (`EditScreen` `quick`, `CutsEditor` `quick`, `CaptionReview` `QuickCheck`):
+  the video with its captions, Claude's read running by itself, then a card for each phrase to look at - its moment
+  shown on the video, **Good** (on to the next, which plays), **Undo change** (back to what was heard) when Claude
+  changed it, **Fix** (a box for that phrase only - the keyboard only then). At the bottom, **Approve & next** and
+  **Timeline editor** (the same video, the cuts' timeline and everything else, no reload). Nothing to look at:
+  "Every caption looks right".
+- **Claude now says what it couldn't be sure of** (`recheck.ts` `unsure`, `cleanUnsure`; effort high). Once it has
+  read them, the cards are only what it changed, what it is unsure of, and a campaign name heard nearly right - the
+  cutter's own unsure moments no longer add cards (Claude judged those). The cards stay put while he fixes one.
+
 ## Reaction videos: pick the headline's look (White box, Outline, Snapchat)
 App only: run ./deploy.sh.
 **What he asked (2026-11-02):** in Videos, a reaction video's headline in Snapchat text or Outline or the box.

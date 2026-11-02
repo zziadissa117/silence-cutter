@@ -18,13 +18,15 @@ Rules:
 - Amounts and numbers as a viewer reads them best ("20K", "$500", "3x").
 - If you are not sure what he said, leave the phrase exactly as given.
 - Keep casing and punctuation as given, except where a fix needs its own (a name's capitals).
-- A phrase that is already right comes back unchanged.`
+- A phrase that is already right comes back unchanged.
+
+Also list, in "unsure", the numbers (counting from 0) of the phrases where you could not tell what he really said - a word that makes no sense yet has no clear fix, a name you don't know, a garbled bit. He checks only those and the ones you changed, so name every phrase you have a real doubt about, and none you are sure of.`
 
 export const RECHECK_SCHEMA = {
   type: 'object',
   additionalProperties: false,
-  required: ['phrases'],
-  properties: { phrases: { type: 'array', items: { type: 'string' } } },
+  required: ['phrases', 'unsure'],
+  properties: { phrases: { type: 'array', items: { type: 'string' } }, unsure: { type: 'array', items: { type: 'integer' } } },
 }
 
 const norm = (s: string) => s.toLowerCase().replace(/[^\p{L}\p{N}]+/gu, ' ').trim()
@@ -108,4 +110,11 @@ export function recheckMessage(context: RecheckContext, vocabulary: readonly str
     earlier.length > 0 ? `How this campaign's earlier videos were described:\n${earlier.map((c) => `- ${c}`).join('\n')}` : '',
   ].filter(Boolean)
   return `${lines.join('\n\n')}\n\nCaptions:\n${phrases.map((p, i) => `${i + 1}. ${p}`).join('\n')}`
+}
+
+/** The phrases Claude could not be sure of, as indexes into the list: whole
+ *  numbers in range, each once. Anything else is left out. */
+export function cleanUnsure(value: unknown, count: number): number[] {
+  if (!Array.isArray(value)) return []
+  return [...new Set(value.filter((n): n is number => Number.isInteger(n) && n >= 0 && n < count))].sort((a, b) => a - b)
 }

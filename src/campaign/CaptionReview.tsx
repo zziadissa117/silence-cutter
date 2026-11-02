@@ -180,6 +180,8 @@ export function CaptionReview({
   riskSpans = [],
   pops,
   embedded,
+  quick = false,
+  onTimeline,
 }: {
   name: string
   /** The video itself, or null while it is being fetched from storage. */
@@ -227,6 +229,13 @@ export function CaptionReview({
   pops?: PopReview
   /** On the same page as the cuts: no video of its own. */
   embedded?: EmbeddedVideo
+  /** The quick check (with `embedded`): only the phrases Claude changed or
+   *  that may be wrong, one card at a time - Good, Undo, Fix - and Approve or
+   *  the timeline editor. His words (2026-11-02): "Okay, good, good, good,
+   *  next" instead of scrolling every phrase with the keyboard up. */
+  quick?: boolean
+  /** Leaves the quick check for the full timeline editor, same video. */
+  onTimeline?: () => void
 }) {
   // The phrases as heard: each keeps its moment however it is retyped.
   const [heard] = useState(() => phrasesOf(initial))
@@ -243,7 +252,7 @@ export function CaptionReview({
   phrasesRef.current = phrases
 
   const [checking, setChecking] = useState(false)
-  const [rechecked, setRechecked] = useState<{ changed: Set<number>; cents: number; before: string[]; error?: string } | null>(null)
+  const [rechecked, setRechecked] = useState<{ changed: Set<number>; unsure?: Set<number>; cents: number; before: string[]; error?: string } | null>(null)
   const [onlyFlagged, setOnlyFlagged] = useState(false)
   const [current, setCurrent] = useState(0)
   const [playing, setPlaying] = useState(false)
@@ -422,7 +431,7 @@ export function CaptionReview({
       const now = textsRef.current
       const changed = new Set(out.changed.filter((k) => now[k] === before[k]))
       if (changed.size > 0) applyTexts(now.map((t, k) => (changed.has(k) ? out.phrases[k] : t)))
-      setRechecked({ changed, cents: out.costCents, before, error: out.error })
+      setRechecked({ changed, unsure: out.unsure ? new Set(out.unsure) : undefined, cents: out.costCents, before, error: out.error })
       if (changed.size > 0) setOnlyFlagged(true)
     } catch (e) {
       setRechecked({ changed: new Set(), cents: 0, before, error: e instanceof Error ? e.message : String(e) })
@@ -449,6 +458,19 @@ export function CaptionReview({
     [phrases, texts, vocabulary, rechecked, riskSpans],
   )
 
+  /** What the quick check shows: once Claude has read them, only what it
+   *  changed, what it couldn't be sure of, and a campaign name heard nearly
+   *  right - the cutter's own unsure moments are Claude's to judge then.
+   *  Before (or without) Claude, everything flagged. */
+  const toLookAt = useMemo(() => {
+    if (!rechecked || rechecked.error || !rechecked.unsure) return flagged
+    const vocabOnly = flaggedPhrases(
+      phrases.map((p, k) => ({ text: texts[k] ?? '', start: p[0]?.start ?? 0, end: p[p.length - 1]?.end ?? 0 })),
+      { vocabulary, changed: rechecked.changed },
+    )
+    return new Set([...vocabOnly, ...rechecked.unsure])
+  }, [flagged, rechecked, phrases, texts, vocabulary])
+
   /** On to the next phrase's box, or done after the last. */
   const next = (k: number) => {
     const box = list.current?.children[k + 1]?.querySelector('textarea')
@@ -470,6 +492,36 @@ export function CaptionReview({
           {approveLabel}
         </button>
       </section>
+    )
+  }
+
+  if (embedded && quick) {
+    return (
+      <QuickCheck
+        texts={texts}
+        heard={asHeard}
+        flagged={toLookAt}
+        changed={rechecked?.changed ?? new Set()}
+        before={rechecked?.before}
+        checking={checking}
+        error={rechecked?.error}
+        approveLabel={approveLabel}
+        onShow={(k) => {
+          const first = firstWordOf(k)
+          if (first >= 0) embedded.seek(words[first].start + 0.02)
+          setCurrent(k)
+        }}
+        onPlay={(k) => {
+          const first = firstWordOf(k)
+          if (first >= 0) embedded.playFrom(Math.max(0, words[first].start - 0.3))
+        }}
+        onPlayAll={() => embedded.playFrom(words[0]?.start ?? 0)}
+        onText={type}
+        onTyping={setTyping}
+        onApprove={() => onApprove(words)}
+        onSkip={() => onSkip(words)}
+        onTimeline={onTimeline}
+      />
     )
   }
 
@@ -735,6 +787,179 @@ export function CaptionReview({
           {approveLabel}
         </button>
         <button type="button" className="linkbtn review-skip" onClick={() => onSkip(words)}>
+          Make it without captions
+        </button>
+      </div>
+    </section>
+  )
+}
+
+/** The quick check's cards: each phrase to look at, one at a time, its moment
+ *  shown on the video above. Good goes on (and plays the next one); Undo puts
+ *  back what was heard before Claude changed it; Fix opens a box for that
+ *  phrase only. Then Approve, or the timeline editor. */
+function QuickCheck({
+  texts,
+  heard,
+  flagged,
+  changed,
+  before,
+  checking,
+  error,
+  approveLabel,
+  onShow,
+  onPlay,
+  onPlayAll,
+  onText,
+  onTyping,
+  onApprove,
+  onSkip,
+  onTimeline,
+}: {
+  texts: string[]
+  /** Each phrase as first heard. */
+  heard: string[]
+  flagged: Set<number>
+  /** The phrases Claude changed, and what they said before. */
+  changed: Set<number>
+  before?: string[]
+  checking: boolean
+  error?: string
+  approveLabel: string
+  onShow: (k: number) => void
+  onPlay: (k: number) => void
+  onPlayAll: () => void
+  onText: (k: number, text: string) => void
+  onTyping: (typing: boolean) => void
+  onApprove: () => void
+  onSkip: () => void
+  onTimeline?: () => void
+}) {
+  // Fixed once Claude has read them: fixing a phrase mustn't take it out of
+  // the cards under his finger and skip the next one.
+  const [queue, setQueue] = useState<number[]>(() => [...flagged].sort((a, b) => a - b))
+  const [at, setAt] = useState(0)
+  useEffect(() => {
+    if (checking) return
+    setQueue([...flagged].sort((a, b) => a - b))
+    setAt(0)
+  }, [checking]) // eslint-disable-line react-hooks/exhaustive-deps
+  const [fixing, setFixing] = useState(false)
+  const k = queue[at]
+  const done = at >= queue.length
+
+  useEffect(() => {
+    if (k !== undefined) onShow(k)
+  }, [k]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  /** On to the next card - playing it, since this is his tap. */
+  const next = () => {
+    setFixing(false)
+    onTyping(false)
+    const n = at + 1
+    setAt(n)
+    if (queue[n] !== undefined) onPlay(queue[n])
+  }
+
+  const was = k !== undefined && changed.has(k) ? (before?.[k] ?? heard[k]) : null
+
+  return (
+    <section className="review review-embedded quick-check" aria-label="Quick caption check">
+      {checking ? (
+        <div className="quick-card quick-wait">
+          <span className="spinner" aria-hidden />
+          <span>Claude is reading the captions…</span>
+        </div>
+      ) : queue.length === 0 ? (
+        <div className="quick-card quick-done">
+          <div className="quick-title">{error ? 'Captions ready to look at' : 'Every caption looks right'}</div>
+          <p className="hint">{error ?? 'Claude read them all and found nothing to fix.'}</p>
+          <button type="button" className="linkbtn" onClick={onPlayAll}>
+            Watch it once
+          </button>
+        </div>
+      ) : done ? (
+        <div className="quick-card quick-done">
+          <div className="quick-title">All {queue.length} checked</div>
+          <button type="button" className="linkbtn" onClick={() => setAt(0)}>
+            Go through them again
+          </button>
+          <button type="button" className="linkbtn" onClick={onPlayAll}>
+            Watch it once
+          </button>
+        </div>
+      ) : (
+        <div className="quick-card">
+          <div className="quick-progress">
+            <span>
+              {at + 1} of {queue.length} to look at
+            </span>
+            <button type="button" className="linkbtn" onClick={() => onPlay(k)}>
+              ▶ Play it
+            </button>
+          </div>
+          {fixing ? (
+            <input
+              className="quick-fix"
+              type="text"
+              autoFocus
+              value={texts[k]}
+              aria-label="This caption"
+              autoCapitalize="off"
+              autoCorrect="off"
+              spellCheck={false}
+              enterKeyHint="done"
+              onFocus={() => onTyping(true)}
+              onChange={(e) => onText(k, e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') next()
+              }}
+            />
+          ) : (
+            <div className="quick-text">{texts[k] || <span className="hint">No caption here</span>}</div>
+          )}
+          {was !== null && was !== texts[k] ? (
+            <div className="quick-was">
+              Claude changed it from <s>{was}</s>
+            </div>
+          ) : changed.has(k) ? null : (
+            <div className="quick-was">May be misheard - check it against what you said.</div>
+          )}
+          <div className="quick-actions">
+            <button type="button" className="btn primary" onClick={next}>
+              {fixing ? 'Done' : 'Good'}
+            </button>
+            {was !== null && was !== texts[k] && !fixing ? (
+              <button
+                type="button"
+                className="btn"
+                onClick={() => {
+                  onText(k, was)
+                  next()
+                }}
+              >
+                Undo change
+              </button>
+            ) : null}
+            {fixing ? null : (
+              <button type="button" className="btn" onClick={() => setFixing(true)}>
+                Fix
+              </button>
+            )}
+          </div>
+        </div>
+      )}
+
+      <div className="editor-foot sticky quick-foot">
+        <button type="button" className="btn primary wide" onClick={onApprove}>
+          {approveLabel}
+        </button>
+        {onTimeline ? (
+          <button type="button" className="btn wide" onClick={onTimeline}>
+            Timeline editor
+          </button>
+        ) : null}
+        <button type="button" className="linkbtn review-skip" onClick={onSkip}>
           Make it without captions
         </button>
       </div>

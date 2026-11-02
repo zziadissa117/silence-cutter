@@ -65,3 +65,11 @@ describe('recheckMessage', () => {
     expect(cleanContext({ campaign: 5, brand: 'x', about: null })).toEqual({ campaign: '', brand: [], about: '', angle: '', headline: '' })
   })
 })
+
+describe('cleanUnsure', () => {
+  it('keeps whole numbers in range, each once, in order', async () => {
+    const { cleanUnsure } = await import('./recheck.ts')
+    expect(cleanUnsure([3, 1, 1, -1, 2.5, 9, 'x'], 5)).toEqual([1, 3])
+    expect(cleanUnsure('nonsense', 5)).toEqual([])
+  })
+})

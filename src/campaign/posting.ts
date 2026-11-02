@@ -801,6 +801,8 @@ export interface RecheckResult {
   phrases: string[]
   /** Indexes of the phrases Claude changed. */
   changed: number[]
+  /** Indexes of the phrases Claude couldn't be sure of (absent before 2026-11-02). */
+  unsure?: number[]
   /** What the check cost, in cents, from the tokens the API reported. */
   costCents: number
   /** Said when Claude's answer could not be used. */
