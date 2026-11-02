@@ -20,7 +20,6 @@ import { within } from '../media/within'
 import { StallError, firstRestartFor } from './stallRestart'
 import { describeVideo, traceLine, traceReset, traceStarted } from './renderTrace'
 import { healthAdvice, healthLine, mediaHealth } from './mediaProbe'
-import { ModeNav } from '../ModeNav'
 import { lostPick, pickArrived, pickQuiet, pickSaved, whenPickGoesWrong } from '../pickWatch'
 import { report } from '../report'
 import { typedBack } from './captionFixes'
@@ -229,6 +228,7 @@ import { keepEven } from './keepEven'
 import { linkBatches, SERVER_URL_EVENT, serverUrl } from './serverLink'
 import { reportMaking, SERVER_BANKS_EVENT, SERVER_COMMAND_EVENT, serverLog, type ServerCommand, type ServerMaking } from './serverMode'
 import { TabBar, type Tab } from './TabBar'
+import { BackToMore, MoreView } from './MoreView'
 import { keepScreenOn } from './wakeLock'
 
 const LAST_KEY = 'campaign.last'
@@ -728,7 +728,6 @@ export function CampaignApp() {
     setPostLaterState(on)
   }
   const laterNow = postLater && posting !== null
-  const [showPosts, setShowPosts] = useState(() => window.location.hash === '#posts')
   const [settingUpPosting, setSettingUpPosting] = useState(false)
   const [push, setPush] = useState<PushState>('off')
   const [toApprove, setToApprove] = useState(() => lastPosts().filter((p) => p.status === 'waiting').length)
@@ -736,7 +735,10 @@ export function CampaignApp() {
   // Finished videos still being copied for Postiz: their cut stays until
   // the copy is made, whatever is cleared meanwhile.
   const copying = useRef(new Map<string, Promise<unknown>>())
-  const [tab, setTab] = useState<Tab>('videos')
+  const [tab, setTab] = useState<Tab>(() => (window.location.hash === '#posts' ? 'posts' : 'videos'))
+  // Posts is a tab of its own now (TabBar): opening it is going to it.
+  const showPosts = tab === 'posts'
+  const setShowPosts = useCallback((on: boolean) => setTab(on ? 'posts' : 'videos'), [])
   const [openCampaignId, setOpenCampaignId] = useState<string | null>(null)
   const [jobs, setJobs] = useState<Job[]>([])
   /** Posts being made again (Edit again): kept out of Posts and its count
@@ -2989,7 +2991,9 @@ export function CampaignApp() {
 
       {notices}
 
-      {posting ? (
+      {/* Posts has its own tab, with how many wait to be approved on it: here
+          only what is still going up, or can't. */}
+      {posting && (unsent.length > 0 || outgoing.some((o) => o.entry.state === 'sending')) ? (
         <button type="button" className="callout posts-link" onClick={() => setShowPosts(true)}>
           <span>
             <span className="label">Posts</span>
@@ -3002,10 +3006,11 @@ export function CampaignApp() {
       ) : null}
       {posting ? (
         <div className="post-later">
+          <div className="under-drop-title">The videos you add now post</div>
           <div className="seg full" role="radiogroup" aria-label="When the videos you add now post">
             {[
-              { later: false, label: 'Post today' },
-              { later: true, label: 'For the next days' },
+              { later: false, label: 'Today' },
+              { later: true, label: 'From tomorrow' },
             ].map((o) => (
               <button
                 key={o.label}
@@ -3063,10 +3068,11 @@ export function CampaignApp() {
           {dropZone("Add today's videos", "Each is sorted into its campaign - you approve before anything's made")}
           {campaign && angle ? (
             <div className="under-drop-links">
+              <span className="under-drop-title">Other kinds of video</span>
               {reactionCampaigns.length > 0 ? (
                 <button
                   type="button"
-                  className="linkbtn"
+                  className="btn small"
                   onClick={() => {
                     if (!isReaction(campaign)) select(reactionCampaigns[0])
                     setMode('one')
@@ -3075,10 +3081,10 @@ export function CampaignApp() {
                   Reaction video
                 </button>
               ) : null}
-              <button type="button" className="linkbtn" onClick={() => setMode('clips')}>
-                No talking? Clips + music
+              <button type="button" className="btn small" onClick={() => setMode('clips')}>
+                Clips + music, no talking
               </button>
-              <button type="button" className="linkbtn" onClick={() => setMode('join')}>
+              <button type="button" className="btn small" onClick={() => setMode('join')}>
                 Join recordings first
               </button>
             </div>
@@ -3818,17 +3824,6 @@ export function CampaignApp() {
           pops: popReviewFor(reviewJob),
         }}
       />
-    ) : showPosts && posting ? (
-      <PostsView
-        campaigns={campaigns ?? []}
-        editable={editable}
-        onEditAgain={(key) => void editAgain(key)}
-        remaking={remaking}
-        onBack={() => {
-          setShowPosts(false)
-          if (window.location.hash === '#posts') history.replaceState(null, '', window.location.pathname)
-        }}
-      />
     ) : showSignIn ? (
       <SignIn
         onSignedIn={(next) => {
@@ -3838,8 +3833,25 @@ export function CampaignApp() {
         }}
         onCancel={() => setShowSignIn(false)}
       />
-    ) : campaigns === null ? null : tab === 'campaigns' ? (
+    ) : campaigns === null ? null : tab === 'posts' ? (
+      posting ? (
+        <PostsView campaigns={campaigns} editable={editable} onEditAgain={(key) => void editAgain(key)} remaking={remaking} />
+      ) : (
+        <section className="screen">
+          <div className="screen-head">
+            <h1>Posts</h1>
+          </div>
+          <p className="lede">Connect Postiz once and every finished video can post to your accounts from here.</p>
+          <button type="button" className="btn primary" onClick={() => setSettingUpPosting(true)}>
+            Set up posting
+          </button>
+        </section>
+      )
+    ) : tab === 'more' ? (
+      <MoreView campaigns={ownCampaigns.length} onOpen={setTab} workToLose={workToLose} />
+    ) : tab === 'campaigns' ? (
       <CampaignsView
+        onBackToMore={() => setTab('more')}
         campaigns={campaigns}
         openId={openCampaignId}
         onOpen={setOpenCampaignId}
@@ -3868,6 +3880,7 @@ export function CampaignApp() {
       />
     ) : tab === 'pictures' ? (
       <>
+        <BackToMore onBack={() => setTab('more')} />
         <div className="screen-head">
           <h1>Bank</h1>
         </div>
@@ -3877,6 +3890,7 @@ export function CampaignApp() {
       </>
     ) : tab === 'formats' ? (
       <FormatsView
+        onBackToMore={() => setTab('more')}
         campaigns={campaigns}
         profile={posting?.profile ?? null}
         jobs={formatJobs}
@@ -3915,6 +3929,7 @@ export function CampaignApp() {
       />
     ) : tab === 'settings' ? (
       <SettingsView
+        onBackToMore={() => setTab('more')}
         session={session}
         syncState={syncState}
         preset={preset}
@@ -3965,20 +3980,28 @@ export function CampaignApp() {
     batchEditing !== null ||
     showSignIn ||
     settingUpPosting ||
-    (showPosts && posting !== null) ||
     asking !== null || Boolean(cutsJob && cutting) || Boolean(reviewJob && reviewing)
   inFlowRef.current = inFlow
 
   return (
     <>
-      {inFlow ? null : <ModeNav current="campaign" workToLose={workToLose} />}
       <main className={inFlow ? 'flow' : 'tabbed'}>
         <UpdateBanner safeToReload={false} handled />
         {updateWaiting ? <p className="notice">Updating the Cutter to its new version{jobs.some((j) => j.status === 'working') ? ' after the video being made' : ''} - your videos carry on where they were.</p> : null}
         {!inFlow && tab !== 'videos' ? notices : null}
         {screen}
       </main>
-      {inFlow ? null : <TabBar tab={tab} onTab={setTab} dots={{ analytics: analyticsRows.some((r) => r.suggestion) }} />}
+      {inFlow ? null : (
+        <TabBar
+          tab={tab}
+          onTab={(next) => {
+            setTab(next)
+            if (next !== 'posts' && window.location.hash === '#posts') history.replaceState(null, '', window.location.pathname)
+          }}
+          dots={{ analytics: analyticsRows.some((r) => r.suggestion) }}
+          counts={{ posts: posting ? toApprove : 0 }}
+        />
+      )}
     </>
   )
 }

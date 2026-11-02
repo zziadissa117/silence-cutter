@@ -3,6 +3,26 @@
 Newest first. Every change says what it does, how to use it, and how it works
 underneath. Kept up to date with each commit.
 
+## Simpler to find your way: five tabs, Posts its own tab, fewer buttons at once; Analytics fits the screen
+App only: run ./deploy.sh.
+**What he asked (2026-11-02):** "it's very confusing because there are like a million different types of things,
+buttons" - look at it as someone who has never used it, keep everything it can do; and Analytics overflowed to the right.
+- **Five tabs instead of seven:** Videos · Posts · Batch · Analytics · More (`TabBar.tsx`). Posts is a tab now, with a
+  red count of posts to approve; More (`MoreView.tsx`) holds Campaigns, Formats, Bank and Settings - each with
+  "‹ More" back - and Cut only, the plain cutter (the Cut only / Campaign videos switch that sat on top of every
+  screen is gone from this page; the plain cutter keeps its own way back, unchanged). `tab === 'posts'` replaces the
+  old Posts screen; everything that opened Posts (a notification, `#posts`, Edit again's Cancel) goes to the tab.
+- **Videos:** the Posts card shows only when something is still going up or can't; "The videos you add now post:
+  Today / From tomorrow"; the other kinds of video as buttons under "Other kinds of video".
+- **Posts:** one "All campaigns · 84" box instead of a button for every campaign; + New post in the header. Each
+  post: Approve (or Brand approved), Post now, Watch, Reject - and "More options" for post later, change time, music,
+  save video, edit again and a different caption for one platform.
+- **A campaign:** Stop all its posts, End campaign and Delete folded under "Stop or end this campaign".
+- **Batch:** "Set order" is "Product steps"; "Reaction + video".
+- **Overflow:** a long headline or clip name in What works widened the page (a one-line name in a grid row that could
+  grow); rows can't grow past the screen now, and headers, the hook looks and trouble rows wrap. Checked at 390, 375,
+  360 and 320 px on every tab and every screen under More.
+
 ## A warning when an account stops getting views; new headlines like the best
 Needs deploying: run ./deploy.sh (it runs ./deploy-server.sh too).
 **What he picked (2026-11-01):** 2 and 4 of the ideas list.

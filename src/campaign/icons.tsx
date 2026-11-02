@@ -21,6 +21,23 @@ function Icon({ children, size = 24 }: { children: ReactNode; size?: number }) {
   )
 }
 
+/** A paper plane: the posts going out. */
+export const PostsIcon = () => (
+  <Icon>
+    <path d="M20.5 3.5L3.5 10.5l7 2.5 2.5 7 7.5-16.5z" />
+    <path d="M10.5 13l4-4" />
+  </Icon>
+)
+
+/** Three dots: everything else. */
+export const MoreIcon = () => (
+  <Icon>
+    <circle cx="5.5" cy="12" r="1.25" />
+    <circle cx="12" cy="12" r="1.25" />
+    <circle cx="18.5" cy="12" r="1.25" />
+  </Icon>
+)
+
 /** A clip: the day's videos. */
 export const VideosIcon = () => (
   <Icon>

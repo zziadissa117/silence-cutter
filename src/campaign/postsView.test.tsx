@@ -88,7 +88,6 @@ afterEach(() => {
 const scheduledRows = () => [...host.querySelectorAll('.list-title')].find((t) => t.textContent?.startsWith('Scheduled'))!.nextElementSibling!.children
 const rows = scheduledRows
 const polsiaRow = () => [...host.querySelectorAll('.batch-row')].find((r) => r.textContent?.includes('Polsia ·'))!
-const chip = (name: string) => [...host.querySelectorAll('.posts-filter button')].find((b) => b.textContent === name) as HTMLButtonElement
 
 describe('scheduled posts', () => {
   it('folds a batch of 25 into one row he can open', async () => {
@@ -106,11 +105,17 @@ describe('scheduled posts', () => {
   })
 
   it('shows one campaign at a time, and remembers it', async () => {
-    await act(async () => chip('Inflow 1').click())
+    const filter = host.querySelector('select.posts-filter') as HTMLSelectElement
+    expect([...filter.options].map((o) => o.textContent)).toContain('All campaigns · 36')
+    const pick = async (value: string) => {
+      filter.value = value
+      await act(async () => filter.dispatchEvent(new Event('change', { bubbles: true })))
+    }
+    await pick('inflow')
     expect(rows()).toHaveLength(1)
     expect(host.textContent).not.toContain('Polsia · 27 videos')
     expect(localStorage.getItem('cutter.posts.show')).toBe('inflow')
-    await act(async () => chip('All 36').click())
+    await pick('')
     expect(rows()).toHaveLength(2)
   })
 })

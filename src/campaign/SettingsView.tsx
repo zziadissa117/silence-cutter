@@ -23,6 +23,7 @@ import { PostingLimits, PostingLimitsRow } from './PostingLimits'
 import { BufferBackup } from './BufferBackup'
 import { PlaceField } from './InstagramPlace'
 import type { PushState } from './push'
+import { BackToMore } from './MoreView'
 
 const PUSH_LINE: Record<PushState, string> = {
   on: 'On - posts to approve, and reminders to submit.',
@@ -163,6 +164,7 @@ function WideClips() {
 }
 
 export function SettingsView({
+  onBackToMore,
   session,
   syncState,
   preset,
@@ -187,6 +189,8 @@ export function SettingsView({
   campaigns,
   onPlacesChanged,
 }: {
+  /** Back to More, which it is reached from. */
+  onBackToMore?: () => void
   session: Session | null
   syncState: SyncState
   preset: PresetName
@@ -220,6 +224,7 @@ export function SettingsView({
   }
   return (
     <section className="screen">
+      {onBackToMore ? <BackToMore onBack={onBackToMore} /> : null}
       <div className="screen-head">
         <h1>Settings</h1>
       </div>

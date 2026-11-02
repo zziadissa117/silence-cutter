@@ -16,6 +16,7 @@ import { ClipViewer } from './ClipViewer'
 import { filmingOf } from './filming'
 import { fingerprint, skippedNotice } from './fingerprint'
 import { SCHEDULE_DAYS, daysLine, mixesOf, spreadOver, type FormatLine, type FormatScript, type FormatTake } from './formats'
+import { BackToMore } from './MoreView'
 import { ChevronLeft, ChevronRight } from './icons'
 import { PHASE_LABEL, canShareFiles, formatTime, share, type Job } from './jobs'
 import { isReaction, type Angle, type Campaign } from './look'
@@ -59,6 +60,7 @@ export interface FormatClips {
 }
 
 export function FormatsView({
+  onBackToMore,
   campaigns,
   profile,
   jobs,
@@ -72,6 +74,8 @@ export function FormatsView({
   onRemove,
   onRetry,
 }: {
+  /** Back to More, which it is reached from. */
+  onBackToMore?: () => void
   campaigns: Campaign[]
   profile: Profile | null
   /** This session's format takes: being made, failed, or made. */
@@ -111,6 +115,7 @@ export function FormatsView({
   if (!campaign) {
     return (
       <section className="screen formats">
+        {onBackToMore ? <BackToMore onBack={onBackToMore} /> : null}
         <div className="screen-head">
           <h1>Formats</h1>
         </div>
@@ -155,6 +160,7 @@ export function FormatsView({
 
   return (
     <section className="screen formats">
+      {onBackToMore ? <BackToMore onBack={onBackToMore} /> : null}
       <div className="screen-head">
         <h1>Formats</h1>
       </div>

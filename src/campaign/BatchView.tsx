@@ -1194,7 +1194,7 @@ export function BatchView({
         </select>
         {bank && (bank.layout ?? 'after') === 'after' ? (
           <button type="button" className="btn small" aria-expanded={ordering} onClick={() => setOrdering((o) => !o)}>
-            {bank.steps?.length ? `Order · ${bank.steps.length} steps` : 'Set order'}
+            {bank.steps?.length ? `Product steps · ${bank.steps.length}` : 'Product steps'}
           </button>
         ) : null}
         </div>
@@ -1272,7 +1272,7 @@ export function BatchView({
             <div className="group-title">Layout</div>
             <div className="seg full" role="radiogroup" aria-label="Layout">
               <button type="button" role="radio" aria-checked={!green} className={!green ? 'active' : ''} onClick={() => keep({ ...bank, layout: 'after' })}>
-                Reaction, then video
+                Reaction + video
               </button>
               <button type="button" role="radio" aria-checked={green} className={green ? 'active' : ''} onClick={() => keep({ ...bank, layout: 'greenscreen' })}>
                 Green screen
@@ -1335,7 +1335,7 @@ export function BatchView({
               {list('reactions', 'Reactions', 'They go first, with the headline over them - slowly zooming in.')}
               {stepped
                 ? bank.steps!.map((step, i) => stepList(step, i))
-                : list('products', 'Product showcases', 'Shown after the reaction. To show several in a set order, tap Set order at the top.')}
+                : list('products', 'Product showcases', 'Shown after the reaction. To show several in a set order, tap Product steps at the top.')}
             </>
           )}
           {green || onEngine ? null : (

@@ -5,6 +5,7 @@
 import { useEffect, useState } from 'react'
 
 import { ChevronLeft, ChevronRight } from './icons'
+import { BackToMore } from './MoreView'
 import { EndCampaign } from './EndCampaign'
 import type { Profile } from './posting'
 import { describeAngle, type Angle, type Campaign } from './look'
@@ -48,7 +49,10 @@ export function CampaignsView({
   postingLine,
   shared,
   ending,
+  onBackToMore,
 }: {
+  /** Back to More, which it is reached from. */
+  onBackToMore?: () => void
   campaigns: Campaign[]
   /** The campaign whose angles are showing, or null for the list. */
   openId: string | null
@@ -129,25 +133,32 @@ export function CampaignsView({
             </button>
           </li>
         </ul>
-        {onStopPosts ? <StopPosts campaign={open} onStop={onStopPosts} /> : null}
-        {ending && !open.general ? (
-          <EndCampaign campaign={open} profile={ending.profile} names={ending.names} onChanged={ending.onChanged} />
-        ) : null}
-        {!open.general ? (
-          // Down at the bottom, away from everything else, so it is never hit
-          // by mistake.
-          <button
-            type="button"
-            className="linkbtn danger delete"
-            onClick={() => {
-              const everywhere = shared ? ' It goes from your friend\'s phone too.' : ''
-              if (window.confirm(`Delete ${open.name} and all its angles? Videos already made are not affected.${everywhere}`)) {
-                onDeleteCampaign(open)
-              }
-            }}
-          >
-            Delete campaign
-          </button>
+        {/* Stopping, ending and deleting, folded away together: rare, and
+            not to be hit by mistake. */}
+        {onStopPosts || (ending && !open.general) || !open.general ? (
+          <details className="danger-zone">
+            <summary className="linkbtn">Stop or end this campaign</summary>
+          {onStopPosts ? <StopPosts campaign={open} onStop={onStopPosts} /> : null}
+          {ending && !open.general ? (
+            <EndCampaign campaign={open} profile={ending.profile} names={ending.names} onChanged={ending.onChanged} />
+          ) : null}
+          {!open.general ? (
+            // Down at the bottom, away from everything else, so it is never hit
+            // by mistake.
+            <button
+              type="button"
+              className="linkbtn danger delete"
+              onClick={() => {
+                const everywhere = shared ? ' It goes from your friend\'s phone too.' : ''
+                if (window.confirm(`Delete ${open.name} and all its angles? Videos already made are not affected.${everywhere}`)) {
+                  onDeleteCampaign(open)
+                }
+              }}
+            >
+              Delete campaign
+            </button>
+          ) : null}
+          </details>
         ) : null}
       </section>
     )
@@ -156,6 +167,7 @@ export function CampaignsView({
   const own = campaigns.filter((c) => !c.general)
   return (
     <section className="screen">
+      {onBackToMore ? <BackToMore onBack={onBackToMore} /> : null}
       <div className="screen-head">
         <h1>Campaigns</h1>
         <button type="button" className={own.length === 0 ? 'btn small primary' : 'btn small'} onClick={onNewCampaign}>

@@ -204,11 +204,11 @@ html, body { overscroll-behavior-y: none; }
 .callout { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 12px 0; border-top: 1px solid var(--rule); border-bottom: 1px solid var(--rule); }
 .chooser { display: flex; flex-direction: column; gap: 10px; }
 .chooser-head { display: flex; align-items: center; justify-content: space-between; }
-.chooser select, .chooser > input[type=text], input.find {
+.chooser select, select.posts-filter, .chooser > input[type=text], input.find {
   width: 100%; min-height: 48px; padding: 0 14px; border: 1px solid var(--edge); border-radius: 12px;
   background: var(--surface); color: var(--text); font: inherit; font-size: 16px;
 }
-.chooser select {
+.chooser select, select.posts-filter {
   appearance: none; -webkit-appearance: none; padding-right: 40px; font-weight: 600;
   background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8' fill='none' stroke='%238e8e93' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M1 1.5l5 5 5-5'/%3E%3C/svg%3E");
   background-repeat: no-repeat; background-position: right 16px center;
@@ -971,3 +971,51 @@ input[type='color']::-webkit-color-swatch { border: 0.5px solid var(--edge); bor
 .ideas-list { list-style: none; margin: 8px 0 0; padding: 0; display: grid; gap: 6px; }
 .idea-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
 .idea-text { flex: 1; min-width: 0; font-size: 14px; }
+
+/* A post's rarer actions, folded (PostsView WaitingPost). */
+.post-more { margin-top: 2px; }
+.post-more > summary { list-style: none; display: inline-flex; align-items: center; min-height: 40px; cursor: pointer; }
+.post-more > summary::-webkit-details-marker { display: none; }
+.post-more > summary::after { content: ''; width: 7px; height: 7px; margin-left: 8px; border-right: 1.5px solid currentColor; border-bottom: 1.5px solid currentColor; transform: translateY(-2px) rotate(45deg); transition: transform 150ms; }
+.post-more[open] > summary::after { transform: translateY(2px) rotate(-135deg); }
+.post-more > .post-actions { margin-top: 4px; }
+.post-more .per-platform { margin-top: 8px; }
+
+/* More (MoreView). */
+.more-rows { padding: 0 16px; list-style: none; }
+.more-rows + .more-rows { margin-top: 16px; }
+.more-icon { flex: none; display: inline-flex; width: 36px; height: 36px; align-items: center; justify-content: center; border-radius: 9px; background: var(--field); color: var(--accent); }
+.more-rows .row-link { gap: 12px; }
+
+/* Posts' number on its tab. */
+.tab-count {
+  position: absolute; top: -5px; left: 14px; min-width: 18px; height: 18px; padding: 0 5px; border-radius: 9px;
+  background: var(--bad); color: #fff; font-size: 11px; font-weight: 700; line-height: 18px; text-align: center;
+  box-shadow: 0 0 0 2px var(--bar-bg, var(--ink));
+}
+.tabbar button { font-size: 11px; }
+
+/* A campaign's stop, end and delete, folded (CampaignsView). */
+.danger-zone { margin-top: 18px; display: flex; flex-direction: column; gap: 12px; }
+.danger-zone > summary { list-style: none; display: inline-flex; align-items: center; min-height: 44px; color: var(--muted); cursor: pointer; }
+.danger-zone > summary::-webkit-details-marker { display: none; }
+.danger-zone > summary::after { content: ''; width: 7px; height: 7px; margin-left: 8px; border-right: 1.5px solid currentColor; border-bottom: 1.5px solid currentColor; transform: translateY(-2px) rotate(45deg); }
+.danger-zone[open] > summary::after { transform: translateY(2px) rotate(-135deg); }
+.danger-zone[open] > * + * { margin-top: 12px; }
+
+/* Nothing may push the page sideways on a narrow phone (2026-11-02: Analytics
+   did, with a long headline or clip name kept on one line). */
+.bars { grid-template-columns: minmax(0, 1fr); }
+.bar-row, .bar-label, .bar-line { min-width: 0; }
+.analytics-head { flex-wrap: wrap; min-width: 0; }
+.analytics-head .group-title { min-width: 0; overflow-wrap: anywhere; }
+.screen-head { flex-wrap: wrap; row-gap: 8px; }
+.screen-head .actions-row { flex-wrap: wrap; justify-content: flex-end; }
+.seg.full.headline-look { flex-wrap: wrap; }
+.seg.full.headline-look button { flex: 1 1 auto; min-width: 0; white-space: nowrap; }
+.trouble-row > div, .idea-row, .what-works { min-width: 0; }
+.trouble-row .label, .idea-text { overflow-wrap: anywhere; }
+.heat-row { min-width: 0; }
+.under-drop-links { flex-direction: row; flex-wrap: wrap; justify-content: center; gap: 8px; margin-top: 12px; }
+.under-drop-title { width: 100%; text-align: center; font-size: 13px; color: var(--muted); }
+.post-later .under-drop-title { text-align: left; margin-bottom: 6px; }

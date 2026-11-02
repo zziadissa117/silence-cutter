@@ -274,27 +274,6 @@ function WaitingPost({
         onChange={(e) => setCaption(e.target.value)}
         onBlur={() => edited && onAct('edit', { caption })}
       />
-      {post.accounts.filter((a) => !a.held).length > 1 ? (
-        <details className="per-platform">
-          <summary className="linkbtn">A different caption for one platform</summary>
-          {post.accounts
-            .filter((a) => !a.held)
-            .map((a) => (
-              <label key={a.id} className="field">
-                <span className="label">{accountLabel(a)}</span>
-                <textarea
-                  className="post-caption"
-                  rows={3}
-                  value={own[a.id] ?? ''}
-                  placeholder="Same as above"
-                  aria-label={`Caption for ${accountLabel(a)}`}
-                  onChange={(e) => setOwn({ ...own, [a.id]: e.target.value })}
-                  onBlur={() => ownEdited && onAct('edit', { captions: ownCaptions() })}
-                />
-              </label>
-            ))}
-        </details>
-      ) : null}
       {changingTime ? (
         <label className="field">
           <span className="label">Posts at</span>
@@ -304,6 +283,8 @@ function WaitingPost({
       {watching ? <Watch post={post} /> : null}
       {addingMusic ? <MusicAfter post={post} campaigns={campaigns} caption={caption} onDone={onChanged} onClose={() => setAddingMusic(false)} /> : null}
       {problem ? <p className="hint warn-text">{problem}</p> : null}
+      {/* What he does with nearly every post, in one row: approve (or post
+          it now), watch it, turn it down. The rest behind More options. */}
       <div className="post-actions">
         <button
           type="button"
@@ -323,23 +304,9 @@ function WaitingPost({
         >
           Post now
         </button>
-        {post.ready ? null : (
-          <button type="button" className="btn small" disabled={busy || !caption.trim()} onClick={() => onAct('ready', fields())}>
-            Approve, post later
-          </button>
-        )}
-        <SaveVideo post={post} primary={brand} />
-        <EditAgain post={post} editable={editable} onEdit={onEdit} />
-        {canAddMusic(post) ? (
-          <button type="button" className="linkbtn" onClick={() => setAddingMusic((m) => !m)}>
-            {addingMusic ? 'Hide music' : musicWord}
-          </button>
-        ) : null}
+        {brand ? <SaveVideo post={post} primary /> : null}
         <button type="button" className="linkbtn" onClick={() => setWatching((w) => !w)}>
-          {watching ? 'Hide' : 'Watch'}
-        </button>
-        <button type="button" className="linkbtn" onClick={() => setChangingTime((c) => !c)}>
-          {changingTime ? 'Keep its time' : 'Change time'}
+          {watching ? 'Hide video' : 'Watch'}
         </button>
         <button
           type="button"
@@ -353,6 +320,47 @@ function WaitingPost({
           Reject
         </button>
       </div>
+      <details className="post-more">
+        <summary className="linkbtn">More options</summary>
+        <div className="post-actions">
+          {post.ready ? null : (
+            <button type="button" className="btn small" disabled={busy || !caption.trim()} onClick={() => onAct('ready', fields())}>
+              Approve, post later
+            </button>
+          )}
+          <button type="button" className="btn small" onClick={() => setChangingTime((c) => !c)}>
+            {changingTime ? 'Keep its time' : 'Change time'}
+          </button>
+          {canAddMusic(post) ? (
+            <button type="button" className="btn small" onClick={() => setAddingMusic((m) => !m)}>
+              {addingMusic ? 'Hide music' : musicWord}
+            </button>
+          ) : null}
+          {brand ? null : <SaveVideo post={post} primary={false} />}
+          <EditAgain post={post} editable={editable} onEdit={onEdit} />
+        </div>
+        {post.accounts.filter((a) => !a.held).length > 1 ? (
+          <details className="per-platform">
+            <summary className="linkbtn">A different caption for one platform</summary>
+            {post.accounts
+              .filter((a) => !a.held)
+              .map((a) => (
+                <label key={a.id} className="field">
+                  <span className="label">{accountLabel(a)}</span>
+                  <textarea
+                    className="post-caption"
+                    rows={3}
+                    value={own[a.id] ?? ''}
+                    placeholder="Same as above"
+                    aria-label={`Caption for ${accountLabel(a)}`}
+                    onChange={(e) => setOwn({ ...own, [a.id]: e.target.value })}
+                    onBlur={() => ownEdited && onAct('edit', { captions: ownCaptions() })}
+                  />
+                </label>
+              ))}
+          </details>
+        ) : null}
+      </details>
     </li>
   )
 }
@@ -704,7 +712,8 @@ export function PostsView({
   remaking = [],
 }: {
   campaigns: Campaign[]
-  onBack: () => void
+  /** Back where it was opened from; none as a tab of its own. */
+  onBack?: () => void
   editable: Record<string, number>
   onEditAgain: (key: string) => void
   /** Post keys he is making again: not shown until the new version replaces them. */
@@ -896,9 +905,11 @@ export function PostsView({
 
   return (
     <section className="screen posts">
-      <button type="button" className="back" onClick={onBack}>
-        <ChevronLeft /> Videos
-      </button>
+      {onBack ? (
+        <button type="button" className="back" onClick={onBack}>
+          <ChevronLeft /> Videos
+        </button>
+      ) : null}
       <div className="screen-head">
         <h1>Posts</h1>
         <div className="actions-row">
@@ -910,6 +921,11 @@ export function PostsView({
           {canStop.length > 0 && !stopping ? (
             <button type="button" className="btn small" onClick={() => setStopping(true)}>
               Select
+            </button>
+          ) : null}
+          {profile && !making && !stopping ? (
+            <button type="button" className="btn small" onClick={() => setMaking(true)}>
+              + New post
             </button>
           ) : null}
         </div>
@@ -933,10 +949,6 @@ export function PostsView({
       <>
       {profile && making ? (
         <NewPost campaigns={campaigns} profile={profile} onDone={() => setMaking(false)} onCancel={() => setMaking(false)} />
-      ) : profile ? (
-        <button type="button" className="btn add-more" onClick={() => setMaking(true)}>
-          + New post
-        </button>
       ) : null}
 
       {said ? (
@@ -957,16 +969,15 @@ export function PostsView({
       ) : null}
 
       {inPosts.length > 1 ? (
-        <div className="seg chips posts-filter" role="radiogroup" aria-label="Show campaign">
-          <button type="button" role="radio" aria-checked={showing === null} className={showing === null ? 'active' : ''} onClick={() => show(null)}>
-            All {posts.length}
-          </button>
+        // One box, not a button for each of up to 30 campaigns.
+        <select className="posts-filter" aria-label="Show campaign" value={showing ?? ''} onChange={(e) => show(e.target.value || null)}>
+          <option value="">All campaigns · {posts.length}</option>
           {inPosts.map((c) => (
-            <button key={c.id} type="button" role="radio" aria-checked={showing === c.id} className={showing === c.id ? 'active' : ''} onClick={() => show(c.id)}>
-              {c.name} {c.count}
-            </button>
+            <option key={c.id} value={c.id}>
+              {c.name} · {c.count}
+            </option>
           ))}
-        </div>
+        </select>
       ) : null}
 
       {nothing ? (
