@@ -29,6 +29,29 @@ export const PostsIcon = () => (
   </Icon>
 )
 
+/** A curved arrow back: undo. */
+export const UndoIcon = () => (
+  <Icon>
+    <path d="M9 14L4 9l5-5" />
+    <path d="M4 9h10.5a5.5 5.5 0 010 11H11" />
+  </Icon>
+)
+
+/** A curved arrow on: redo. */
+export const RedoIcon = () => (
+  <Icon>
+    <path d="M15 14l5-5-5-5" />
+    <path d="M20 9H9.5a5.5 5.5 0 000 11H13" />
+  </Icon>
+)
+
+/** Four corners out: full screen. */
+export const FullIcon = () => (
+  <Icon>
+    <path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5" />
+  </Icon>
+)
+
 /** Three dots: everything else. */
 export const MoreIcon = () => (
   <Icon>

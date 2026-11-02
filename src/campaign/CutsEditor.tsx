@@ -55,7 +55,7 @@ import {
   trimPart,
 } from './cuts'
 import { headlineFontReady } from './headlineFont'
-import { ChevronLeft, PauseIcon, PlayIcon } from './icons'
+import { ChevronLeft, FullIcon, PauseIcon, PlayIcon, RedoIcon, UndoIcon } from './icons'
 import { HeadlineLook } from './JobRow'
 import { HEADLINE_SCALE, LIMITS, type BankPicture, type Headline, type HeadlinePlace, type HeadlineStyle } from './look'
 import {
@@ -84,8 +84,10 @@ const MAX_PX = ZOOMS[ZOOMS.length - 1]
 const WORD_LINES = 3
 /** Roughly how wide a letter of the labels is. */
 const LETTER_PX = 7.5
-/** How near a word's edge a trim has to come to land on it: a fingertip. */
-const SNAP_PX = 10
+/** How near a word's edge a trim has to come to land on it: right on it -
+ *  at 10 px (a fingertip) a trim jumped to the next word when he meant
+ *  between them (2026-11-02). */
+const SNAP_PX = 4
 /** Where the parts start below the time marks, how tall they are, and where
  *  the words start under them. */
 const PART_TOP = 22
@@ -93,6 +95,17 @@ const PART_H = 64
 const WORD_TOP = PART_TOP + PART_H + 8
 
 const clampPx = (px: number) => Math.min(MAX_PX, Math.max(MIN_PX, px))
+
+/** How things stood before a change, for Undo and Redo. */
+interface Snapshot {
+  keep: Range[]
+  overlays: ManualPicture[]
+}
+
+/** How near the middle (a share of the frame) a thing has to come to snap
+ *  onto it, its guide line showing - as in TikTok (2026-11-02). */
+const CENTER_SNAP = 0.025
+const NO_GUIDES = { x: false, y: false }
 
 /** The same empty banks every time, so effects that follow them don't run
  *  again on every render. */
@@ -456,7 +469,15 @@ export function CutsEditor({
   quick?: boolean
 }) {
   const [keep, setKeep] = useState(initial)
-  const [history, setHistory] = useState<Range[][]>([])
+  // Undo and redo (the arrows at the top): the cuts and what is over the
+  // video, as they were before each change.
+  const [past, setPast] = useState<Snapshot[]>([])
+  const [future, setFuture] = useState<Snapshot[]>([])
+  /** A change is about to be made: how things were, for Undo. */
+  const record = (before: Snapshot) => {
+    setPast((h) => [...h.slice(-49), before])
+    setFuture([])
+  }
   const [t, setT] = useState(initial[0]?.start ?? 0)
   const [px, setPx] = useState(START_PX)
   const [selected, setSelected] = useState<number | null>(null)
@@ -479,7 +500,15 @@ export function CutsEditor({
     pointers: Map<number, { x: number; y: number }>
     from: { center: { x: number; y: number }; size: number; mid: { x: number; y: number }; spread: number }
     moved: boolean
+    /** How things stood before it was picked up, for Undo. */
+    before: Snapshot
   } | null>(null)
+  /** The middle lines shown while something sits on them. */
+  const [guides, setGuides] = useState(NO_GUIDES)
+  const guidesRef = useRef(guides)
+  guidesRef.current = guides
+  /** The video filling the screen, as it will post. */
+  const [full, setFull] = useState(false)
   /** When fingers last let go of something: the tap that ends a pinch
    *  doesn't play the video. */
   const lastGesture = useRef(0)
@@ -512,6 +541,7 @@ export function CutsEditor({
   const picPanel = useRef<HTMLDivElement>(null)
   const strip = useRef<HTMLDivElement>(null)
   const ruler = useRef<HTMLDivElement>(null)
+  const track = useRef<HTMLDivElement>(null)
   const frame = useRef(0)
   const keepRef = useRef(keep)
   keepRef.current = keep
@@ -553,6 +583,9 @@ export function CutsEditor({
     }
     paint?.(ctx, w, h, tRef.current, playingRef.current)
   }, [])
+
+  const repaintRef = useRef(repaint)
+  repaintRef.current = repaint
 
   // The frame's size, to lay the words out at; the headline font.
   useEffect(() => {
@@ -603,7 +636,10 @@ export function CutsEditor({
   const total = totalDuration(keep)
 
   // --- The video: one frame asked for at a time, always the latest place.
-  const seeking = useRef({ busy: false, want: null as number | null, since: 0 })
+  // While his finger moves the timeline, the nearest frame the phone can
+  // show at once (fastSeek - Safari's key-frame seek); the exact frame once it
+  // stops. Asking for exact frames all the way was what made it lag.
+  const seeking = useRef({ busy: false, want: null as number | null, since: 0, fast: false })
   const pumpSeek = useCallback(() => {
     const v = video.current
     const s = seeking.current
@@ -615,27 +651,62 @@ export function CutsEditor({
     if (Math.abs(v.currentTime - to) < 0.0005) return
     s.busy = true
     s.since = performance.now()
-    v.currentTime = to
+    if (s.fast && typeof v.fastSeek === 'function') v.fastSeek(to)
+    else v.currentTime = to
   }, [duration])
   const seek = useCallback(
     (to: number) => {
       seeking.current.want = to
+      seeking.current.fast = false
       pumpSeek()
     },
     [pumpSeek],
   )
+  /** A quick frame now, the exact one when he stops. */
+  const settleSeek = useRef(0)
+  const scrub = useCallback(
+    (to: number) => {
+      seeking.current.want = to
+      seeking.current.fast = true
+      pumpSeek()
+      window.clearTimeout(settleSeek.current)
+      settleSeek.current = window.setTimeout(() => seek(tRef.current), 140)
+    },
+    [pumpSeek, seek],
+  )
+  useEffect(() => () => window.clearTimeout(settleSeek.current), [])
 
   // --- The timer and buttons: at most once a frame while he scrolls.
+  // While he scrolls, only the timer, what is drawn over the video and the
+  // captions below follow each frame; the rest of the screen catches up when
+  // he stops. Playing, everything follows (videos over him start and stop).
   const showTime = useRef(0)
+  const idleTime = useRef(0)
+  const timer = useRef<HTMLSpanElement>(null)
   const followTime = useCallback((to: number) => {
     tRef.current = to
     if (showTime.current) return
     showTime.current = requestAnimationFrame(() => {
       showTime.current = 0
-      setT(tRef.current)
+      if (playingRef.current) {
+        setT(tRef.current)
+        return
+      }
+      const k = keepRef.current
+      if (timer.current) timer.current.textContent = `${formatPrecise(outputTime(k, tRef.current))} / ${formatPrecise(totalDuration(k))}`
+      repaintRef.current()
+      for (const listener of listeners.current) listener(tRef.current, false)
+      window.clearTimeout(idleTime.current)
+      idleTime.current = window.setTimeout(() => setT(tRef.current), 120)
     })
   }, [])
-  useEffect(() => () => cancelAnimationFrame(showTime.current), [])
+  useEffect(
+    () => () => {
+      cancelAnimationFrame(showTime.current)
+      window.clearTimeout(idleTime.current)
+    },
+    [],
+  )
 
   // The captions over the video, and whoever follows the playhead.
   useEffect(() => {
@@ -678,7 +749,7 @@ export function CutsEditor({
     if (!s) return
     const to = Math.min(duration, Math.max(0, s.scrollLeft / pxRef.current))
     followTime(to)
-    seek(to)
+    scrub(to)
   }
 
   // What is shown on the video: bank pictures from the bank, bank videos from
@@ -793,6 +864,7 @@ export function CutsEditor({
     const placed = isVideo(picture)
       ? { ...picture, position: 'middle' as const, widthPct: 70, ...(length ? { length, seconds: Math.round(Math.min(length, longestFor({ ...picture, length })) * 10) / 10 } : {}) }
       : picture
+    record(now())
     setOverlays((list) => [...list, placed].sort((a, b) => a.at - b.at))
     setSelectedPic(id)
     setPicking(false)
@@ -816,6 +888,7 @@ export function CutsEditor({
       widthPct: TEXT_BASE_PCT,
       center: { ...TEXT_START },
     }
+    record(now())
     setOverlays((list) => [...list, words].sort((a, b) => a.at - b.at))
     setSelectedPic(id)
     setNewText(id)
@@ -823,11 +896,14 @@ export function CutsEditor({
     setPicNote(null)
   }
 
-  const updatePicture = (id: string, patch: Partial<ManualPicture>) =>
+  const updatePicture = (id: string, patch: Partial<ManualPicture>) => {
+    record(now())
     setOverlays((list) => list.map((o) => (o.id === id ? { ...o, ...patch } : o)).sort((a, b) => a.at - b.at))
+  }
   const setWords = (id: string, patch: { text?: string; style?: HeadlineStyle }) =>
     setOverlays((list) => list.map((o) => (o.id === id && o.source.kind === 'text' ? { ...o, source: { ...o.source, ...patch } } : o)))
   const removePicture = (id: string) => {
+    record(now())
     newFiles.current.delete(id)
     setOverlays((list) => list.filter((o) => o.id !== id))
     setSelectedPic((s) => (s === id ? null : s))
@@ -992,7 +1068,13 @@ export function CutsEditor({
     const hold = holdOf(id)
     if (!hold) return
     const { mid, spread } = fingers(points)
-    gesture.current = { id, pointers: points, from: { ...hold, mid, spread }, moved: gesture.current?.id === id ? gesture.current.moved : false }
+    gesture.current = {
+      id,
+      pointers: points,
+      from: { ...hold, mid, spread },
+      moved: gesture.current?.id === id ? gesture.current.moved : false,
+      before: gesture.current?.id === id ? gesture.current.before : now(),
+    }
   }
   /** A second finger anywhere on the video pinches what the first holds. */
   const onFrameDown = (e: ReactPointerEvent) => {
@@ -1014,6 +1096,12 @@ export function CutsEditor({
       x: Math.min(1, Math.max(0, g.from.center.x + (mid.x - g.from.mid.x) / rect.width)),
       y: Math.min(1, Math.max(0, g.from.center.y + (mid.y - g.from.mid.y) / rect.height)),
     }
+    // Near the middle, it sits exactly on it, and the line shows.
+    const onX = Math.abs(center.x - 0.5) < CENTER_SNAP
+    const onY = Math.abs(center.y - 0.5) < CENTER_SNAP
+    if (onX) center.x = 0.5
+    if (onY) center.y = 0.5
+    if (onX !== guidesRef.current.x || onY !== guidesRef.current.y) setGuides({ x: onX, y: onY })
     const limits = limitsOf(g.id)
     const size = g.pointers.size > 1 && g.from.spread > 0 ? Math.min(limits.max, Math.max(limits.min, (g.from.size * spread) / g.from.spread)) : g.from.size
     moveTo(g.id, center, size)
@@ -1026,7 +1114,9 @@ export function CutsEditor({
     lastGesture.current = performance.now()
     if (g.pointers.size === 0) {
       gesture.current = null
+      setGuides(NO_GUIDES)
       if (g.id === HEADLINE && g.moved) headline?.onPlace(headlinePlaceRef.current)
+      else if (g.moved) record(g.before)
       return
     }
     // One finger left after a pinch: it moves on from here.
@@ -1081,17 +1171,30 @@ export function CutsEditor({
   }
 
   const change = (next: Range[]) => {
-    setHistory((h) => [...h, keep])
+    record({ keep, overlays: overlaysRef.current })
     setKeep(next)
     setSelected(null)
   }
 
-  const undo = () => {
-    const previous = history[history.length - 1]
-    if (!previous) return
-    setHistory((h) => h.slice(0, -1))
-    setKeep(previous)
+  const now = (): Snapshot => ({ keep: keepRef.current, overlays: overlaysRef.current })
+  const restore = (to: Snapshot) => {
+    setKeep(to.keep)
+    setOverlays(to.overlays)
     setSelected(null)
+  }
+  const undo = () => {
+    const previous = past[past.length - 1]
+    if (!previous) return
+    setPast((h) => h.slice(0, -1))
+    setFuture((f) => [...f, now()])
+    restore(previous)
+  }
+  const redo = () => {
+    const next = future[future.length - 1]
+    if (!next) return
+    setFuture((f) => f.slice(0, -1))
+    setPast((h) => [...h, now()])
+    restore(next)
   }
 
   /** Plays the kept parts from the playhead, jumping every gap, the
@@ -1166,13 +1269,21 @@ export function CutsEditor({
     const handle = down.currentTarget
     handle.setPointerCapture(down.pointerId)
     const before = keepRef.current
+    const beforeOverlays = overlaysRef.current
     let last = before
     let drawn = 0
+    // Where on the edge the finger landed: the edge keeps that distance from
+    // the finger, so it doesn't jump to the finger's middle on the first move
+    // - that jump, a quarter of a second at the usual zoom, was "it trims
+    // too much" (2026-11-02).
+    const box0 = ruler.current?.getBoundingClientRect()
+    const at0 = edge === 'start' ? before[i].start : before[i].end
+    const grab = box0 ? (down.clientX - box0.left) / pxRef.current - at0 : 0
     const move = (event: PointerEvent) => {
       const box = ruler.current?.getBoundingClientRect()
       if (!box) return
       const scale = pxRef.current
-      const to = snapTo((event.clientX - box.left) / scale, edges, SNAP_PX / scale)
+      const to = snapTo((event.clientX - box.left) / scale - grab, edges, SNAP_PX / scale)
       last = trimPart(before, i, edge, to, duration)
       if (!drawn) {
         drawn = requestAnimationFrame(() => {
@@ -1180,7 +1291,7 @@ export function CutsEditor({
           setKeep(last)
         })
       }
-      seek(edge === 'start' ? last[i].start : last[i].end - 0.001)
+      scrub(edge === 'start' ? last[i].start : last[i].end - 0.001)
     }
     const up = () => {
       handle.removeEventListener('pointermove', move)
@@ -1188,7 +1299,7 @@ export function CutsEditor({
       handle.removeEventListener('pointercancel', up)
       cancelAnimationFrame(drawn)
       setKeep(last)
-      if (last !== before) setHistory((h) => [...h, before])
+      if (last !== before) record({ keep: before, overlays: beforeOverlays })
     }
     handle.addEventListener('pointermove', move)
     handle.addEventListener('pointerup', up)
@@ -1200,44 +1311,65 @@ export function CutsEditor({
   )
 
   // Pinching the timeline zooms it, around the playhead. Safari says how far
-  // the fingers have spread; the page itself is kept from zooming.
+  // the fingers have spread. While the fingers move, the timeline is only
+  // stretched (the phone's graphics do it, smooth); when they let go it is
+  // laid out again at the new zoom. Laying all of it out on every move was
+  // what made zooming lag (2026-11-02).
   useEffect(() => {
     const s = strip.current
     if (!s) return
     let from = pxRef.current
-    let drawn = 0
     let wanted = from
+    let pinching = false
     const start = (e: Event) => {
       e.preventDefault()
       takeOverRef.current()
       from = pxRef.current
+      wanted = from
+      pinching = true
+      const t = track.current
+      if (t) t.style.transformOrigin = `${s.scrollLeft + s.clientWidth / 2}px 0`
     }
     const change = (e: Event) => {
       e.preventDefault()
+      if (!pinching) return
       const scale = (e as Event & { scale?: number }).scale ?? 1
       wanted = clampPx(from * scale)
-      if (!drawn) {
-        drawn = requestAnimationFrame(() => {
-          drawn = 0
-          setPx(wanted)
-        })
-      }
+      const t = track.current
+      if (t) t.style.transform = `scaleX(${wanted / from})`
+    }
+    const end = (e: Event) => {
+      e.preventDefault()
+      if (!pinching) return
+      pinching = false
+      const t = track.current
+      if (t) t.style.transform = ''
+      setPx(wanted)
     }
     s.addEventListener('gesturestart', start)
     s.addEventListener('gesturechange', change)
-    s.addEventListener('gestureend', change)
+    s.addEventListener('gestureend', end)
     return () => {
-      cancelAnimationFrame(drawn)
       s.removeEventListener('gesturestart', start)
       s.removeEventListener('gesturechange', change)
-      s.removeEventListener('gestureend', change)
+      s.removeEventListener('gestureend', end)
     }
   }, [])
 
-  const zoom = (direction: 1 | -1) => {
-    const next = direction > 0 ? ZOOMS.find((z) => z > px * 1.01) : [...ZOOMS].reverse().find((z) => z < px * 0.99)
-    if (next) setPx(next)
-  }
+  // Anywhere else on the editor, a pinch does nothing: the whole page zoomed
+  // in when one began off the timeline (iPhone Safari ignores the page's own
+  // "no zooming"). Pictures and words on the video take their pinch from the
+  // fingers themselves (pointer events), not from this.
+  useEffect(() => {
+    const block = (e: Event) => e.preventDefault()
+    document.addEventListener('gesturestart', block)
+    document.addEventListener('gesturechange', block)
+    return () => {
+      document.removeEventListener('gesturestart', block)
+      document.removeEventListener('gesturechange', block)
+    }
+  }, [])
+
 
   // The marks around what is on screen, in steps of half a screen, so they
   // are redrawn only as he moves on - not on every scroll.
@@ -1247,13 +1379,34 @@ export function CutsEditor({
   const marksTo = Math.min(duration, (around + 3) * chunk)
 
   return (
-    <section className={`screen cuts${typing ? ' typing' : ''}${quick ? ' quick' : ''}`} aria-label={`Cuts for ${name}`}>
+    <section className={`screen cuts${typing ? ' typing' : ''}${quick ? ' quick' : ''}${full ? ' full' : ''}`} aria-label={`Cuts for ${name}`}>
       <div className="review-top" ref={top}>
         <div className="review-head">
           <button type="button" className="back" onClick={onCancel}>
             <ChevronLeft /> Back
           </button>
           <div className="cuts-head-actions">
+            {quick ? null : (
+              <>
+                <button type="button" className="icon-btn" aria-label="Undo" disabled={past.length === 0} onClick={undo}>
+                  <UndoIcon />
+                </button>
+                <button type="button" className="icon-btn" aria-label="Redo" disabled={future.length === 0} onClick={redo}>
+                  <RedoIcon />
+                </button>
+              </>
+            )}
+            <button
+              type="button"
+              className="icon-btn"
+              aria-label="Full screen"
+              onClick={() => {
+                setFull(true)
+                if (!playingRef.current) play()
+              }}
+            >
+              <FullIcon />
+            </button>
             {headActions !== undefined ? headActions : onCaptions ? (
               <button type="button" className="btn small" onClick={() => onCaptions(keep, withWords(overlays), newFiles.current)}>
                 Captions
@@ -1369,6 +1522,22 @@ export function CutsEditor({
               onPointerCancel={onItemUp}
             />
           ))}
+          {guides.x ? <span className="cuts-guide v" aria-hidden /> : null}
+          {guides.y ? <span className="cuts-guide h" aria-hidden /> : null}
+          {full ? (
+            <button
+              type="button"
+              className="cuts-full-close"
+              aria-label="Close full screen"
+              onClick={(e) => {
+                e.stopPropagation()
+                stop()
+                setFull(false)
+              }}
+            >
+              ✕
+            </button>
+          ) : null}
           {inPart < 0 ? <span className="cuts-out">Cut out</span> : null}
           {url ? (
             <span className="review-playing" aria-hidden>
@@ -1380,7 +1549,7 @@ export function CutsEditor({
 
       <div className="cuts-strip-wrap">
         <div className="cuts-strip" ref={strip} onScroll={onScroll} onTouchStart={takeOver} onWheel={takeOver}>
-          <div className="cuts-track">
+          <div className="cuts-track" ref={track}>
             <div className="cuts-ruler" ref={ruler} style={{ width: duration * px, height: 164 + rows.rows * 24 }} onClick={() => setSelected(null)}>
               <Marks px={px} from={marksFrom} to={marksTo} />
               <Track
@@ -1418,17 +1587,10 @@ export function CutsEditor({
       </div>
 
       <div className="cuts-zoom">
-        <span className="review-count cuts-timer">
+        <span className="review-count cuts-timer" ref={timer}>
           {formatPrecise(outputTime(keep, t))} / {formatPrecise(total)}
         </span>
-        <div className="cuts-zoom-buttons">
-          <button type="button" className="btn small" aria-label="Zoom out" disabled={px <= MIN_PX * 1.01} onClick={() => zoom(-1)}>
-            −
-          </button>
-          <button type="button" className="btn small" aria-label="Zoom in" disabled={px >= MAX_PX * 0.99} onClick={() => zoom(1)}>
-            +
-          </button>
-        </div>
+        <span className="hint cuts-pinch">Pinch the timeline to zoom</span>
       </div>
 
       <div className="cuts-controls">
@@ -1446,9 +1608,7 @@ export function CutsEditor({
             Keep this part
           </button>
         )}
-        <button type="button" className="btn" disabled={history.length === 0} onClick={undo}>
-          Undo
-        </button>
+
       </div>
       <div className="cuts-add">
         <button type="button" className="btn" onClick={addText}>

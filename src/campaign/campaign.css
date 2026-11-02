@@ -1053,3 +1053,15 @@ input[type='color']::-webkit-color-swatch { border: 0.5px solid var(--edge); bor
 .editor-foot.sticky.quick-foot { flex-direction: row; flex-wrap: wrap; align-items: stretch; gap: 8px; }
 .editor-foot.sticky.quick-foot > .btn.wide { flex: 1 1 0; width: auto; }
 .editor-foot.sticky.quick-foot > .review-skip { flex: 1 1 100%; text-align: center; }
+
+/* The timeline editor (CutsEditor): undo/redo arrows and full screen at the
+   top, the middle lines while something sits on them, the video full screen. */
+.cuts-head-actions { display: flex; align-items: center; gap: 4px; }
+.icon-btn { display: inline-grid; place-items: center; width: 44px; height: 44px; padding: 0; border: 0; border-radius: 10px; background: none; color: var(--accent); cursor: pointer; }
+.icon-btn:disabled { color: var(--muted); opacity: 0.45; cursor: default; }
+.cuts-guide { position: absolute; z-index: 3; pointer-events: none; background: #ffd60a; box-shadow: 0 0 0 0.5px rgb(0 0 0 / 0.4); }
+.cuts-guide.v { top: 0; bottom: 0; left: 50%; width: 1.5px; transform: translateX(-50%); }
+.cuts-guide.h { left: 0; right: 0; top: 50%; height: 1.5px; transform: translateY(-50%); }
+.cuts.full .review-frame { position: fixed; inset: 0; z-index: 60; height: 100svh !important; width: 100vw; max-width: none; aspect-ratio: auto !important; border-radius: 0; }
+.cuts-full-close { position: absolute; z-index: 4; top: calc(env(safe-area-inset-top) + 10px); right: 12px; width: 44px; height: 44px; border: 0; border-radius: 50%; background: rgb(0 0 0 / 0.55); color: #fff; font-size: 18px; cursor: pointer; }
+.cuts-pinch { font-size: 13px; }

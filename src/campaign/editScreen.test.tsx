@@ -153,3 +153,38 @@ describe('the quick check after Claude', () => {
     expect(host.querySelector('.quick-text')?.textContent).toBe('This app rocks.')
   })
 })
+
+describe('the timeline editor', () => {
+  const arrow = (name: string) => host.querySelector<HTMLButtonElement>(`button[aria-label="${name}"]`)!
+
+  it('undoes and redoes with the arrows at the top', () => {
+    const onKeep = vi.fn()
+    show({ onKeep })
+    act(() => button('Timeline editor')!.click())
+    expect(arrow('Undo').disabled).toBe(true)
+    act(() => button('Delete')!.click())
+    expect(arrow('Undo').disabled).toBe(false)
+    act(() => arrow('Undo').click())
+    act(() => vi.advanceTimersByTime(500))
+    expect(arrow('Redo').disabled).toBe(false)
+    act(() => arrow('Redo').click())
+    act(() => vi.advanceTimersByTime(500))
+    expect(onKeep).toHaveBeenLastCalledWith([{ start: 5, end: 10 }], expect.anything())
+    expect(arrow('Redo').disabled).toBe(true)
+  })
+
+  it('has no zoom buttons - the timeline is pinched', () => {
+    show()
+    act(() => button('Timeline editor')!.click())
+    expect(arrow('Zoom in')).toBeNull()
+    expect(host.textContent).toContain('Pinch the timeline to zoom')
+  })
+
+  it('opens full screen from the top', () => {
+    show()
+    act(() => arrow('Full screen').click())
+    expect(host.querySelector('.cuts.full')).not.toBeNull()
+    act(() => arrow('Close full screen').click())
+    expect(host.querySelector('.cuts.full')).toBeNull()
+  })
+})

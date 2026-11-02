@@ -3,6 +3,29 @@
 Newest first. Every change says what it does, how to use it, and how it works
 underneath. Kept up to date with each commit.
 
+## Timeline editor: smooth scrolling, pinch to zoom, exact trims, undo/redo arrows, centre lines, full screen
+App only: run ./deploy.sh.
+**What he said (2026-11-02):** "very laggy", "when I zoom in, sometimes it just zooms in on the whole screen", "I have
+to press a button, and I can't actually zoom in inside of the timeline", "sometimes it trims too much or it doesn't
+trim enough", "Undo should be in arrows only", text and overlays "need to be centered" with "a little line", and
+full-screen preview. (`CutsEditor.tsx`)
+- **Smoother:** scrolling asks the video for the nearest frame it can show at once (`fastSeek`) and the exact one
+  140 ms after the finger stops (`scrub`); the timer, what is drawn over the video and the captions follow each frame
+  directly, and the rest of the screen catches up when he stops (`followTime`) - no whole-screen redraw per frame.
+- **Pinch the timeline to zoom:** while the fingers move the timeline is only stretched (`scaleX`, smooth), laid out
+  at the new zoom when they let go; the − / + buttons are gone. A pinch anywhere else on the editor does nothing - the
+  whole page used to zoom (iPhone Safari ignores the page's "no zoom").
+- **Exact trims:** the edge keeps the distance from where the finger landed on it (it jumped to the finger's middle,
+  ~0.25 s at the usual zoom), and snaps to a gap between words only within 4 px (was 10 px).
+- **Undo ↶ and redo ↷ arrows** at the top, for the cuts and for words and pictures put on, moved, changed or taken
+  off (`past`/`future` snapshots, 50 deep). The Undo button is gone.
+- **Centre lines:** words, pictures, videos and the headline snap onto the middle across and down when near it, a
+  yellow line showing (`CENTER_SNAP`, `guides`).
+- **Full screen** (⤢ at the top, in the quick check too): the video fills the screen and plays as it will post; ✕
+  closes it.
+- Not yet: muting a video's own sound or a video put over it - the render leaves those silent today; next, with
+  recording.
+
 ## Quick caption check: only what needs a look, one card at a time; then Approve or the timeline editor
 Needs deploying: run ./deploy.sh (it runs ./deploy-server.sh too).
 **What he asked (2026-11-02):** "I want you to find a way to check the captions quicker, so I can just say, 'Okay,
