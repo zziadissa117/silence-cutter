@@ -104,6 +104,10 @@ export function Recorder({ onDone, onCancel }: { onDone: (files: File[]) => void
   const type = useRef(recordingType())
   /** A flip is opening the other camera: the recording holds the last picture. */
   const switching = useRef(false)
+  /** The camera now in the picture faces him: the recording is mirrored,
+   *  as he sees himself on screen and as TikTok keeps it (his ask,
+   *  2026-11-03). Set only once that camera's picture is showing. */
+  const mirrored = useRef(false)
 
   const stopCamera = () => {
     for (const track of camera.current?.getTracks() ?? []) track.stop()
@@ -132,6 +136,7 @@ export function Recorder({ onDone, onCancel }: { onDone: (files: File[]) => void
         v.srcObject = next
         await v.play().catch(() => {})
       }
+      mirrored.current = which === 'user'
       switching.current = false
       const track = next.getVideoTracks()[0]
       const settings = track?.getSettings() ?? {}
@@ -172,7 +177,9 @@ export function Recorder({ onDone, onCancel }: { onDone: (files: File[]) => void
       const v = video.current
       if (ctx && v && !switching.current && v.readyState >= 2 && v.videoWidth > 0) {
         const box = coverBox(v.videoWidth, v.videoHeight)
+        if (mirrored.current) ctx.setTransform(-1, 0, 0, 1, RECORD_WIDTH, 0)
         ctx.drawImage(v, box.x, box.y, box.w, box.h)
+        ctx.setTransform(1, 0, 0, 1, 0, 0)
       }
       frame = requestAnimationFrame(draw)
     }

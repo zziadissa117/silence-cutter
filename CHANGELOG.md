@@ -3,6 +3,13 @@
 Newest first. Every change says what it does, how to use it, and how it works
 underneath. Kept up to date with each commit.
 
+## Recording: the selfie camera's video comes out mirrored, as on screen
+App only: run ./deploy.sh.
+**What he asked (2026-11-03):** the recording "I want you to mirror it so it feels natural, exactly like on TikTok".
+- `Recorder.tsx`: with the front camera the picture was mirrored on screen but the video came out the other way round.
+  Now the recording is mirrored too (drawn flipped onto the recording canvas), so the video looks exactly as he saw
+  himself while filming. The back camera is never mirrored. A flip changes it only once the other camera shows.
+
 ## Snapchat headline: a little smaller, slimmer bar
 App only: run ./deploy.sh.
 **What he said (2026-11-03):** the Snapchat look "feels a little uncanny, and it's just a tiny bit too big. Make it a
