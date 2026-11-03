@@ -229,6 +229,7 @@ import { linkBatches, SERVER_URL_EVENT, serverUrl } from './serverLink'
 import { reportMaking, SERVER_BANKS_EVENT, SERVER_COMMAND_EVENT, serverLog, type ServerCommand, type ServerMaking } from './serverMode'
 import { TabBar, type Tab } from './TabBar'
 import { BackToMore, MoreView } from './MoreView'
+import { Recorder } from './Recorder'
 import { keepScreenOn } from './wakeLock'
 
 const LAST_KEY = 'campaign.last'
@@ -749,6 +750,8 @@ export function CampaignApp() {
   }
   const laterNow = postLater && posting !== null
   const [settingUpPosting, setSettingUpPosting] = useState(false)
+  /** The Cutter's own camera (Recorder.tsx) is open. */
+  const [recordingOpen, setRecordingOpen] = useState(false)
   const [push, setPush] = useState<PushState>('off')
   const [toApprove, setToApprove] = useState(() => lastPosts().filter((p) => p.status === 'waiting').length)
   const [outgoing, setOutgoing] = useState(sending)
@@ -3088,6 +3091,9 @@ export function CampaignApp() {
         />
       ) : mode === 'day' || !campaign || !angle || (mode === 'one' && !isReaction(campaign)) ? (
         <>
+          <button type="button" className="btn primary wide record-btn" onClick={() => setRecordingOpen(true)}>
+            <span className="record-dot" aria-hidden /> Record a video
+          </button>
           {dropZone("Add today's videos", "Each is sorted into its campaign - you approve before anything's made")}
           {campaign && angle ? (
             <div className="under-drop-links">
@@ -3850,6 +3856,16 @@ export function CampaignApp() {
           pops: popReviewFor(reviewJob),
         }}
       />
+    ) : recordingOpen ? (
+      <Recorder
+        onCancel={() => setRecordingOpen(false)}
+        onDone={(files) => {
+          setRecordingOpen(false)
+          // One take is a video, sorted like a picked one; several are joined first.
+          if (files.length === 1) addFiles(files, true)
+          else addJoined(files)
+        }}
+      />
     ) : showSignIn ? (
       <SignIn
         onSignedIn={(next) => {
@@ -4002,6 +4018,7 @@ export function CampaignApp() {
     )
 
   const inFlow =
+    recordingOpen ||
     editing !== null ||
     batchEditing !== null ||
     showSignIn ||

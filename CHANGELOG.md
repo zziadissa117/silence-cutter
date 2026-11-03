@@ -3,6 +3,23 @@
 Newest first. Every change says what it does, how to use it, and how it works
 underneath. Kept up to date with each commit.
 
+## Record in the Cutter: its own camera, tap to record, double tap to flip, a light, takes joined
+App only: run ./deploy.sh.
+**What he asked (2026-11-03):** iPhone's "Take Video" in the picker looks pixelated (it is iPhone's own small
+camera for web pages, recording at reduced quality); build the recorder, highest quality.
+- Videos -> **Record a video** opens `Recorder.tsx`: the camera full screen; the red button records and stops; a
+  double tap anywhere (or ⟲) flips front/back - mid-take, that take ends and the next starts on the other camera;
+  several takes, then **Done · N**. One take goes on as a picked video does (`addFiles`), several are joined first
+  (`addJoined`). ✕ asks before throwing takes away. The timer shows the whole video across takes.
+- **Quality:** the camera is asked for 4K at 30 fps (`cameraConstraints`) and gives the most it can; what it gave
+  shows at the top ("2160×3840 · 30 fps") and is sent as a `check`/`record` report, so the real numbers from his
+  iPhone can be read. Recorded as MP4 at 16 / 28 / 45 Mbps by size (`bitrateFor`), mic without the phone's own
+  noise suppression (the Cutter does its own). The screen stays awake while recording (Wake Lock).
+- **Light ⚡︎:** front camera - the screen around the picture turns white (TikTok's selfie light; brightness all the
+  way up makes it brightest); back camera - the flashlight, where Safari allows it.
+- Checked here with Chrome's fake camera: opens at 4K, records, flips mid-take, Done with 2 takes makes one joined
+  video in the list. Nothing here can run the iPhone's camera.
+
 ## Timeline editor: smooth scrolling, pinch to zoom, exact trims, undo/redo arrows, centre lines, full screen
 App only: run ./deploy.sh.
 **What he said (2026-11-02):** "very laggy", "when I zoom in, sometimes it just zooms in on the whole screen", "I have
