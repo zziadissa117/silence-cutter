@@ -1,7 +1,10 @@
 // Recording in the Cutter, like TikTok's camera: the phone's camera full
 // screen, tap the big button to record and again to stop, double tap
 // anywhere to flip between the front and back camera, a light for selfie
-// videos, and several takes in a row joined into one video. His ask
+// videos. As in TikTok (his ask, 2026-11-03): the button records and pauses,
+// again and again, each part a segment on the bar along the top; ⌫ takes the
+// last part off (a stutter) and nothing else; ✓ finishes - the parts joined
+// into one video, which opens in the timeline editor once it is cut. His ask
 // (2026-11-03): iPhone's own "Take Video" in the picker records small and
 // pixelated; this asks the camera for the most it gives a web page - 4K, or
 // 1080p - at a high bitrate, and says what it got.
@@ -70,8 +73,9 @@ export function Recorder({ onDone, onCancel }: { onDone: (files: File[]) => void
   const [recording, setRecording] = useState(false)
   const [startedAt, setStartedAt] = useState(0)
   const [elapsed, setElapsed] = useState(0)
-  /** The takes before this one, together: the timer shows the whole video. */
-  const before = useRef(0)
+  /** Each take's length (ms), in order: the bar along the top, and Delete
+   *  taking the last one off. */
+  const lengths = useRef<number[]>([])
   const [takeCount, setTakeCount] = useState(0)
   const [light, setLight] = useState(false)
   const [torch, setTorch] = useState(false)
@@ -177,11 +181,11 @@ export function Recorder({ onDone, onCancel }: { onDone: (files: File[]) => void
     }
     const began = new Date()
     r.onstop = () => {
-      before.current += Date.now() - began.getTime()
       const kind = r.mimeType || type.current || 'video/mp4'
       const blob = new Blob(chunks.current, { type: kind.split(';')[0] })
       if (blob.size > 0) {
         takes.current.push(new File([blob], takeName(began, kind, takes.current.length), { type: blob.type, lastModified: began.getTime() }))
+        lengths.current.push(Date.now() - began.getTime())
         setTakeCount(takes.current.length)
       }
     }
@@ -244,7 +248,21 @@ export function Recorder({ onDone, onCancel }: { onDone: (files: File[]) => void
     else onCancel()
   }
 
-  const seconds = Math.floor(((recording ? elapsed : 0) + before.current) / 1000)
+  /** The last part recorded taken off - a stutter - and nothing else, so it
+   *  can be recorded again (TikTok's delete-last-segment). */
+  const deleteLast = () => {
+    if (recording || takes.current.length === 0) return
+    takes.current.pop()
+    lengths.current.pop()
+    setTakeCount(takes.current.length)
+  }
+
+  const recorded = lengths.current.reduce((a, b) => a + b, 0)
+  const seconds = Math.floor(((recording ? elapsed : 0) + recorded) / 1000)
+  // The bar along the top: each part, the one recording growing; a minute
+  // across, longer once the video is longer.
+  const span = Math.max(60_000, recorded + (recording ? elapsed : 0))
+  const parts = [...lengths.current, ...(recording ? [elapsed] : [])]
   const selfieLight = light && facing === 'user'
 
   return (
@@ -254,13 +272,18 @@ export function Recorder({ onDone, onCancel }: { onDone: (files: File[]) => void
         {problem ? <p className="recorder-problem">{problem}</p> : null}
       </div>
 
+      <div className="recorder-segments" aria-hidden>
+        {parts.map((ms, i) => (
+          <span key={i} className={`recorder-segment${recording && i === parts.length - 1 ? ' live' : ''}`} style={{ width: `${(ms / span) * 100}%` }} />
+        ))}
+      </div>
       <div className="recorder-top">
         <button
           type="button"
           className="recorder-round"
           aria-label="Close"
           onClick={() => {
-            if (takes.current.length > 0 && !window.confirm(`Throw away the ${takes.current.length === 1 ? 'take' : `${takes.current.length} takes`} you recorded?`)) return
+            if (takes.current.length > 0 && !window.confirm('Throw away what you recorded?')) return
             void stop().then(() => {
               stopStream()
               onCancel()
@@ -289,25 +312,38 @@ export function Recorder({ onDone, onCancel }: { onDone: (files: File[]) => void
           ⚡︎
         </button>
       </div>
-
-      <div className="recorder-bottom">
+      <div className="recorder-side">
         <button type="button" className="recorder-round" aria-label="Flip camera" onClick={() => void flip()}>
           ⟲
+        </button>
+      </div>
+
+      <div className="recorder-bottom">
+        <button
+          type="button"
+          className="recorder-round recorder-delete"
+          aria-label="Delete the last part"
+          onClick={deleteLast}
+          disabled={recording || takeCount === 0}
+        >
+          ⌫
         </button>
         <button
           type="button"
           className={`recorder-shutter${recording ? ' on' : ''}`}
-          aria-label={recording ? 'Stop' : 'Record'}
+          aria-label={recording ? 'Pause' : takeCount > 0 ? 'Record more' : 'Record'}
           onClick={() => (recording ? void stop() : start())}
           disabled={problem !== null && !recording}
         >
           <span />
         </button>
-        <button type="button" className="recorder-done" disabled={takeCount === 0 && !recording} onClick={() => void done()}>
-          {takeCount > 1 || (takeCount === 1 && recording) ? `Done · ${takeCount + (recording ? 1 : 0)}` : 'Done'}
+        <button type="button" className="recorder-check" aria-label="Done - to the timeline editor" disabled={takeCount === 0 && !recording} onClick={() => void done()}>
+          ✓
         </button>
       </div>
-      <p className="recorder-hint">Double tap to flip the camera</p>
+      <p className="recorder-hint">
+        {takeCount > 0 && !recording ? 'Tap to record more · ⌫ takes off the last part' : 'Double tap to flip the camera'}
+      </p>
     </section>
   )
 }

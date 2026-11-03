@@ -752,6 +752,11 @@ export function CampaignApp() {
   const [settingUpPosting, setSettingUpPosting] = useState(false)
   /** The Cutter's own camera (Recorder.tsx) is open. */
   const [recordingOpen, setRecordingOpen] = useState(false)
+  /** What he just recorded, by its name: opened in the timeline editor by
+   *  itself once it is cut (his ask, 2026-11-03: ✓ brings him there). */
+  const [editorWanted, setEditorWanted] = useState<string | null>(null)
+  /** Videos whose edit screen opens on the timeline, not the quick check. */
+  const [openFull, setOpenFull] = useState<Set<string>>(() => new Set())
   const [push, setPush] = useState<PushState>('off')
   const [toApprove, setToApprove] = useState(() => lastPosts().filter((p) => p.status === 'waiting').length)
   const [outgoing, setOutgoing] = useState(sending)
@@ -2062,7 +2067,7 @@ export function CampaignApp() {
   commitRef.current = commitAdd
 
   const addFiles = useCallback(
-    (incoming: Iterable<File> | null, fromPicker = false) => {
+    (incoming: Iterable<File> | null, fromPicker = false, recorded = false) => {
       if (!incoming || (mode === 'one' && (!campaign || !angle))) {
         pickSaved()
         return
@@ -2082,7 +2087,8 @@ export function CampaignApp() {
         const wide = order.filter((o) => o.filming.vertical === false)
         // A clip that is not 9:16: ask whether to cut it too. Already-9:16
         // clips are never asked about and are always cut.
-        if (wide.length > 0) {
+        // What he recorded in the Cutter is always cut - never asked about.
+        if (wide.length > 0 && !recorded) {
           setAskWide({ order, names: wide.map((o) => o.file.name) })
           return
         }
@@ -3652,6 +3658,22 @@ export function CampaignApp() {
     setReviewing(ids)
   }
 
+  // What he recorded, cut and ready: straight into the timeline editor - once
+  // nothing else is open, and only on Videos. One that failed is let go.
+  useEffect(() => {
+    if (!editorWanted) return
+    const job = jobs.find((j) => j.name === editorWanted)
+    if (!job) return
+    if (job.status === 'failed') {
+      setEditorWanted(null)
+      return
+    }
+    if (job.status !== 'sorted' || !job.day?.plan || inFlowRef.current || tab !== 'videos') return
+    setEditorWanted(null)
+    setOpenFull((all) => new Set(all).add(job.id))
+    startCheck([job.id])
+  }, [jobs, editorWanted, tab]) // eslint-disable-line react-hooks/exhaustive-deps
+
   /** On to the next video still waiting to be checked, or back to the list. */
   const nextReview = () =>
     setReviewing((queue) => {
@@ -3800,6 +3822,7 @@ export function CampaignApp() {
       <EditScreen
         key={reviewJob.id}
         id={reviewJob.id}
+        startFull={openFull.has(reviewJob.id)}
         name={reviewJob.name}
         file={reviewFile?.id === reviewJob.id ? reviewFile.file : null}
         missing={reviewFile?.id === reviewJob.id && reviewFile.missing}
@@ -3861,8 +3884,9 @@ export function CampaignApp() {
         onCancel={() => setRecordingOpen(false)}
         onDone={(files) => {
           setRecordingOpen(false)
-          // One take is a video, sorted like a picked one; several are joined first.
-          if (files.length === 1) addFiles(files, true)
+          // One part is a video, sorted like a picked one; several are joined first.
+          setEditorWanted(files.length === 1 ? files[0].name : files.map((f) => f.name).join(' + '))
+          if (files.length === 1) addFiles(files, true, true)
           else addJoined(files)
         }}
       />

@@ -1097,3 +1097,10 @@ input[type='color']::-webkit-color-swatch { border: 0.5px solid var(--edge); bor
 .record-btn { display: inline-flex; align-items: center; justify-content: center; gap: 10px; margin-bottom: 10px; }
 .record-dot { width: 14px; height: 14px; border-radius: 50%; background: #ff3b30; box-shadow: 0 0 0 2px #fff; }
 .recorder-time.paused { background: rgb(0 0 0 / 0.5); }
+.recorder-segments { position: absolute; z-index: 2; left: 10px; right: 10px; top: calc(env(safe-area-inset-top) + 4px); height: 5px; display: flex; gap: 2px; border-radius: 3px; background: rgb(255 255 255 / 0.25); overflow: hidden; }
+.recorder-segment { height: 100%; background: #ff3b30; }
+.recorder-segment.live { background: #ff6b60; }
+.recorder-side { position: absolute; right: 16px; top: calc(env(safe-area-inset-top) + 76px); display: flex; flex-direction: column; gap: 12px; }
+.recorder-check { width: 54px; height: 54px; padding: 0; border: 0; border-radius: 50%; background: #ff3b30; color: #fff; font-size: 26px; font-weight: 700; cursor: pointer; }
+.recorder-check:disabled { opacity: 0.35; }
+.recorder-delete { font-size: 22px; }

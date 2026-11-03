@@ -3,6 +3,19 @@
 Newest first. Every change says what it does, how to use it, and how it works
 underneath. Kept up to date with each commit.
 
+## Recording like TikTok: record and pause in parts, ⌫ takes off the last part, ✓ to the timeline editor
+App only: run ./deploy.sh.
+**What he asked (2026-11-03):** "When you press it again, the video doesn't end. It keeps going. Once you press that
+check on the right, it brings you to the timeline editor"; and after a stutter, "undo the last clip, and then
+re-record it, but don't delete the whole thing".
+- The red button records and pauses, again and again; each part shows on a bar along the top (a minute across,
+  longer as the video grows). **⌫** (left of the button) takes off only the last part; **✓** (right) finishes. Flip
+  moved up beside the light. (`Recorder.tsx` `lengths`, `deleteLast`)
+- After ✓ the parts are joined into one video, cut and captioned as always, and when it is ready the **timeline
+  editor opens on it by itself** (`CampaignApp` `editorWanted`, `EditScreen` `startFull`) - only while he is on
+  Videos with nothing else open; otherwise it waits in the list as usual.
+- A recording is never asked "This video isn't 9:16" - it is always cut (`addFiles` `recorded`).
+
 ## Record in the Cutter: its own camera, tap to record, double tap to flip, a light, takes joined
 App only: run ./deploy.sh.
 **What he asked (2026-11-03):** iPhone's "Take Video" in the picker looks pixelated (it is iPhone's own small

@@ -43,7 +43,11 @@ export function EditScreen({
   onKeep,
   onChange,
   onFinish,
+  startFull = false,
 }: {
+  /** Opens on the timeline editor, not the quick check (a video he just
+   *  recorded and finished with ✓). */
+  startFull?: boolean
   id: string
   name: string
   file: Blob | null
@@ -75,7 +79,7 @@ export function EditScreen({
   const [typing, setTyping] = useState(false)
   // Opens on the quick check: the video and the captions to look at, one at a
   // time. The timeline and its tools only when he asks (2026-11-02).
-  const [quick, setQuick] = useState(true)
+  const [quick, setQuick] = useState(!startFull)
   const control = useRef<CutsControl | null>(null)
 
   // The captions drawn on the video: his, as he types them.
