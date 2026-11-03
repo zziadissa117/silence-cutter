@@ -1431,7 +1431,7 @@ export function BatchView({
                 ? 'Optional - none and the videos have no headline. One a line.'
                 : onEngine
                   ? 'The words over the hook, one a line - Claude rewords them a little for each video.'
-                  : 'One a line - paste them all in.'}
+                  : 'Optional - one a line, paste them all in. None: the videos have no words on them.'}
             </p>
             <textarea
               className="post-caption bank-headlines"

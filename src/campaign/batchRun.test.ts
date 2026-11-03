@@ -301,8 +301,19 @@ describe('Claude + X taking turns with headlines, planned', () => {
     expect(variationParts(mixed({ looks: [{ look: 'snap', parts: 1 }, { look: 'formula', parts: 1 }] }))).toContain('5 hooks (2 headlines + 3 Claude + X amounts)')
   })
 
-  it('needs headlines and both logos', () => {
-    expect(missingFor(mixed({ headlines: [], formula: { ...logos, right: null } }))).toEqual(['a headline', 'both logos'])
+  it('needs both logos - and no headline: text is optional', () => {
+    expect(missingFor(mixed({ headlines: [], formula: { ...logos, right: null } }))).toEqual(['both logos'])
+  })
+})
+
+describe('a batch with no headline', () => {
+  it('is ready to start, and makes its videos with no words on them', () => {
+    const b = bank({ headlines: [] })
+    expect(missingFor(b)).toEqual([])
+    const slots = runSlots({ bank: b, place, campaignId: 'c1', now: NOON })
+    const { videos } = planVideos(b, slots.slice(0, 3), { now: NOON })
+    expect(videos.length).toBe(3)
+    for (const v of videos) expect(v.headline).toBe('')
   })
 })
 

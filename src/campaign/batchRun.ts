@@ -201,18 +201,17 @@ export function runSlots({
 }
 
 /** What the batch's videos are still missing to be made: a reaction, a
- *  product clip (or one for every step), a headline or both logos. */
+ *  product clip (or one for every step), or both logos. A headline is not
+ *  needed: without one the videos have no words on them. */
 export function missingFor(bank: BatchBank): string[] {
   const green = bank.layout === 'greenscreen'
   const onEngine = bank.layout === 'engine'
-  const formulaOnly = !green && hookOf(bank) === 'formula'
   const formula = !green && !onEngine && hasFormula(bank)
   return [
     bank.reactions.length === 0 ? 'a reaction' : '',
     ...(usesSteps(bank)
       ? bank.steps!.filter((s) => s.files.length === 0).map((s) => `a clip for ${s.name}`)
       : [bank.products.length === 0 ? (green ? 'a background video' : 'a product showcase') : '']),
-    green || onEngine || formulaOnly || bank.headlines.length > 0 ? '' : 'a headline',
     formula && (!bank.formula?.left || !bank.formula?.right) ? 'both logos' : '',
   ].filter(Boolean)
 }
@@ -220,8 +219,7 @@ export function missingFor(bank: BatchBank): string[] {
 /** How many different videos are left to make, and of how many - Infinity
  *  when there are too many to count. */
 export function leftToMake(bank: BatchBank): { total: number; left: number } {
-  const green = bank.layout === 'greenscreen'
-  return combos(mixFrom(bank, green ? bank.headlines : headlinesToMix(bank)))
+  return combos(mixFrom(bank, headlinesToMix(bank)))
 }
 
 /** What the bank's different videos multiply out of, the way leftToMake
@@ -305,8 +303,7 @@ export function planVideos(
   { id = `b-${Date.now().toString(36)}`, now = new Date(), rand = Math.random }: { id?: string; now?: Date; rand?: () => number } = {},
 ): { videos: BatchVideo[]; slots: BatchSlot[]; bank: BatchBank; retire: string[] } {
   if (bank.layout === 'engine') return { videos: [], slots, bank: fill(bank, slots, now), retire: [] }
-  const green = bank.layout === 'greenscreen'
-  const mixable = mixFrom(bank, green ? bank.headlines : headlinesToMix(bank))
+  const mixable = mixFrom(bank, headlinesToMix(bank))
   const { left } = combos(mixable)
   const taking = Number.isFinite(left) ? slots.slice(0, left) : slots
   if (taking.length === 0) return { videos: [], slots: [], bank, retire: [] }

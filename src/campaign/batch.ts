@@ -267,11 +267,15 @@ export function hookOf(bank: LookFields): BatchHook {
   return looks.length === 1 && looks[0].look === 'formula' ? 'formula' : 'headline'
 }
 
-/** The headlines the mixing goes through: his own, or - for the formula,
- *  where the hook is drawn rather than written - one blank stand-in, so
- *  reactions, products and tracks still go round evenly. */
-export function headlinesToMix(bank: LookFields & Pick<BatchBank, 'headlines'>): string[] {
-  return hookOf(bank) === 'formula' ? [''] : bank.headlines
+/** The headlines the mixing goes through: his own, or one blank stand-in -
+ *  for the formula, where the hook is drawn rather than written, and for a
+ *  batch with no headline at all, whose videos have no words on them (text is
+ *  optional: "sometimes it just makes it weird and kills the reach", his
+ *  words 2026-11-03) - so reactions, products and tracks still go round
+ *  evenly. */
+export function headlinesToMix(bank: LookFields & Pick<BatchBank, 'headlines' | 'layout'>): string[] {
+  if (bank.layout !== 'greenscreen' && hookOf(bank) === 'formula') return ['']
+  return bank.headlines.length > 0 ? bank.headlines : ['']
 }
 
 const ENDINGS = ['a day', '/day', 'per day', 'daily'] as const
@@ -873,7 +877,7 @@ export function recastPicks(
   look: BatchLook,
   rand: () => number = Math.random,
 ): { picks: (BatchPick | null)[]; used: Record<string, number>; made: string[] } {
-  const mixable = mixFrom(bank, bank.layout === 'greenscreen' ? bank.headlines : headlinesToMix(bank))
+  const mixable = mixFrom(bank, headlinesToMix(bank))
   const dims = dimensions(mixable)
   const mixing = dims.parts.size > 0
   const used = { ...bank.used }

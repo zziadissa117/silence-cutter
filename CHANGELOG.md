@@ -3,6 +3,15 @@
 Newest first. Every change says what it does, how to use it, and how it works
 underneath. Kept up to date with each commit.
 
+## Batches: text is optional - no headline, no words on the videos
+App only: run ./deploy.sh.
+**What he asked (2026-11-03):** "there always has to be some sort of text ... sometimes you have to add an empty space
+box. Sometimes it just makes it weird and kills the reach" - text optional on any batch.
+- A batch no longer needs a headline to start (`batchRun.missingFor`); with none, its videos are made with no words
+  on them (`batch.headlinesToMix`: one blank stand-in, so the reactions, products and songs still go round evenly -
+  green screen too). A blank headline draws nothing (it never did: a space was dropped as no headline, so Start
+  stayed shut). The Headlines box says "Optional". Step names were already optional ("Step 1" draws nothing).
+
 ## Batches: the campaign's effects only; talking batches; New post keeps the campaign's most a day; the note to Claude schedules too
 Needs deploying: run ./deploy.sh (it runs ./deploy-server.sh too). The Cutter servers rebuild by themselves.
 **What he asked (2026-11-03):** "if a campaign says no effects, then there's not going to be any effects ... It
