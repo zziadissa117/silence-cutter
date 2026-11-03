@@ -3,6 +3,13 @@
 Newest first. Every change says what it does, how to use it, and how it works
 underneath. Kept up to date with each commit.
 
+## Videos: "From tomorrow" is now "Next days"
+App only: run ./deploy.sh.
+**What he said (2026-11-03):** "'from tomorrow' makes no sense. You could have 'today' and 'for the next days'".
+- `CampaignApp.tsx`: the switch above the videos reads Today / Next days, and its line says what it does - nothing
+  goes out today, each video takes its campaign's next free time, tomorrow and the days after; back to Today by itself
+  the next day. Nothing about how it works changed.
+
 ## Recording: the selfie camera's video comes out mirrored, as on screen
 App only: run ./deploy.sh.
 **What he asked (2026-11-03):** the recording "I want you to mirror it so it feels natural, exactly like on TikTok".

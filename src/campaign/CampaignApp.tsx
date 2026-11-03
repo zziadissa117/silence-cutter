@@ -3049,7 +3049,7 @@ export function CampaignApp() {
           <div className="seg full" role="radiogroup" aria-label="When the videos you add now post">
             {[
               { later: false, label: 'Today' },
-              { later: true, label: 'From tomorrow' },
+              { later: true, label: 'Next days' },
             ].map((o) => (
               <button
                 key={o.label}
@@ -3064,7 +3064,7 @@ export function CampaignApp() {
             ))}
           </div>
           {postLater ? (
-            <div className="hint">Videos you add now take their campaign's times from tomorrow. Back to Post today tomorrow.</div>
+            <div className="hint">Nothing goes out today: each video takes its campaign's next free time, tomorrow and the days after. Goes back to Today by itself tomorrow.</div>
           ) : null}
         </div>
       ) : null}
