@@ -132,6 +132,10 @@ export interface BatchBank {
    *  numbers as they change (batchFavour.ts). Off: everything evenly. */
   useBest?: boolean
   favour?: Favour
+  /** A talking batch: his reactions keep their own sound - his voice - with
+   *  the music under it, dipping while he talks. Off (the default): music
+   *  alone, the clips muted. (His ask, 2026-11-03.) */
+  voice?: boolean
   /** When he last tapped Start anyway: the mixes made before were forgotten
    *  then, so the same clips make the same videos again - read by fromPhone,
    *  which takes the phone's `made` for that Start. */

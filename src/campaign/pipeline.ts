@@ -448,6 +448,8 @@ export async function makeMontage(
     windows?: boolean[]
     /** The first clip is a batch reaction: it always pushes in slowly. */
     reactionFirst?: boolean
+    /** A talking batch: the reaction keeps his voice (montageRender). */
+    voice?: boolean
     /** Per clip: words over it in the headline's look (a step's name). */
     titles?: (string | null)[]
   } = {},
@@ -462,6 +464,7 @@ export async function makeMontage(
       formula: extra.formula ?? null,
       windows: extra.windows,
       reactionFirst: extra.reactionFirst,
+      voice: extra.voice,
       titles: extra.titles,
     },
     onRenderProgress,

@@ -582,6 +582,19 @@ export interface Insights {
   trouble?: DeadAccount[]
 }
 
+/** New post's note read by Claude: when the videos go (`plan`), and the
+ *  rest of it for the captions (postiz/handNote.ts). `forNote`: the note it
+ *  was read from, kept by the screen. */
+export interface ReadNote {
+  plan: { perDay: number | null; startDate: string | null; days: number | null } | null
+  caption: string
+  forNote?: string
+}
+
+export async function readNote(note: string, count: number): Promise<ReadNote> {
+  return call<ReadNote>('read-note', { profile: profileId(), note, count })
+}
+
 /** New headlines in the style of a campaign's best, for him to pick from
  *  (postiz/headlineIdeas.ts). `have`: the batch's headlines now. */
 export async function headlineIdeas(campaignId: string, campaignName: string, have: readonly string[]): Promise<{ headlines: string[]; error?: string }> {

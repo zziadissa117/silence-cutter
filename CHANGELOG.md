@@ -3,6 +3,30 @@
 Newest first. Every change says what it does, how to use it, and how it works
 underneath. Kept up to date with each commit.
 
+## Batches: the campaign's effects only; talking batches; New post keeps the campaign's most a day; the note to Claude schedules too
+Needs deploying: run ./deploy.sh (it runs ./deploy-server.sh too). The Cutter servers rebuild by themselves.
+**What he asked (2026-11-03):** "if a campaign says no effects, then there's not going to be any effects ... It
+should be the single source of truth"; "some talking batches and some reaction-only batches" (a friend's batch
+"muted every single sound. It just put some music on"); New post dropping 14 videos "divide them from today to the
+next days, depending on how many posts are allowed per day on that campaign"; and the "Anything Claude should know"
+box for scheduling ("2 per day for the next 14 days") and caption rules - the campaign first.
+1. **Effects:** a batch video takes its campaign's effects and nothing else - Settings' default effects no longer
+   fill in (`CampaignApp` `defaults: null` for `montage.bank`), and the batch's own slow push-ins (the reaction's
+   zoom, the Claude + X push) come only with the campaign's push-in on (`montageRender` `pushes`). No effects in the
+   campaign: none at all. Videos already made keep what they have.
+2. **Talking batches:** Batch tab, **Sound: Music only / My voice + music** (`BatchBank.voice`). With voice, the
+   reaction's own sound is kept and the music goes under it, dipping while he talks (`montageRender` `voice`:
+   `onSound` of the first clip into a buffer, `musicTrack(..., voice)` with a limiter, `MusicBed` under a voice at
+   -20 LUFS, the sound written 1.5 s behind the picture). The product clips stay muted. Not in green screen or on
+   the engine yet.
+3. **New post, several videos:** with Spread or All now, each video gets its own day and time
+   (`handPlan.ts` `planHandDays`): never more on a day than the campaign's most a day, counting what it already has;
+   today's room first (from a quarter of an hour on), then the next days, evenly over the campaign's window; All now:
+   today's room now. The plan shows above Post ("2 a day at most (Vertus): Today 1 · Tomorrow 2 · ...").
+4. **The note to Claude:** read when he leaves the box (`read-note`, `handNote.ts`): how many a day, from which day,
+   for how many days - that plans the days as above, under the campaign's most - and the rest of the note goes to the
+   captions. The caption prompt now says the campaign's rules come first and his note second (`caption.ts`).
+
 ## Recording like TikTok: record and pause in parts, ⌫ takes off the last part, ✓ to the timeline editor
 App only: run ./deploy.sh.
 **What he asked (2026-11-03):** "When you press it again, the video doesn't end. It keeps going. Once you press that

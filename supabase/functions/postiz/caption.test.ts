@@ -68,7 +68,7 @@ describe('captionRequest', () => {
 describe('a post made by hand', () => {
   it('tells Claude what the video is about instead of words never heard', () => {
     const text = captionRequest({ campaignName: 'Polsha', rules: '', hashtags: [], headline: '', transcript: '', about: 'my reaction to the new polish colours' })
-    expect(text).toContain('What the video is about, as he describes it: my reaction to the new polish colours')
+    expect(text).toContain("the campaign's rules come first. my reaction to the new polish colours")
     expect(text).not.toContain('no words were heard')
   })
 

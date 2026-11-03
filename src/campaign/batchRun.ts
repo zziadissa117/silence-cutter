@@ -75,6 +75,8 @@ export interface BatchVideo {
   /** The headline look it was mixed with, when the batch takes turns
    *  between several (batch.styleFor has the last word when it is made). */
   headlineStyle?: HeadlineStyle
+  /** A talking batch: the reaction keeps his voice (BatchBank.voice). */
+  voice?: boolean
   batch: JobBatch
 }
 
@@ -292,6 +294,7 @@ function videoOf(bank: BatchBank, pick: BatchPick, slot: BatchSlot, { id, seed, 
       ? { headline: formulaText(onFormula, line), formula: { left: onFormula.left, right: onFormula.right, line } }
       : { headline: pick.headline }),
     ...(style ? { headlineStyle: style } : {}),
+    ...(bank.voice && !green ? { voice: true } : {}),
     batch: { id, date: slot.date, time: slot.time, size, ...(ending ? { last: true as const } : {}) },
   }
 }

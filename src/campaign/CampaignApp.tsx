@@ -1577,12 +1577,17 @@ export function CampaignApp() {
           result = await watched(
             makeMontage([file, ...rest], jobCampaign, jobAngle, next.headlineText, track, (p) => setPhase('cutting', p), {
               seed: next.id,
-              defaults: next.day?.noEffects ? null : defaultEffects(),
+              // A batch takes its campaign's effects and nothing else - not
+              // Settings' default effects: "if a campaign says no effects,
+              // then there's not going to be any effects" (his rule,
+              // 2026-11-03). Other clips videos keep Settings' defaults.
+              defaults: next.montage.bank || next.day?.noEffects ? null : defaultEffects(),
               formula,
               // A batch: the reaction always zooms in slowly, and each
               // product step plays the moment something happens in it - a
               // step with a single clip plays whole (stepPiece.playsWhole).
               reactionFirst: Boolean(next.montage.bank),
+              voice: next.montage.bank?.voice === true,
               windows: stepped ? [false, ...stepped.map((s) => !playsWhole(stepOf(s)))] : undefined,
               titles,
             }),
@@ -2544,6 +2549,7 @@ export function CampaignApp() {
           reaction: v.reaction,
           product: v.product,
           music: v.music,
+          ...(v.voice ? { voice: true } : {}),
           ...(v.formula ? { formula: v.formula } : {}),
           ...(v.greenScreen ? { greenScreen: v.greenScreen } : {}),
           ...(v.steps ? { steps: v.steps } : {}),

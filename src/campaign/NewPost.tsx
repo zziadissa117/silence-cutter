@@ -26,6 +26,7 @@ import {
   listPosts,
   localInput,
   ownDayTimes,
+  readNote,
   placeFor,
   windowOf,
   timeLabel,
@@ -33,7 +34,12 @@ import {
   windowLabel,
   writeCaptionFor,
   type Profile,
+  type ReadNote,
 } from './posting'
+import { planHandDays, planSaid } from './handPlan'
+import { localDay as dayOf } from './postsList'
+import { todayHere } from './batch'
+import { zoned } from '../../supabase/functions/postiz/slots.ts'
 import { stillsOf } from './stills'
 import { asMp4 } from './toMp4'
 
@@ -108,6 +114,10 @@ export function NewPost({
   const campaign = choices.find((c) => c.id === campaignId) ?? null
   const [items, setItems] = useState<Picked[]>([])
   const [about, setAbout] = useState('')
+  // His note read by Claude: when the videos go, and the rest for the
+  // captions (handNote.ts) - read when he leaves the box.
+  const [note, setNote] = useState<ReadNote | null>(null)
+  const [reading, setReading] = useState(false)
   const [when, setWhen] = useState<When>('now')
   const [at, setAt] = useState(() => localInput(null))
   const [sending, setSending] = useState<string | null>(null)
@@ -134,8 +144,9 @@ export function NewPost({
    *  the same for every tap, by picked item. */
   const anew = useRef(new Map<string, string>())
   const stillsFor = useRef(new Map<string, string[]>())
+  // What the captions are told: the note without its scheduling, once read.
   const aboutRef = useRef(about)
-  aboutRef.current = about
+  aboutRef.current = note && note.forNote === about ? note.caption : about
   const waiting = useRef<string[]>([])
   const active = useRef(0)
   /** Each ask gets a number; only the latest ask's caption is kept. */
@@ -262,6 +273,32 @@ export function NewPost({
     }
     return chosen === 'at' && !gone ? atIso : null
   }
+  // Several at once, spread or all now: never more on a day than the campaign
+  // allows, and as his note asks (handPlan.ts). One by one or a picked time:
+  // as he set them.
+  const today = todayHere()
+  const notePlan = note?.forNote === about ? note.plan : null
+  const most = profile.settings.campaigns?.[campaign.id]?.mostPerDay
+  const win = place ? windowOf(place) : null
+  const minutes = (hhmm: string) => Number(hhmm.slice(0, 2)) * 60 + Number(hhmm.slice(3, 5))
+  const plan =
+    (chosen === 'spread' || chosen === 'now') && (many || notePlan)
+      ? planHandDays({
+          count: items.length,
+          campaignMost: most,
+          notePerDay: notePlan?.perDay ?? null,
+          startDate: notePlan?.startDate ?? null,
+          today,
+          nowMinute: new Date().getHours() * 60 + new Date().getMinutes(),
+          used: (date) =>
+            lastPosts().filter(
+              (p) => p.campaignId === campaign.id && p.postAt && !['rejected', 'failed', 'error'].includes(p.status) && dayOf(p.postAt) === date,
+            ).length,
+          window: win ? { from: minutes(win.from), to: minutes(win.to) <= minutes(win.from) ? 24 * 60 : minutes(win.to) } : { from: 11 * 60, to: 18 * 60 },
+          key: campaign.id,
+          nowFirst: chosen === 'now',
+        })
+      : null
   const writingCount = items.filter((i) => i.writing).length
   const missingPaste = paste && items.some((i) => !i.caption.trim())
   const ready = items.length > 0 && writingCount === 0 && !missingPaste && sending === null
@@ -335,6 +372,10 @@ export function NewPost({
     const doubled: File[] = []
     for (const [n, item] of list.entries()) {
       const counting = list.length > 1 ? ` ${n + 1} of ${list.length}` : ''
+      // The day and time the plan gives this one (the campaign's most a day,
+      // his note): it goes then, or now.
+      const slot = plan?.[n]
+      const planned = slot ? (slot.time ? zoned(slot.date, slot.time, profile.timezone).toISOString() : null) : undefined
       setSending(`Getting${counting} ready…`)
       try {
         // The same video for the same campaign on the same day is the same
@@ -364,10 +405,10 @@ export function NewPost({
               duration: item.seconds ?? 0,
               fileName: mp4.file.name,
               byHand: {
-                at: timeOf(item),
+                at: planned !== undefined ? planned : timeOf(item),
                 caption: item.caption.trim(),
-                about: about.trim(),
-                ...(chosen === 'spread' ? { spread: true } : {}),
+                about: (note?.forNote === about ? note.caption : about).trim(),
+                ...(chosen === 'spread' && !plan ? { spread: true } : {}),
               },
             },
           },
@@ -442,10 +483,27 @@ export function NewPost({
           placeholder="Anything Claude should know? (optional)"
           onChange={(e) => setAbout(e.target.value)}
           onBlur={() => {
-            // A note added after the captions were written: they are written
-            // again with it. His own stay.
+            // Read for when they go and what the captions say; then the
+            // captions already written are written again with it. His own stay.
             const again = itemsRef.current.filter((i) => i.by === 'claude').map((i) => i.key)
-            if (about.trim() && again.length > 0) write(again)
+            const text = about.trim()
+            if (!text) {
+              setNote(null)
+              return
+            }
+            if (note?.forNote === about) return
+            setReading(true)
+            void readNote(text, Math.max(1, itemsRef.current.length))
+              .then((read) => {
+                const next = { ...read, forNote: about }
+                setNote(next)
+                aboutRef.current = next.caption
+              })
+              .catch(() => setNote(null))
+              .finally(() => {
+                setReading(false)
+                if (again.length > 0) write(again)
+              })
           }}
         />
       )}
@@ -558,7 +616,17 @@ export function NewPost({
               {gone ? <span className="hint warn-text">That time has gone - it would go straight away.</span> : null}
             </label>
           ) : null}
-          {many ? (
+          {plan ? (
+            <p className="hint new-post-to np-plan">
+              {[most ? `${most} a day at most (${campaign.name})` : null, notePlan?.perDay ? `${notePlan.perDay} a day (your note)` : null]
+                .filter(Boolean)
+                .join(', ')}
+              {': '}
+              {planSaid(plan, today)}
+            </p>
+          ) : reading ? (
+            <p className="hint new-post-to">Claude is reading your note…</p>
+          ) : many ? (
             <p className="hint new-post-to">
               {chosen === 'each'
                 ? 'Each one goes now or at its own time - set it on the video.'

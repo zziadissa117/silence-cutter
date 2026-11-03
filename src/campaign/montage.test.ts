@@ -138,3 +138,21 @@ describe('the music on a batch video', () => {
     expect(written.reduce((n, p) => n + p.frames, 0)).toBe(Math.round(1.8 * rate))
   })
 })
+
+describe('a talking batch', () => {
+  it('writes his voice, with the music under it', async () => {
+    const rate = 48000
+    const voice = [new Float32Array(rate).fill(0.25), new Float32Array(rate).fill(0.25)]
+    const bed = { mixInto: (planes: Float32Array[]) => planes.forEach((p) => p.forEach((_, i) => (p[i] += 0.1))) }
+    const written: number[] = []
+    const soundTo = musicTrack(bed, async (sample) => {
+      const plane = new Float32Array(sample.numberOfFrames)
+      sample.copyTo(plane, { planeIndex: 0, format: 'f32-planar' })
+      written.push(...plane)
+    }, voice)
+    await soundTo(0.5)
+    expect(written).toHaveLength(rate / 2)
+    // Past the limiter's look-ahead: the voice and the music together.
+    expect(written[written.length - 1]).toBeCloseTo(0.35, 2)
+  })
+})

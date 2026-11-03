@@ -243,6 +243,8 @@ export interface MontageParts {
     reaction: BankFile
     product: BankFile
     music: BankFile | null
+    /** A talking batch: the reaction keeps his voice, the music under it. */
+    voice?: boolean
     /** The "Claude + X" hook instead of a headline: the two logos from the
      *  bank, and this video's own money line. */
     formula?: { left: BankFile | null; right: BankFile | null; line: string }

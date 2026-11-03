@@ -53,6 +53,7 @@
 //                  videos (hookInsights.ts) and when they do best (bestHours.ts)
 //   best-hours     { profile, off }             -> profile    posting more at the best hours, on or off
 //   headline-ideas { profile, campaignId, have } -> { headlines, costCents }   new headlines like the best
+//   read-note      { profile, note, count }     -> { plan, caption }   New post's note: when, and the captions (handNote.ts)
 //                  (headlineIdeas.ts); insights also carries `trouble`, accounts whose views fell away (deadAccounts.ts)
 //   tick           { secret }                   (the scheduler; no token)
 //   channels       { cutterCampaignId }         (the planner's server; no token - see bridgeAllowed)
@@ -88,6 +89,7 @@ import { MIN_AGE_DAYS as HOURS_MIN_AGE_DAYS, LOOK_BACK_DAYS as HOURS_LOOK_BACK_D
 import { LOOK_BACK_DAYS as HOOKS_LOOK_BACK_DAYS, hookInsights } from './hookInsights.ts'
 import { TELL_AGAIN_DAYS, USUAL_TO, deadAccounts, deadNote, type DeadAccount } from './deadAccounts.ts'
 import { IDEAS_SCHEMA, IDEAS_SYSTEM, cleanIdeas, ideasMessage } from './headlineIdeas.ts'
+import { NOTE_SCHEMA, NOTE_SYSTEM, cleanNote, noteMessage } from './handNote.ts'
 import { cleanPlace, instagramPlace, type Place } from './place.ts'
 import { attachMove, summarise, type AttachMove } from './attach.ts'
 import { cleanMode, pickRecaption, recaptionMode } from './recaption.ts'
@@ -758,6 +760,45 @@ async function headlineIdeas(profile: Profile, body: Record<string, unknown>): P
   const cost = costCents(message.usage?.input_tokens ?? 0, message.usage?.output_tokens ?? 0)
   if (headlines.length === 0) return reply({ headlines, costCents: cost, error: "Claude's ideas were all ones you have already. Try again." })
   return reply({ headlines, costCents: cost })
+}
+
+/** New post's note read for when the videos go out and what the captions
+ *  say (handNote.ts). */
+async function readNote(profile: Profile, body: Record<string, unknown>): Promise<Response> {
+  const note = typeof body.note === 'string' ? body.note.trim().slice(0, 2000) : ''
+  const count = Math.max(1, Math.min(200, Math.round(Number(body.count) || 1)))
+  const today = localDate(new Date(), profile.timezone)
+  if (!note) return reply({ plan: null, caption: '' })
+  const keys = await keysFor(profile.id)
+  if (!keys.anthropic || keys.anthropic === FAKE_CLAUDE) return reply({ plan: null, caption: note })
+  const weekday = new Intl.DateTimeFormat('en-US', { timeZone: profile.timezone, weekday: 'long' }).format(new Date())
+  const client = new Anthropic({ apiKey: keys.anthropic, maxRetries: 2, timeout: MINUTE })
+  const request = {
+    model: MODEL,
+    max_tokens: 1500,
+    system: NOTE_SYSTEM,
+    output_config: { effort: 'low', format: { type: 'json_schema', schema: NOTE_SCHEMA } },
+    messages: [{ role: 'user', content: noteMessage(note, today, weekday, count) }],
+  }
+  let response
+  try {
+    response = await client.beta.messages.create({ ...request, betas: ['server-side-fallback-2026-07-01'], fallbacks: 'default' } as never)
+  } catch (error) {
+    if (error instanceof Anthropic.BadRequestError && /fallback/i.test(error.message)) {
+      response = await client.beta.messages.create(request as never).catch(anthropicProblem)
+    } else anthropicProblem(error)
+  }
+  const said = (response as { content: { type: string; text?: string }[] }).content
+    .filter((b) => b.type === 'text')
+    .map((b) => b.text ?? '')
+    .join('')
+  let parsed: unknown = null
+  try {
+    parsed = JSON.parse(said)
+  } catch {
+    parsed = null
+  }
+  return reply(cleanNote(parsed, note, today))
 }
 
 /** What works in each batch campaign's videos (hookInsights.ts). */
@@ -4116,6 +4157,8 @@ Deno.serve(async (req) => {
         return await saveBestHours(profile, body)
       case 'headline-ideas':
         return await headlineIdeas(profile, body)
+      case 'read-note':
+        return await readNote(profile, body)
       default:
         return reply({ error: 'Unknown action.' }, 400)
     }

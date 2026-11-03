@@ -1481,7 +1481,43 @@ export function BatchView({
             ? null
             : onEngine
               ? list('music', 'Songs', 'Each video gets the song this campaign used least, starting on its chorus.')
-              : list('music', 'Music', 'The only sound - the clips are muted. With one track every video uses it; with more, each gets one at random.')}
+              : (
+                <>
+                  {/* A talking batch keeps his voice; a reaction-only one is music alone (2026-11-03). */}
+                  <div className="group">
+                    <div className="group-title">Sound</div>
+                    <div className="seg full" role="radiogroup" aria-label="Sound of the videos">
+                      {[
+                        { voice: false, label: 'Music only' },
+                        { voice: true, label: 'My voice + music' },
+                      ].map((o) => (
+                        <button
+                          key={o.label}
+                          type="button"
+                          role="radio"
+                          aria-checked={Boolean(bank.voice) === o.voice}
+                          className={Boolean(bank.voice) === o.voice ? 'active' : ''}
+                          onClick={() => keep({ ...bank, voice: o.voice || undefined })}
+                        >
+                          {o.label}
+                        </button>
+                      ))}
+                    </div>
+                    <p className="hint">
+                      {bank.voice
+                        ? 'You talk in your reactions: your voice stays, the music plays under it and dips while you talk. The product clips stay muted.'
+                        : 'Reactions without talking: the music is the only sound.'}
+                    </p>
+                  </div>
+                  {list(
+                    'music',
+                    'Music',
+                    bank.voice
+                      ? 'Under your voice. With one track every video uses it; with more, each gets one at random. None: your voice alone.'
+                      : 'The only sound - the clips are muted. With one track every video uses it; with more, each gets one at random.',
+                  )}
+                </>
+              )}
           {saving ? <p className="hint">{saving}</p> : null}
           {bankSize > 0 ? <p className="hint">The bank keeps {mb(bankSize)} on this phone.</p> : null}
 

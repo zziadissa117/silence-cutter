@@ -28,7 +28,7 @@ import { ONLY_HOOK_ELSE } from './batch'
 import { drawFormula, formulaPush, layoutFormula, type FormulaLayout } from './formulaOverlay'
 import { headlineFontReady } from './headlineFont'
 import type { VideoLook } from './look'
-import { MusicBed, trackLoudness } from './music'
+import { MusicBed, musicGain, trackLoudness } from './music'
 import { Limiter } from './voice'
 import { TIKTOK_ZONES, drawHeadline, layoutHeadline, outputSize, type HeadlineLayout, type LogoLayout } from './overlay'
 import { makeSize, videoQuality } from './quality'
@@ -47,6 +47,12 @@ const MAX_RECOVERIES = 4
  *  song used to be left as it was, and in a batch some came out barely
  *  there: "just play the song no matter if it's quiet". */
 const MUSIC_LUFS = -14
+/** A talking batch's voice is taken as about this loud, for the music under
+ *  it - what an iPhone's mic gives a voice at arm's length. */
+const VOICE_LUFS = -20
+/** How far the sound is written behind the picture in a talking batch, in
+ *  seconds: a clip's sound can come a little after its frames. */
+const VOICE_LEAD = 1.5
 /** The most a quiet song is turned up - 24 dB - so a near-silent one stays
  *  a quiet song, not a wall of hiss. */
 const MAX_LIFT = 10 ** (24 / 20)
@@ -125,7 +131,7 @@ function loweredFormula(layout: FormulaLayout | null, height: number): FormulaLa
 
 export interface MontageRenderInput {
   clips: Blob[]
-  /** The headline's look; the logo, pictures and effects are not used. */
+  /** The headline's look and the campaign's effects; the logo and pictures are not used. */
   look: VideoLook
   headlineText: string
   music: { audio: Blob; name: string } | null
@@ -139,8 +145,12 @@ export interface MontageRenderInput {
    *  of it. */
   windows?: boolean[]
   /** The first clip is his reaction (a batch): it slowly pushes in for its
-   *  whole length, whatever the angle's effects (effects.reactionZoom). */
+   *  whole length when the campaign's push-in is on (effects.reactionZoom). */
   reactionFirst?: boolean
+  /** A talking batch: the first clip's own sound - his voice - is kept, and
+   *  the music goes under it, dipping while he talks (his ask, 2026-11-03:
+   *  "some talking batches and some reaction-only"). Absent: music alone. */
+  voice?: boolean
   /** Per clip, in order: words over all of it in the headline's look - a
    *  batch's product step, its name (batch.stepTitle); null or absent for
    *  none. */
@@ -181,16 +191,25 @@ export function soloMusicGain(trackLufs: number): number {
  *  change: a pop). Each call writes it on up to `end` seconds. It is written
  *  as the picture goes, never after it: the file is written as it is made,
  *  and held back to the end it would keep every frame in memory first. */
-export function musicTrack(bed: Pick<MusicBed, 'mixInto'> | null, add: (sample: AudioSample) => Promise<void>): (end: number) => Promise<void> {
+export function musicTrack(
+  bed: Pick<MusicBed, 'mixInto'> | null,
+  add: (sample: AudioSample) => Promise<void>,
+  /** A talking batch's voice, the whole video long: put in first, the music
+   *  under it, through a limiter. */
+  voice: Float32Array[] | null = null,
+): (end: number) => Promise<void> {
   let at = 0
+  const limiter = voice ? new Limiter(RATE, CHANNELS) : null
   return async (end) => {
     const until = Math.round(end * RATE)
     while (at < until) {
       const length = Math.min(RATE / 10, until - at)
       const data = new Float32Array(length * CHANNELS)
       const out = Array.from({ length: CHANNELS }, (_, c) => data.subarray(c * length, (c + 1) * length))
+      if (voice) for (let c = 0; c < CHANNELS; c++) out[c].set(voice[c].subarray(at, Math.min(voice[c].length, at + length)))
       bed?.mixInto(out, at)
-      for (const plane of out) for (let k = 0; k < plane.length; k++) plane[k] = Math.max(-1, Math.min(1, plane[k]))
+      if (limiter) limiter.process(out)
+      else for (const plane of out) for (let k = 0; k < plane.length; k++) plane[k] = Math.max(-1, Math.min(1, plane[k]))
       const sample = new AudioSample({ data, format: 'f32-planar', numberOfChannels: CHANNELS, sampleRate: RATE, timestamp: at / RATE })
       try {
         await add(sample)
@@ -208,7 +227,7 @@ export function liftMusic(channels: Float32Array[], gain: number, sampleRate: nu
 }
 
 export async function renderMontage(
-  { clips: files, look, headlineText, music, seed = '', formula = null, windows = [], reactionFirst = false, titles = [] }: MontageRenderInput,
+  { clips: files, look, headlineText, music, seed = '', formula = null, windows = [], reactionFirst = false, titles = [], voice = false }: MontageRenderInput,
   onProgress?: (fraction: number) => void,
 ): Promise<MontageRenderResult> {
   if (files.length === 0) throw new SilenceCutError('Add at least one clip.')
@@ -250,13 +269,21 @@ export async function renderMontage(
       try {
         // Only as much of the song as the video uses is decoded (sounds.ts).
         const { channels } = await prepareMusic(music.audio, music.name, total, RATE)
-        const gain = soloMusicGain(trackLoudness(channels, RATE))
-        if (gain > 0) {
-          liftMusic(channels, gain, RATE)
-          // Nothing else is heard, so nothing ever dips it.
-          bed = new MusicBed(channels, RATE, Math.round(total * RATE), 1, Infinity)
+        const loudness = trackLoudness(channels, RATE)
+        if (voice) {
+          // Under his voice, as in a talking video, dipping while he talks.
+          const gain = musicGain(loudness, VOICE_LUFS, 'normal')
+          if (gain > 0) bed = new MusicBed(channels, RATE, Math.round(total * RATE), gain, VOICE_LUFS)
+          else musicFailed = 'the track is silent'
+        } else {
+          const gain = soloMusicGain(loudness)
+          if (gain > 0) {
+            liftMusic(channels, gain, RATE)
+            // Nothing else is heard, so nothing ever dips it.
+            bed = new MusicBed(channels, RATE, Math.round(total * RATE), 1, Infinity)
+          }
+          else musicFailed = 'the track is silent'
         }
-        else musicFailed = 'the track is silent'
       } catch (error) {
         musicFailed = error instanceof Error ? error.message : String(error)
       }
@@ -302,7 +329,12 @@ export async function renderMontage(
     // Zoom effects: each clip is a stretch, so a punch can land at every cut.
     const motion = planMotion(look.effects, parts.map((p) => Math.max(0.1, p.end - p.start)), seed || 'montage')
     const videoClock = forwardOnly()
-    const soundTo = musicTrack(bed, (sample) => audioSource.add(sample))
+    // A talking batch: his voice, written here as its clip is read, and the
+    // sound written a little behind the picture so his voice is always in
+    // before the music is laid under it.
+    const voicePlanes = voice ? Array.from({ length: CHANNELS }, () => new Float32Array(Math.ceil((total + 2) * RATE))) : null
+    const soundTo = musicTrack(bed, (sample) => audioSource.add(sample), voicePlanes)
+    const behind = voicePlanes ? VOICE_LEAD : 0
     const seconds: number[] = []
     let at = 0
     // Frames written so far, at a steady FPS. Each steady frame shows the
@@ -327,11 +359,14 @@ export async function renderMontage(
       // length instead of the usual opening push.
       // A batch's reaction always pushes in slowly too, or the angle's
       // own push-in where that is closer.
+      // Both are push-ins, so they come only with the campaign's push-in on:
+      // a campaign with no effects has none at all (his rule, 2026-11-03).
       const own = framingAt(motion, i, t - start, [])
+      const pushes = look.effects.hookPush !== 'off'
       const framing =
-        i === 0 && formulaLayout
+        i === 0 && formulaLayout && pushes
           ? formulaPush(t - start, length)
-          : i === 0 && reactionFirst
+          : i === 0 && reactionFirst && pushes
             ? { ...own, scale: Math.max(own.scale, reactionZoom(t - start, length)) }
             : own
       const spot = zoomPlace(fill, framing, width, height)
@@ -344,7 +379,7 @@ export async function renderMontage(
       await videoSource.add(frame)
       frame.close()
       // The music keeps up with the picture, in one piece.
-      await soundTo(t + 1 / FPS)
+      await soundTo(t + 1 / FPS - behind)
     }
     try {
       for (const [i, clip] of clips.entries()) {
@@ -357,6 +392,19 @@ export async function renderMontage(
           videoClock,
           audioClock: contiguousAudio(),
           maxRecoveries: MAX_RECOVERIES,
+          ...(voicePlanes && i === 0
+            ? {
+                onSound: async (planes: Float32Array[], timestamp: number) => {
+                  const from = Math.round(timestamp * RATE)
+                  for (let c = 0; c < CHANNELS; c++) {
+                    const into = voicePlanes[c]
+                    const plane = planes[c] ?? planes[0]
+                    if (!plane || from >= into.length) continue
+                    into.set(from < 0 ? plane.subarray(-from) : plane.subarray(0, into.length - from), Math.max(0, from))
+                  }
+                },
+              }
+            : {}),
           onFrame: async (sample, timestamp) => {
             if (i === 0 && timestamp < OPENING) opening.push({ own: sample.timestamp, at: timestamp })
             // Every steady frame before this one starts shows the one before

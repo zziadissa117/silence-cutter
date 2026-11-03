@@ -151,7 +151,9 @@ export function captionRequest(input: CaptionInput): string {
       ? `Hashtags every post must carry (they will be added if missing): ${input.hashtags.map(normalTag).join(' ')}`
       : '',
     input.headline.trim() ? `The headline written on the video: ${input.headline.trim()}` : '',
-    input.about?.trim() ? `What the video is about, as he describes it: ${input.about.trim()}` : '',
+    input.about?.trim()
+      ? `His note for this video - what it is about, or how he wants the caption. Follow it, except where the campaign's rules above say otherwise: the campaign's rules come first. ${input.about.trim()}`
+      : '',
     input.stills
       ? `${input.stills === 1 ? 'A still' : `${input.stills} stills`} from the video ${input.stills === 1 ? 'is' : 'are'} attached, in order. Read any text on screen - the hook is usually written there - and write from what the video shows.`
       : '',
