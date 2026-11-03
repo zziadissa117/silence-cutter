@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { cameraConstraints, takeName } from './Recorder'
+import { RECORD_HEIGHT, RECORD_WIDTH, cameraConstraints, coverBox, takeName } from './Recorder'
 
 describe('the recorder', () => {
   it('names a take by when it was filmed, the next ones numbered', () => {
@@ -15,5 +15,17 @@ describe('the recorder', () => {
     expect(c.video.width).toEqual({ ideal: 3840 })
     expect(c.video.frameRate).toEqual({ ideal: 30 })
     expect(c.audio.noiseSuppression).toBe(false)
+  })
+})
+
+describe('what is recorded', () => {
+  it('is 1080x1920, a camera frame filling it, cropped to fit', () => {
+    expect([RECORD_WIDTH, RECORD_HEIGHT]).toEqual([1080, 1920])
+    // A 4K portrait frame: the same shape, scaled down.
+    expect(coverBox(2160, 3840)).toEqual({ x: 0, y: 0, w: 1080, h: 1920 })
+    // A landscape frame: filled to the height, the sides cropped.
+    const wide = coverBox(1920, 1080)
+    expect(wide.h).toBe(1920)
+    expect(wide.x).toBeLessThan(0)
   })
 })

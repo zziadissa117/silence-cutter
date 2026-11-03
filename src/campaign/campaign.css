@@ -1104,3 +1104,11 @@ input[type='color']::-webkit-color-swatch { border: 0.5px solid var(--edge); bor
 .recorder-check { width: 54px; height: 54px; padding: 0; border: 0; border-radius: 50%; background: #ff3b30; color: #fff; font-size: 26px; font-weight: 700; cursor: pointer; }
 .recorder-check:disabled { opacity: 0.35; }
 .recorder-delete { font-size: 22px; }
+
+/* The selfie light (2026-11-03: "not good enough... more like white"): the
+   picture a small window, everything else pure white - the more white, the
+   more light on his face. */
+.recorder.lit .recorder-view { inset: calc(env(safe-area-inset-top) + 96px) 22% calc(env(safe-area-inset-bottom) + 200px) 22%; border-radius: 18px; box-shadow: 0 0 0 1px rgb(0 0 0 / 0.08); }
+.recorder.lit .recorder-round { background: rgb(0 0 0 / 0.12); color: #000; }
+.recorder.lit .recorder-round.on { background: #ffd60a; }
+.recorder.lit .recorder-segments { background: rgb(0 0 0 / 0.12); }

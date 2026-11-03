@@ -1,7 +1,8 @@
 // Recording in the Cutter, like TikTok's camera: the phone's camera full
 // screen, tap the big button to record and again to stop, double tap
-// anywhere to flip between the front and back camera, a light for selfie
-// videos. As in TikTok (his ask, 2026-11-03): the button records and pauses,
+// anywhere to flip between the front and back camera - mid-recording too,
+// without a break: the camera's picture is drawn into what is recorded, so
+// only the picture changes, the sound runs on - a light for selfie videos. As in TikTok (his ask, 2026-11-03): the button records and pauses,
 // again and again, each part a segment on the bar along the top; ⌫ takes the
 // last part off (a stutter) and nothing else; ✓ finishes - the parts joined
 // into one video, which opens in the timeline editor once it is cut. His ask
@@ -62,9 +63,27 @@ export function cameraConstraints(facing: Facing): MediaStreamConstraints {
   }
 }
 
+/** The size every recording is made at: portrait 1080p - the size every
+ *  finished video is made at too, so nothing is lost. */
+export const RECORD_WIDTH = 1080
+export const RECORD_HEIGHT = 1920
+
+/** Where a camera frame `w` x `h` is drawn to fill the recording (cropped to fit). */
+export function coverBox(w: number, h: number, width = RECORD_WIDTH, height = RECORD_HEIGHT): { x: number; y: number; w: number; h: number } {
+  const scale = Math.max(width / w, height / h)
+  return { x: (width - w * scale) / 2, y: (height - h * scale) / 2, w: w * scale, h: h * scale }
+}
+
 export function Recorder({ onDone, onCancel }: { onDone: (files: File[]) => void; onCancel: () => void }) {
   const video = useRef<HTMLVideoElement>(null)
-  const stream = useRef<MediaStream | null>(null)
+  /** The camera now - only its picture; switched on a flip. */
+  const camera = useRef<MediaStream | null>(null)
+  /** The microphone, open the whole time: a flip never touches the sound. */
+  const mic = useRef<MediaStream | null>(null)
+  /** What is recorded: the camera's picture drawn here, frame by frame, so
+   *  the recording goes on while the camera behind it changes (his ask,
+   *  2026-11-03: flipping paused it and made "mini cuts"). */
+  const canvas = useRef<HTMLCanvasElement | null>(null)
   const recorder = useRef<MediaRecorder | null>(null)
   const chunks = useRef<Blob[]>([])
   const takes = useRef<File[]>([])
@@ -83,42 +102,48 @@ export function Recorder({ onDone, onCancel }: { onDone: (files: File[]) => void
   const lastTap = useRef(0)
   const wake = useRef<{ release: () => Promise<void> } | null>(null)
   const type = useRef(recordingType())
-  /** A flip mid-take: record again as soon as the other camera is open. */
-  const resume = useRef(false)
-  const startRef = useRef<() => void>(() => {})
+  /** A flip is opening the other camera: the recording holds the last picture. */
+  const switching = useRef(false)
 
-  const stopStream = () => {
-    for (const track of stream.current?.getTracks() ?? []) track.stop()
-    stream.current = null
+  const stopCamera = () => {
+    for (const track of camera.current?.getTracks() ?? []) track.stop()
+    camera.current = null
+  }
+  const stopAll = () => {
+    stopCamera()
+    for (const track of mic.current?.getTracks() ?? []) track.stop()
+    mic.current = null
   }
 
-  /** Opens the camera that faces `which`, at the most it gives. */
+  /** Opens the camera that faces `which`, at the most it gives - and the
+   *  microphone, once. */
   const open = useCallback(async (which: Facing) => {
-    stopStream()
     setProblem(null)
     try {
-      const s = await navigator.mediaDevices.getUserMedia(cameraConstraints(which))
-      stream.current = s
+      const { video: wanted, audio } = cameraConstraints(which)
+      // An iPhone runs one camera at a time: the old one goes first.
+      switching.current = true
+      stopCamera()
+      const next = await navigator.mediaDevices.getUserMedia({ video: wanted })
+      camera.current = next
+      if (!mic.current) mic.current = await navigator.mediaDevices.getUserMedia({ audio })
       const v = video.current
       if (v) {
-        v.srcObject = s
+        v.srcObject = next
         await v.play().catch(() => {})
       }
-      const track = s.getVideoTracks()[0]
+      switching.current = false
+      const track = next.getVideoTracks()[0]
       const settings = track?.getSettings() ?? {}
       const caps = (track?.getCapabilities?.() ?? {}) as MediaTrackCapabilities & { torch?: boolean }
       setTorch(Boolean(caps.torch))
       const w = settings.width ?? 0
       const h = settings.height ?? 0
       const fps = Math.round(settings.frameRate ?? 30)
-      const label = `${Math.min(w, h)}×${Math.max(w, h)} · ${fps} fps`
-      setQuality(label)
-      report({ kind: 'check', phase: 'record', message: `camera ${which}: ${w}x${h} @ ${fps} fps, recording ${type.current || 'none'}, max ${caps.width?.max ?? '?'}x${caps.height?.max ?? '?'}` })
-      if (resume.current) {
-        resume.current = false
-        startRef.current()
-      }
+      setQuality(`${Math.min(w, h)}×${Math.max(w, h)} · ${fps} fps`)
+      report({ kind: 'check', phase: 'record', message: `camera ${which}: ${w}x${h} @ ${fps} fps, recording ${type.current || 'none'} at ${RECORD_WIDTH}x${RECORD_HEIGHT}, max ${caps.width?.max ?? '?'}x${caps.height?.max ?? '?'}` })
     } catch (error) {
+      switching.current = false
       const name = error instanceof DOMException ? error.name : ''
       setProblem(
         name === 'NotAllowedError'
@@ -133,10 +158,32 @@ export function Recorder({ onDone, onCancel }: { onDone: (files: File[]) => void
     // Only when he flips; open() itself never changes.
   }, [facing]) // eslint-disable-line react-hooks/exhaustive-deps
 
+  // The camera's picture into the recording, every frame the screen draws.
+  // While a flip opens the other camera, the last picture stays - never a
+  // black frame.
+  useEffect(() => {
+    const c = document.createElement('canvas')
+    c.width = RECORD_WIDTH
+    c.height = RECORD_HEIGHT
+    canvas.current = c
+    const ctx = c.getContext('2d')
+    let frame = 0
+    const draw = () => {
+      const v = video.current
+      if (ctx && v && !switching.current && v.readyState >= 2 && v.videoWidth > 0) {
+        const box = coverBox(v.videoWidth, v.videoHeight)
+        ctx.drawImage(v, box.x, box.y, box.w, box.h)
+      }
+      frame = requestAnimationFrame(draw)
+    }
+    frame = requestAnimationFrame(draw)
+    return () => cancelAnimationFrame(frame)
+  }, [])
+
   useEffect(
     () => () => {
       recorder.current?.state === 'recording' && recorder.current.stop()
-      stopStream()
+      stopAll()
       void wake.current?.release().catch(() => {})
     },
     [],
@@ -150,29 +197,31 @@ export function Recorder({ onDone, onCancel }: { onDone: (files: File[]) => void
 
   // The flashlight, on the back camera, when the light is on.
   useEffect(() => {
-    const track = stream.current?.getVideoTracks()[0]
+    const track = camera.current?.getVideoTracks()[0]
     if (!track || !torch) return
     void track.applyConstraints({ advanced: [{ torch: light && facing === 'environment' } as MediaTrackConstraintSet] }).catch(() => {})
   }, [light, torch, facing, quality])
 
-  /** One take begins. */
+  /** One part begins: the drawn picture and the microphone, recorded. */
   const start = () => {
-    const s = stream.current
-    if (!s || typeof MediaRecorder === 'undefined') {
+    const c = canvas.current
+    const sound = mic.current?.getAudioTracks()[0]
+    if (!c || typeof MediaRecorder === 'undefined' || typeof c.captureStream !== 'function') {
       setProblem("This phone can't record in the page.")
       return
     }
-    const track = s.getVideoTracks()[0]
-    const settings = track?.getSettings() ?? {}
+    const picture = c.captureStream(30).getVideoTracks()[0]
+    const s = new MediaStream([picture, ...(sound ? [sound] : [])])
     chunks.current = []
     let r: MediaRecorder
     try {
       r = new MediaRecorder(s, {
         ...(type.current ? { mimeType: type.current } : {}),
-        videoBitsPerSecond: bitrateFor(settings.width ?? 1920, settings.height ?? 1080),
+        videoBitsPerSecond: bitrateFor(RECORD_WIDTH, RECORD_HEIGHT),
         audioBitsPerSecond: 192_000,
       })
     } catch (error) {
+      picture.stop()
       setProblem(`Recording could not start (${error instanceof Error ? error.message : String(error)}).`)
       return
     }
@@ -181,6 +230,7 @@ export function Recorder({ onDone, onCancel }: { onDone: (files: File[]) => void
     }
     const began = new Date()
     r.onstop = () => {
+      picture.stop()
       const kind = r.mimeType || type.current || 'video/mp4'
       const blob = new Blob(chunks.current, { type: kind.split(';')[0] })
       if (blob.size > 0) {
@@ -202,9 +252,7 @@ export function Recorder({ onDone, onCancel }: { onDone: (files: File[]) => void
       .catch(() => {})
   }
 
-  startRef.current = start
-
-  /** The take ends; resolves once its file is kept. */
+  /** The part ends; resolves once its file is kept. */
   const stop = () =>
     new Promise<void>((resolve) => {
       const r = recorder.current
@@ -223,27 +271,21 @@ export function Recorder({ onDone, onCancel }: { onDone: (files: File[]) => void
       r.stop()
     })
 
-  /** Double tap: the other camera - mid-take, the take ends there and the
-   *  next begins on the other camera, joined after. */
-  const flip = async () => {
-    if (recording) {
-      await stop()
-      resume.current = true
-    }
-    setFacing((f) => (f === 'user' ? 'environment' : 'user'))
-  }
+  /** Double tap: the other camera - while recording too, without a break:
+   *  the recording goes on, only the picture changes. */
+  const flip = () => setFacing((f) => (f === 'user' ? 'environment' : 'user'))
 
   const onTap = () => {
     const now = performance.now()
     if (now - lastTap.current < 300) {
       lastTap.current = 0
-      void flip()
+      flip()
     } else lastTap.current = now
   }
 
   const done = async () => {
     if (recording) await stop()
-    stopStream()
+    stopAll()
     if (takes.current.length > 0) onDone([...takes.current])
     else onCancel()
   }
@@ -285,7 +327,7 @@ export function Recorder({ onDone, onCancel }: { onDone: (files: File[]) => void
           onClick={() => {
             if (takes.current.length > 0 && !window.confirm('Throw away what you recorded?')) return
             void stop().then(() => {
-              stopStream()
+              stopAll()
               onCancel()
             })
           }}
@@ -313,7 +355,7 @@ export function Recorder({ onDone, onCancel }: { onDone: (files: File[]) => void
         </button>
       </div>
       <div className="recorder-side">
-        <button type="button" className="recorder-round" aria-label="Flip camera" onClick={() => void flip()}>
+        <button type="button" className="recorder-round" aria-label="Flip camera" onClick={flip}>
           ⟲
         </button>
       </div>

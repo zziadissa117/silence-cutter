@@ -3,6 +3,17 @@
 Newest first. Every change says what it does, how to use it, and how it works
 underneath. Kept up to date with each commit.
 
+## Recording: flipping never stops the recording; a much brighter selfie light
+App only: run ./deploy.sh.
+**What he said (2026-11-03):** the light "has to be more like white"; and "when I flip ... it pauses the video. The
+video needs to keep going ... it kind of does mini cuts, and the video sounds less good after that."
+- **Flip without a break** (`Recorder.tsx`): the microphone stays open the whole time and what is recorded is the
+  camera's picture drawn frame by frame onto a 1080x1920 canvas (`captureStream`) - the size every finished video is
+  made at. A flip only changes the camera behind it (the old one closed first - an iPhone runs one at a time; the
+  last picture held meanwhile, never black). One part, no join, no cut in the sound. Pausing still makes parts (⌫).
+- **Selfie light:** with the light on and the front camera, the picture is a small window and the rest of the screen
+  pure white, the buttons light too - several times the white there was.
+
 ## Claude + X: under the logos an amount, one of the headlines, or nothing
 App only: run ./deploy.sh. Nothing stored is touched: banks, clips and settings stay as they are (no storage change).
 **What he asked (2026-11-03):** the Claude + X hook "can also just have some headlines. It can just be two pictures,
