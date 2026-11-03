@@ -16,12 +16,15 @@ export function FormulaPreview({
   left,
   right,
   line,
+  plain = false,
   look,
   load,
 }: {
   left: BankFile | null
   right: BankFile | null
   line: string
+  /** A headline under the logos, at the headline's size. */
+  plain?: boolean
   look: Headline
   load: (file: BankFile) => Promise<Blob | null>
 }) {
@@ -45,14 +48,14 @@ export function FormulaPreview({
       if (cancelled || !ctx) return
       ctx.fillStyle = '#1b1b1f'
       ctx.fillRect(0, 0, WIDTH, HEIGHT)
-      const layout = layoutFormula(ctx, WIDTH, HEIGHT, { left: l, right: r }, line, look)
+      const layout = layoutFormula(ctx, WIDTH, HEIGHT, { left: l, right: r }, line, look, plain)
       drawFormula(ctx, layout, { left: l, right: r })
     })()
     return () => {
       cancelled = true
       for (const bitmap of opened) bitmap.close()
     }
-  }, [left, right, line, look, load])
+  }, [left, right, line, plain, look, load])
 
   return <canvas ref={canvas} className="formula-preview" width={WIDTH} height={HEIGHT} aria-label="How the hook looks on the videos" role="img" />
 }

@@ -139,7 +139,7 @@ export interface MontageRenderInput {
   seed?: string
   /** The "Claude + X = $ a day" hook instead of a headline: the two logos,
    *  and this video's money line. The reaction pushes in slowly under it. */
-  formula?: { left: Blob | null; right: Blob | null; line: string } | null
+  formula?: { left: Blob | null; right: Blob | null; line: string; plain?: boolean } | null
   /** Per clip, in order: true to play only the moment something happens in
    *  it (a batch's product steps, stepPiece.ts); false, or absent, for all
    *  of it. */
@@ -316,7 +316,7 @@ export async function renderMontage(
     logos = formula ? { left: await decode(formula.left), right: await decode(formula.right) } : null
     const laidFormula =
       formula && logos
-        ? layoutFormula(ctx, width, height, { left: logos.left, right: logos.right }, formula.line, { ...look.headline, style: ONLY_HOOK_ELSE })
+        ? layoutFormula(ctx, width, height, { left: logos.left, right: logos.right }, formula.line, { ...look.headline, style: ONLY_HOOK_ELSE }, formula.plain === true)
         : null
     const formulaLayout = reactionFirst ? loweredFormula(laidFormula, height) : laidFormula
 

@@ -442,7 +442,7 @@ export async function makeMontage(
   extra: {
     seed?: string
     defaults?: AngleEffects | null
-    formula?: { left: Blob | null; right: Blob | null; line: string } | null
+    formula?: { left: Blob | null; right: Blob | null; line: string; plain?: boolean } | null
     /** Per clip: true to play only the moment something happens in it (a
      *  batch's product steps, stepPiece.ts). */
     windows?: boolean[]

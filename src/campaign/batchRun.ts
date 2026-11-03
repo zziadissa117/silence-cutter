@@ -66,7 +66,7 @@ export interface BatchVideo {
   headline: string
   /** The "Claude + X" hook, when the bank uses it: the headline above is then
    *  what it says in words, for the caption. */
-  formula?: { left: BankFile | null; right: BankFile | null; line: string }
+  formula?: { left: BankFile | null; right: BankFile | null; line: string; plain?: boolean }
   /** Green screen: the product behind him, him cut out in this corner. */
   greenScreen?: { side: 'left' | 'right'; sizePct: number }
   /** The product showcase in steps: one clip each, in order, with the
@@ -278,7 +278,9 @@ function videoOf(bank: BatchBank, pick: BatchPick, slot: BatchSlot, { id, seed, 
   const steps = pick.steps && bank.steps ? pick.steps.map((fileId, s) => ({ file: byId(bank.steps![s].files, fileId)!, name: bank.steps![s].name })) : undefined
   // Claude + X: every video, or those it takes turns on - at their amount.
   const onFormula = formula && (formulaOnly || pick.look === 'formula') ? formula : undefined
-  const line = onFormula ? formulaLine(onFormula, seed, pick.amount) : ''
+  // Under the logos: the amount, one of his headlines, or nothing.
+  const says = onFormula?.says ?? 'amount'
+  const line = !onFormula ? '' : says === 'headlines' ? pick.headline : says === 'none' ? '' : formulaLine(onFormula, seed, pick.amount)
   // Its look, always - the one it was mixed with, or the bank's one look -
   // so how each look does can be told, and its videos changed later.
   const style = pick.look && pick.look !== 'formula' ? pick.look : onFormula ? undefined : stylesOf(bank)[0]
@@ -289,7 +291,7 @@ function videoOf(bank: BatchBank, pick: BatchPick, slot: BatchSlot, { id, seed, 
     music: green ? null : byId(bank.music, pick.music),
     ...(green ? { greenScreen: bank.corner ?? DEFAULT_CORNER } : {}),
     ...(onFormula
-      ? { headline: formulaText(onFormula, line), formula: { left: onFormula.left, right: onFormula.right, line } }
+      ? { headline: formulaText(onFormula, line), formula: { left: onFormula.left, right: onFormula.right, line, ...(says === 'headlines' ? { plain: true } : {}) } }
       : { headline: pick.headline }),
     ...(style ? { headlineStyle: style } : {}),
     ...(bank.voice && !green ? { voice: true } : {}),

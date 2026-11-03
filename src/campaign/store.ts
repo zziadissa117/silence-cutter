@@ -247,7 +247,7 @@ export interface MontageParts {
     voice?: boolean
     /** The "Claude + X" hook instead of a headline: the two logos from the
      *  bank, and this video's own money line. */
-    formula?: { left: BankFile | null; right: BankFile | null; line: string }
+    formula?: { left: BankFile | null; right: BankFile | null; line: string; plain?: boolean }
     /** Green screen: the product is the background video, and he is cut out
      *  in this corner over it (greenScreenRender.ts). */
     greenScreen?: { side: 'left' | 'right'; sizePct: number }

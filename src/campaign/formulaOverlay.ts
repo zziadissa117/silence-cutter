@@ -54,6 +54,8 @@ export function layoutFormula(
   logos: { left: { width: number; height: number } | null; right: { width: number; height: number } | null },
   line: string,
   look: Pick<Headline, 'style' | 'outlineColor' | 'outlineWidth'>,
+  /** A headline under the logos, not an amount: the headline's own size. */
+  plain = false,
 ): FormulaLayout {
   // Sized off the shorter side, as the headline is, so a landscape frame
   // does not get logos taller than itself.
@@ -66,11 +68,13 @@ export function layoutFormula(
   const plusPx = Math.round(size * 0.8)
   // The money is the hook: a third bigger than the largest headline. Laid
   // out as if the frame were that much bigger, then centred on this one.
-  const money = layoutHeadline(ctx, width * MONEY_SCALE, height * MONEY_SCALE, {
+  // Nothing under the logos: just the two pictures.
+  const scale = plain ? 1 : MONEY_SCALE
+  const money = !line.trim() ? null : layoutHeadline(ctx, width * scale, height * scale, {
     text: line,
     position: 'top',
     style: look.style,
-    size: 'large',
+    size: plain ? 'medium' : 'large',
     outlineColor: look.outlineColor,
     outlineWidth: look.outlineWidth,
   })

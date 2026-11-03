@@ -1572,6 +1572,7 @@ export function CampaignApp() {
                 left: hook.left ? await bankFileOf(hook.left) : null,
                 right: hook.right ? await bankFileOf(hook.right) : null,
                 line: hook.line,
+                ...(hook.plain ? { plain: true } : {}),
               }
             : null
           result = await watched(

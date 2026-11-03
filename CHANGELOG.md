@@ -3,6 +3,16 @@
 Newest first. Every change says what it does, how to use it, and how it works
 underneath. Kept up to date with each commit.
 
+## Claude + X: under the logos an amount, one of the headlines, or nothing
+App only: run ./deploy.sh. Nothing stored is touched: banks, clips and settings stay as they are (no storage change).
+**What he asked (2026-11-03):** the Claude + X hook "can also just have some headlines. It can just be two pictures,
+and it doesn't necessarily have to be an amount a day".
+- Batch tab, Claude + X: **Under the logos: Amount a day / Headlines / Nothing** (`BatchFormula.says`, absent =
+  amount as before). Headlines: each video takes one of the batch's headlines under the logos, at the headline's size
+  (`batch.formulaHooks` - one hook per headline; `formula.plain`; `layoutFormula(..., plain)`); the Headlines box
+  shows for it. Nothing: just the two logos and the plus (`layoutFormula` lays out no line for an empty one). The
+  caption is told "Claude + OpenArt - <headline>" or "Claude + OpenArt" (`formulaText`). The preview shows it.
+
 ## Batches: text is optional - no headline, no words on the videos
 App only: run ./deploy.sh.
 **What he asked (2026-11-03):** "there always has to be some sort of text ... sometimes you have to add an empty space

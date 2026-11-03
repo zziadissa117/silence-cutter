@@ -252,7 +252,13 @@ export interface BatchFormula {
   /** Dollars a day, the range each video's amount is drawn from. */
   min: number
   max: number
+  /** What goes under the logos: an amount a day (absent, as before), one of
+   *  the batch's headlines on each video, or nothing - just the two
+   *  pictures (his ask, 2026-11-03). */
+  says?: FormulaSays
 }
+
+export type FormulaSays = 'amount' | 'headlines' | 'none'
 
 export const DEFAULT_FORMULA: BatchFormula = { left: null, right: null, min: 500, max: 1000 }
 
@@ -273,8 +279,9 @@ export function hookOf(bank: LookFields): BatchHook {
  *  optional: "sometimes it just makes it weird and kills the reach", his
  *  words 2026-11-03) - so reactions, products and tracks still go round
  *  evenly. */
-export function headlinesToMix(bank: LookFields & Pick<BatchBank, 'headlines' | 'layout'>): string[] {
-  if (bank.layout !== 'greenscreen' && hookOf(bank) === 'formula') return ['']
+export function headlinesToMix(bank: LookFields & Pick<BatchBank, 'headlines' | 'layout' | 'formula'>): string[] {
+  // Claude + X alone: its own line, unless it says the headlines.
+  if (bank.layout !== 'greenscreen' && hookOf(bank) === 'formula' && bank.formula?.says !== 'headlines') return ['']
   return bank.headlines.length > 0 ? bank.headlines : ['']
 }
 
@@ -346,7 +353,9 @@ export function logoName(file: Pick<BankFile, 'name'> | null, given?: string): s
 export function formulaText(formula: BatchFormula, line: string): string {
   const left = logoName(formula.left, formula.leftName)
   const right = logoName(formula.right, formula.rightName)
-  return left && right ? `${left} + ${right} = ${line}` : line
+  if (!left || !right) return line
+  if (!line.trim()) return `${left} + ${right}`
+  return formula.says === 'headlines' ? `${left} + ${right} - ${line}` : `${left} + ${right} = ${line}`
 }
 
 export interface BatchPick {
@@ -510,12 +519,24 @@ function dimensions(bank: MixBank): {
         ? headlines(null)
         : looks.flatMap(({ look }) =>
             look === 'formula'
-              ? formulaAmounts(bank.formula ?? DEFAULT_FORMULA).map((amount) => ({ text: '', key: `a:${amount}`, look, amount }))
+              ? formulaHooks(bank)
               : headlines(look),
           ),
     tracks: bank.music.length > 0 ? bank.music.map((m) => m.id) : [null],
     parts: new Map(looks.map(({ look, parts }) => [look, Math.max(1, parts)])),
   }
+}
+
+/** Claude + X's hooks: one per amount (each its own video), one per
+ *  headline when it says the headlines, or the one blank - just the logos. */
+function formulaHooks(bank: MixBank): Hook[] {
+  const formula = bank.formula ?? DEFAULT_FORMULA
+  if (formula.says === 'none') return [{ text: '', key: 'a:none', look: 'formula' }]
+  if (formula.says === 'headlines') {
+    const words = bank.headlines.filter((h) => h.trim())
+    return words.length > 0 ? words.map((h) => ({ text: h, key: `f${headlineKey(h)}`, look: 'formula' as const })) : [{ text: '', key: 'a:none', look: 'formula' }]
+  }
+  return formulaAmounts(formula).map((amount) => ({ text: '', key: `a:${amount}`, look: 'formula' as const, amount }))
 }
 
 /** One video's combination, as it is remembered. The product part is the

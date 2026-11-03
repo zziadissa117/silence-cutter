@@ -610,7 +610,8 @@ export function BatchView({
   // angle's look.
   const shownLooks: LookShare[] = !bank ? [] : looksOf(bank).length > 0 ? looksOf(bank) : [{ look: angle.headline.style, parts: 1 }]
   const formulaOn = !green && !onEngine && shownLooks.some((l) => l.look === 'formula')
-  const headlinesOn = green || onEngine || shownLooks.some((l) => l.look !== 'formula')
+  const headlinesOn =
+    green || onEngine || shownLooks.some((l) => l.look !== 'formula') || (shownLooks.some((l) => l.look === 'formula') && bank?.formula?.says === 'headlines')
   const saveLooks = (looks: LookShare[]) => {
     if (!bank) return
     const formulaNow = looks.some((l) => l.look === 'formula')
@@ -1347,7 +1348,7 @@ export function BatchView({
           {formulaOn ? (
             <div className="group">
               <p className="hint bank-hint tip">
-                Two logos with a plus between them over the reaction, then a different amount a day on each Claude + X video. No headline on those.
+                Two logos with a plus between them over the reaction, and under them an amount a day, one of your headlines, or nothing.
               </p>
               <div className="formula-logos">
                 {(['left', 'right'] as const).map((side) => (
@@ -1391,6 +1392,35 @@ export function BatchView({
                 )
               })}
               <div className="field">
+                <span className="label">Under the logos</span>
+                <div className="seg full" role="radiogroup" aria-label="Under the logos">
+                  {(
+                    [
+                      { says: 'amount', label: 'Amount a day' },
+                      { says: 'headlines', label: 'Headlines' },
+                      { says: 'none', label: 'Nothing' },
+                    ] as const
+                  ).map((o) => (
+                    <button
+                      key={o.says}
+                      type="button"
+                      role="radio"
+                      aria-checked={(formula.says ?? 'amount') === o.says}
+                      className={(formula.says ?? 'amount') === o.says ? 'active' : ''}
+                      onClick={() => keep({ ...bank, formula: { ...formula, says: o.says === 'amount' ? undefined : o.says } })}
+                    >
+                      {o.label}
+                    </button>
+                  ))}
+                </div>
+                {formula.says === 'headlines' ? (
+                  <span className="hint">Each video takes one of the headlines below, under the logos.</span>
+                ) : formula.says === 'none' ? (
+                  <span className="hint">Just the two pictures, no words.</span>
+                ) : null}
+              </div>
+              {(formula.says ?? 'amount') === 'amount' ? (
+              <div className="field">
                 <span className="label">Amount a day</span>
                 <div className="formula-range">
                   ${' '}
@@ -1416,7 +1446,15 @@ export function BatchView({
                 </div>
                 <span className="hint">Each video gets its own - like {formulaLine(formula, 'a')}, {formulaLine(formula, 'b')}, {formulaLine(formula, 'c')}.</span>
               </div>
-              <FormulaPreview left={formula.left} right={formula.right} line={formulaLine(formula, 'preview')} look={{ ...angle.headline, style: ONLY_HOOK_ELSE }} load={loadBankFile} />
+              ) : null}
+              <FormulaPreview
+                left={formula.left}
+                right={formula.right}
+                line={formula.says === 'none' ? '' : formula.says === 'headlines' ? (bank.headlines[0] ?? '') : formulaLine(formula, 'preview')}
+                plain={formula.says === 'headlines'}
+                look={{ ...angle.headline, style: ONLY_HOOK_ELSE }}
+                load={loadBankFile}
+              />
             </div>
           ) : null}
           {headlinesOn ? (

@@ -586,3 +586,30 @@ describe('nextInLine', () => {
     expect(order).toEqual(['top-up', 'change'])
   })
 })
+
+describe('Claude + X with headlines, or nothing, under the logos', () => {
+  const logos = { left: files('l', 1)[0], right: files('o', 1)[0], leftName: 'Claude', rightName: 'OpenArt', min: 500, max: 600 }
+  const only = (says: 'headlines' | 'none', fields: Partial<BatchBank> = {}) =>
+    bank({ looks: [{ look: 'formula', parts: 1 }], formula: { ...logos, says }, ...fields })
+
+  it('headlines: each video says one of them under the logos, at the headline size', () => {
+    const b = only('headlines')
+    const { videos } = planVideos(b, runSlots({ bank: b, place, campaignId: 'c1', now: NOON }).slice(0, 4), { now: NOON })
+    expect(videos.length).toBe(4)
+    for (const v of videos) {
+      expect(b.headlines).toContain(v.formula!.line)
+      expect(v.formula!.plain).toBe(true)
+      expect(v.headline).toBe(`Claude + OpenArt - ${v.formula!.line}`)
+    }
+  })
+
+  it('nothing: just the two pictures', () => {
+    const b = only('none')
+    const { videos } = planVideos(b, runSlots({ bank: b, place, campaignId: 'c1', now: NOON }).slice(0, 2), { now: NOON })
+    expect(videos.length).toBe(2)
+    for (const v of videos) {
+      expect(v.formula!.line).toBe('')
+      expect(v.headline).toBe('Claude + OpenArt')
+    }
+  })
+})
