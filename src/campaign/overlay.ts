@@ -34,9 +34,13 @@ const OUTLINE = { lineHeight: 1.18, stroke: 0.14 } as const
 /** Snapchat's caption: the phone's own font, white on a black band at 60%
  *  across the whole frame, the band a little taller than the words - in
  *  fractions of the font size. Its words are smaller than TikTok's text. */
-const SNAP = { lineHeight: 1.28, padY: 0.42, margin: 0.05, band: 'rgba(0, 0, 0, 0.6)', weight: 500 } as const
+// Snapchat's caption: a see-through black bar across the frame, white words.
+// Made a little smaller and the bar a little slimmer to match the app's own
+// (his words, 2026-11-03: "a tiny bit too big ... a little bit uncanny") -
+// about 4.3% of the width at Medium, as Snapchat's caption is on an iPhone.
+const SNAP = { lineHeight: 1.22, padY: 0.36, margin: 0.05, band: 'rgba(0, 0, 0, 0.6)', weight: 500 } as const
 const SNAP_FAMILY = '-apple-system, "SF Pro Text", "Helvetica Neue", Helvetica, "Apple Color Emoji", Arial, sans-serif'
-const SNAP_SIZE: Record<HeadlineSize, number> = { small: 0.042, medium: 0.05, large: 0.06 }
+const SNAP_SIZE: Record<HeadlineSize, number> = { small: 0.036, medium: 0.043, large: 0.052 }
 /** The outline's thickness, as a multiple of the normal one. */
 const OUTLINE_WIDTH: Record<OutlineWidth, number> = { thin: 0.55, normal: 1, thick: 1.5 }
 

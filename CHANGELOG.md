@@ -3,6 +3,13 @@
 Newest first. Every change says what it does, how to use it, and how it works
 underneath. Kept up to date with each commit.
 
+## Snapchat headline: a little smaller, slimmer bar
+App only: run ./deploy.sh.
+**What he said (2026-11-03):** the Snapchat look "feels a little uncanny, and it's just a tiny bit too big. Make it a
+little bit smaller".
+- `overlay.ts`: the words about 14% smaller (Medium 4.3% of the width, as Snapchat's own caption on an iPhone), lines
+  a little closer and the black bar a little thinner around them. Outline and Box are unchanged.
+
 ## Recording: flipping never stops the recording; a much brighter selfie light
 App only: run ./deploy.sh.
 **What he said (2026-11-03):** the light "has to be more like white"; and "when I flip ... it pauses the video. The
