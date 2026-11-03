@@ -16,6 +16,7 @@ import {
 } from 'mediabunny'
 
 import { SilenceCutError } from '../media/errors'
+import { report } from '../report'
 import { RangeReader, inTimestampOrder } from '../media/rangeReader'
 import type { Range } from '../media/silenceMath'
 import { Resampler, fitChannels } from './reaction'
@@ -153,9 +154,16 @@ function planesOf(sample: AudioSample): Float32Array[] {
   })
 }
 
+/** Clips whose sound the phone couldn't decode: silent from then on. */
+const unplayable = new WeakSet<Clip>()
+
 /** The sound of `ranges` of a clip at `rate` with `channels` channels, each
  *  range exactly as long as its picture - silence where the clip has no
- *  sound. */
+ *  sound, or where the phone can't decode it. His report (2026-11-03,
+ *  "InternalAudioDecoderCocoa decoding failed"): the iPhone's audio decoder
+ *  gave up on a clip joined on, and the whole look fell back to the plain
+ *  cut. A clip whose sound won't decode now plays silent instead; its
+ *  picture and everything else is made as usual. */
 export async function eachSound(
   clip: Clip,
   ranges: Range[],
@@ -166,22 +174,37 @@ export async function eachSound(
   for (const range of ranges) {
     const needed = Math.round((range.end - range.start) * rate)
     let given = 0
-    if (clip.audio) {
+    if (clip.audio && !unplayable.has(clip)) {
       const resampler = new Resampler(await clip.audio.getSampleRate(), rate)
-      for await (const sample of new AudioSampleSink(clip.audio).samples(range.start, range.end)) {
-        const sampleRate = sample.sampleRate
-        const from = Math.max(0, Math.round((range.start - sample.timestamp) * sampleRate))
-        const to = Math.min(sample.numberOfFrames, Math.round((range.end - sample.timestamp) * sampleRate))
-        const planes = to > from ? planesOf(sample).map((p) => p.subarray(from, to)) : null
-        sample.close()
-        if (!planes) continue
-        let out = resampler.push(fitChannels(planes, channels))
-        if (given + out[0].length > needed) out = out.map((p) => p.subarray(0, needed - given))
-        if (out[0].length > 0) {
-          await visit(out)
-          given += out[0].length
+      const samples = new AudioSampleSink(clip.audio).samples(range.start, range.end)[Symbol.asyncIterator]()
+      try {
+        while (given < needed) {
+          let next: IteratorResult<AudioSample>
+          try {
+            next = await samples.next()
+          } catch (error) {
+            unplayable.add(clip)
+            console.warn("A clip's sound couldn't be decoded, so it plays silent:", error)
+            report({ kind: 'fallback', phase: 'clip sound', message: `${error instanceof Error ? error.message : String(error)} - the clip plays silent` })
+            break
+          }
+          if (next.done) break
+          const sample = next.value
+          const sampleRate = sample.sampleRate
+          const from = Math.max(0, Math.round((range.start - sample.timestamp) * sampleRate))
+          const to = Math.min(sample.numberOfFrames, Math.round((range.end - sample.timestamp) * sampleRate))
+          const planes = to > from ? planesOf(sample).map((p) => p.subarray(from, to)) : null
+          sample.close()
+          if (!planes) continue
+          let out = resampler.push(fitChannels(planes, channels))
+          if (given + out[0].length > needed) out = out.map((p) => p.subarray(0, needed - given))
+          if (out[0].length > 0) {
+            await visit(out)
+            given += out[0].length
+          }
         }
-        if (given >= needed) break
+      } finally {
+        await samples.return?.().catch(() => {})
       }
     }
     while (given < needed) {

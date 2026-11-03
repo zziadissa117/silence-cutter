@@ -3,6 +3,16 @@
 Newest first. Every change says what it does, how to use it, and how it works
 underneath. Kept up to date with each commit.
 
+## A joined clip whose sound won't decode plays silent, instead of losing the look
+App only: run ./deploy.sh.
+**What he saw (2026-11-03):** "Plain cut. The look couldn't be added. InternalAudioDecoderCocoa decoding failed."
+- His report: the recording itself decoded fine twice (listening and the plain cut), and the look failed twice within
+  two seconds of starting - where the video joined before it starts playing. The iPhone's audio decoder couldn't read
+  that clip's sound, and that one clip took the whole look down to the plain cut.
+- `clipParts.eachSound`: a clip whose sound the phone can't decode now plays silent (picture as usual) and the video
+  is made with the headline, logo and the rest; one `fallback` / `clip sound` report says so. Test:
+  `clipSound.test.ts`.
+
 ## Videos: "From tomorrow" is now "Next days"
 App only: run ./deploy.sh.
 **What he said (2026-11-03):** "'from tomorrow' makes no sense. You could have 'today' and 'for the next days'".
