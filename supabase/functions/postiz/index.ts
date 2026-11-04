@@ -53,6 +53,8 @@
 //                  videos (hookInsights.ts) and when they do best (bestHours.ts)
 //   best-hours     { profile, off }             -> profile    posting more at the best hours, on or off
 //   headline-ideas { profile, campaignId, have } -> { headlines, costCents }   new headlines like the best
+//   video-headline { profile, campaignName, words } -> { headline }   a talking video's headline from all it says,
+//                  like his past headlines (videoHeadline.ts); "" when it can't - the phone uses his first line
 //   read-note      { profile, note, count }     -> { plan, caption }   New post's note: when, and the captions (handNote.ts)
 //   trial-read     { profile, still, hook? }    -> { read, costCents }   Trial reels: Claude reads the viral reel's
 //                  words, their look and place from one still, and rewords them a word or two (trial.ts); only a
@@ -93,6 +95,7 @@ import { LOOK_BACK_DAYS as HOOKS_LOOK_BACK_DAYS, hookInsights } from './hookInsi
 import { TELL_AGAIN_DAYS, USUAL_TO, deadAccounts, deadNote, type DeadAccount } from './deadAccounts.ts'
 import { IDEAS_SCHEMA, IDEAS_SYSTEM, cleanIdeas, ideasMessage } from './headlineIdeas.ts'
 import { NOTE_SCHEMA, NOTE_SYSTEM, cleanNote, noteMessage } from './handNote.ts'
+import { VIDEO_HEADLINE_SCHEMA, VIDEO_HEADLINE_SYSTEM, cleanVideoHeadline, pastHeadlines, videoHeadlineMessage } from './videoHeadline.ts'
 import { countBefore, type DayRow } from './dayRoom.ts'
 import { cleanPlace, instagramPlace, type Place } from './place.ts'
 import {
@@ -957,6 +960,59 @@ async function readNote(profile: Profile, body: Record<string, unknown>): Promis
     parsed = null
   }
   return reply(cleanNote(parsed, note, today))
+}
+
+/** A talking video's headline from all he says in it, in the style of his
+ *  past headlines (videoHeadline.ts). */
+async function videoHeadline(profile: Profile, body: Record<string, unknown>): Promise<Response> {
+  const words = typeof body.words === 'string' ? body.words.trim().slice(0, 6000) : ''
+  const campaign = typeof body.campaignName === 'string' ? body.campaignName.slice(0, 120) : ''
+  if (words.split(/\s+/).length < 3) return reply({ headline: '' })
+  const keys = await keysFor(profile.id)
+  if (!keys.anthropic) return reply({ headline: '' })
+  if (keys.anthropic === FAKE_CLAUDE) return reply({ headline: 'A fake headline about this video' })
+  const { data } = await db
+    .from('cutter_posts')
+    .select('headline, views')
+    .eq('profile_id', profile.id)
+    .not('headline', 'is', null)
+    .neq('headline', '')
+    .order('created_at', { ascending: false })
+    .limit(400)
+  // Views are per account: a video's views are their sum.
+  const past = pastHeadlines(
+    ((data ?? []) as Pick<Post, 'headline' | 'views'>[]).map((r) => {
+      const counts = Object.values(r.views ?? {}).filter((n) => typeof n === 'number')
+      return { headline: r.headline, views: counts.length > 0 ? counts.reduce((x, y) => x + y, 0) : null }
+    }),
+  )
+  const client = new Anthropic({ apiKey: keys.anthropic, maxRetries: 1, timeout: MINUTE })
+  const request = {
+    model: MODEL,
+    max_tokens: 1500,
+    system: VIDEO_HEADLINE_SYSTEM,
+    output_config: { effort: 'low', format: { type: 'json_schema', schema: VIDEO_HEADLINE_SCHEMA } },
+    messages: [{ role: 'user', content: videoHeadlineMessage(words, campaign, past) }],
+  }
+  let response
+  try {
+    response = await client.beta.messages.create({ ...request, betas: ['server-side-fallback-2026-07-01'], fallbacks: 'default' } as never)
+  } catch (error) {
+    if (error instanceof Anthropic.BadRequestError && /fallback/i.test(error.message)) {
+      response = await client.beta.messages.create(request as never).catch(anthropicProblem)
+    } else anthropicProblem(error)
+  }
+  const said = (response as { content: { type: string; text?: string }[] }).content
+    .filter((b) => b.type === 'text')
+    .map((b) => b.text ?? '')
+    .join('')
+  let parsed: unknown = null
+  try {
+    parsed = JSON.parse(said)
+  } catch {
+    parsed = null
+  }
+  return reply({ headline: cleanVideoHeadline(parsed) })
 }
 
 /** What works in each batch campaign's videos (hookInsights.ts). */
@@ -4337,6 +4393,8 @@ Deno.serve(async (req) => {
         return await headlineIdeas(profile, body)
       case 'read-note':
         return await readNote(profile, body)
+      case 'video-headline':
+        return await videoHeadline(profile, body)
       case 'trial-read':
         return await trialRead(profile, body)
       default:

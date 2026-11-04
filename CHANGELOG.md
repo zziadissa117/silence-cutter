@@ -3,6 +3,21 @@
 Newest first. Every change says what it does, how to use it, and how it works
 underneath. Kept up to date with each commit.
 
+## Headlines written from the whole video; changing the campaign keeps your headline
+Needs deploying: run ./deploy-server.sh (./deploy.sh runs it by itself).
+**What he asked (2026-11-04):** "Stop automatically putting the headline as the first line ... take a sort of summary
+of the whole video and make a headline about it that's going to grab people's attention. Take as an example my previous
+headlines." And: moving a made video to the right campaign "resets the headline" he had typed.
+- **Claude writes the headline** (`postiz/videoHeadline.ts`, action `video-headline`; phone `posting.videoHeadline`):
+  for an angle set to write its own headline (Editors: "Write it from the video", was "Make it from my first line"),
+  once a video has been listened to Claude gets everything he says in it and his past headlines (each once, most
+  viewed first) and writes one hook about what the video is really about, in their style - only what the video says,
+  at most 12 words. No signal or no answer in 30 s: his first line, as before. He still sees it and can change it.
+- **Changing the campaign keeps his headline** (`CampaignApp.chooseFor`): a headline he typed (`headlineMine`) stays
+  exactly as he wrote it, even after the app is closed and opened; one Claude wrote stays for an angle that writes its
+  own; only otherwise does the new angle's headline come in.
+- Tests: `videoHeadline.test.ts`.
+
 ## Videos: no more Today / Next days - the next days by themselves; weekends ticked
 Needs deploying: run ./deploy-server.sh (./deploy.sh runs it by itself).
 **What he asked (2026-11-04):** "remove the 'post for the next days' option. Just do it automatically", and in New

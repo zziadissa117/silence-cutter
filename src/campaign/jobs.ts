@@ -21,6 +21,12 @@ export type Job = {
   /** "Vertus · Sydney Sweeney", for the file name and the list. */
   label: string
   headlineText: string
+  /** He typed the headline himself: moving the video to another campaign
+   *  keeps it (2026-11-04). */
+  headlineMine?: boolean
+  /** The headline Claude wrote from this video (postiz/videoHeadline.ts),
+   *  kept for when it moves to another campaign whose angle writes its own. */
+  videoHeadline?: string
   settings: SilenceSettings
   cleanSpeech: boolean
   /** A day's video goes queued → working (listening) → sorted → approved →

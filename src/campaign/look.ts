@@ -539,7 +539,7 @@ export function wordsToHear(look: VideoLook): string[] {
 /** One line describing an angle, for the main screen. */
 export function describeAngle(campaign: Campaign, angle: Angle, headlineText = angle.headline.text): string {
   const parts: string[] = []
-  if (angle.headline.fromFirstLine) parts.push('Headline from your first line')
+  if (angle.headline.fromFirstLine) parts.push('Headline written from the video')
   else if (headlineText.trim()) parts.push(`Headline ${angle.headline.seconds}s`)
   if (campaign.logo && angle.logo.show && campaign.brandWords.length > 0) {
     parts.push(`Logo on "${campaign.brandWords.join('" / "')}"`)

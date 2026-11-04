@@ -46,6 +46,8 @@ interface StoredJob {
   campaignId: string
   angleId: string
   headlineText: string
+  headlineMine?: boolean
+  videoHeadline?: string
   settings: SilenceSettings
   cleanSpeech: boolean
   attempts: number

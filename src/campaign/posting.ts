@@ -602,6 +602,21 @@ export async function readNote(note: string, count: number): Promise<ReadNote> {
   return call<ReadNote>('read-note', { profile: profileId(), note, count })
 }
 
+/** A talking video's headline, written by Claude from all he says in it in
+ *  the style of his past headlines (postiz/videoHeadline.ts). "" when it
+ *  can't be had - no posting here, no signal, no answer within 30 s - and
+ *  the caller falls back to his first line. */
+export async function videoHeadline(words: string, campaignName: string): Promise<string> {
+  try {
+    const asked = call<{ headline?: string }>('video-headline', { profile: profileId(), words: words.slice(0, 6000), campaignName })
+    const timeout = new Promise<null>((resolve) => setTimeout(() => resolve(null), 30_000))
+    const answer = await Promise.race([asked, timeout])
+    return answer?.headline?.trim() ?? ''
+  } catch {
+    return ''
+  }
+}
+
 /** New headlines in the style of a campaign's best, for him to pick from
  *  (postiz/headlineIdeas.ts). `have`: the batch's headlines now. */
 export async function headlineIdeas(campaignId: string, campaignName: string, have: readonly string[]): Promise<{ headlines: string[]; error?: string }> {

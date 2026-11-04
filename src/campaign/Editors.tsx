@@ -479,10 +479,10 @@ export function AngleEditor({
                 onChange={(e) => setHeadline({ fromFirstLine: e.target.checked })}
               />
               <span>
-                <span className="label">Make it from my first line</span>
+                <span className="label">Write it from the video</span>
                 <span className="hint tip" style={{ display: 'block' }}>
-                  Each video's headline is the first thing you say in it, up to eight words. You see it and can change it
-                  before the video is made.
+                  Claude writes each video's headline from everything you say in it, in the style of your past headlines
+                  (your first line when there's no signal). You see it and can change it before the video is made.
                 </span>
               </span>
             </label>

@@ -596,7 +596,7 @@ export function VideoFields({
           onChange={(e) => onHeadline(e.target.value)}
           onBlur={onHeadlineDone}
         />
-        {angle?.headline.fromFirstLine ? <span className="hint">From your first line.</span> : null}
+        {angle?.headline.fromFirstLine ? <span className="hint">{job.headlineMine ? 'Yours.' : 'Written from the video.'}</span> : null}
       </label>
       {onHeadlineStyle ? <HeadlineLook value={job.day?.headlineStyle ?? angle?.headline.style ?? 'box'} onPick={onHeadlineStyle} /> : null}
       <label className="field">

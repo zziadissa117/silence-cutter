@@ -153,6 +153,7 @@ import {
   type CampaignPlace,
   type RedoMode,
   type LocalPosting,
+  videoHeadline,
 } from './posting'
 import { PostsView } from './PostsView'
 import { pushState, refreshPush, turnOnPush, type PushState } from './push'
@@ -1259,6 +1260,8 @@ export function CampaignApp() {
         angleId: p.angleId,
         label: '',
         headlineText: p.headlineText,
+        ...(p.headlineMine ? { headlineMine: true } : {}),
+        ...(p.videoHeadline ? { videoHeadline: p.videoHeadline } : {}),
         settings: p.settings,
         cleanSpeech: p.cleanSpeech,
         status: p.joinedInto
@@ -1462,10 +1465,19 @@ export function CampaignApp() {
           const campaign = campaigns.find((c) => c.id === guess.campaignId)
           const angle = campaign?.angles.find((a) => a.id === guess.angleId)
           // A reaction's headline is the hook he typed, never a line he says.
+          // An angle that writes its own: Claude, from all he says in the
+          // video, like his past headlines (his ask, 2026-11-04: "stop
+          // automatically putting the headline as the first line"); his first
+          // line only when Claude can't be reached.
+          const typed = Boolean(next.day?.chosen && next.headlineText)
+          const written =
+            !next.reaction && angle?.headline.fromFirstLine && !typed
+              ? await videoHeadline(plan.words.map((w) => w.text.trim()).filter(Boolean).join(' '), campaign?.name ?? '')
+              : ''
           const headlineText = next.reaction
             ? next.headlineText
             : angle
-              ? headlineFor(angle, plan, next.day?.chosen && next.headlineText ? next.headlineText : angle.headline.text)
+              ? written || headlineFor(angle, plan, typed ? next.headlineText : angle.headline.text)
               : ''
           // A format's take is made straight away: he checks the finished
           // videos on the Formats tab instead.
@@ -1477,10 +1489,11 @@ export function CampaignApp() {
             campaignId: guess.campaignId,
             angleId: guess.angleId,
             headlineText,
+            ...(written ? { videoHeadline: written } : {}),
             label: campaign && angle ? labelOf(campaign, angle) : '',
           })
           await resetAttempts(next.id)
-          await recordDay(next.id, day, { campaignId: guess.campaignId, angleId: guess.angleId, headlineText })
+          await recordDay(next.id, day, { campaignId: guess.campaignId, angleId: guess.angleId, headlineText, ...(written ? { videoHeadline: written } : {}) })
           return
         }
 
@@ -1821,14 +1834,20 @@ export function CampaignApp() {
     return () => keepScreenOn(false)
   }, [working])
 
-  /** Moves a sorted video to another campaign and angle, starting its
-   *  headline again from that angle. */
+  /** Moves a sorted video to another campaign and angle. A headline he typed
+   *  stays as he wrote it (2026-11-04: changing the campaign "resets the
+   *  headline to how it was before"); else the new angle's - Claude's, from
+   *  this video, for an angle that writes its own. */
   const chooseFor = (id: string, campaignId: string, angleId: string) => {
     const job = jobs.find((j) => j.id === id)
     const campaign = campaigns?.find((c) => c.id === campaignId)
     const angle = campaign?.angles.find((a) => a.id === angleId)
     if (!job?.day?.plan || !campaign || !angle) return
-    const headlineText = headlineFor(angle, job.day.plan, angle.headline.text)
+    const headlineText = job.headlineMine
+      ? job.headlineText
+      : angle.headline.fromFirstLine && job.videoHeadline
+        ? job.videoHeadline
+        : headlineFor(angle, job.day.plan, angle.headline.text)
     setJobs((js) =>
       js.map((j) => (j.id === id ? { ...j, campaignId, angleId, headlineText, label: labelOf(campaign, angle) } : j)),
     )
@@ -1836,11 +1855,11 @@ export function CampaignApp() {
   }
 
   const setHeadline = (id: string, headlineText: string) =>
-    setJobs((js) => js.map((j) => (j.id === id ? { ...j, headlineText } : j)))
+    setJobs((js) => js.map((j) => (j.id === id ? { ...j, headlineText, headlineMine: true } : j)))
 
   const saveHeadline = (id: string) => {
     const job = jobs.find((j) => j.id === id)
-    if (job?.day) void recordDay(id, job.day, { headlineText: job.headlineText })
+    if (job?.day) void recordDay(id, job.day, { headlineText: job.headlineText, ...(job.headlineMine ? { headlineMine: true } : {}) })
   }
 
   const approve = (ids: string[]) => {
