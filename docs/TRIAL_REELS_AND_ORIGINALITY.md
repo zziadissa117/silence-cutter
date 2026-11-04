@@ -1,5 +1,9 @@
 # Trial Reels and Meta's originality rules - research (2026-11-04)
 
+> **Built since (2026-11-04):** the Trial loop - More -> Trial reels. How it works: ARCHITECTURE.md, "Trial reels".
+> His picks: his personal brand account only, light changes (text place, a word or two, brightness), never shared
+> to followers, Instagram's daily trial limit learned from its first refusal, a still of the reel read by Claude.
+
 Research only, no code changed. Written for the admin-only feature the owner
 asked about. Every fact says where it comes from and how sure it is.
 

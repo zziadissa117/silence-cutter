@@ -54,6 +54,9 @@
 //   best-hours     { profile, off }             -> profile    posting more at the best hours, on or off
 //   headline-ideas { profile, campaignId, have } -> { headlines, costCents }   new headlines like the best
 //   read-note      { profile, note, count }     -> { plan, caption }   New post's note: when, and the captions (handNote.ts)
+//   trial-read     { profile, still, hook? }    -> { read, costCents }   Trial reels: Claude reads the viral reel's
+//                  words, their look and place from one still, and rewords them a word or two (trial.ts); only a
+//                  login allowed Trial reels (the owner's, or one he turned it on for in People)
 //                  (headlineIdeas.ts); insights also carries `trouble`, accounts whose views fell away (deadAccounts.ts)
 //   tick           { secret }                   (the scheduler; no token)
 //   channels       { cutterCampaignId }         (the planner's server; no token - see bridgeAllowed)
@@ -92,6 +95,21 @@ import { IDEAS_SCHEMA, IDEAS_SYSTEM, cleanIdeas, ideasMessage } from './headline
 import { NOTE_SCHEMA, NOTE_SYSTEM, cleanNote, noteMessage } from './handNote.ts'
 import { countBefore, type DayRow } from './dayRoom.ts'
 import { cleanPlace, instagramPlace, type Place } from './place.ts'
+import {
+  TRIAL_CONFIG,
+  TRIAL_READ_SCHEMA,
+  TRIAL_READ_SYSTEM,
+  cleanRead,
+  learnedLimit,
+  readFromHook,
+  trialAllowed,
+  trialProblem,
+  trialSpaces,
+  withAllowed,
+  withLimit,
+  withNotAllowed,
+  type TrialAccounts,
+} from './trial.ts'
 import { attachMove, summarise, type AttachMove } from './attach.ts'
 import { cleanMode, pickRecaption, recaptionMode } from './recaption.ts'
 import { cleanLimits, firstDayWithRoom, heldNote, releasable, split, usedOn, type Limits, type PostAccount } from './limits.ts'
@@ -224,6 +242,15 @@ async function spaceFor(token: unknown): Promise<string | null> {
   } catch {
     return null
   }
+}
+
+/** Whether a login may post Trial reels (trial.ts): the owner's, or one he
+ *  turned it on for in People (cutter function `trial`). */
+async function trialAllowedFor(spaceId: string): Promise<boolean> {
+  ownerSpaceId ??= (await db.from('cutter_spaces').select('id').order('created_at').limit(1).maybeSingle()).data?.id ?? null
+  if (spaceId === ownerSpaceId) return true
+  const { data } = await db.from('cutter_config').select('value').eq('key', TRIAL_CONFIG).maybeSingle()
+  return trialAllowed(spaceId, ownerSpaceId, trialSpaces(data?.value))
 }
 
 // --- Keys ---------------------------------------------------------------------
@@ -439,7 +466,7 @@ async function listAccounts(key: string): Promise<Account[]> {
 /** What Postiz is told for one account. `place`: the Instagram place its
  *  posts are tagged with (place.ts) - kept by Postiz, which doesn't hand it
  *  to Instagram yet. */
-function settingsFor(platform: string, title: string, place: Place | null = null): Record<string, unknown> {
+function settingsFor(platform: string, title: string, place: Place | null = null, trial = false): Record<string, unknown> {
   switch (platform) {
     // A TikTok Business account takes TikTok's own settings, under its name.
     case 'tiktok':
@@ -460,7 +487,17 @@ function settingsFor(platform: string, title: string, place: Place | null = null
       return { __type: 'youtube', title, type: 'public', selfDeclaredMadeForKids: 'no', tags: [] }
     case 'instagram':
     case 'instagram-standalone':
-      return { __type: platform, post_type: 'post', is_trial_reel: false, collaborators: [], ...(place ? { location_id: place.id } : {}) }
+      // A Trial loop's video: a Trial Reel, shown to non-followers only and
+      // never shared to his followers ("never", his pick 2026-11-04) -
+      // MANUAL leaves it a trial unless he shares it himself in Instagram.
+      return {
+        __type: platform,
+        post_type: 'post',
+        is_trial_reel: trial,
+        ...(trial ? { graduation_strategy: 'MANUAL' } : {}),
+        collaborators: [],
+        ...(place ? { location_id: place.id } : {}),
+      }
     case 'facebook':
       return { __type: 'facebook', post_type: 'post' }
     default:
@@ -487,6 +524,9 @@ interface Profile {
     /** Buffer as a backup (buffer.ts): its channels as last read - never the
      *  keys, which are sealed with the Postiz key. */
     backup?: BackupSettings
+    /** Trial reels (trial.ts): each Instagram account's daily trial limit
+     *  as Instagram showed it, and the accounts it won't take trials on. */
+    trial?: TrialAccounts
   }
   timezone: string
 }
@@ -603,6 +643,8 @@ async function profileView(profile: Profile) {
     timezone: profile.timezone,
     hasAnthropic: Boolean(secret?.anthropic_key),
     vapidPublic: vapid?.value ?? null,
+    // Trial reels: on for the owner's login and the ones he turned it on for.
+    trialReels: await trialAllowedFor(profile.space_id),
     // Buffer, the backup: its channels and the accounts it backs up - never the keys.
     backup: profile.settings.backup
       ? {
@@ -761,6 +803,121 @@ async function headlineIdeas(profile: Profile, body: Record<string, unknown>): P
   const cost = costCents(message.usage?.input_tokens ?? 0, message.usage?.output_tokens ?? 0)
   if (headlines.length === 0) return reply({ headlines, costCents: cost, error: "Claude's ideas were all ones you have already. Try again." })
   return reply({ headlines, costCents: cost })
+}
+
+/** Trial reels: the viral reel's words read from one still - their look,
+ *  their place and a dozen rewordings of a word or two (trial.ts). The still
+ *  is the only thing of the video that leaves the phone (his OK, 2026-11-04).
+ *  `hook`: the words he typed, when he typed them - then only reworded. */
+async function trialRead(profile: Profile, body: Record<string, unknown>): Promise<Response> {
+  if (!(await trialAllowedFor(profile.space_id))) throw new Problem('Trial reels are not turned on for this login.', false, 403)
+  const still = typeof body.still === 'string' && /^[A-Za-z0-9+/=]+$/.test(body.still) && body.still.length < 4_000_000 ? body.still : ''
+  const hook = typeof body.hook === 'string' ? body.hook.trim().slice(0, 300) : ''
+  if (!still && !hook) throw new Problem('Pick the viral reel first.')
+  const keys = await keysFor(profile.id)
+  if (!keys.anthropic) {
+    // No key: his own words, as they are - no rewordings.
+    if (hook) return reply({ read: readFromHook(hook), costCents: 0 })
+    throw new Problem('Your Anthropic key is missing - paste it in Settings, Posting, or type the hook.')
+  }
+  if (keys.anthropic === FAKE_CLAUDE) {
+    return reply({ read: cleanRead({ text: hook || 'A fake hook', style: 'outline', outlineColor: '#000000', size: 'medium', x: 0.5, y: 0.3, rewordings: ['A fake one', 'Another fake one'] }), costCents: 0 })
+  }
+  const client = new Anthropic({ apiKey: keys.anthropic, maxRetries: 2, timeout: 2 * MINUTE })
+  const ask = hook
+    ? `The words on this video are, exactly: "${hook}". Use them as the text; describe their look and place from the still, and reword them.`
+    : 'Read the words on this video.'
+  const request = {
+    model: MODEL,
+    max_tokens: 4000,
+    system: TRIAL_READ_SYSTEM,
+    output_config: { effort: 'medium', format: { type: 'json_schema', schema: TRIAL_READ_SCHEMA } },
+    messages: [
+      {
+        role: 'user',
+        content: [
+          ...(still ? [{ type: 'image', source: { type: 'base64', media_type: 'image/jpeg', data: still } }] : []),
+          { type: 'text', text: ask },
+        ],
+      },
+    ],
+  }
+  let response
+  try {
+    response = await client.beta.messages.create({ ...request, betas: ['server-side-fallback-2026-07-01'], fallbacks: 'default' } as never)
+  } catch (error) {
+    if (error instanceof Anthropic.BadRequestError && /fallback/i.test(error.message)) {
+      response = await client.beta.messages.create(request as never).catch(anthropicProblem)
+    } else anthropicProblem(error)
+  }
+  const message = response as { content: { type: string; text?: string }[]; usage?: { input_tokens?: number; output_tokens?: number } }
+  const said = message.content
+    .filter((b) => b.type === 'text')
+    .map((b) => b.text ?? '')
+    .join('')
+  let parsed: unknown = null
+  try {
+    parsed = JSON.parse(said)
+  } catch {
+    parsed = null
+  }
+  const read = cleanRead(parsed)
+  const cost = costCents(message.usage?.input_tokens ?? 0, message.usage?.output_tokens ?? 0)
+  if (!read || !read.text) {
+    if (hook) return reply({ read: readFromHook(hook), costCents: cost })
+    return reply({ read: null, costCents: cost, error: "Claude couldn't find words on the reel. Type the hook instead." })
+  }
+  return reply({ read: hook ? { ...read, text: hook } : read, costCents: cost })
+}
+
+/** What a trial reel's refusal teaches (trial.ts trialProblem): Instagram's
+ *  daily trial limit on that account - the trials that went out there in the
+ *  24 hours before - or that the account can't post trials. Kept on the
+ *  profile for the phone's Trial loop; he hears of each once. A trial that
+ *  went out clears "can't post trials". Returns the note for the post, or
+ *  null when the refusal was something else. */
+async function learnFromTrial(profileId: string, post: Post, errored: (PostizPost & { error?: string | null })[], published: PostizPost[]): Promise<string | null> {
+  if (!post.batch?.trial) return null
+  let note: string | null = null
+  const nowIso = new Date().toISOString()
+  for (const p of published) {
+    const id = p.integration?.id
+    if (!id) continue
+    const { data } = await db.from('cutter_profiles').select('settings').eq('id', profileId).single()
+    if ((data as Pick<Profile, 'settings'> | null)?.settings?.trial?.notAllowed?.[id]) {
+      await patchSettings(profileId, (s) => ({ ...s, trial: withAllowed(s.trial, id) }))
+    }
+  }
+  for (const p of errored) {
+    const id = p.integration?.id
+    const problem = trialProblem(p.error)
+    if (!id || !problem) continue
+    const account = post.accounts.find((a) => a.id === id)
+    const name = account?.name ?? p.integration?.name ?? 'this account'
+    if (problem === 'limit') {
+      const { count } = await db
+        .from('cutter_posts')
+        .select('id', { count: 'exact', head: true })
+        .eq('profile_id', profileId)
+        .eq('status', 'posted')
+        .eq('batch->>trial', 'true')
+        .gte('post_at', new Date(Date.parse(post.post_at ?? nowIso) - 24 * 60 * MINUTE).toISOString())
+        .contains('accounts', JSON.stringify([{ id }]))
+      const perDay = learnedLimit(count ?? 0)
+      const before = (await db.from('cutter_profiles').select('settings').eq('id', profileId).single()).data as Pick<Profile, 'settings'> | null
+      const had = before?.settings?.trial?.limits?.[id]?.perDay
+      const saved = await patchSettings(profileId, (s) => ({ ...s, trial: withLimit(s.trial, id, perDay, nowIso) }))
+      const now = saved.settings.trial?.limits?.[id]?.perDay ?? perDay
+      note = `Instagram takes ${now} trial reel${now === 1 ? '' : 's'} a day on ${name} - this one was over it, so it didn't go out. The Trial loop now makes at most ${now} a day.`
+      if (had !== now) await notify(profileId, { title: `Trial reels: ${now} a day on ${name}`, body: note, tag: `trial-limit-${id}` })
+    } else {
+      const before = (await db.from('cutter_profiles').select('settings').eq('id', profileId).single()).data as Pick<Profile, 'settings'> | null
+      await patchSettings(profileId, (s) => ({ ...s, trial: withNotAllowed(s.trial, id, nowIso) }))
+      note = `Instagram doesn't let ${name} post trial reels yet (a public professional account with enough followers, allowed in recommendations - check Settings, Account status in Instagram). The Trial loop is paused for it.`
+      if (!before?.settings?.trial?.notAllowed?.[id]) await notify(profileId, { title: `Trial reels: ${name} can't post them`, body: note, tag: `trial-no-${id}` })
+    }
+  }
+  return note
 }
 
 /** New post's note read for when the videos go out and what the captions
@@ -1097,7 +1254,7 @@ async function releaseHeld(now: number): Promise<void> {
                 return {
                   integration: { id: account.id },
                   value: [{ content: text.caption, image: [{ id: owned.media!.id, path: owned.media!.path }] }],
-                  settings: settingsFor(account.platform, finishTitle(text.title ?? '', [owned.headline ?? '', owned.campaign_name]), instagramPlace(profile.settings, owned.campaign_id)),
+                  settings: settingsFor(account.platform, finishTitle(text.title ?? '', [owned.headline ?? '', owned.campaign_name]), instagramPlace(profile.settings, owned.campaign_id), owned.batch?.trial === true),
                 }
               }),
             }))
@@ -1191,7 +1348,7 @@ async function attachAccounts(profile: Profile, body: Record<string, unknown>): 
               return {
                 integration: { id: account.id },
                 value: [{ content: text.caption, image: [{ id: owned.media!.id, path: owned.media!.path }] }],
-                settings: settingsFor(account.platform, finishTitle(text.title ?? '', [owned.headline ?? '', owned.campaign_name]), instagramPlace(profile.settings, owned.campaign_id)),
+                settings: settingsFor(account.platform, finishTitle(text.title ?? '', [owned.headline ?? '', owned.campaign_name]), instagramPlace(profile.settings, owned.campaign_id), owned.batch?.trial === true),
               }
             }),
           }))
@@ -1574,6 +1731,9 @@ async function start(profile: Profile, body: Record<string, unknown>): Promise<R
   const rules = cleanRules(campaign.posting)
   const hand = handFields(meta.byHand, rules, text(campaign.name, 200) ?? 'Campaign')
   const batch = hand ? null : batchInfo(meta.batch)
+  // A Trial reel only from a login allowed them: never a copy posted as a
+  // normal Reel to someone's followers instead.
+  if (batch?.trial && !(await trialAllowedFor(profile.space_id))) throw new Problem('Trial reels are not turned on for this login.')
   const carry = carryOver(meta.carry, (c) => finishCaption(c, rules.caption === 'paste' ? [] : rules.hashtags))
   // Music added with "Add music & approve": the new version goes out without
   // asking again - never past a brand's own say.
@@ -2311,7 +2471,7 @@ async function schedule(start: Post): Promise<Post> {
           return {
             integration: { id: account.id },
             value: [{ content: text.caption, image: [{ id: media.id, path: media.path }] }],
-            settings: settingsFor(account.platform, finishTitle(text.title ?? '', [post.headline ?? '', post.campaign_name]), instagramPlace(profile.settings, post.campaign_id)),
+            settings: settingsFor(account.platform, finishTitle(text.title ?? '', [post.headline ?? '', post.campaign_name]), instagramPlace(profile.settings, post.campaign_id), post.batch?.trial === true),
           }
         }),
       }, needOf(post))
@@ -2323,7 +2483,8 @@ async function schedule(start: Post): Promise<Post> {
     if (!(error instanceof PostizProblem)) throw error
     // Postiz can't post it: the accounts Buffer backs up go through Buffer,
     // at the same time; the rest wait for Postiz as before.
-    const covered = toPostiz.filter((a) => backupFor(profile)[a.id])
+    // Never a Trial reel: Buffer would post it as a normal Reel, to his followers.
+    const covered = post.batch?.trial ? [] : toPostiz.filter((a) => backupFor(profile)[a.id])
     if (covered.length === 0) throw error
     const at = now ? Date.now() : new Date(date).getTime()
     // Postiz not asked - this hour's share of its requests is used: it is
@@ -2372,6 +2533,8 @@ interface PostizPost {
   publishDate?: string
   releaseURL?: string
   state?: string
+  /** Why it failed, in the platform's words as Postiz curates them. */
+  error?: string | null
   integration?: { id?: string; providerIdentifier?: string; name?: string }
 }
 
@@ -2673,7 +2836,7 @@ async function retryAccounts(profile: Profile, post: Post, auto = false): Promis
         return {
           integration: { id: to.id },
           value: [{ content: text.caption, image: [{ id: owned.media!.id, path: owned.media!.path }] }],
-          settings: settingsFor(to.platform, finishTitle(text.title ?? '', [owned.headline ?? '', owned.campaign_name]), instagramPlace(profile.settings, owned.campaign_id)),
+          settings: settingsFor(to.platform, finishTitle(text.title ?? '', [owned.headline ?? '', owned.campaign_name]), instagramPlace(profile.settings, owned.campaign_id), owned.batch?.trial === true),
         }
       }),
     })
@@ -3771,7 +3934,16 @@ async function checkPosted(now: number): Promise<void> {
         const published = mine.length > 0 && mine.every((p) => p.state === 'PUBLISHED' || p.state === 'ERROR') && errored.length < mine.length
         const fields: Partial<Post> = { checked_at: new Date().toISOString(), checks: post.checks + 1, release_urls: links }
         const missed = post.accounts.filter((a) => errored.some((p) => p.integration?.id === a.id))
-        if (errored.length > 0 && !published) {
+        // A trial reel Instagram turned down for its daily limit, or an
+        // account that can't post trials: learnt once, said once.
+        const trialNote = await learnFromTrial(profileId, post, errored, mine.filter((p) => p.state === 'PUBLISHED')).catch((error) => {
+          console.error('learning from a trial reel failed', post.id, error instanceof Error ? error.message : String(error))
+          return null
+        })
+        if (errored.length > 0 && !published && trialNote) {
+          fields.status = 'error'
+          fields.error = trialNote
+        } else if (errored.length > 0 && !published) {
           fields.status = 'error'
           Object.assign(fields, missedFields(post, `Postiz couldn't publish it to ${notPostedNote(errored, post.accounts).replace(/^Not posted to |\.$/g, '')}. Open Postiz to see why.`, missed, tz))
         } else if (published) {
@@ -3787,7 +3959,7 @@ async function checkPosted(now: number): Promise<void> {
         if (saved.status !== 'scheduled') await removeParts(saved).catch(() => {})
         // Every video that misses an account is money lost: he hears of each
         // one (2026-10-29: "I'm not always going to know").
-        if (errored.length > 0 && saved.status !== 'scheduled') {
+        if (errored.length > 0 && saved.status !== 'scheduled' && !trialNote) {
           await notify(profileId, { title: `${post.campaign_name}: ${saved.status === 'error' ? 'not posted' : 'missed an account'}`, body: saved.error ?? '', tag: `error-${post.id}` })
         }
       }
@@ -3909,6 +4081,7 @@ async function handOver(now: number): Promise<void> {
     const posts = ((data ?? []) as Post[]).filter(
       (p) =>
         p.accounts.length > 0 &&
+        !p.batch?.trial &&
         p.accounts.every((a) => matched[a.id] && !a.held) &&
         p.accounts.some((a) => !p.buffer_ids?.[a.id]),
     )
@@ -4164,6 +4337,8 @@ Deno.serve(async (req) => {
         return await headlineIdeas(profile, body)
       case 'read-note':
         return await readNote(profile, body)
+      case 'trial-read':
+        return await trialRead(profile, body)
       default:
         return reply({ error: 'Unknown action.' }, 400)
     }

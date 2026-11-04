@@ -31,6 +31,7 @@ import { filesOf, type BankFile, type BatchBank } from './batch'
 import { emptyScript, type FormatScript } from './formats'
 import type { ManualPicture } from './manualPictures'
 import type { MusicLevel } from './music'
+import type { TrialLook } from './trialLoop'
 import type { CaptionPosition, CaptionSize, CaptionStyle, CaptionWord } from './captions'
 import type { CampaignPlan } from './plan'
 import type { Guess } from './sort'
@@ -232,6 +233,9 @@ export interface JobBatch {
    *  can be counted (postiz/hookInsights.ts). Absent on videos from before
    *  2026-11-01 and on ones without music. */
   song?: string
+  /** A Trial loop's video (trialLoop.ts): an Instagram Trial Reel, scheduled
+   *  at its time without approval. */
+  trial?: true
 }
 
 /** A clips-and-music video's other files, by name and type: the clips after
@@ -259,6 +263,9 @@ export interface MontageParts {
     steps?: { file: BankFile; name?: string }[]
     /** The headline look it was mixed with, when the batch takes turns. */
     headlineStyle?: HeadlineStyle
+    /** A Trial loop's video: the viral reel's words in its look, at this
+     *  place, the frame this much brighter or darker (trialLoop.ts). */
+    trial?: TrialLook
   }
   clips: { name: string; type: string }[]
   /** The track under it: "" for its angle's, "none", another angle's as

@@ -34,6 +34,8 @@
 //   people         { token }                    -> { people }       owner only: the logins he made, with their phones
 //   pause          { token, name, paused }      -> { people }       owner only: a login stopped, or let go again
 //   remove-device  { token, name, device }      -> { people }       owner only: a phone signed out of a login
+//   trial          { token, name, on }          -> { people }       owner only: Trial reels on or off for a login
+//                  (cutter_config `trial-reels`, the space ids the posting function lets post them - postiz/trial.ts)
 //   server-ping    { token, profile, ... }      -> { ok }           the Cutter server's "still here", every 10 min
 // A login made with a link is tied to its phones (cutter_devices): every
 // sign-in names the phone, its token carries it, at most MAX_DEVICES at once,
@@ -169,6 +171,20 @@ async function setConfig(key: string, value: string): Promise<void> {
 }
 
 const ADMIN_NAME = 'admin'
+
+/** Trial reels: the logins he turned them on for, as space ids - read by the
+ *  posting function too (postiz/trial.ts, same key and shape). */
+const TRIAL_CONFIG = 'trial-reels'
+
+function trialSpaces(value: string | null | undefined): string[] {
+  if (!value) return []
+  try {
+    const list = JSON.parse(value)
+    return Array.isArray(list) ? list.filter((id): id is string => typeof id === 'string') : []
+  } catch {
+    return []
+  }
+}
 
 async function sha256Hex(text: string): Promise<string> {
   return hex(await crypto.subtle.digest('SHA-256', encoder.encode(text)))
@@ -385,10 +401,12 @@ async function people(spaceId: string): Promise<Response> {
   const { data: devices } = rows.length > 0
     ? await db.from('cutter_devices').select('*').in('space_id', rows.map((r) => r.id)).is('removed_at', null).order('first_seen')
     : { data: [] }
+  const trial = trialSpaces((await configValues([TRIAL_CONFIG]))[TRIAL_CONFIG])
   return reply({
     people: rows.map((row) => ({
       name: row.name,
       status: row.status ?? 'active',
+      trial: trial.includes(row.id),
       until: row.status === 'invited' ? row.invite_until : null,
       since: row.created_at,
       devices: ((devices ?? []) as { space_id: string; device_id: string; name: string; first_seen: string; last_seen: string }[])
@@ -433,6 +451,20 @@ async function pause(spaceId: string, body: Record<string, unknown>): Promise<Re
     .neq('id', owner)
     .in('status', ['active', 'paused'])
   if (error) return reply({ error: 'The server could not change the login.' }, 500)
+  return people(spaceId)
+}
+
+/** Trial reels for a login he made, on or off (his ask, 2026-11-04: his
+ *  friend gets it, not everyone). His own login always has it. */
+async function trialFor(spaceId: string, body: Record<string, unknown>): Promise<Response> {
+  const owner = await ownerSpace()
+  if (spaceId !== owner) return reply(NOT_OWNER, 403)
+  const name = cleanLoginName(body.name)
+  if (!name) return reply({ error: 'Which login?' }, 400)
+  const { data: space } = await db.from('cutter_spaces').select('id').eq('name', name).neq('id', owner).maybeSingle()
+  if (!space) return reply({ error: 'Which login?' }, 400)
+  const now = trialSpaces((await configValues([TRIAL_CONFIG]))[TRIAL_CONFIG]).filter((id) => id !== space.id)
+  await setConfig(TRIAL_CONFIG, JSON.stringify(body.on === true ? [...now, space.id] : now))
   return people(spaceId)
 }
 
@@ -698,6 +730,8 @@ Deno.serve(async (req) => {
       return pause(spaceId, body)
     case 'remove-device':
       return removeDevice(spaceId, body)
+    case 'trial':
+      return trialFor(spaceId, body)
     case 'songs':
       return songs(spaceId).catch((error) => reply({ error: (error as Error).message }, 500))
     case 'song-upload':

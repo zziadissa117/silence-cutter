@@ -27,6 +27,11 @@ export interface BatchInfo {
   disliked?: boolean
   /** The song under it, by name, for how each song does (hookInsights.ts). */
   song?: string
+  /** A Trial loop's video (the phone's trialLoop.ts): an Instagram Trial
+   *  Reel - shown to non-followers only, never shared to his followers,
+   *  never handed to Buffer. Kept only for a login allowed Trial reels
+   *  (trial.ts trialAllowed). */
+  trial?: boolean
 }
 
 const LOOKS = new Set(['box', 'outline', 'snap', 'formula'])
@@ -42,7 +47,16 @@ export function batchInfo(value: unknown): BatchInfo | null {
   if (!id || !date || !time || !Number.isInteger(size) || size < 1 || size > 500) return null
   const look = typeof v.look === 'string' && LOOKS.has(v.look) ? (v.look as BatchInfo['look']) : undefined
   const song = typeof v.song === 'string' ? v.song.trim().slice(0, 120) : ''
-  return { id, date, time, size, ...(v.last === true ? { last: true } : {}), ...(look ? { look } : {}), ...(song ? { song } : {}) }
+  return {
+    id,
+    date,
+    time,
+    size,
+    ...(v.last === true ? { last: true } : {}),
+    ...(look ? { look } : {}),
+    ...(song ? { song } : {}),
+    ...(v.trial === true ? { trial: true } : {}),
+  }
 }
 
 /** Where a batch video goes: its own time first, then the day's other

@@ -4,7 +4,7 @@
 
 import type { ReactNode } from 'react'
 
-import { CampaignsIcon, ChevronLeft, ChevronRight, FormatsIcon, PicturesIcon, SettingsIcon, VideosIcon } from './icons'
+import { BatchIcon, CampaignsIcon, ChevronLeft, ChevronRight, FormatsIcon, PicturesIcon, SettingsIcon, VideosIcon } from './icons'
 import type { Tab } from './TabBar'
 
 interface Row {
@@ -18,9 +18,12 @@ export function MoreView({
   campaigns,
   onOpen,
   workToLose,
+  trialReels = false,
 }: {
   /** How many campaigns there are, to say so. */
   campaigns: number
+  /** Trial reels are on for this login (postiz profile `trialReels`). */
+  trialReels?: boolean
   onOpen: (tab: Tab) => void
   /** What leaving for the plain cutter would stop, if anything. */
   workToLose: () => Promise<string | null>
@@ -28,6 +31,9 @@ export function MoreView({
   const rows: Row[] = [
     { tab: 'campaigns', icon: <CampaignsIcon />, name: 'Campaigns', line: `${campaigns} campaign${campaigns === 1 ? '' : 's'} - brand, logo, angles, accounts and posting times` },
     { tab: 'formats', icon: <FormatsIcon />, name: 'Formats', line: 'A script you film again and again, mixed into many videos' },
+    ...(trialReels
+      ? [{ tab: 'trial' as const, icon: <BatchIcon />, name: 'Trial reels', line: 'A viral reel made again and again, posted as Instagram Trial Reels' }]
+      : []),
     { tab: 'pictures', icon: <PicturesIcon />, name: 'Bank', line: 'Pictures, videos and songs your videos use' },
     { tab: 'settings', icon: <SettingsIcon />, name: 'Settings', line: 'Posting, sign-in, people, the server, video defaults' },
   ]

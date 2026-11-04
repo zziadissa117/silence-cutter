@@ -247,7 +247,8 @@ export function BatchView({
   onRemove: (id: string) => void
 }) {
   const profile = posting?.profile ?? null
-  const choices = profile ? campaigns.filter((c) => placeFor(profile, c.id).accounts.length > 0) : []
+  // The Trial reels campaign has its own screen (TrialView).
+  const choices = profile ? campaigns.filter((c) => !c.trial && placeFor(profile, c.id).accounts.length > 0) : []
   const [campaignId, setCampaignId] = useState(() => choices.find((c) => c.id === remembered())?.id ?? choices[0]?.id ?? '')
   const campaign = choices.find((c) => c.id === campaignId) ?? null
   const [bank, setBank] = useState<BatchBank | null>(null)

@@ -11,6 +11,7 @@
 
 import type { EmojiSprite } from './emojiSprites'
 import type { HeadlineStyle } from './look'
+import type { TrialBank } from './trialLoop'
 
 /** A file in the bank, kept on this phone only - his own footage. */
 export interface BankFile {
@@ -140,6 +141,13 @@ export interface BatchBank {
    *  then, so the same clips make the same videos again - read by fromPhone,
    *  which takes the phone's `made` for that Start. */
   anyway?: string
+  /** A Trial loop (layout 'trial', trialLoop.ts): the viral reels it makes
+   *  Instagram Trial Reels from. Their clean clips are `reactions`, their
+   *  sounds `music`. */
+  trial?: TrialBank
+  /** The most a day whatever his number: a Trial loop's accounts' daily trial
+   *  limit as Instagram showed it (postiz/trial.ts), set by the app. */
+  most?: number
 }
 
 /** What "Use the best hooks" makes more of: headlines by their words in
@@ -230,7 +238,7 @@ export function usesSteps(bank: Pick<BatchBank, 'layout' | 'steps'>): boolean {
   return (bank.layout ?? 'after') === 'after' && (bank.steps?.length ?? 0) > 0
 }
 
-export type BatchLayout = 'after' | 'greenscreen' | 'engine'
+export type BatchLayout = 'after' | 'greenscreen' | 'engine' | 'trial'
 
 /** What a bank mixes from: in green screen, no music (the background's sound
  *  is the sound), and headlines are optional - none is the default. */

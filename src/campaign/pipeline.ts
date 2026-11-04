@@ -452,6 +452,10 @@ export async function makeMontage(
     voice?: boolean
     /** Per clip: words over it in the headline's look (a step's name). */
     titles?: (string | null)[]
+    /** A Trial loop's video: a touch brighter (above 0) or darker, its
+     *  words kept on the viral reel's lines. */
+    brightness?: number
+    keepLines?: boolean
   } = {},
 ): Promise<CampaignResult> {
   const rendered = await renderMontage(
@@ -466,6 +470,8 @@ export async function makeMontage(
       reactionFirst: extra.reactionFirst,
       voice: extra.voice,
       titles: extra.titles,
+      brightness: extra.brightness,
+      keepLines: extra.keepLines,
     },
     onRenderProgress,
   )

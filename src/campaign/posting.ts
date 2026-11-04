@@ -15,6 +15,7 @@ import { timesFor, timesOn } from '../../supabase/functions/postiz/slots.ts'
 import { hoursOn, type BestHours } from '../../supabase/functions/postiz/bestHours.ts'
 import type { CampaignHooks } from '../../supabase/functions/postiz/hookInsights.ts'
 import type { DeadAccount } from '../../supabase/functions/postiz/deadAccounts.ts'
+import type { TrialAccounts, TrialRead } from '../../supabase/functions/postiz/trial.ts'
 import { PUBLISHABLE_KEY, currentSession } from './cloud'
 import type { Campaign, CampaignPosting } from './look'
 import { dayTimes, spreadPick } from './batch'
@@ -70,9 +71,15 @@ export interface Profile {
     ended?: Record<string, EndedResult>
     /** The place every Instagram post is tagged with (place.ts). */
     instagramPlace?: Place
+    /** Trial reels (postiz/trial.ts): each Instagram account's daily trial
+     *  limit as Instagram showed it, and the accounts it won't take them on. */
+    trial?: TrialAccounts
   }
   timezone: string
   hasAnthropic: boolean
+  /** Trial reels are on for this login: the owner's, or one he turned them
+   *  on for in People (trialLoop.ts). Absent from an older server: off. */
+  trialReels?: boolean
   vapidPublic: string | null
   /** Buffer as a backup for Postiz (postiz/buffer.ts); null until a key is pasted. */
   backup?: BackupView | null
@@ -132,7 +139,7 @@ export interface ServerPost {
   ready?: boolean
   /** Made from the Batch tab, for this day and time - and with this hook
    *  look, on videos made since looks were carried. */
-  batch?: { id: string; date: string; time: string; size: number; look?: 'box' | 'outline' | 'snap' | 'formula'; disliked?: boolean } | null
+  batch?: { id: string; date: string; time: string; size: number; look?: 'box' | 'outline' | 'snap' | 'formula'; disliked?: boolean; trial?: true } | null
   /** Its views on each account it went to (by account name), as the server
    *  last read them from Postiz; absent until read. */
   views?: Record<string, number> | null
@@ -599,6 +606,13 @@ export async function readNote(note: string, count: number): Promise<ReadNote> {
  *  (postiz/headlineIdeas.ts). `have`: the batch's headlines now. */
 export async function headlineIdeas(campaignId: string, campaignName: string, have: readonly string[]): Promise<{ headlines: string[]; error?: string }> {
   return call<{ headlines: string[]; error?: string }>('headline-ideas', { profile: profileId(), campaignId, campaignName, have })
+}
+
+/** Trial reels: Claude reads the viral reel's words from one still - their
+ *  look, place and a dozen rewordings (postiz/trial.ts). `hook`: his own
+ *  words, when he typed them. */
+export async function readViralReel(still: string, hook = ''): Promise<{ read: TrialRead | null; error?: string }> {
+  return call<{ read: TrialRead | null; error?: string }>('trial-read', { profile: profileId(), still, hook })
 }
 
 /** One account's posting paused (or let go again): the server holds its

@@ -155,7 +155,32 @@ export interface MontageRenderInput {
    *  batch's product step, its name (batch.stepTitle); null or absent for
    *  none. */
   titles?: (string | null)[]
+  /** A Trial loop's video (trialLoop.ts): white (above 0) or black (below)
+   *  this strong over every frame, under the words - a touch brighter or
+   *  darker. 0 or absent: the frame as it is. */
+  brightness?: number
+  /** A Trial loop's video: the words keep the viral reel's own lines - a
+   *  little smaller rather than break onto another line it didn't have. */
+  keepLines?: boolean
 }
+
+/** The headline laid out a little smaller, step by step, until it takes no
+ *  more lines than its words have (a Trial loop's copy of a viral reel's
+ *  one-line hook stays one line). Never under 60% of its size. */
+function keepingLines(
+  lay: (place: HeadlineLayoutInput['place']) => HeadlineLayout | null,
+  headline: HeadlineLayoutInput,
+): HeadlineLayout | null {
+  const wanted = headline.text.trim().split('\n').length
+  const place = headline.place ?? { x: 0.5, y: 0.3, scale: 1 }
+  let layout = lay(headline.place)
+  for (let scale = place.scale - 0.05; layout && layout.lines.length > wanted && scale >= 0.6 * place.scale; scale -= 0.05) {
+    layout = lay({ ...place, scale })
+  }
+  return layout
+}
+
+type HeadlineLayoutInput = Parameters<typeof layoutHeadline>[3]
 
 export interface MontageRenderResult {
   blob: Blob
@@ -227,7 +252,7 @@ export function liftMusic(channels: Float32Array[], gain: number, sampleRate: nu
 }
 
 export async function renderMontage(
-  { clips: files, look, headlineText, music, seed = '', formula = null, windows = [], reactionFirst = false, titles = [], voice = false }: MontageRenderInput,
+  { clips: files, look, headlineText, music, seed = '', formula = null, windows = [], reactionFirst = false, titles = [], voice = false, brightness = 0, keepLines = false }: MontageRenderInput,
   onProgress?: (fraction: number) => void,
 ): Promise<MontageRenderResult> {
   if (files.length === 0) throw new SilenceCutError('Add at least one clip.')
@@ -298,7 +323,14 @@ export async function renderMontage(
     await headlineFontReady()
     // A batch's words sit a little lower (BATCH_LOWER).
     const place = (layout: HeadlineLayout | null) => (reactionFirst ? lowered(layout, height) : layout)
-    const headline = place(!formula && headlineText.trim() ? layoutHeadline(ctx, width, height, { ...look.headline, text: headlineText }) : null)
+    const words = { ...look.headline, text: headlineText }
+    const headline = place(
+      formula || !headlineText.trim()
+        ? null
+        : keepLines
+          ? keepingLines((at) => layoutHeadline(ctx, width, height, { ...words, place: at }), words)
+          : layoutHeadline(ctx, width, height, words),
+    )
     // Each step's name over its clip, laid out once - always in the outline
     // look: Snapchat (and the white box) is for the hook alone.
     const titleLayouts = clips.map((_, i) =>
@@ -371,6 +403,12 @@ export async function renderMontage(
             : own
       const spot = zoomPlace(fill, framing, width, height)
       sample.draw(ctx, spot.x, spot.y, spot.width, spot.height)
+      if (brightness) {
+        // A see-through wash rather than a canvas filter: the same on every
+        // browser the app runs in.
+        ctx.fillStyle = brightness > 0 ? `rgba(255,255,255,${Math.min(1, brightness)})` : `rgba(0,0,0,${Math.min(1, -brightness)})`
+        ctx.fillRect(0, 0, width, height)
+      }
       if (i === 0 && headline) drawHeadline(ctx, headline)
       const title = titleLayouts[i]
       if (title) drawHeadline(ctx, title)

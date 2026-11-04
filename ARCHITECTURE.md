@@ -343,6 +343,34 @@ pick the logos and `formulaLine(…, amount)`, a headline pick its `headlineStyl
 picked now, and `withHeadlineStyle` swaps it into the angle. The bottom of the Batch tab shows
 the number of variations and `variationParts` (what multiplies into it).
 
+## Trial reels (`trialLoop.ts`, `viralReel.ts`, `TrialView.tsx`, server `postiz/trial.ts`)
+
+A reel of his that went viral, made again and again and posted as Instagram Trial Reels - shown to non-followers
+only, never to his followers (his ask, 2026-11-04). For the owner's login (and the admin backup) and the logins he
+turns it on for in People (cutter `trial` -> `cutter_config` `trial-reels`, a list of space ids; `people` says
+`trial` per login). The posting function checks it (`trialAllowedFor`) on `trial-read`, on `start` for a video
+marked `batch.trial` (refused, never posted as a normal Reel) and in `profileView` (`trialReels`, which shows the
+More row).
+
+```
+More -> Trial reels: viral reel + clean clip picked together, Start
+  viralReel.takeApart   start (clean clip's first frame matched in the reel), sound from there, one still
+  postiz trial-read     Claude: words, look (box/outline/snap, outline colour, size), place, 12 rewordings
+  the "Trial reels" campaign (Campaign.trial, a reaction campaign, approval direct; made once, his Instagram account)
+  its BatchBank, layout 'trial': clean clips in `reactions`, sounds in `music`, `trial.sources`
+  batchRun.planVideos -> planTrialVideos -> trialLoop.planTrial   sources in turn; half exact words (moved),
+                         half a rewording; 5 brightness steps; each way once (`made`), then over again
+  CampaignApp.addBatch -> montage job with `montage.bank.trial` (TrialLook) -> renderMontage(brightness, keepLines)
+  sendToPostiz: meta.batch.trial + meta.scheduled   -> settingsFor: is_trial_reel true, graduation MANUAL
+```
+Everything else is the batch's: top-ups when the app is open (or on the Cutter server), even times around the clock,
+the number a day changing every day ahead at once (`trimDown`), Stop on one reel (`takeOutHook`, matched by
+`montage.bank.trial.sourceId` or the post's file name `trialFileName`), Stop everything (`startOver`). A trial post is
+never handed to Buffer. When Meta refuses one for its daily trial limit (2207078) `checkPosted` -> `learnFromTrial`
+counts the account's trials of the 24 h before into `settings.trial.limits` (he is told once), and the app's runner
+sets `BatchBank.most` from it (`withAccounts`; `perDayOn` never goes over it). An account that can't post trials
+(2207081) goes in `settings.trial.notAllowed`: the loop makes nothing (`NOT_ALLOWED`) until a trial goes through.
+
 ## Instagram location (`postiz/place.ts`, `InstagramPlace.tsx`)
 
 One place every Instagram post is tagged with (`settings.instagramPlace`, action `save-place`,

@@ -1114,3 +1114,10 @@ input[type='color']::-webkit-color-swatch { border: 0.5px solid var(--edge); bor
 .recorder.lit .recorder-segments { background: rgb(0 0 0 / 0.12); }
 .np-spread { display: flex; flex-direction: column; gap: 8px; }
 .np-spread .label .hint { font-weight: 400; }
+
+/* Trial reels (TrialView): the number a day with −5 / +5 beside it, and the
+   two picked videos to tap the viral one of. */
+.trial-perday { display: flex; align-items: center; gap: 6px; flex-shrink: 0; }
+.trial-perday input { width: 56px; text-align: center; }
+.trial-which { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
+.trial-which .btn { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

@@ -172,6 +172,13 @@ export interface Person {
   until: string | null
   since: string
   devices?: { id: string; name: string; firstSeen: string; lastSeen: string }[]
+  /** Trial reels are on for this login (his own always has them). */
+  trial?: boolean
+}
+
+/** Trial reels on or off for a login he made (the main login only). */
+export async function setTrialReels(name: string, on: boolean): Promise<Person[]> {
+  return (await askShared<{ people: Person[] }>('trial', { name, on }))?.people ?? []
 }
 
 /** Pauses a login he made (every call refused, its data kept), or lets it go. */

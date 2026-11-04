@@ -32,8 +32,10 @@ import { VideoBankView } from './VideoBankView'
 import { findSong, songFile, syncSongs } from './musicBank'
 import { BatchView } from './BatchView'
 import { dislikedBy, oneAtATime, overfull, settled, startOver, takenBy, topUp, trimDown, type BatchVideo } from './batchRun'
+import { NOT_ALLOWED, trialAngle, trialFileName, withAccounts } from './trialLoop'
 import { AnalyticsView, addHeadline, answerSuggestion, saveTarget, useCampaignRows } from './AnalyticsView'
 import { FormatsView, type FormatClips } from './FormatsView'
+import { TrialView } from './TrialView'
 import { afterMixing, daysLine, mixesOf, spreadOver } from './formats'
 import type { ViewsByAccount } from './analytics'
 import { bareName, filesOf, stepTitle, styleFor, stylesOf, type BankFile, type BatchBank } from './batch'
@@ -685,6 +687,9 @@ export function CampaignApp() {
           fileName: job.name,
           later: job.later === true,
           ...(job.batch ? { batch: job.batch } : {}),
+          // A Trial loop's video goes at its time without approval, as a
+          // Formats video he scheduled does (postiz batch.approvalFor).
+          ...(job.batch?.trial ? { scheduled: true } : {}),
         },
       },
       result.blob,
@@ -1521,7 +1526,10 @@ export function CampaignApp() {
         // angle's.
         const batchBank = next.batch ? await loadBatchBank(next.campaignId).catch(() => null) : null
         const batchStyle = batchBank ? styleFor(next.montage?.bank?.headlineStyle, stylesOf(batchBank), next.id) : undefined
-        const jobAngle = withHeadlineStyle(ownAngle, next.day?.headlineStyle ?? batchStyle)
+        // A Trial loop's video: the viral reel's words, in its look, at this
+        // video's place (trialLoop.ts).
+        const trialLook = next.montage?.bank?.trial
+        const jobAngle = trialLook ? trialAngle(ownAngle, trialLook) : withHeadlineStyle(ownAngle, next.day?.headlineStyle ?? batchStyle)
         // The kept copy of the video stays until it is made, so a failure
         // can always be tried again - even after a restart. What is made is
         // 1080p, well under the size of a 4K original.
@@ -1587,7 +1595,9 @@ export function CampaignApp() {
               // A batch: the reaction always zooms in slowly, and each
               // product step plays the moment something happens in it - a
               // step with a single clip plays whole (stepPiece.playsWhole).
-              reactionFirst: Boolean(next.montage.bank),
+              reactionFirst: Boolean(next.montage.bank) && !trialLook,
+              brightness: trialLook?.brightness,
+              keepLines: Boolean(trialLook),
               voice: next.montage.bank?.voice === true,
               windows: stepped ? [false, ...stepped.map((s) => !playsWhole(stepOf(s)))] : undefined,
               titles,
@@ -2456,6 +2466,23 @@ export function CampaignApp() {
   }
 
   const ownCampaigns = (campaigns ?? []).filter((c) => !c.general)
+  /** The Trial reels campaign (TrialView): posting to his Instagram account
+   *  around the clock, each video at its time with no approval. Kept as a
+   *  reaction campaign so no talking video is ever sorted into it. */
+  const createTrialCampaign = async (accountId: string): Promise<Campaign> => {
+    const id = crypto.randomUUID()
+    await saveCampaignPlace(id, { accounts: [accountId], times: [] })
+    setPosting(postingHere())
+    return store({
+      ...blankCampaign(id),
+      name: 'Trial reels',
+      trial: true,
+      format: 'reaction',
+      posting: { caption: 'claude', rules: '', hashtags: [], approval: 'direct', remind: false },
+      updatedAt: Date.now(),
+    })
+  }
+
   const startNewCampaign = () => setEditing({ kind: 'campaign', campaign: blankCampaign(crypto.randomUUID()), isNew: true })
 
   /** Each reaction clip becomes a video with the product clip picked for
@@ -2534,7 +2561,9 @@ export function CampaignApp() {
     const settings = { ...PRESETS[preset] }
     const added: Job[] = videos.map((v) => ({
       id: `${Date.now()}-${nextId++}`,
-      name: `${[v.reaction, ...(v.steps ? v.steps.map((s) => s.file) : [v.product])].map((f) => f.name.replace(/\.[^./]+$/, '')).join(' + ')}.mp4`,
+      name: v.trial
+        ? trialFileName(v.reaction)
+        : `${[v.reaction, ...(v.steps ? v.steps.map((s) => s.file) : [v.product])].map((f) => f.name.replace(/\.[^./]+$/, '')).join(' + ')}.mp4`,
       file: null,
       campaignId: owner.id,
       angleId: ownerAngle.id,
@@ -2555,6 +2584,7 @@ export function CampaignApp() {
           ...(v.greenScreen ? { greenScreen: v.greenScreen } : {}),
           ...(v.steps ? { steps: v.steps } : {}),
           ...(v.headlineStyle ? { headlineStyle: v.headlineStyle } : {}),
+          ...(v.trial ? { trial: v.trial } : {}),
         },
         clips: [],
         music: 'bank',
@@ -2645,6 +2675,13 @@ export function CampaignApp() {
           let bank = await loadBatchBank(owner.id)
           // A batch moved to the Cutter server is made there, never here too.
           if (!alive || !bank?.running || (bank.where === 'server' && !SERVER_MODE)) return null
+          if (bank.layout === 'trial') {
+            // A Trial loop: no more a day than Instagram takes trials on its
+            // account, and nothing at all where it takes none.
+            const allowed = withAccounts(bank, profile.settings.trial, place.accounts)
+            if (allowed !== bank) await saveBatchBank((bank = allowed))
+            if (bank.runProblem === NOT_ALLOWED || !profile.trialReels) return null
+          }
           if (overfull(bank, new Date(), dislikedBy(lastPosts(), owner.id)).length > 0) {
             ;({ bank } = await trimDown({ bank, campaignId: owner.id, jobs: jobsRef.current, removeJob, save: saveBatchBank }))
           }
@@ -3921,7 +3958,17 @@ export function CampaignApp() {
         </section>
       )
     ) : tab === 'more' ? (
-      <MoreView campaigns={ownCampaigns.length} onOpen={setTab} workToLose={workToLose} />
+      <MoreView campaigns={ownCampaigns.length} onOpen={setTab} workToLose={workToLose} trialReels={posting?.profile.trialReels === true} />
+    ) : tab === 'trial' ? (
+      <TrialView
+        campaigns={campaigns}
+        posting={posting}
+        jobs={batchJobs}
+        onBack={() => setTab('more')}
+        onCreate={createTrialCampaign}
+        onRun={() => runBatchesRef.current()}
+        removeJob={removeJob}
+      />
     ) : tab === 'campaigns' ? (
       <CampaignsView
         onBackToMore={() => setTab('more')}

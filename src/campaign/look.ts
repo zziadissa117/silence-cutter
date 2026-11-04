@@ -201,6 +201,9 @@ export interface Campaign {
   /** For a reaction campaign: the sound as it switches from the reaction to
    *  the product. Absent means a whoosh. */
   switchSound?: BuiltInSound | 'none'
+  /** The Trial reels campaign (trialLoop.ts): made by the Trial reels
+   *  screen, its batch a Trial loop - not shown in the Batch tab. */
+  trial?: boolean
   updatedAt: number
 }
 
