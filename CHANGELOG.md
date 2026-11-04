@@ -3,6 +3,20 @@
 Newest first. Every change says what it does, how to use it, and how it works
 underneath. Kept up to date with each commit.
 
+## No more dead noise at the cuts
+App only: run ./deploy.sh.
+**What he said (2026-11-04):** "Every single time there's a cut, there's a little noise ... that little dead noise
+... it's ruining every single video."
+- **Why it happened** (`render.ts`): each kept part took whole chunks of sound (about 21 ms each) and silenced what a
+  chunk held from outside the part; the part was then lined up with its picture, which usually ran a frame longer, and
+  the file filled that with silence. At every cut his room went fully silent for 20-60 ms - the dead moment he hears.
+- **Now** (`cutFades.ts` `VoiceJoin`): each part's sound is cut to the exact sample at its edges, the next part follows
+  on with no hole, and at a cut the two overlap for 12 ms, one fading out as the other fades in at equal loudness (like
+  an editor's crossfade). Where a video joined on comes next, or at the end, his sound fades out and silence fills to
+  the end of the picture - never a hole for the file to fill. Each part still starts where its picture starts.
+- Tests: `voiceJoin.test.ts` - read in real 1024-frame chunks across cuts, the room tone stays at the same level all
+  the way through (no window of 5 ms drops), and the stream has no gaps. The plain cutter is unchanged.
+
 ## A joined clip whose sound won't decode plays silent, instead of losing the look
 App only: run ./deploy.sh.
 **What he saw (2026-11-03):** "Plain cut. The look couldn't be added. InternalAudioDecoderCocoa decoding failed."

@@ -58,7 +58,7 @@ import { traceRead, traceStart, traceStep, traceWritten } from './renderTrace'
 import type { ClipPlace } from './clips'
 import { framingAt, logoPop, placeFrame, planMotion } from './effects'
 import { ColourCheck } from './colourCheck'
-import { cutEdges, fadeAtCuts, nearCut } from './cutFades'
+import { VoiceJoin, cutEdges, fadeAtCuts, insidePart, nearCut, type JoinedBlock } from './cutFades'
 import { headlineFontReady } from './headlineFont'
 import { framedSize, landscapeMode, makeBlurBackdrop, planFrame } from './framing916'
 import { TOGETHER_SEC, cameUpTogether, drawHeadline, drawLogo, drawPoppedLogo, layoutHeadline, layoutLogo, sideBySide, type LogoLayout } from './overlay'
@@ -635,13 +635,46 @@ export async function renderCampaignCut(
     placeStartSounds(talkStart)
     // Which ends of each kept part are a cut, where his sound fades.
     const edges = cutEdges(keep, middle.map((m) => m.after))
+    // His sound, cut to the sample at every part and overlapped a few ms at
+    // each cut - never a hole or a dead moment (cutFades.ts VoiceJoin).
+    const join = new VoiceJoin(sampleRate, channels)
+    const writeVoice = async (block: JoinedBlock) => {
+      const length = block.planes[0].length
+      if (length === 0) return
+      const timestamp = audioClock(block.timestamp, length / sampleRate)
+      const data = new Float32Array(length * channels)
+      const planes = block.planes.map((plane, c) => {
+        const into = data.subarray(c * length, (c + 1) * length)
+        into.set(plane)
+        return into
+      })
+      const firstFrame = Math.round(timestamp * sampleRate)
+      // Voice first, then the music under it and the sounds over it, then
+      // the ceiling over all of them.
+      voice?.shape(planes)
+      if (musicFree) {
+        const dry = planes.map((plane) => plane.slice())
+        mixInto(dry, firstFrame, placed, !voice)
+        await musicFree.add(dry, timestamp, sampleRate)
+      }
+      bed?.mixInto(planes, firstFrame)
+      mixInto(planes, firstFrame, placed, !voice)
+      if (voice) voice.limit(planes)
+      else for (const plane of planes) for (let i = 0; i < plane.length; i++) plane[i] = Math.max(-1, Math.min(1, plane[i]))
+      const shaped = new AudioSample({ data, format: 'f32-planar', numberOfChannels: channels, sampleRate, timestamp })
+      await audioSource.add(shaped)
+      shaped.close()
+    }
 
     for (let index = 0; index < keep.length; index++) {
       const { start, end } = keep[index]
       let videoShift: number | null = null
-      let audioShift: number | null = null
       let videoEnd = cursor
-      let audioEnd = cursor
+      // After a video joined on, his sound picks up where it ended.
+      join.skipTo(cursor)
+      const partStart = join.begin(edges[index].fadeIn)
+      const audioShift = partStart - start
+      placeSounds(index, audioShift)
       const [videoFrom, audioFrom] = await Promise.all([keyAt(videoPackets, start), keyAt(audioPackets, start)])
 
       await Promise.all([
@@ -811,52 +844,24 @@ export async function renderCampaignCut(
         })(),
         (async () => {
           for await (const sample of audioReader.range(start, end, audioFrom)) {
-            if (audioShift === null) {
-              audioShift = cursor - sample.timestamp
-              placeSounds(index, audioShift)
-            }
-            const timestamp = audioClock(sample.timestamp + audioShift, sample.duration)
-            audioEnd = timestamp + sample.duration
-            // A chunk at a cut fades, so the join doesn't click (cutFades.ts).
-            const at = sample.timestamp
-            const fading = nearCut(at, sample.duration, start, end, edges[index])
-            if (voice || bed || fading) {
-              // Voice first (faded at the cuts), then the music under it and
-              // the sounds over it, then the ceiling over all of them.
-              const { data, planes } = planesOf(sample)
-              const { sampleRate: rate, numberOfChannels } = sample
-              sample.close()
-              const firstFrame = Math.round(timestamp * rate)
-              if (fading) fadeAtCuts(planes, at, rate, start, end, edges[index])
-              voice?.shape(planes)
-              if (musicFree) {
-                const dry = planes.map((plane) => plane.slice())
-                mixInto(dry, firstFrame, placed, !voice)
-                await musicFree.add(dry, timestamp, rate)
-              }
-              bed?.mixInto(planes, firstFrame)
-              mixInto(planes, firstFrame, placed, !voice)
-              if (voice) voice.limit(planes)
-              else for (const plane of planes) for (let i = 0; i < plane.length; i++) plane[i] = Math.max(-1, Math.min(1, plane[i]))
-              const shaped = new AudioSample({ data, format: 'f32-planar', numberOfChannels, sampleRate: rate, timestamp })
-              await audioSource.add(shaped)
-              shaped.close()
-              continue
-            }
-            const mixed = withSounds(sample, timestamp, placed)
-            if (mixed) {
-              sample.close()
-              await audioSource.add(mixed)
-              mixed.close()
-            } else {
-              sample.setTimestamp(timestamp)
-              await audioSource.add(sample)
-              sample.close()
-            }
+            const { planes } = planesOf(sample)
+            const [first, last] = insidePart(sample.timestamp, sample.numberOfFrames, sample.sampleRate, start, end)
+            sample.close()
+            if (last <= first) continue
+            for (const block of join.push(planes.map((plane) => plane.subarray(first, last)))) await writeVoice(block)
           }
         })(),
       ])
-      cursor = Math.max(videoEnd, audioEnd)
+      // Straight on to his next part: it starts where this one's sound
+      // overlaps it. Before a video joined on, or at the end, his sound fades
+      // out and is filled with silence up to the end of the picture.
+      const joinsNext = index < keep.length - 1 && !middle.some((m) => m.after === index)
+      for (const block of join.end(edges[index].fadeOut, joinsNext)) await writeVoice(block)
+      if (joinsNext) cursor = join.position
+      else {
+        cursor = Math.max(videoEnd, join.position)
+        for (const block of join.padTo(cursor)) await writeVoice(block)
+      }
       doneSoFar += end - start
       onProgress?.(Math.min(0.99, doneSoFar / total))
       // A video in the middle, said for right here: it plays whole, and the
@@ -922,18 +927,3 @@ function planesOf(sample: AudioSample): { data: Float32Array; planes: Float32Arr
   return { data, planes }
 }
 
-/** The same audio with any sounds playing over it mixed in, as a new sample
- *  at `timestamp` - or null when no sound is playing here, so the sample can
- *  go through untouched. */
-function withSounds(sample: AudioSample, timestamp: number, sounds: readonly PlacedSound[]): AudioSample | null {
-  if (sounds.length === 0) return null
-  const { sampleRate, numberOfChannels, numberOfFrames } = sample
-  const firstFrame = Math.round(timestamp * sampleRate)
-  const lastFrame = firstFrame + numberOfFrames
-  if (!sounds.some((s) => s.startFrame < lastFrame && s.startFrame + (s.channels[0]?.length ?? 0) > firstFrame)) {
-    return null
-  }
-  const { data, planes } = planesOf(sample)
-  mixInto(planes, firstFrame, sounds)
-  return new AudioSample({ data, format: 'f32-planar', numberOfChannels, sampleRate, timestamp })
-}
