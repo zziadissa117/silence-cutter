@@ -3,6 +3,18 @@
 Newest first. Every change says what it does, how to use it, and how it works
 underneath. Kept up to date with each commit.
 
+## New post: "10 videos - how many a day?" and Include weekends
+App only: run ./deploy.sh.
+**What he asked (2026-11-04):** dropping many videos for one campaign, "it simply asks me ... you have 10 videos ...
+post 2 per day, post 1 per day?" and spreads them over the next days; and "Include weekends" - checked, weekends post
+too.
+- `NewPost.tsx`: with several videos and Spread them, it asks "N videos - how many a day?" (1 a day up to the campaign's
+  most, at most 5; never more than the campaign allows) and has an Include weekends tick. The line under it says the
+  days, e.g. "5 days: Today 2 · Tomorrow 2 · Fri 1". His answers are remembered (how many a day per campaign, weekends
+  for all), so next time it is already picked. A note that says how many a day picks for him.
+- `handPlan.ts`: `chosenPerDay` (counting what the campaign already has that day) and `weekends` (false skips Saturday
+  and Sunday). Weekends start off unticked, as he described it. Tests in `handPlan.test.ts`.
+
 ## New post reads your note for when, and no campaign ever goes past its most a day
 Needs deploying: run ./deploy-server.sh (./deploy.sh runs it by itself).
 **What he said (2026-11-04):** writing "I already posted today. Post it for tomorrow" in New post's "Anything Claude

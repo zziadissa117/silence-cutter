@@ -55,6 +55,29 @@ function lastCampaign(): string | null {
   }
 }
 
+/** How many a day he last chose for a campaign, and weekends or not - so the
+ *  next New post asks with his answer already picked. */
+const SPREAD_KEY = 'posts.spreadChoice'
+interface SpreadChoice {
+  perDay: Record<string, number>
+  weekends: boolean
+}
+function lastSpread(): SpreadChoice {
+  try {
+    const kept = JSON.parse(localStorage.getItem(SPREAD_KEY) ?? 'null') as Partial<SpreadChoice> | null
+    return { perDay: kept?.perDay ?? {}, weekends: kept?.weekends === true }
+  } catch {
+    return { perDay: {}, weekends: false }
+  }
+}
+function keepSpread(choice: SpreadChoice): void {
+  try {
+    localStorage.setItem(SPREAD_KEY, JSON.stringify(choice))
+  } catch {
+    // Just asked again next time.
+  }
+}
+
 function keepCampaign(id: string): void {
   try {
     localStorage.setItem(LAST_KEY, id)
@@ -118,6 +141,13 @@ export function NewPost({
   // captions (handNote.ts) - read when he leaves the box.
   const [note, setNote] = useState<ReadNote | null>(null)
   const [reading, setReading] = useState(false)
+  /** Several videos spread over the days: how many a day (per campaign) and
+   *  whether Saturdays and Sundays post too. */
+  const [spreadChoice, setSpreadChoice] = useState<SpreadChoice>(lastSpread)
+  const chooseSpread = (next: SpreadChoice) => {
+    setSpreadChoice(next)
+    keepSpread(next)
+  }
   const [when, setWhen] = useState<When>('now')
   const [at, setAt] = useState(() => localInput(null))
   const [sending, setSending] = useState<string | null>(null)
@@ -307,11 +337,18 @@ export function NewPost({
   const minutes = (hhmm: string) => Number(hhmm.slice(0, 2)) * 60 + Number(hhmm.slice(3, 5))
   /** Each video's day and time from the campaign's most a day and his note
    *  (as read by Claude) - null when nothing limits the day. */
+  // He picks how many a day, never more than the campaign allows; his note's
+  // number, when it says one, picks for him.
+  const perDayChoices = Array.from({ length: Math.min(most ?? 5, 5) }, (_, i) => i + 1)
+  const pickedPerDay = Math.min(notePlan?.perDay ?? spreadChoice.perDay[campaign.id] ?? Math.min(most ?? 1, perDayChoices.length), most ?? Infinity)
+  const spreading = chosen === 'spread' && many
   const planWith = (fromNote: ReadNote['plan'] | null, count = items.length) =>
     (chosen === 'spread' || chosen === 'now') && (count > 1 || fromNote)
       ? planHandDays({
           count,
           campaignMost: most,
+          chosenPerDay: spreading ? Math.min(fromNote?.perDay ?? pickedPerDay, most ?? Infinity) : null,
+          weekends: spreading ? spreadChoice.weekends : true,
           notePerDay: fromNote?.perDay ?? null,
           startDate: fromNote?.startDate ?? null,
           today,
@@ -646,11 +683,43 @@ export function NewPost({
               {gone ? <span className="hint warn-text">That time has gone - it would go straight away.</span> : null}
             </label>
           ) : null}
+          {spreading ? (
+            <div className="np-spread">
+              <span className="label">
+                {items.length} videos - how many a day?
+                {most ? <span className="hint"> ({campaign.name}: {most} at most)</span> : null}
+              </span>
+              <div className="seg full" role="radiogroup" aria-label="How many a day">
+                {perDayChoices.map((n) => (
+                  <button
+                    key={n}
+                    type="button"
+                    role="radio"
+                    aria-checked={pickedPerDay === n}
+                    className={pickedPerDay === n ? 'active' : ''}
+                    onClick={() => chooseSpread({ ...spreadChoice, perDay: { ...spreadChoice.perDay, [campaign.id]: n } })}
+                  >
+                    {n} a day
+                  </button>
+                ))}
+              </div>
+              <label className="toggle">
+                <input
+                  type="checkbox"
+                  checked={spreadChoice.weekends}
+                  onChange={(e) => chooseSpread({ ...spreadChoice, weekends: e.target.checked })}
+                />
+                <span className="label">Include weekends</span>
+              </label>
+            </div>
+          ) : null}
           {plan ? (
             <p className="hint new-post-to np-plan">
-              {[most ? `${most} a day at most (${campaign.name})` : null, notePlan?.perDay ? `${notePlan.perDay} a day (your note)` : null]
-                .filter(Boolean)
-                .join(', ')}
+              {spreading
+                ? `${new Set(plan.map((s) => s.date)).size} days`
+                : [most ? `${most} a day at most (${campaign.name})` : null, notePlan?.perDay ? `${notePlan.perDay} a day (your note)` : null]
+                    .filter(Boolean)
+                    .join(', ')}
               {': '}
               {planSaid(plan, today)}
             </p>

@@ -1112,3 +1112,5 @@ input[type='color']::-webkit-color-swatch { border: 0.5px solid var(--edge); bor
 .recorder.lit .recorder-round { background: rgb(0 0 0 / 0.12); color: #000; }
 .recorder.lit .recorder-round.on { background: #ffd60a; }
 .recorder.lit .recorder-segments { background: rgb(0 0 0 / 0.12); }
+.np-spread { display: flex; flex-direction: column; gap: 8px; }
+.np-spread .label .hint { font-weight: 400; }

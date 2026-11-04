@@ -39,6 +39,17 @@ export interface HandPlanInput {
   key: string
   /** "All now": today's room goes now. */
   nowFirst?: boolean
+  /** How many a day he chose on the screen (2026-11-04: "you have 10 videos
+   *  ... post 2 per day, post 1 per day?"); never past the campaign's most. */
+  chosenPerDay?: number | null
+  /** Saturdays and Sundays too; false skips them. Default: too. */
+  weekends?: boolean
+}
+
+/** Saturday or Sunday ("2026-11-07"). */
+export function isWeekend(date: string): boolean {
+  const day = new Date(`${date}T12:00:00Z`).getUTCDay()
+  return day === 0 || day === 6
 }
 
 /** Today's times start this long from now. */
@@ -48,15 +59,17 @@ const LEAD_MINUTES = 15
  *  day (no most a day, no number or later start in the note): posted as he
  *  chose. */
 export function planHandDays(input: HandPlanInput): HandSlot[] | null {
-  const { count, campaignMost, notePerDay, today, nowMinute, used, window, key, nowFirst = false } = input
+  const { count, campaignMost, notePerDay, chosenPerDay, today, nowMinute, used, window, key, nowFirst = false, weekends = true } = input
   const later = Boolean(input.startDate && input.startDate > today)
-  if (!campaignMost && !notePerDay && !later) return null
+  if (!campaignMost && !notePerDay && !chosenPerDay && !later && weekends) return null
   const start = later ? input.startDate! : today
   const out: HandSlot[] = []
   for (let d = 0; out.length < count && d < 400; d++) {
     const date = addDays(start, d)
+    if (!weekends && isWeekend(date)) continue
     const most = campaignMost ? Math.max(0, campaignMost - used(date)) : Infinity
-    const room = Math.min(most, notePerDay ?? Infinity, count - out.length)
+    const asked = chosenPerDay ? Math.max(0, chosenPerDay - used(date)) : Infinity
+    const room = Math.min(most, asked, notePerDay ?? Infinity, count - out.length)
     if (room <= 0) continue
     if (date === today && nowFirst) {
       for (let k = 0; k < room; k++) out.push({ date, time: null })
