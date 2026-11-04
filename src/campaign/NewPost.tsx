@@ -147,6 +147,30 @@ export function NewPost({
   // What the captions are told: the note without its scheduling, once read.
   const aboutRef = useRef(about)
   aboutRef.current = note && note.forNote === about ? note.caption : about
+  /** His note read by Claude, once per wording: leaving the box and tapping
+   *  Post share the same reading. Null when it couldn't be read - then the
+   *  note goes to the captions as he wrote it. */
+  const noteReads = useRef(new Map<string, Promise<ReadNote | null>>())
+  const noteFor = (text: string): Promise<ReadNote | null> => {
+    const known = noteReads.current.get(text)
+    if (known) return known
+    setReading(true)
+    const reading = readNote(text.trim(), Math.max(1, itemsRef.current.length))
+      .then((read) => {
+        const next = { ...read, forNote: text }
+        setNote(next)
+        aboutRef.current = next.caption
+        return next
+      })
+      .catch(() => {
+        noteReads.current.delete(text)
+        setNote(null)
+        return null
+      })
+      .finally(() => setReading(false))
+    noteReads.current.set(text, reading)
+    return reading
+  }
   const waiting = useRef<string[]>([])
   const active = useRef(0)
   /** Each ask gets a number; only the latest ask's caption is kept. */
@@ -281,24 +305,29 @@ export function NewPost({
   const most = profile.settings.campaigns?.[campaign.id]?.mostPerDay
   const win = place ? windowOf(place) : null
   const minutes = (hhmm: string) => Number(hhmm.slice(0, 2)) * 60 + Number(hhmm.slice(3, 5))
-  const plan =
-    (chosen === 'spread' || chosen === 'now') && (many || notePlan)
+  /** Each video's day and time from the campaign's most a day and his note
+   *  (as read by Claude) - null when nothing limits the day. */
+  const planWith = (fromNote: ReadNote['plan'] | null, count = items.length) =>
+    (chosen === 'spread' || chosen === 'now') && (count > 1 || fromNote)
       ? planHandDays({
-          count: items.length,
+          count,
           campaignMost: most,
-          notePerDay: notePlan?.perDay ?? null,
-          startDate: notePlan?.startDate ?? null,
+          notePerDay: fromNote?.perDay ?? null,
+          startDate: fromNote?.startDate ?? null,
           today,
           nowMinute: new Date().getHours() * 60 + new Date().getMinutes(),
+          // What the Cutter has for the campaign that day, and today what he
+          // says he already posted himself ("I already posted today").
           used: (date) =>
             lastPosts().filter(
               (p) => p.campaignId === campaign.id && p.postAt && !['rejected', 'failed', 'error'].includes(p.status) && dayOf(p.postAt) === date,
-            ).length,
+            ).length + (date === today ? (fromNote?.alreadyToday ?? 0) : 0),
           window: win ? { from: minutes(win.from), to: minutes(win.to) <= minutes(win.from) ? 24 * 60 : minutes(win.to) } : { from: 11 * 60, to: 18 * 60 },
           key: campaign.id,
           nowFirst: chosen === 'now',
         })
       : null
+  const plan = planWith(notePlan)
   const writingCount = items.filter((i) => i.writing).length
   const missingPaste = paste && items.some((i) => !i.caption.trim())
   const ready = items.length > 0 && writingCount === 0 && !missingPaste && sending === null
@@ -363,6 +392,16 @@ export function NewPost({
     if (!ready) return
     keepCampaign(campaign.id)
     setNotice(null)
+    // His note is read before anything goes - for when they go, not only for
+    // the captions. Tapping Post straight from the box used to send them
+    // before Claude had read it (2026-11-04: "I already posted today. Post it
+    // for tomorrow" went today).
+    let read: ReadNote | null = note?.forNote === about ? note : null
+    if (about.trim() && !read) {
+      setSending('Claude is reading your note…')
+      read = await noteFor(about)
+    }
+    const sendPlan = planWith(read?.plan ?? null)
     // The posts as the server has them: one of today's with the same key that
     // was rejected (or never went) is not this post - the server would only
     // hand that one back, and nothing would show anywhere.
@@ -374,7 +413,7 @@ export function NewPost({
       const counting = list.length > 1 ? ` ${n + 1} of ${list.length}` : ''
       // The day and time the plan gives this one (the campaign's most a day,
       // his note): it goes then, or now.
-      const slot = plan?.[n]
+      const slot = sendPlan?.[n]
       const planned = slot ? (slot.time ? zoned(slot.date, slot.time, profile.timezone).toISOString() : null) : undefined
       setSending(`Getting${counting} ready…`)
       try {
@@ -407,8 +446,8 @@ export function NewPost({
               byHand: {
                 at: planned !== undefined ? planned : timeOf(item),
                 caption: item.caption.trim(),
-                about: (note?.forNote === about ? note.caption : about).trim(),
-                ...(chosen === 'spread' && !plan ? { spread: true } : {}),
+                about: (read ? read.caption : about).trim(),
+                ...(chosen === 'spread' && !sendPlan ? { spread: true } : {}),
               },
             },
           },
@@ -492,18 +531,9 @@ export function NewPost({
               return
             }
             if (note?.forNote === about) return
-            setReading(true)
-            void readNote(text, Math.max(1, itemsRef.current.length))
-              .then((read) => {
-                const next = { ...read, forNote: about }
-                setNote(next)
-                aboutRef.current = next.caption
-              })
-              .catch(() => setNote(null))
-              .finally(() => {
-                setReading(false)
-                if (again.length > 0) write(again)
-              })
+            void noteFor(about).finally(() => {
+              if (again.length > 0) write(again)
+            })
           }}
         />
       )}

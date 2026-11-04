@@ -586,7 +586,7 @@ export interface Insights {
  *  rest of it for the captions (postiz/handNote.ts). `forNote`: the note it
  *  was read from, kept by the screen. */
 export interface ReadNote {
-  plan: { perDay: number | null; startDate: string | null; days: number | null } | null
+  plan: { perDay: number | null; startDate: string | null; days: number | null; alreadyToday?: number | null } | null
   caption: string
   forNote?: string
 }

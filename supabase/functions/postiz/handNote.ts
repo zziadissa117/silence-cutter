@@ -10,7 +10,7 @@
 
 export const NOTE_SYSTEM = `A creator is posting some finished videos for a brand campaign and wrote a note about them. Split the note into two parts:
 
-1. When the videos should go out, if the note says so: how many a day, from which day, for how many days. Dates are relative to today, given below with its weekday. "Starting tomorrow" is tomorrow's date; "next Monday" is the coming Monday. Leave a field null when the note doesn't say it.
+1. When the videos should go out, if the note says so: how many a day, from which day, for how many days, and how many he says he has already posted today for this campaign ("I already posted today" is 1; "I posted 2 today" is 2). Dates are relative to today, given below with its weekday. "Starting tomorrow", "post it for tomorrow", "not today" give tomorrow's date; "next Monday" is the coming Monday. Leave a field null when the note doesn't say it.
 2. Everything else - what the videos are about, how the captions should read, words or hashtags to use - copied as he wrote it, without the scheduling part. Empty when there is nothing else.
 
 Never invent a schedule the note doesn't ask for.`
@@ -18,9 +18,10 @@ Never invent a schedule the note doesn't ask for.`
 export const NOTE_SCHEMA = {
   type: 'object',
   additionalProperties: false,
-  required: ['perDay', 'startDate', 'days', 'caption'],
+  required: ['perDay', 'startDate', 'days', 'alreadyToday', 'caption'],
   properties: {
     perDay: { type: ['integer', 'null'] },
+    alreadyToday: { type: ['integer', 'null'] },
     startDate: { type: ['string', 'null'] },
     days: { type: ['integer', 'null'] },
     caption: { type: 'string' },
@@ -34,6 +35,9 @@ export interface NotePlan {
   startDate: string | null
   /** Over how many days; null when it doesn't say. */
   days: number | null
+  /** Posts he says he already made today, outside the Cutter; null when it
+   *  doesn't say. They count against today's most a day. */
+  alreadyToday: number | null
 }
 
 export interface ReadNote {
@@ -57,9 +61,10 @@ export function cleanNote(value: unknown, note: string, today: string): ReadNote
   const int = (x: unknown, max: number) => (typeof x === 'number' && Number.isInteger(x) && x >= 1 && x <= max ? x : null)
   const perDay = int(v.perDay, 50)
   const days = int(v.days, 365)
+  const alreadyToday = int(v.alreadyToday, 50)
   const date = typeof v.startDate === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(v.startDate) && !Number.isNaN(Date.parse(`${v.startDate}T12:00:00Z`)) ? v.startDate : null
   const startDate = date && date > today ? date : null
   const caption = typeof v.caption === 'string' ? v.caption.trim().slice(0, 2000) : note
-  const plan = perDay !== null || startDate !== null || days !== null ? { perDay, startDate, days } : null
+  const plan = perDay !== null || startDate !== null || days !== null || alreadyToday !== null ? { perDay, startDate, days, alreadyToday } : null
   return { plan, caption }
 }

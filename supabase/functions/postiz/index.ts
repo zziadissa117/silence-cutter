@@ -90,6 +90,7 @@ import { LOOK_BACK_DAYS as HOOKS_LOOK_BACK_DAYS, hookInsights } from './hookInsi
 import { TELL_AGAIN_DAYS, USUAL_TO, deadAccounts, deadNote, type DeadAccount } from './deadAccounts.ts'
 import { IDEAS_SCHEMA, IDEAS_SYSTEM, cleanIdeas, ideasMessage } from './headlineIdeas.ts'
 import { NOTE_SCHEMA, NOTE_SYSTEM, cleanNote, noteMessage } from './handNote.ts'
+import { countBefore, type DayRow } from './dayRoom.ts'
 import { cleanPlace, instagramPlace, type Place } from './place.ts'
 import { attachMove, summarise, type AttachMove } from './attach.ts'
 import { cleanMode, pickRecaption, recaptionMode } from './recaption.ts'
@@ -2704,30 +2705,34 @@ async function retryAccounts(profile: Profile, post: Post, auto = false): Promis
 /** How many of a campaign's posts go on a day of his: scheduled, out, or
  *  approved and waiting for their time. */
 async function campaignOnDay(post: Post, profile: Profile, day: string): Promise<number> {
-  const { count } = await db
+  const { data } = await db
     .from('cutter_posts')
-    .select('id', { count: 'exact', head: true })
+    .select('id, status, created_at')
     .eq('profile_id', post.profile_id)
     .eq('campaign_id', post.campaign_id)
     .neq('id', post.id)
     .in('status', ['approved', 'scheduled', 'posted'])
     .gte('post_at', zoned(day, '00:00', profile.timezone).toISOString())
     .lt('post_at', zoned(addDays(day, 1), '00:00', profile.timezone).toISOString())
-  return count ?? 0
+    .limit(1000)
+  return countBefore((data ?? []) as DayRow[], post)
 }
 
 /** A post whose day already holds the campaign's most a day, moved to the
  *  first day with room at the same time of day - his words (2026-10-30):
  *  "make sure it's only 2 per day because he's not going to pay me if I post
- *  more". Null when its day has room. */
+ *  more". Null when its day has room. Its time is written down before each
+ *  day is counted, so others being scheduled at the same moment see it. */
 async function toDayWithRoom(post: Post, profile: Profile, date: string, most: number): Promise<Post | null> {
   const day = localDate(new Date(date), profile.timezone)
+  if (post.post_at !== date) await db.from('cutter_posts').update({ post_at: date }).eq('id', post.id).eq('status', 'approved')
   if ((await campaignOnDay(post, profile, day)) < most) return null
   const time = localTime(new Date(date), profile.timezone)
   for (let d = 1; d <= 30; d++) {
     const next = addDays(day, d)
-    if ((await campaignOnDay(post, profile, next)) >= most) continue
     const at = zoned(next, time, profile.timezone)
+    await db.from('cutter_posts').update({ post_at: at.toISOString() }).eq('id', post.id).eq('status', 'approved')
+    if ((await campaignOnDay(post, profile, next)) >= most) continue
     const when = new Intl.DateTimeFormat('en-US', { timeZone: profile.timezone, weekday: 'short', hour: 'numeric', minute: '2-digit' }).format(at)
     return update(post.id, {
       post_at: at.toISOString(),

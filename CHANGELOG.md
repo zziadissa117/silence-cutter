@@ -3,6 +3,22 @@
 Newest first. Every change says what it does, how to use it, and how it works
 underneath. Kept up to date with each commit.
 
+## New post reads your note for when, and no campaign ever goes past its most a day
+Needs deploying: run ./deploy-server.sh (./deploy.sh runs it by itself).
+**What he said (2026-11-04):** writing "I already posted today. Post it for tomorrow" in New post's "Anything Claude
+should know", the videos still went today - Claude read it only for the captions. And five videos pasted for Cantina
+(1 a day at most) must never make more than 1 a day; the same from Videos.
+- **The note is read before anything goes** (`NewPost.tsx` `noteFor`): tapping Post straight from the box used to send
+  before Claude had read it (it was read only on leaving the box). Now Post waits for Claude ("Claude is reading your
+  note…") and plans the days with what it says. One reading per wording, shared with leaving the box.
+- **"I already posted today"** (`postiz/handNote.ts` `alreadyToday`): Claude also says how many he says he posted today
+  himself, and they count against today's most a day; "post it for tomorrow" / "not today" start tomorrow.
+- **The campaign's most a day holds even for videos sent together** (`postiz/dayRoom.ts`, `toDayWithRoom`): each video
+  being scheduled writes its time down first, then counts the day - scheduled and posted ones, and of those being
+  scheduled at the same moment only the ones that came first. Five sent at once used to each find the day empty and
+  all go on it. This is the server's last word for every post - New post, Videos, batches.
+- Tests: `dayRoom.test.ts`, `handNote.test.ts`.
+
 ## Recording: no more laggy takes
 App only: run ./deploy.sh.
 **What he said (2026-11-04):** some takes in the Cutter's recorder came out "super, super, super laggy" - a perfect
