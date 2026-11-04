@@ -3,6 +3,21 @@
 Newest first. Every change says what it does, how to use it, and how it works
 underneath. Kept up to date with each commit.
 
+## Recording: no more laggy takes
+App only: run ./deploy.sh.
+**What he said (2026-11-04):** some takes in the Cutter's recorder came out "super, super, super laggy" - a perfect
+take he had to throw away.
+- **Why** (`Recorder.tsx`): the camera was asked for 4K and every picture shrunk onto the 1080x1920 recording - four
+  times the pixels, for no sharper a video. And the picture was drawn at the screen's rate while the recording took
+  frames on a 30-a-second clock of its own: the two drifted against each other, so frames came out twice or were
+  missed, worse as the phone warmed up on long takes.
+- **Now:** the camera opens at Full HD, exactly the recording's size, and each new camera frame is drawn once as it
+  arrives (`requestVideoFrameCallback`); the recording takes one frame per drawing - one per camera frame, nothing
+  doubled or dropped. Phones without frame callbacks draw as before.
+- Each part over 3 s sends a `check` / `record` report: frames drawn, how many a second, how many slow, camera size -
+  so a laggy take can be read from his report.
+- Checked in the test browser with a fake camera: one frame drawn per camera frame, recording on through a flip.
+
 ## No more dead noise at the cuts
 App only: run ./deploy.sh.
 **What he said (2026-11-04):** "Every single time there's a cut, there's a little noise ... that little dead noise

@@ -48,14 +48,23 @@ export function takeName(at: Date, type: string, n = 0): string {
   return `REC ${stamp}${n > 0 ? ` (${n + 1})` : ''}.${type.includes('webm') ? 'webm' : 'mp4'}`
 }
 
+/** Safari's and Chrome's per-frame callback on a video element. */
+interface FrameCallbacks {
+  requestVideoFrameCallback(callback: () => void): number
+  cancelVideoFrameCallback(handle: number): void
+}
+
 /** What the camera stream asks for: as big as the camera goes, portrait. */
 export function cameraConstraints(facing: Facing): MediaStreamConstraints {
   return {
     video: {
       facingMode: { ideal: facing },
-      // Asked for as 4K; the phone gives the most it can under that.
-      width: { ideal: 3840 },
-      height: { ideal: 2160 },
+      // Full HD: exactly the size the recording is made at. Asked for as 4K,
+      // the phone shrank four times the pixels onto the recording every
+      // frame, and long takes went "super laggy" (his words, 2026-11-04) -
+      // for no sharper a picture, the video being 1080x1920 either way.
+      width: { ideal: 1920 },
+      height: { ideal: 1080 },
       frameRate: { ideal: 30 },
     },
     // His voice as the mic hears it: the Cutter does its own clean-up.
@@ -84,6 +93,7 @@ export function Recorder({ onDone, onCancel }: { onDone: (files: File[]) => void
    *  the recording goes on while the camera behind it changes (his ask,
    *  2026-11-03: flipping paused it and made "mini cuts"). */
   const canvas = useRef<HTMLCanvasElement | null>(null)
+  const context = useRef<CanvasRenderingContext2D | null>(null)
   const recorder = useRef<MediaRecorder | null>(null)
   const chunks = useRef<Blob[]>([])
   const takes = useRef<File[]>([])
@@ -136,6 +146,7 @@ export function Recorder({ onDone, onCancel }: { onDone: (files: File[]) => void
         v.srcObject = next
         await v.play().catch(() => {})
       }
+      arm()
       mirrored.current = which === 'user'
       switching.current = false
       const track = next.getVideoTracks()[0]
@@ -163,29 +174,62 @@ export function Recorder({ onDone, onCancel }: { onDone: (files: File[]) => void
     // Only when he flips; open() itself never changes.
   }, [facing]) // eslint-disable-line react-hooks/exhaustive-deps
 
-  // The camera's picture into the recording, every frame the screen draws.
-  // While a flip opens the other camera, the last picture stays - never a
-  // black frame.
+  // The camera's picture into the recording: each new camera frame drawn
+  // once, as it arrives (requestVideoFrameCallback), and the recording takes
+  // a frame each time one is drawn. It used to draw at the screen's rate and
+  // take frames on a clock of its own: the two drifted against each other,
+  // frames came out twice or not at all, and the take looked laggy. While a
+  // flip opens the other camera, the last picture stays - never a black frame.
+  const drawn = useRef({ frames: 0, slow: 0, since: 0 })
+  const drawFrame = useCallback(() => {
+    const ctx = context.current
+    const v = video.current
+    if (!ctx || !v || switching.current || v.readyState < 2 || v.videoWidth === 0) return
+    const began = performance.now()
+    const box = coverBox(v.videoWidth, v.videoHeight)
+    if (mirrored.current) ctx.setTransform(-1, 0, 0, 1, RECORD_WIDTH, 0)
+    ctx.drawImage(v, box.x, box.y, box.w, box.h)
+    ctx.setTransform(1, 0, 0, 1, 0, 0)
+    drawn.current.frames++
+    if (performance.now() - began > 25) drawn.current.slow++
+  }, [])
+  /** The video element's own frame callback, re-armed after every frame and
+   *  after each camera opens. */
+  const armed = useRef<number | null>(null)
+  const arm = useCallback(() => {
+    const v = video.current as (HTMLVideoElement & FrameCallbacks) | null
+    if (!v || typeof v.requestVideoFrameCallback !== 'function') return
+    if (armed.current !== null) v.cancelVideoFrameCallback(armed.current)
+    const onFrame = () => {
+      drawFrame()
+      armed.current = v.requestVideoFrameCallback(onFrame)
+    }
+    armed.current = v.requestVideoFrameCallback(onFrame)
+  }, [drawFrame])
+
   useEffect(() => {
     const c = document.createElement('canvas')
     c.width = RECORD_WIDTH
     c.height = RECORD_HEIGHT
     canvas.current = c
-    const ctx = c.getContext('2d')
-    let frame = 0
-    const draw = () => {
-      const v = video.current
-      if (ctx && v && !switching.current && v.readyState >= 2 && v.videoWidth > 0) {
-        const box = coverBox(v.videoWidth, v.videoHeight)
-        if (mirrored.current) ctx.setTransform(-1, 0, 0, 1, RECORD_WIDTH, 0)
-        ctx.drawImage(v, box.x, box.y, box.w, box.h)
-        ctx.setTransform(1, 0, 0, 1, 0, 0)
+    context.current = c.getContext('2d')
+    const v = video.current as (HTMLVideoElement & FrameCallbacks) | null
+    if (v && typeof v.requestVideoFrameCallback === 'function') {
+      arm()
+      return () => {
+        if (armed.current !== null) v.cancelVideoFrameCallback(armed.current)
+        armed.current = null
       }
-      frame = requestAnimationFrame(draw)
     }
-    frame = requestAnimationFrame(draw)
+    // An older phone without frame callbacks: drawn with the screen, as before.
+    let frame = 0
+    const loop = () => {
+      drawFrame()
+      frame = requestAnimationFrame(loop)
+    }
+    frame = requestAnimationFrame(loop)
     return () => cancelAnimationFrame(frame)
-  }, [])
+  }, [arm, drawFrame])
 
   useEffect(
     () => () => {
@@ -217,7 +261,11 @@ export function Recorder({ onDone, onCancel }: { onDone: (files: File[]) => void
       setProblem("This phone can't record in the page.")
       return
     }
-    const picture = c.captureStream(30).getVideoTracks()[0]
+    // A frame for each one drawn - one per camera frame - where frame
+    // callbacks exist; else 30 a second.
+    const byFrame = typeof (video.current as (HTMLVideoElement & Partial<FrameCallbacks>) | null)?.requestVideoFrameCallback === 'function'
+    const picture = (byFrame ? c.captureStream() : c.captureStream(30)).getVideoTracks()[0]
+    drawn.current = { frames: 0, slow: 0, since: performance.now() }
     const s = new MediaStream([picture, ...(sound ? [sound] : [])])
     chunks.current = []
     let r: MediaRecorder
@@ -238,6 +286,16 @@ export function Recorder({ onDone, onCancel }: { onDone: (files: File[]) => void
     const began = new Date()
     r.onstop = () => {
       picture.stop()
+      // How smoothly it went, for when a take looks laggy.
+      const secs = (performance.now() - drawn.current.since) / 1000
+      if (secs > 3) {
+        const settings = camera.current?.getVideoTracks()[0]?.getSettings() ?? {}
+        report({
+          kind: 'check',
+          phase: 'record',
+          message: `part ${secs.toFixed(1)} s: ${drawn.current.frames} frames drawn (${(drawn.current.frames / secs).toFixed(1)} a second, ${drawn.current.slow} slow), ${byFrame ? 'by camera frame' : 'by the clock'}, camera ${settings.width ?? '?'}x${settings.height ?? '?'}`,
+        })
+      }
       const kind = r.mimeType || type.current || 'video/mp4'
       const blob = new Blob(chunks.current, { type: kind.split(';')[0] })
       if (blob.size > 0) {
