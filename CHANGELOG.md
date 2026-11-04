@@ -3,6 +3,39 @@
 Newest first. Every change says what it does, how to use it, and how it works
 underneath. Kept up to date with each commit.
 
+## Trial reels: a viral reel made again and again, posted as Instagram Trial Reels
+Needs deploying: run ./deploy-server.sh (the `postiz` and `cutter` functions), then ./deploy.sh.
+**What he asked (2026-11-04):** take reels that went viral, send the raw clip and the viral one, and have the app
+put the same text back - moved, or a word or two changed, sometimes a touch brighter or darker - and post 30 a day
+as Trial Reels to his personal brand. Easy to start (2 seconds), change the number a day, Stop and start a new one.
+For him and Ilian only, not Stefan. Never shown to followers. His answers: one account, light changes, same words +
+rewordings, never share to followers, learn Instagram's daily limit, a still of the reel may go to Claude.
+- **How to use it:** More -> Trial reels (only shown to a login allowed it). Pick the viral reel and its clean clip
+  together, tap Start. The first time the app makes a "Trial reels" campaign on your Instagram account (it asks which
+  one only if you have several). Videos a day with −5 / +5, Stop on one reel, Stop everything.
+- **Who has it:** the owner's login (and the admin backup) always; another login when the owner taps Turn on in
+  Settings -> People. The server checks it on every request (`postiz/trial.ts trialAllowed`, cutter `trial`,
+  `cutter_config` `trial-reels`); a trial video from any other login is refused, never posted as a normal Reel.
+- **What happens:** `viralReel.ts` finds where the viral reel starts (matches the clean clip's first frame - a screen
+  recording can open on Instagram's screen), takes its sound from there, and one still goes to Claude (`trial-read`)
+  for the words, their look (box / outline / Snapchat, outline colour, size), place and 12 rewordings of a word or two.
+  `trialLoop.ts` is a batch of layout `trial`: half the videos his exact words somewhere else, half a rewording; 5
+  brightness steps; every combination once before any again, then it starts over - it never runs out. The batch
+  machinery does the rest (`batchRun` top-ups, even times around the clock, trims when the number drops, the Cutter
+  server when connected). Made by `montageRender` with `brightness` and `keepLines` (the words stay on the viral
+  reel's lines, a little smaller rather than wrap).
+- **Posting:** each goes with `meta.scheduled` (no approval) and `batch.trial`; `settingsFor` sends Instagram
+  `is_trial_reel: true, graduation_strategy: 'MANUAL'` - Postiz passes both to Meta (checked in Postiz's source,
+  2026-11-03). Never handed to Buffer (it would post a normal Reel).
+- **Instagram's limits:** when Meta turns a trial down for its daily limit (2207078), the server counts the trials
+  that went out on that account in the 24 h before, keeps it in `settings.trial.limits`, tells him once, and the loop
+  makes no more than that (`BatchBank.most`). An account that can't post trials (2207081) is kept in
+  `settings.trial.notAllowed`: the loop stops and says why, until a trial goes through.
+- **Checked here:** vitest (trialLoop, trialView, postiz/trial), tsc, lint, build, the functions with `deno check`.
+  A real render in Chrome for Testing: the start of a screen-recorded reel found at 1.0 s, its sound taken from there,
+  copies made with the words moved, reworded, brighter and darker, on one line. **Not checked:** an iPhone, Claude
+  reading a real reel (no key here), Instagram taking the trials - one real test needed.
+
 ## New post reads your note for when, and no campaign ever goes past its most a day
 Needs deploying: run ./deploy-server.sh (./deploy.sh runs it by itself).
 **What he said (2026-11-04):** writing "I already posted today. Post it for tomorrow" in New post's "Anything Claude

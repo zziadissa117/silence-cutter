@@ -50,6 +50,7 @@ import { NO_POSTING, type Campaign, type HeadlineStyle } from './look'
 import { batchTimesOn, listPosts, stackTimesOn, stoppable, stopPostsNow, takenTimes, type CampaignPlace, type ServerPost } from './posting'
 import { loadBankFile, type JobBatch } from './store'
 import { SERVER_MODE, serverConnected } from './serverFlag'
+import { planTrial, trialBatch, trialMissing, type TrialLook } from './trialLoop'
 
 /** How many days are kept made ahead, today with them. Was a week, for a
  *  phone opened now and then; the Cutter server makes them day and night, and
@@ -77,6 +78,10 @@ export interface BatchVideo {
   headlineStyle?: HeadlineStyle
   /** A talking batch: the reaction keeps his voice (BatchBank.voice). */
   voice?: boolean
+  /** A Trial loop's video (trialLoop.ts): the words' look and place, and the
+   *  brightness. `reaction` is the clean clip (and `product` too), `music`
+   *  the viral reel's sound. */
+  trial?: TrialLook
   batch: JobBatch
 }
 
@@ -99,10 +104,12 @@ export const MOST_A_DAY = 48
 /** How many videos a day the batch makes on `date`: his number, or - while it
  *  grows - his number for `growthFrom` and `growth` more on each day after,
  *  up to MOST_A_DAY. */
-export function perDayOn(bank: Pick<BatchBank, 'perDay' | 'growth' | 'growthFrom'>, date: string): number {
+export function perDayOn(bank: Pick<BatchBank, 'perDay' | 'growth' | 'growthFrom' | 'most'>, date: string): number {
+  // A Trial loop's accounts' daily trial limit, as Instagram showed it.
+  const most = Math.min(MOST_A_DAY, bank.most && bank.most > 0 ? bank.most : MOST_A_DAY)
   // 0 is paused, growing or not.
-  if (!bank.growth || !bank.growthFrom || bank.perDay === 0) return Math.min(MOST_A_DAY, bank.perDay)
-  return Math.min(MOST_A_DAY, Math.max(0, bank.perDay + bank.growth * Math.max(0, daysFrom(bank.growthFrom, date))))
+  if (!bank.growth || !bank.growthFrom || bank.perDay === 0) return Math.min(most, bank.perDay)
+  return Math.min(most, Math.max(0, bank.perDay + bank.growth * Math.max(0, daysFrom(bank.growthFrom, date))))
 }
 
 /** The bank with `n` a day from `today` on - his number now, the growth (if
@@ -172,7 +179,7 @@ export function runSlots({
   disliked = () => 0,
   now = new Date(),
 }: {
-  bank: Pick<BatchBank, 'perDay' | 'filled' | 'madeThrough' | 'lastPerDay' | 'growth' | 'growthFrom'>
+  bank: Pick<BatchBank, 'perDay' | 'filled' | 'madeThrough' | 'lastPerDay' | 'growth' | 'growthFrom' | 'most'>
   place: CampaignPlace
   campaignId: string
   taken?: (date: string) => readonly string[]
@@ -204,6 +211,7 @@ export function runSlots({
  *  product clip (or one for every step), or both logos. A headline is not
  *  needed: without one the videos have no words on them. */
 export function missingFor(bank: BatchBank): string[] {
+  if (bank.layout === 'trial') return trialMissing(bank)
   const green = bank.layout === 'greenscreen'
   const onEngine = bank.layout === 'engine'
   const formula = !green && !onEngine && hasFormula(bank)
@@ -219,6 +227,8 @@ export function missingFor(bank: BatchBank): string[] {
 /** How many different videos are left to make, and of how many - Infinity
  *  when there are too many to count. */
 export function leftToMake(bank: BatchBank): { total: number; left: number } {
+  // A Trial loop never runs out: every way made, it starts over.
+  if (bank.layout === 'trial') return { total: Infinity, left: Infinity }
   return combos(mixFrom(bank, headlinesToMix(bank)))
 }
 
@@ -226,6 +236,10 @@ export function leftToMake(bank: BatchBank): { total: number; left: number } {
  *  counts them: "3 reactions × 4 product showcases × 5 headlines × 3
  *  headline looks". Songs and looks only when there is more than one. */
 export function variationParts(bank: BatchBank): string[] {
+  if (bank.layout === 'trial') {
+    const sources = bank.trial?.sources.filter((s) => !s.stopped) ?? []
+    return [`${sources.length} viral reel${sources.length === 1 ? '' : 's'}`, 'their words moved or reworded', 'a touch brighter or darker']
+  }
   const green = bank.layout === 'greenscreen'
   const headlines = green || hookOf(bank) !== 'formula' ? bank.headlines : []
   const looks = looksToMix(mixFrom(bank, headlines))
@@ -305,6 +319,7 @@ export function planVideos(
   { id = `b-${Date.now().toString(36)}`, now = new Date(), rand = Math.random }: { id?: string; now?: Date; rand?: () => number } = {},
 ): { videos: BatchVideo[]; slots: BatchSlot[]; bank: BatchBank; retire: string[] } {
   if (bank.layout === 'engine') return { videos: [], slots, bank: fill(bank, slots, now), retire: [] }
+  if (bank.layout === 'trial') return planTrialVideos(bank, slots, { id, now, rand })
   const mixable = mixFrom(bank, headlinesToMix(bank))
   const { left } = combos(mixable)
   const taking = Number.isFinite(left) ? slots.slice(0, left) : slots
@@ -322,6 +337,28 @@ export function planVideos(
     next = { ...next, running: false }
   }
   return { videos, slots: taking, bank: next, retire }
+}
+
+/** A Trial loop's next videos (trialLoop.ts): the viral reels taking turns,
+ *  each its words moved or reworded - it never runs out. */
+function planTrialVideos(
+  bank: BatchBank,
+  slots: BatchSlot[],
+  { id, now, rand }: { id: string; now: Date; rand: () => number },
+): { videos: BatchVideo[]; slots: BatchSlot[]; bank: BatchBank; retire: string[] } {
+  const { plans, made, used, lastPair } = planTrial(bank, slots.length, { rand })
+  const taking = slots.slice(0, plans.length)
+  if (taking.length === 0) return { videos: [], slots: [], bank, retire: [] }
+  const videos = plans.map((plan, i): BatchVideo => ({
+    reaction: plan.clip,
+    product: plan.clip,
+    music: plan.sound,
+    headline: plan.text,
+    headlineStyle: plan.look.style,
+    trial: plan.look,
+    batch: trialBatch({ id, date: taking[i].date, time: taking[i].time, size: taking.length }),
+  }))
+  return { videos, slots: taking, bank: fill({ ...bank, made, used, lastPair }, taking, now), retire: [] }
 }
 
 /** Top-ups running now, by campaign: the Batch tab and the app's own
@@ -488,7 +525,7 @@ export function dayVideos(posts: readonly ServerPost[], jobs: readonly Job[], ca
 
 /** The days holding more than his number, from today on. */
 export function overfull(
-  bank: Pick<BatchBank, 'perDay' | 'filled' | 'madeThrough' | 'lastPerDay' | 'growth' | 'growthFrom'>,
+  bank: Pick<BatchBank, 'perDay' | 'filled' | 'madeThrough' | 'lastPerDay' | 'growth' | 'growthFrom' | 'most'>,
   now = new Date(),
   /** Videos he turned down: made again, so not over the number (dislikedBy). */
   disliked: (date: string) => number = () => 0,
@@ -504,7 +541,7 @@ export function overfull(
  *  can still go; and the days' counts after. A day that can't lose enough
  *  (posted already, or being made right now) keeps the rest. */
 export function trimPlan(
-  bank: Pick<BatchBank, 'perDay' | 'filled' | 'madeThrough' | 'lastPerDay' | 'growth' | 'growthFrom'>,
+  bank: Pick<BatchBank, 'perDay' | 'filled' | 'madeThrough' | 'lastPerDay' | 'growth' | 'growthFrom' | 'most'>,
   videos: readonly DayVideo[],
   now = new Date(),
   disliked: (date: string) => number = () => 0,
