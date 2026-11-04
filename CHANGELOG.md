@@ -18,6 +18,12 @@ should know", the videos still went today - Claude read it only for the captions
   scheduled at the same moment only the ones that came first. Five sent at once used to each find the day empty and
   all go on it. This is the server's last word for every post - New post, Videos, batches.
 - Tests: `dayRoom.test.ts`, `handNote.test.ts`.
+## Research: Instagram Trial Reels and Meta's originality rules
+Nothing to deploy - a document only, no code changed.
+**What he asked (2026-11-04):** an admins-only feature for Trial Reels and Meta's rules on reposted videos - research first.
+- `docs/TRIAL_REELS_AND_ORIGINALITY.md`: what Trial Reels are and who can use them, that Postiz already posts them
+  (`is_trial_reel`, `graduation_strategy`), that no API moves a trial to followers, Meta's 2025-2026 originality rules,
+  ranked ideas for the Cutter, how an owner-only switch fits the login rules, and the questions for him.
 
 ## Recording: no more laggy takes
 App only: run ./deploy.sh.
