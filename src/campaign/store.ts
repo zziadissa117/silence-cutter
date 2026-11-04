@@ -1228,6 +1228,12 @@ export async function resetAttempts(id: string): Promise<void> {
   await db.jobs.update(id, { attempts: 0, failed: undefined }).catch(() => {})
 }
 
+/** Stopped by him while it was being made or joined: left alone ("held")
+ *  until he starts it or removes it. */
+export async function holdJob(id: string): Promise<void> {
+  await db.jobs.update(id, { attempts: MAX_ATTEMPTS, failed: undefined }).catch(() => {})
+}
+
 export async function recordFailure(id: string, message: string): Promise<void> {
   await db.jobs.update(id, { failed: message }).catch(() => {})
 }

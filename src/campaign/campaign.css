@@ -1119,3 +1119,5 @@ input[type='color']::-webkit-color-swatch { border: 0.5px solid var(--edge); bor
 .trial-perday input { width: 56px; text-align: center; }
 .trial-which { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
 .trial-which .btn { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.vrow-working { display: flex; align-items: center; gap: 10px; margin: 0 0 12px 22px; }
+.vrow .vrow-working .bar { flex: 1; margin: 0; }

@@ -51,6 +51,7 @@ export function JobRow({
   onHeadlineStyle,
   onRetry,
   onRemove,
+  onStop,
   onPost,
   onEditAgain,
   sendTo,
@@ -86,6 +87,8 @@ export function JobRow({
   onHeadlineStyle?: (style: HeadlineStyle) => void
   onRetry: () => void
   onRemove: () => void
+  /** Stops it while it is being made or joined - approved by mistake. */
+  onStop?: () => void
   /** Sends a finished video to Postiz by hand, when it didn't go itself. */
   onPost?: () => void
   /** A made video that went nowhere: back to be edited, given a campaign
@@ -237,8 +240,15 @@ export function JobRow({
       ) : null}
 
       {job.status === 'working' ? (
-        <div className="bar">
-          <div style={{ width: `${Math.round(job.progress * 100)}%` }} />
+        <div className="vrow-working">
+          <div className="bar">
+            <div style={{ width: `${Math.round(job.progress * 100)}%` }} />
+          </div>
+          {onStop ? (
+            <button type="button" className="btn small" onClick={onStop}>
+              Stop
+            </button>
+          ) : null}
         </div>
       ) : null}
 

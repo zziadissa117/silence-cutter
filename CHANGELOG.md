@@ -3,6 +3,16 @@
 Newest first. Every change says what it does, how to use it, and how it works
 underneath. Kept up to date with each commit.
 
+## Stop a video being made or joined
+App only: run ./deploy.sh.
+**What he asked (2026-11-04):** "an option to cancel a video that's currently being joined together or ... being made
+... I approve without wanting to, and it just takes up my whole phone for a couple minutes".
+- `JobRow.tsx`: a **Stop** button beside the progress bar of the video being worked on (Videos list).
+- `CampaignApp.stopJob`: the video goes back to how it was before he approved it (to check again); stopped while being
+  joined or listened to, it is left alone (`store.holdJob`) until he taps Start or Remove. The Cutter then starts again
+  by itself (`restartPage`) - the only way to take the phone's video maker off the work at once; every other video is
+  picked up where it was.
+
 ## Headlines written from the whole video; changing the campaign keeps your headline
 Needs deploying: run ./deploy-server.sh (./deploy.sh runs it by itself).
 **What he asked (2026-11-04):** "Stop automatically putting the headline as the first line ... take a sort of summary

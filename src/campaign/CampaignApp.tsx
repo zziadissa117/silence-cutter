@@ -204,6 +204,7 @@ import {
   loadJobFile,
   loadMontageFile,
   loadPendingJobs,
+  holdJob,
   loadProductFile,
   persistJob,
   persistJobRow,
@@ -1297,7 +1298,7 @@ export function CampaignApp() {
       const held = restored.filter((j) => j.status === 'held').length
       setNotice(
         held > 0
-          ? `${held} video${held === 1 ? '' : 's'} stopped this page more than once, so ${held === 1 ? 'it has' : 'they have'} been left alone. Start it by hand, or remove it.`
+          ? `${held} video${held === 1 ? ' is' : 's are'} stopped - by you, or because ${held === 1 ? 'it' : 'they'} stopped the page more than once. Start ${held === 1 ? 'it' : 'them'} by hand, or remove ${held === 1 ? 'it' : 'them'}.`
           : `Picked up ${restored.length} video${restored.length === 1 ? '' : 's'} that hadn't finished.`,
       )
     })
@@ -2144,6 +2145,23 @@ export function CampaignApp() {
 
   /** Tries a held or failed video again, from where it had got to: a day's
    *  video he already approved is made again, not listened to again. */
+  /** He approved by mistake: the video being made or joined stops at once
+   *  and the phone is free again. The page starts again - the only way to
+   *  take the phone's video maker off it - and the video comes back as it
+   *  was before he approved it (to check again), or, stopped while being
+   *  joined or listened to, left alone until he taps Start or Remove. */
+  const stopJob = async (id: string) => {
+    const job = jobs.find((j) => j.id === id)
+    if (!job || job.status !== 'working') return
+    if (job.day?.plan && job.day.approved) {
+      await recordDay(id, { ...job.day, approved: false })
+      await resetAttempts(id)
+    } else await holdJob(id)
+    setJobs((js) => js.map((j) => (j.id === id ? { ...j, status: job.day?.plan ? 'sorted' : 'held', progress: 0 } : j)))
+    setNotice('Stopped. The Cutter starts again in a moment to free the phone.')
+    restartPage()
+  }
+
   const startHeld = useCallback((id: string) => {
     void resetAttempts(id).finally(() => {
       setJobs((js) =>
@@ -3268,6 +3286,7 @@ export function CampaignApp() {
                 onHeadlineDone={() => saveHeadline(job.id)}
                 onRetry={() => startHeld(job.id)}
                 onRemove={() => removeJob(job.id)}
+                onStop={() => void stopJob(job.id)}
                 onPost={postByHand(job)}
                 postingNote={
                   unsent.includes(job)
