@@ -3,6 +3,13 @@
 Newest first. Every change says what it does, how to use it, and how it works
 underneath. Kept up to date with each commit.
 
+## Research: Instagram Trial Reels and Meta's originality rules
+Nothing to deploy - a document only, no code changed.
+**What he asked (2026-11-04):** an admins-only feature for Trial Reels and Meta's rules on reposted videos - research first.
+- `docs/TRIAL_REELS_AND_ORIGINALITY.md`: what Trial Reels are and who can use them, that Postiz already posts them
+  (`is_trial_reel`, `graduation_strategy`), that no API moves a trial to followers, Meta's 2025-2026 originality rules,
+  ranked ideas for the Cutter, how an owner-only switch fits the login rules, and the questions for him.
+
 ## Recording: no more laggy takes
 App only: run ./deploy.sh.
 **What he said (2026-11-04):** some takes in the Cutter's recorder came out "super, super, super laggy" - a perfect
