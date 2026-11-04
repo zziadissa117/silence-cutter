@@ -279,26 +279,6 @@ function rememberedMode(): Mode {
   }
 }
 
-const POST_LATER_KEY = 'campaign.postLater'
-
-/** "Next days" is for today only: tomorrow it is back to posting the day's
- *  videos that day, so it can't be left on by mistake. */
-function postLaterToday(): boolean {
-  try {
-    return localStorage.getItem(POST_LATER_KEY) === new Date().toLocaleDateString('en-CA')
-  } catch {
-    return false
-  }
-}
-
-function keepPostLater(on: boolean): void {
-  try {
-    if (on) localStorage.setItem(POST_LATER_KEY, new Date().toLocaleDateString('en-CA'))
-    else localStorage.removeItem(POST_LATER_KEY)
-  } catch {
-    // Just won't be remembered.
-  }
-}
 
 /** A setting kept on this phone between visits. */
 function usePref<T extends string | boolean>(key: string, initial: T): [T, (value: T) => void] {
@@ -748,12 +728,6 @@ export function CampaignApp() {
   const [posting, setPosting] = useState<LocalPosting | null>(postingHere)
   // Videos added while this is on are for the next days: they take their
   // campaign's times from tomorrow instead of all going out today.
-  const [postLater, setPostLaterState] = useState(postLaterToday)
-  const setPostLater = (on: boolean) => {
-    keepPostLater(on)
-    setPostLaterState(on)
-  }
-  const laterNow = postLater && posting !== null
   const [settingUpPosting, setSettingUpPosting] = useState(false)
   /** The Cutter's own camera (Recorder.tsx) is open. */
   const [recordingOpen, setRecordingOpen] = useState(false)
@@ -2049,7 +2023,6 @@ export function CampaignApp() {
           phase: 'cutting',
           progress: 0,
           ...(day ? { day: { approved: false } } : check ? { day: { approved: false, chosen: true } } : {}),
-          ...(laterNow ? { later: true } : {}),
           ...order[files.indexOf(file)].filming,
           // A wide clip he asked to only make 9:16; a 9:16 one is always cut.
           ...(!cutWide && order[files.indexOf(file)].filming.vertical === false ? { noCut: true } : {}),
@@ -2111,7 +2084,7 @@ export function CampaignApp() {
         commitRef.current(order, true)
       })()
     },
-    [angle, campaign, captionsOn, cleanSpeech, headlineText, mode, preset, laterNow],
+    [angle, campaign, captionsOn, cleanSpeech, headlineText, mode, preset],
   )
 
   useEffect(() => {
@@ -2512,7 +2485,6 @@ export function CampaignApp() {
       progress: 0,
       day: { approved: false, chosen: true, ...headlineStyle },
       reaction: { ...parts, productFile: product.file },
-      ...(laterNow ? { later: true } : {}),
     }))
     setJobs((current) => [...current, ...added])
     setNotice(null)
@@ -2900,7 +2872,6 @@ export function CampaignApp() {
       progress: 0,
       day: { approved: false },
       prejoin: { clips, files: rest },
-      ...(laterNow ? { later: true } : {}),
     }
     setJobs((current) => [...current, job])
     setNotice(null)
@@ -2948,7 +2919,6 @@ export function CampaignApp() {
       phase: 'cutting',
       progress: 0,
       montage: { ...parts, files: rest, ...(song ? { songFile: song } : {}) },
-      ...(laterNow ? { later: true } : {}),
     }
     setJobs((current) => [...current, job])
     setNotice(null)
@@ -3079,31 +3049,6 @@ export function CampaignApp() {
           </span>
           <ChevronRight />
         </button>
-      ) : null}
-      {posting ? (
-        <div className="post-later">
-          <div className="under-drop-title">The videos you add now post</div>
-          <div className="seg full" role="radiogroup" aria-label="When the videos you add now post">
-            {[
-              { later: false, label: 'Today' },
-              { later: true, label: 'Next days' },
-            ].map((o) => (
-              <button
-                key={o.label}
-                type="button"
-                role="radio"
-                aria-checked={postLater === o.later}
-                className={postLater === o.later ? 'active' : ''}
-                onClick={() => setPostLater(o.later)}
-              >
-                {o.label}
-              </button>
-            ))}
-          </div>
-          {postLater ? (
-            <div className="hint">Nothing goes out today: each video takes its campaign's next free time, tomorrow and the days after. Goes back to Today by itself tomorrow.</div>
-          ) : null}
-        </div>
       ) : null}
 
       {ownCampaigns.length === 0 ? (

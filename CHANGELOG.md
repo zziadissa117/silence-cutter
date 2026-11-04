@@ -3,6 +3,17 @@
 Newest first. Every change says what it does, how to use it, and how it works
 underneath. Kept up to date with each commit.
 
+## Videos: no more Today / Next days - the next days by themselves; weekends ticked
+Needs deploying: run ./deploy-server.sh (./deploy.sh runs it by itself).
+**What he asked (2026-11-04):** "remove the 'post for the next days' option. Just do it automatically", and in New
+post "Weekends auto ticked".
+- `CampaignApp.tsx`: the Today / Next days switch above the videos is gone.
+- `postiz/slots.ts` `pickTime`: a day holds as many videos as the campaign has times that day. Today's free times are
+  taken first; once today has that many (on its times, or late ones spread over the evening), the next video takes the
+  next free time from tomorrow on, by itself - it used to be squeezed in today as an "extra". A campaign's most a day
+  still caps every day on top of that (`toDayWithRoom`). Tests in `slots.test.ts`.
+- `NewPost.tsx`: Include weekends starts ticked; unticking it is remembered.
+
 ## New post: "10 videos - how many a day?" and Include weekends
 App only: run ./deploy.sh.
 **What he asked (2026-11-04):** dropping many videos for one campaign, "it simply asks me ... you have 10 videos ...

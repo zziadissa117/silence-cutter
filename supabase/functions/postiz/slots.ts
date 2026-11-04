@@ -285,6 +285,16 @@ export function pickTime({
   }
   const missed = today.some((t) => t.at < earliest && !taken.has(t.slot))
   const spreadToday = others.filter((o) => o.spread && o.slot.startsWith(`${date} +`))
+  // A day holds as many as it has times. Once today has that many, the next
+  // video takes the next free time from tomorrow on, by itself - there is no
+  // "Next days" switch any more (his ask, 2026-11-04: "remove the post for
+  // the next days option. Just do it automatically").
+  const todayHas = today.filter((t) => taken.has(t.slot)).length + spreadToday.length
+  if (today.length > 0 && todayHas >= today.length) {
+    const tomorrow = zoned(addDays(date, 1), '00:00', tz)
+    const next = nextSlot({ times, taken, now: new Date(Math.max(now.getTime(), tomorrow.getTime())), tz, leadMinutes: 0 })
+    if (next) return { kind: 'fixed', ...next }
+  }
   const lateAlready = spreadToday.some((o) => o.spread === 'late')
   if (!missed && !lateAlready) {
     const free = today.find((t) => !taken.has(t.slot) && t.at >= earliest)

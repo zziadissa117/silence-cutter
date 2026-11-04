@@ -518,7 +518,6 @@ html, body { overscroll-behavior-y: none; }
 .clip-watch { width: 160px; max-width: 100%; aspect-ratio: 9 / 16; border-radius: 10px; background: #000; }
 
 /* When the videos being added post: today, or from tomorrow. */
-.post-later { display: flex; flex-direction: column; gap: 6px; }
 
 /* A recording filmed right after this one, offered to be joined. */
 .join-hint { display: flex; align-items: center; gap: 10px; padding: 0 0 12px 22px; }
@@ -1018,7 +1017,6 @@ input[type='color']::-webkit-color-swatch { border: 0.5px solid var(--edge); bor
 .heat-row { min-width: 0; }
 .under-drop-links { flex-direction: row; flex-wrap: wrap; justify-content: center; gap: 8px; margin-top: 12px; }
 .under-drop-title { width: 100%; text-align: center; font-size: 13px; color: var(--muted); }
-.post-later .under-drop-title { text-align: left; margin-bottom: 6px; }
 
 /* The quick caption check (CaptionReview QuickCheck, CutsEditor .quick):
    the video big, the timeline hidden, one card at a time. */

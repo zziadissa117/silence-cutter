@@ -65,9 +65,9 @@ interface SpreadChoice {
 function lastSpread(): SpreadChoice {
   try {
     const kept = JSON.parse(localStorage.getItem(SPREAD_KEY) ?? 'null') as Partial<SpreadChoice> | null
-    return { perDay: kept?.perDay ?? {}, weekends: kept?.weekends === true }
+    return { perDay: kept?.perDay ?? {}, weekends: kept?.weekends !== false }
   } catch {
-    return { perDay: {}, weekends: false }
+    return { perDay: {}, weekends: true }
   }
 }
 function keepSpread(choice: SpreadChoice): void {

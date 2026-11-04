@@ -103,17 +103,25 @@ describe('pickTime', () => {
     expect(second).toMatchObject({ kind: 'fixed', slot: `${DATE} 20:00` })
   })
 
-  it('a video beyond the day\'s times is an extra for today, not tomorrow', () => {
+  it("a video beyond the day's times goes on the next day's first free time, by itself", () => {
     const others = [
       { slot: `${DATE} 18:00`, spread: null },
       { slot: `${DATE} 20:00`, spread: null },
     ]
-    expect(pickTime({ times: PUMP, others, now: at('09:00'), tz: TZ })).toEqual({ kind: 'spread', spread: 'extra', slot: `${DATE} +1` })
-    expect(pickTime({ times: PUMP, others: [...others, { slot: `${DATE} +1`, spread: 'extra' as const }], now: at('09:00'), tz: TZ })).toEqual({
-      kind: 'spread',
-      spread: 'extra',
-      slot: `${DATE} +2`,
+    const tomorrow = addDays(DATE, 1)
+    expect(pickTime({ times: PUMP, others, now: at('09:00'), tz: TZ })).toMatchObject({ kind: 'fixed', slot: `${tomorrow} 18:00` })
+    expect(pickTime({ times: PUMP, others: [...others, { slot: `${tomorrow} 18:00`, spread: null }], now: at('09:00'), tz: TZ })).toMatchObject({
+      kind: 'fixed',
+      slot: `${tomorrow} 20:00`,
     })
+  })
+
+  it('late videos fill today only up to its number of times, then the next days', () => {
+    const late = [
+      { slot: `${DATE} +1`, spread: 'late' as const },
+      { slot: `${DATE} +2`, spread: 'late' as const },
+    ]
+    expect(pickTime({ times: PUMP, others: late, now: at('21:00'), tz: TZ })).toMatchObject({ kind: 'fixed', slot: `${addDays(DATE, 1)} 18:00` })
   })
 
   it('once a time has gone by with no video, the day runs late', () => {
