@@ -46,7 +46,7 @@ import { CloudError, currentSession, signOut, syncNow, type Session, type SyncSt
 import { AngleEditor, CampaignEditor } from './Editors'
 import { ChevronRight, UploadIcon } from './icons'
 import { HeadlineLook, JobRow } from './JobRow'
-import type { PopReview } from './CaptionReview'
+import type { PictureReview, PopReview } from './CaptionReview'
 import { CutsEditor } from './CutsEditor'
 import { EditScreen, type EditedCuts } from './EditScreen'
 import { CheckQuestions } from './CheckQuestions'
@@ -3792,6 +3792,23 @@ export function CampaignApp() {
   /** The bank videos this take says, for sizing and placing them on the
    *  caption check - undefined when it says none (or its angle doesn't use
    *  the bank). */
+  /** The pictures and logo a video will show, for the caption check to
+   *  draw them as they will be (CaptionReview.paintPictures). */
+  function pictureReviewFor(job: Job): PictureReview | undefined {
+    const plan = job.day?.plan
+    const campaign = campaignsRef.current.find((c) => c.id === job.campaignId)
+    const angle = campaign?.angles.find((a) => a.id === job.angleId)
+    if (!plan || !campaign || !angle) return undefined
+    const look = videoLook(campaign, angle, bankRef.current, job.day?.noEffects ? null : defaultEffects(), job.day?.skipPictures ?? [])
+    const at = wordMoments(plan, look)
+    const items: PictureReview['items'] = [
+      ...look.pictures.map((picture, i) => ({ key: `p:${picture.id}`, image: picture.image, at: at.pictures[i] ?? [], seconds: picture.seconds, place: picture })),
+      ...at.bank.map((cue, i) => ({ key: `b:${i}`, image: cue.image, at: cue.moments, seconds: look.bankPlacement.seconds, place: look.bankPlacement, bank: true })),
+      ...(look.logo.image ? [{ key: 'logo', image: look.logo.image, at: at.logo, seconds: look.logo.seconds, place: look.logo }] : []),
+    ].filter((item) => item.at.length > 0)
+    return items.length > 0 ? { items, pop: look.effects.logoPop } : undefined
+  }
+
   function popReviewFor(job: Job): PopReview | undefined {
     const plan = job.day?.plan
     const campaign = campaignsRef.current.find((c) => c.id === job.campaignId)
@@ -4197,6 +4214,7 @@ export function CampaignApp() {
           captionStyle: reviewJob.day?.captionStyle ?? defaultCaptionStyle(),
           onCaptionStyle: (style) => setCaptionStyle(reviewJob.id, style),
           pops: popReviewFor(reviewJob),
+          pictures: pictureReviewFor(reviewJob),
         }}
       />
     ) : recordingOpen ? (

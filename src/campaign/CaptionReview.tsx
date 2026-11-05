@@ -37,8 +37,11 @@ import { centsLabel, estimateRecheckCents, flaggedPhrases, type Span } from './c
 import { headlineFontReady } from './headlineFont'
 import type { RecheckResult } from './posting'
 import { ChevronLeft, PauseIcon, PlayIcon } from './icons'
-import { LIMITS } from './look'
+import { LIMITS, type LogoPosition } from './look'
+import { TOGETHER_SEC, drawLogo, drawPoppedLogo, layoutLogo, sideBySide } from './overlay'
+import { logoPop } from './effects'
 import { formatTime } from './jobs'
+import { findRepeats, type Repeat } from './repeats'
 import { POP_POSITIONS, POP_SIZE, drawPop, popLayout, type PopPosition } from './popVideo'
 
 /** The bank videos said in a take, for the caption check: each with when
@@ -53,6 +56,73 @@ export interface PopReview {
   onSkip: (id: string, skip: boolean) => void
 }
 
+/** The pictures and the logo a take will show - each with when it comes up
+ *  (on the raw take), how long, and where - so the check looks like the
+ *  finished video (his ask, 2026-11-05: "the images that are being put in
+ *  when I say a word pop up while I'm looking at the captions too"). */
+export interface PictureReview {
+  items: {
+    key: string
+    image: Blob
+    at: number[]
+    seconds: number
+    place: { position: LogoPosition; widthPct: number; center?: { x: number; y: number } }
+    /** The bank's pictures share one spot: only the newest shows. */
+    bank?: boolean
+  }[]
+  /** They pop in, as the angle's effects say. */
+  pop: boolean
+}
+
+/** Each picture as an image to draw, once loaded. */
+export function usePictureStills(pictures: PictureReview | undefined): { images: Map<string, ImageBitmap>; ready: number } {
+  const images = useRef(new Map<string, ImageBitmap>())
+  const [ready, setReady] = useState(0)
+  const latest = useRef(pictures)
+  latest.current = pictures
+  const keys = pictures?.items.map((i) => i.key).join(',') ?? ''
+  useEffect(() => {
+    let alive = true
+    void (async () => {
+      for (const item of latest.current?.items ?? []) {
+        if (images.current.has(item.key) || typeof createImageBitmap !== 'function') continue
+        const bitmap = await createImageBitmap(item.image).catch(() => null)
+        if (!alive) {
+          bitmap?.close()
+          return
+        }
+        if (bitmap) images.current.set(item.key, bitmap)
+      }
+      if (alive) setReady((n) => n + 1)
+    })()
+    return () => {
+      alive = false
+    }
+  }, [keys])
+  useEffect(() => () => images.current.forEach((b) => b.close()), [])
+  return { images: images.current, ready }
+}
+
+/** The pictures up at moment `t`, drawn where the finished video has them:
+ *  several up at once side by side, the bank's newest only. */
+export function paintPictures(ctx: CanvasRenderingContext2D, w: number, h: number, t: number, p: PictureReview | undefined, images: Map<string, ImageBitmap>): void {
+  if (!p) return
+  const up: { item: PictureReview['items'][number]; since: number; image: ImageBitmap }[] = []
+  for (const item of p.items) {
+    const image = images.get(item.key)
+    const start = Math.max(-Infinity, ...item.at.filter((a) => a <= t && t < a + item.seconds))
+    if (image && Number.isFinite(start)) up.push({ item, since: t - start, image })
+  }
+  const newestBank = Math.min(Infinity, ...up.filter((u) => u.item.bank).map((u) => u.since))
+  const shown = up.filter((u) => !u.item.bank || u.since - newestBank < TOGETHER_SEC)
+  if (shown.length === 0) return
+  const placed = sideBySide(shown.map((u) => layoutLogo(w, h, u.image, u.item.place)), w, h)
+  shown.forEach((u, k) => {
+    if (p.pop) drawPoppedLogo(ctx, u.image, placed[k], logoPop(u.since, u.item.seconds - u.since))
+    else drawLogo(ctx, u.image, placed[k])
+  })
+}
+
 /** When the captions are on the same page as the cuts (EditScreen): the cuts'
  *  video is the one shown, so the phrases move and play it instead. */
 export interface EmbeddedVideo {
@@ -61,6 +131,8 @@ export interface EmbeddedVideo {
   subscribe(listener: (t: number, playing: boolean) => void): () => void
   /** He is typing in a phrase: the video above is made smaller. */
   onTyping(typing: boolean): void
+  /** Cuts a stretch out (the first try of a phrase said twice). */
+  cut?(range: { start: number; end: number }): void
 }
 
 /** Each pop-up's still, to show its box at its size on the frame. */
@@ -179,6 +251,7 @@ export function CaptionReview({
   vocabulary = [],
   riskSpans = [],
   pops,
+  pictures,
   embedded,
   quick = false,
   onTimeline,
@@ -227,6 +300,8 @@ export function CaptionReview({
   /** Bank videos said in this take, and how they pop up - absent when none
    *  is said. */
   pops?: PopReview
+  /** The pictures and logo it will show, drawn on the frame as they will be. */
+  pictures?: PictureReview
   /** On the same page as the cuts: no video of its own. */
   embedded?: EmbeddedVideo
   /** The quick check (with `embedded`): only the phrases Claude changed or
@@ -246,6 +321,8 @@ export function CaptionReview({
   const phraseFor = (k: number, text: string) => (text === asHeard[k] ? heard[k] : retimePhrase(heard[k], text))
   const phrases = useMemo(() => heard.map((_, k) => phraseFor(k, texts[k])), [texts]) // eslint-disable-line react-hooks/exhaustive-deps
   const words = useMemo(() => phrases.flat(), [phrases])
+  // Phrases said twice (a retake), to watch and cut the first of.
+  const repeats = useMemo(() => findRepeats(words), [words])
   /** Which phrase each word is in. */
   const owner = useMemo(() => phrases.flatMap((p, k) => p.map(() => k)), [phrases])
   const phrasesRef = useRef(phrases)
@@ -281,6 +358,11 @@ export function CaptionReview({
   const stills = useRef(own.stills)
   stills.current = own.stills
   const stillsReady = own.ready
+  const ownPictures = usePictureStills(embedded ? undefined : pictures)
+  const picturesRef = useRef(pictures)
+  picturesRef.current = pictures
+  const pictureImages = useRef(ownPictures.images)
+  pictureImages.current = ownPictures.images
   /** Set while he is sizing or moving the box: shown whatever the moment. */
   const showBox = useRef(false)
 
@@ -307,6 +389,7 @@ export function CaptionReview({
     const ctx = c.getContext('2d')
     if (!ctx) return
     ctx.clearRect(0, 0, w, h)
+    paintPictures(ctx, w, h, video.current?.currentTime ?? 0, picturesRef.current, pictureImages.current)
     paintPopBox(ctx, w, h, video.current?.currentTime ?? 0, popsRef.current, stills.current, showBox.current)
     const all = wordsRef.current
     if (!all[shown]) return
@@ -495,8 +578,24 @@ export function CaptionReview({
     )
   }
 
+  const saidTwice = (
+    <RepeatFlags
+      repeats={repeats}
+      onWatch={(r) => {
+        if (embedded) embedded.playFrom(Math.max(0, r.first - 0.3))
+        else if (video.current) {
+          video.current.currentTime = Math.max(0, r.first - 0.3)
+          void video.current.play().catch(() => {})
+        }
+      }}
+      onCut={embedded?.cut ? (r) => embedded.cut?.(r.cut) : undefined}
+    />
+  )
+
   if (embedded && quick) {
     return (
+      <>
+      {saidTwice}
       <QuickCheck
         texts={texts}
         heard={asHeard}
@@ -522,6 +621,7 @@ export function CaptionReview({
         onSkip={() => onSkip(words)}
         onTimeline={onTimeline}
       />
+      </>
     )
   }
 
@@ -531,6 +631,7 @@ export function CaptionReview({
       aria-label={`Captions for ${name}`}
     >
       {embedded ? <div className="group-title review-embedded-title">Captions</div> : null}
+      {embedded ? saidTwice : null}
       {embedded ? null : (
       <div className="review-top">
         <div className="review-head">
@@ -791,6 +892,30 @@ export function CaptionReview({
         </button>
       </div>
     </section>
+  )
+}
+
+/** Phrases he said twice (repeats.ts): each to watch, and - on the same page
+ *  as the cuts - to cut the first try of. */
+function RepeatFlags({ repeats, onWatch, onCut }: { repeats: Repeat[]; onWatch: (r: Repeat) => void; onCut?: (r: Repeat) => void }) {
+  if (repeats.length === 0) return null
+  return (
+    <div className="repeat-flags">
+      <div className="label">Said twice</div>
+      {repeats.map((r) => (
+        <div className="repeat-row" key={r.first}>
+          <button type="button" className="repeat-text" onClick={() => onWatch(r)}>
+            <span>"{r.text.split(' ').length > 8 ? `${r.text.split(' ').slice(0, 8).join(' ')}…` : r.text}"</span>
+            <span className="hint"> · {formatTime(r.first)} · watch</span>
+          </button>
+          {onCut ? (
+            <button type="button" className="btn small" onClick={() => onCut(r)}>
+              Cut the first
+            </button>
+          ) : null}
+        </div>
+      ))}
+    </div>
   )
 }
 

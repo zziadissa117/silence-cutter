@@ -1121,3 +1121,7 @@ input[type='color']::-webkit-color-swatch { border: 0.5px solid var(--edge); bor
 .trial-which .btn { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .vrow-working { display: flex; align-items: center; gap: 10px; margin: 0 0 12px 22px; }
 .vrow .vrow-working .bar { flex: 1; margin: 0; }
+/* Phrases said twice (CaptionReview RepeatFlags). */
+.repeat-flags { display: flex; flex-direction: column; gap: 8px; padding: 12px 14px; margin: 0 0 12px; border-radius: 14px; background: color-mix(in srgb, var(--warn) 14%, transparent); }
+.repeat-row { display: flex; align-items: center; gap: 10px; }
+.repeat-text { flex: 1; min-width: 0; text-align: left; background: none; border: 0; padding: 4px 0; color: inherit; font: inherit; overflow-wrap: anywhere; }

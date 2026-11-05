@@ -186,6 +186,8 @@ export interface CutsControl {
   repaint(): void
   /** Listens to where the playhead is, and whether it plays. */
   subscribe(listener: (t: number, playing: boolean) => void): () => void
+  /** Cuts this stretch of the recording out (a phrase said twice: the first try). */
+  cut(range: Range): void
 }
 
 /** Which line each word goes on: the first where it clears the word before
@@ -1246,6 +1248,7 @@ export function CutsEditor({
         play()
       },
       repaint,
+      cut: (range: Range) => change(cutOut(keep, range)),
       subscribe: (listener) => {
         listeners.current.add(listener)
         return () => listeners.current.delete(listener)

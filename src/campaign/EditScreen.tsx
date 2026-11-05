@@ -14,7 +14,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ComponentProps } from 'react'
 
 import type { Range } from '../media/silenceMath'
-import { CaptionReview, paintPopBox, usePopStills, type EmbeddedVideo } from './CaptionReview'
+import { CaptionReview, paintPictures, paintPopBox, usePictureStills, usePopStills, type EmbeddedVideo } from './CaptionReview'
 import { CAPTION_LEAD, captionAt, captionRanges, drawStyledCaption, type CaptionWord, PHRASE_HOLD_SEC } from './captions'
 import { CutsEditor, type CutsControl } from './CutsEditor'
 import type { ManualPicture } from './manualPictures'
@@ -94,9 +94,15 @@ export function EditScreen({
   const pops = usePopStills(review.pops)
   const stills = useRef(pops.stills)
   stills.current = pops.stills
+  // The pictures and logo, popping in when their words are said - the check
+  // looks like the finished video.
+  const pictures = usePictureStills(review.pictures)
+  const pictureImages = useRef(pictures.images)
+  pictureImages.current = pictures.images
 
   const paintOver = useCallback((ctx: CanvasRenderingContext2D, w: number, h: number, t: number, playing: boolean) => {
     const r = look.current
+    paintPictures(ctx, w, h, t, r.pictures, pictureImages.current)
     paintPopBox(ctx, w, h, t, r.pops, stills.current, false)
     const all = words.current
     const starts = all.map((x) => x.start)
@@ -110,7 +116,7 @@ export function EditScreen({
   useEffect(() => {
     control.current?.repaint()
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [review.captionStyle, review.position, review.size, review.bare, review.pops?.size, review.pops?.position, review.pops?.skipped?.join('|'), pops.ready])
+  }, [review.captionStyle, review.position, review.size, review.bare, review.pops?.size, review.pops?.position, review.pops?.skipped?.join('|'), pops.ready, pictures.ready, review.pictures?.items.length])
 
   useEffect(() => () => window.clearTimeout(settle.current), [])
 
@@ -134,6 +140,7 @@ export function EditScreen({
       playFrom: (t) => control.current?.playFrom(t),
       subscribe: (listener) => control.current?.subscribe(listener) ?? (() => {}),
       onTyping: setTyping,
+      cut: (range) => control.current?.cut(range),
     }),
     [],
   )

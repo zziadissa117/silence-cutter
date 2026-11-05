@@ -3,6 +3,23 @@
 Newest first. Every change says what it does, how to use it, and how it works
 underneath. Kept up to date with each commit.
 
+## Caption check: the pictures pop up as in the final video; phrases said twice flagged
+App only: run ./deploy.sh.
+**What he asked (2026-11-05):** in the captions section "the images that are being put in when I say a word pop up
+while I'm looking at the captions too, so I can also verify what the final video could look like before pressing
+approve"; and "track if I repeated the same phrase twice ... flag it. Let me click on it to see, and I can delete the
+first one."
+- **Pictures on the check** (`CaptionReview.paintPictures`, `usePictureStills`; `CampaignApp.pictureReviewFor`): the
+  angle's pictures, the bank's pictures and the logo come up on the video when their words are said, where and as
+  long as the made video has them (side by side when together, the bank's newest only, popping in when the angle
+  pops) - on the quick check, the timeline editor and the full caption list. Pictures he left off this video stay off.
+- **Said twice** (`repeats.ts` `findRepeats`): the same run of 3+ words starting again soon after the first (up to 3
+  words of a false start between) is listed above the captions - "Said twice: 'so the best way to' · 0:12 · watch".
+  Tapping it plays it; **Cut the first** cuts from the first try to where the second begins (`CutsControl.cut`, undo
+  works), and the captions follow. Only flagged: nothing is cut unless he taps.
+- Checked in a test browser with a recording of the same speech said again: the repeat was listed, Cut the first took
+  it out and the list updated. Tests: `repeats.test.ts`.
+
 ## Talking videos on the Cutter server: listened to and made several at once
 Ships with ./deploy.sh; the Railway server updates itself from the push.
 **What he asked (2026-11-04):** "I paste in all my talking heads, and it takes 5 minutes ... If the videos could be
