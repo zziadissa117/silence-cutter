@@ -47,6 +47,13 @@ export function MoreView({
       <div className="screen-head">
         <h1>More</h1>
       </div>
+      <div className="brand-line">
+        <img src="/ugc-roadmap-192.png" alt="" width={40} height={40} />
+        <span>
+          <span className="row-name">UGC Roadmap</span>
+          <span className="row-line">The Cutter</span>
+        </span>
+      </div>
       <ul className="rows group more-rows">
         {rows.map((r) => (
           <li key={r.tab}>

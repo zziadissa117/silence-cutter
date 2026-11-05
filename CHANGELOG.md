@@ -3,6 +3,15 @@
 Newest first. Every change says what it does, how to use it, and how it works
 underneath. Kept up to date with each commit.
 
+## Branded with UGC Roadmap's logo
+App only: run ./deploy.sh.
+**What he asked (2026-11-05):** "Brand the cutter with this UGC Roadmap logo somewhere".
+- The app's icon is now UGC Roadmap's logo: the home-screen icon (`apple-touch-icon` 180 px, manifest 192/512 px,
+  also maskable), and the browser tab (`public/ugc-roadmap-*.png`; the old `icon.svg`s are gone).
+- The logo with "UGC Roadmap · The Cutter" at the top of More and of Sign in (`.brand-line`).
+- An iPhone keeps the home-screen icon it was added with: to see the new one, remove the Cutter from the home screen
+  and add it again from Safari (Share, Add to Home Screen). Nothing stored is touched.
+
 ## Caption check: the pictures pop up as in the final video; phrases said twice flagged
 App only: run ./deploy.sh.
 **What he asked (2026-11-05):** in the captions section "the images that are being put in when I say a word pop up

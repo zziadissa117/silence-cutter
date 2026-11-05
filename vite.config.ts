@@ -61,8 +61,10 @@ export default defineConfig({
         background_color: '#07090c',
         theme_color: '#07090c',
         icons: [
-          { src: '/icon.svg', sizes: 'any', type: 'image/svg+xml', purpose: 'any' },
-          { src: '/icon-maskable.svg', sizes: 'any', type: 'image/svg+xml', purpose: 'maskable' },
+          // UGC Roadmap's logo (his ask, 2026-11-05: "brand the cutter with this").
+          { src: '/ugc-roadmap-192.png', sizes: '192x192', type: 'image/png', purpose: 'any' },
+          { src: '/ugc-roadmap-512.png', sizes: '512x512', type: 'image/png', purpose: 'any' },
+          { src: '/ugc-roadmap-512.png', sizes: '512x512', type: 'image/png', purpose: 'maskable' },
         ],
       },
     }),

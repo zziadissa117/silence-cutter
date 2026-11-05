@@ -1125,3 +1125,7 @@ input[type='color']::-webkit-color-swatch { border: 0.5px solid var(--edge); bor
 .repeat-flags { display: flex; flex-direction: column; gap: 8px; padding: 12px 14px; margin: 0 0 12px; border-radius: 14px; background: color-mix(in srgb, var(--warn) 14%, transparent); }
 .repeat-row { display: flex; align-items: center; gap: 10px; }
 .repeat-text { flex: 1; min-width: 0; text-align: left; background: none; border: 0; padding: 4px 0; color: inherit; font: inherit; overflow-wrap: anywhere; }
+/* UGC Roadmap's logo (More, Sign in). On its own light square, so it reads on the dark screens too. */
+.brand-line { display: flex; align-items: center; gap: 12px; margin: 0 0 16px; }
+.brand-line img { width: 40px; height: 40px; border-radius: 10px; flex-shrink: 0; }
+.brand-line > span { display: flex; flex-direction: column; }

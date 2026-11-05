@@ -32,6 +32,13 @@ export function SignIn({ onSignedIn, onCancel }: { onSignedIn: (session: Session
 
   return (
     <section className="editor">
+      <div className="brand-line">
+        <img src="/ugc-roadmap-192.png" alt="" width={40} height={40} />
+        <span>
+          <span className="row-name">UGC Roadmap</span>
+          <span className="row-line">The Cutter</span>
+        </span>
+      </div>
       <div className="editor-head">
         <h2>Sign in</h2>
         {onCancel ? (
