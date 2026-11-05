@@ -73,6 +73,13 @@ phone (serverLink.ts)                      server/main.mjs (Node, no packages)  
 - The server only reads the campaigns from the shared login; it never changes them.
 - Chrome is started again if it stops, or if the page says nothing for 20 minutes.
 
+## His talking videos
+
+Since 2026-11-04 the server also takes his talking videos when 3 or more are waiting on the phone: the recordings
+come up, are listened to here 4 at a time (fewer on a server with little memory), come back to the phone to be
+checked, and once approved are made here 2 at a time and sent to Postiz from here. Recordings and their orders are
+in `/data/files/t-*` and `/data/talk/`; each goes once the phone has the result, or after two days. Nothing to set.
+
 ## Running it on a computer
 
 ```

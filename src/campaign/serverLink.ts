@@ -92,7 +92,7 @@ export function setServerUrl(url: string | null): void {
   window.dispatchEvent(new Event(SERVER_URL_EVENT))
 }
 
-async function call<T>(method: string, path: string, body?: unknown, raw?: Blob): Promise<T> {
+export async function call<T>(method: string, path: string, body?: unknown, raw?: Blob): Promise<T> {
   const base = serverUrl()
   if (!base) throw new ServerError('Connect the server in Settings first.')
   const session = currentSession()
@@ -230,7 +230,7 @@ function say(campaignId: string, line: string | null): void {
 }
 
 /** One file up, in pieces; a dropped connection costs one piece, tried again. */
-async function sendFile(file: BankFile, blob: Blob, onPiece: (fraction: number) => void): Promise<void> {
+export async function sendFile(file: BankFile, blob: Blob, onPiece: (fraction: number) => void): Promise<void> {
   const total = Math.max(1, Math.ceil(blob.size / PIECE))
   const query = (n: number) =>
     `/files/${encodeURIComponent(file.id)}/${n}?total=${total}&size=${blob.size}&name=${encodeURIComponent(file.name)}&type=${encodeURIComponent(file.type || blob.type)}`

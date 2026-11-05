@@ -9,6 +9,10 @@
 //    bank files, 8 MB pieces  --------------->  /files  -> /data/files         <-  /local/files/<id>
 //    bank settings, Start over, Stop  ------->  /banks  -> /data/inbox         <-  /local/inbox (every few seconds)
 //    progress  <------------------------------  /status <- /data/status.json   <-  /local/status
+//    talking videos (his OK, 2026-11-04): ---->  /talk  -> /data/talk/<id>.json <-  /local/talk: listened to and
+//     the recording, then what to listen to,                                        made several at once
+//     or how to make it; back: the words heard                                      (serverTalk.ts), then sent to
+//     and how far it is  <--------------------  /talk                               Postiz as from the phone
 //                                                                                   videos go to Postiz through the
 //                                                                                   postiz function, as from the phone
 //
@@ -41,7 +45,7 @@ const STUCK_MS = 20 * 60 * 1000
 const VERSION = process.env.RAILWAY_GIT_COMMIT_SHA?.slice(0, 7) ?? 'local'
 
 const dir = (...p) => path.join(DATA, ...p)
-for (const d of ['files', 'uploads', 'inbox', 'chrome']) fs.mkdirSync(dir(d), { recursive: true })
+for (const d of ['files', 'uploads', 'inbox', 'chrome', 'talk']) fs.mkdirSync(dir(d), { recursive: true })
 
 const log = (...words) => console.log(new Date().toISOString(), ...words)
 
@@ -209,7 +213,7 @@ const TALL_WIDTH = 1620
 /** Chrome here reads H.264, not the iPhone's HEVC: such a file (or an HDR
  *  one) is made into H.264 once, when it arrives, at a quality that keeps it
  *  as it was. Everything else is kept exactly as the phone sent it. */
-async function readable(file) {
+async function readable(file, quick = false) {
   const probe = await run('ffprobe', ['-v', 'error', '-select_streams', 'v:0', '-show_entries', 'stream=codec_name,color_transfer,width,height', '-of', 'json', file])
   let stream = null
   try {
@@ -222,7 +226,9 @@ async function readable(file) {
   if (stream.codec_name === 'h264' && !hdr) return { ok: true }
   const out = `${file}.h264.mp4`
   const tonemap = 'zscale=t=linear:npl=100,format=gbrpf32le,zscale=p=bt709,tonemap=hable:desat=0,zscale=t=bt709:m=bt709:r=tv,format=yuv420p'
-  const args = ['-v', 'error', '-y', '-i', file, '-map', '0:v:0', '-map', '0:a?', '-c:v', 'libx264', '-preset', 'medium', '-crf', '16', '-pix_fmt', 'yuv420p']
+  // A talking video he is waiting on is made readable fast (quick): the
+  // same quality, a little bigger. Bank clips, kept for days, take longer.
+  const args = ['-v', 'error', '-y', '-i', file, '-map', '0:v:0', '-map', '0:a?', '-c:v', 'libx264', '-preset', quick ? 'veryfast' : 'medium', '-crf', '16', '-pix_fmt', 'yuv420p']
   // A tall clip no wider than the videos need: 1080 across, zoomed in up to
   // 1.45 times (effects MAX_SCALE) - 1620 keeps every pixel of that. Kept at
   // 4K, H.264 at this quality took 2-4 times the iPhone's own file, and a
@@ -264,7 +270,7 @@ async function piece(id, n, total, meta, body) {
   }
   await fsp.rename(tmp, whole)
   await fsp.rm(parts, { recursive: true, force: true })
-  const made = meta.type?.startsWith('video/') || /\.(mov|mp4|m4v)$/i.test(meta.name ?? '') ? await readable(whole) : { ok: true }
+  const made = meta.type?.startsWith('video/') || /\.(mov|mp4|m4v)$/i.test(meta.name ?? '') ? await readable(whole, isTalkFile(id)) : { ok: true }
   if (!made.ok) {
     await fsp.rm(whole, { force: true })
     throw new Error(made.why)
@@ -361,6 +367,62 @@ function toInbox(change) {
   inboxTurn = turn.catch(() => {})
   return turn
 }
+
+// --- Talking videos ---------------------------------------------------------
+//
+// The phone sends a talking video (its recording, as a file) and an order:
+// "listen" (what to listen for) or "make" (everything it decided, the files
+// that go with it, and how to send it). The app here runs them, several at
+// once (serverTalk.ts), and writes back how far each is and what it found.
+
+/** A talking video's own files: its recording, and what goes on it. */
+const isTalkFile = (id) => /^(t|clip|ov|vb)-/.test(id)
+const talkPath = (id) => dir('talk', `${id}.json`)
+
+async function talkRecords() {
+  const out = {}
+  for (const name of await fsp.readdir(dir('talk')).catch(() => [])) {
+    if (!name.endsWith('.json')) continue
+    const record = await readJson(dir('talk', name), null)
+    if (record?.id) out[record.id] = record
+  }
+  return out
+}
+
+let talkTurn = Promise.resolve()
+/** One change to a record at a time. */
+function toTalk(id, change) {
+  const turn = talkTurn.then(async () => {
+    const record = await readJson(talkPath(id), null)
+    const next = change(record)
+    if (next === null) await fsp.rm(talkPath(id), { force: true })
+    else if (next) await writeJson(talkPath(id), { ...next, at: new Date().toISOString() })
+    return next
+  })
+  talkTurn = turn.catch(() => {})
+  return turn
+}
+
+/** What the phone reads back: everything but the words heard (asked for one by one). */
+const talkSummary = (r) => ({ id: r.id, kind: r.kind, state: r.state, progress: r.progress ?? 0, error: r.error ?? null, at: r.at, ...(r.made ? { made: r.made } : {}) })
+
+// A record half-way when the server stopped is run again: never left "listening" for ever.
+for (const name of fs.readdirSync(dir('talk'))) {
+  if (!name.endsWith('.json')) continue
+  const record = readJsonSync(dir('talk', name))
+  if (record && ['listening', 'making'].includes(record.state)) fs.writeFileSync(dir('talk', name), JSON.stringify({ ...record, state: 'waiting', progress: 0 }))
+}
+
+// Records the phone never came back for go after two days, with their recordings.
+setInterval(async () => {
+  const now = Date.now()
+  for (const record of Object.values(await talkRecords())) {
+    if (now - (Date.parse(record.at) || 0) < KEEP_UNUSED_MS) continue
+    await toTalk(record.id, () => null)
+    await fsp.rm(dir('files', `t-${record.id}`), { force: true })
+    await fsp.rm(dir('files', `t-${record.id}.json`), { force: true })
+  }
+}, 60 * 60 * 1000)
 
 // --- HTTP ------------------------------------------------------------------
 
@@ -482,6 +544,33 @@ const publicServer = http.createServer(async (req, res) => {
       return send(res, 200, { ok: true }, cors)
     }
 
+    if (parts[0] === 'talk') {
+      if (req.method === 'GET' && parts.length === 1) {
+        return send(res, 200, { talk: Object.fromEntries(Object.values(await talkRecords()).map((r) => [r.id, talkSummary(r)])) }, cors)
+      }
+      const id = safeId(parts[1])
+      if (!id || parts.length !== 2) return send(res, 400, { error: 'Bad video.' }, cors)
+      if (req.method === 'GET') {
+        const record = await readJson(talkPath(id), null)
+        return record ? send(res, 200, record, cors) : send(res, 404, { error: 'Not here.' }, cors)
+      }
+      if (req.method === 'PUT') {
+        const { kind, order } = await jsonBody(req, 20_000_000)
+        if (!['listen', 'make'].includes(kind) || !order || order.id !== id) return send(res, 400, { error: 'Bad order.' }, cors)
+        // The same order again (the phone asking after a restart) changes nothing.
+        const record = await toTalk(id, (now) =>
+          now && now.kind === kind && now.state !== 'failed' ? undefined : { id, kind, order, state: 'waiting', progress: 0 },
+        )
+        return send(res, 200, { ok: true, fresh: Boolean(record) }, cors)
+      }
+      if (req.method === 'DELETE') {
+        await toTalk(id, () => null)
+        await fsp.rm(dir('files', `t-${id}`), { force: true })
+        await fsp.rm(dir('files', `t-${id}.json`), { force: true })
+        return send(res, 200, { ok: true }, cors)
+      }
+    }
+
     if (req.method === 'GET' && url.pathname === '/status') {
       const status = await readJson(dir('status.json'), null)
       return send(res, 200, { version: VERSION, chrome: chrome ? 'running' : wanted ? 'starting' : 'off', ...(await room()), page: status }, cors)
@@ -526,6 +615,21 @@ const localServer = http.createServer(async (req, res) => {
       // no-store: Chrome would otherwise keep a second copy of every clip in its cache.
       res.writeHead(200, { 'content-type': meta.type || 'application/octet-stream', 'content-length': fs.statSync(dir('files', id)).size, 'cache-control': 'no-store' })
       return fs.createReadStream(dir('files', id)).pipe(res)
+    }
+    if (url.pathname === '/local/talk' && req.method === 'GET') {
+      return send(res, 200, { talk: Object.values(await talkRecords()).filter((r) => r.state === 'waiting'), room: await room() })
+    }
+    if (url.pathname.startsWith('/local/talk/') && req.method === 'POST') {
+      const id = safeId(url.pathname.slice('/local/talk/'.length))
+      if (!id) return send(res, 400, { error: 'Bad video.' })
+      const { state, progress, plan, error, made, kind } = await jsonBody(req, 20_000_000)
+      // Only the order it was working on: a newer one from the phone wins.
+      const record = await toTalk(id, (now) =>
+        now && (!kind || now.kind === kind)
+          ? { ...now, state, progress: progress ?? now.progress, ...(plan ? { plan } : {}), ...(made ? { made } : {}), error: error ?? null }
+          : undefined,
+      )
+      return send(res, 200, { ok: Boolean(record) })
     }
     if (url.pathname === '/local/inbox' && req.method === 'GET') return send(res, 200, await inbox())
     if (url.pathname === '/local/inbox/done' && req.method === 'POST') {

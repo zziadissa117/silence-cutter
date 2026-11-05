@@ -3,6 +3,27 @@
 Newest first. Every change says what it does, how to use it, and how it works
 underneath. Kept up to date with each commit.
 
+## Talking videos on the Cutter server: listened to and made several at once
+Ships with ./deploy.sh; the Railway server updates itself from the push.
+**What he asked (2026-11-04):** "I paste in all my talking heads, and it takes 5 minutes ... If the videos could be
+edited on the server, meaning that they can be listened to and everything is on the server, and then they get them
+back to me so I can just check the captions ... if it's only under 3 videos, then just make it on the phone".
+- With 3 or more videos waiting to be listened to and his server up, they go to the server: sent up one after another
+  ("Sending it to the server"), listened to there 4 at once ("On the server · Listening"), and back on the phone
+  sorted, with the headline written, for him to check exactly as before. Approved, each is made on the server (2 at
+  once) and sent to Postiz from there ("Made on the server · on its way to Postiz") - the phone is free meanwhile.
+- 1 or 2 videos, no server, or any trouble with it: the phone does them itself, as before.
+- Measured here on a 4-core machine with five 61 s 1080p videos: listening all five took about 30 s at once (26 s
+  for one alone); making is bound by the server's cores (about 23 s a video on 4 cores).
+- Tested end to end here: the real server program with Chrome for Testing, and the app in a test browser - 3 videos
+  sent, listened to on the server, back for Check captions, approved, made on the server; and the fallback when the
+  server fails.
+- Files: `talkOrder.ts`, `talkLink.ts`, `serverTalk.ts`, `CampaignApp` (`talkTick`, `afterListen`, `makeOrderFor`,
+  `backToPhone`, the job's `onServer`), `server/main.mjs` (`/talk`, `/local/talk`). AGENTS.md rule 4: his talking
+  recordings may go to his own Cutter server (his OK, 2026-11-04).
+- Not on the server yet: reactions, montages, joins, formats, Edit again; a video made there can't be edited again
+  from Posts.
+
 ## Stop a video being made or joined
 App only: run ./deploy.sh.
 **What he asked (2026-11-04):** "an option to cancel a video that's currently being joined together or ... being made

@@ -56,8 +56,10 @@ only, no Supabase); `./deploy-server.sh` ships the `postiz` and `cutter` functio
 4. Videos never leave the phone except as the finished MP4 to Postiz, and the
    campaign bank sent to **the engine** (`engine/`, OK'd by the owner) when he
    makes a batch there, or to **the Cutter server** (`server/`, his own Railway,
-   asked for by him 2026-10-20) once it is connected. Never upload a raw
-   recording anywhere else.
+   asked for by him 2026-10-20) once it is connected - and, since his OK on
+   2026-11-04, his talking-video recordings to that same server of his, to be
+   listened to and made there (`talkOrder.ts`). Never upload a raw recording
+   anywhere else.
 5. Local-first: every change lands on the phone at once and syncs in the
    background; nothing waits on the network except first sign-in and posting.
 6. One page runs at a time. Do not auto-update the service worker.
@@ -100,6 +102,9 @@ only, no Supabase); `./deploy-server.sh` ships the `postiz` and `cutter` functio
   `server/main.mjs` (Node, no packages), its image the root `Dockerfile` (Railway finds it by itself; `server/railway.json` points at it for a service set up with Railway's old config files), setup in `server/README.md`; Apple's emoji in its videos as pictures the iPhone draws: `emojiSprites.ts`;
   app side `serverMode.ts` (`?server=1` on its localhost, `serverFlag.ts`), phone side `serverLink.ts` (hand-over,
   each change, progress back; `batch.fromPhone` says who owns which field, `batchRun.handOver`), Settings "Server"
+- Talking videos on the Cutter server (3+ waiting and the server up; listened to 4 at once, made 2 at once, sent to
+  Postiz from there): `talkOrder.ts` (orders, `toServer`), phone `talkLink.ts` + `CampaignApp` (`talkTick`,
+  `afterListen`, `makeOrderFor`, `onServer` on the job), server page `serverTalk.ts`, server `/talk` in `server/main.mjs`
 - The engine (Railway, Python + ffmpeg, Ilyan's Le plateau): `engine/` (setup in `engine/README.md`); phone side
   `campaign/engine.ts`, Batch layout "On the engine", Settings "Engine". Tests: `cd engine && python3 -m unittest tests.test_engine`
 

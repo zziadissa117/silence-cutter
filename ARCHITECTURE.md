@@ -519,7 +519,7 @@ turned on for new services since 2026-08-28).
 
 - Public port (`PORT`): `/health`; everything else needs the phone's Cutter token (Bearer), checked with the
   `cutter` function's `whoami`, and only that space - and the posting profile that connected first - once
-  connected (`/connect`, `/files`, `/banks/:id`, `/banks/:id/start-over|back-to-phone`, `/status`). Browsers only
+  connected (`/connect`, `/files`, `/banks/:id`, `/banks/:id/start-over|back-to-phone`, `/talk`, `/talk/:id`, `/status`). Browsers only
   from `ALLOWED_ORIGIN` (the Netlify app). The token and profile are kept in `/data/session.json` on its volume:
   it makes videos while the phone is closed.
 - Local port (`APP_PORT`, 127.0.0.1 only): the built app (never its service worker) and `/local/*` for the page:
@@ -538,6 +538,34 @@ turned on for new services since 2026-08-28).
   (bank files, sent with the clips - `serverLink.withEmojis`), and the server's page loads them
   (`serverMode`, `loadEmojiSprites`; `headlineFontReady` waits for them) and draws each where its emoji goes
   (`overlay.ts` through `drawLine`/`measureLine`). A phone never uses them; without them it is the server's own.
+
+### His talking videos on the server (`talkOrder.ts`, `talkLink.ts`, `serverTalk.ts`, his OK 2026-11-04)
+
+Five pasted talking videos took about 5 minutes on the phone, one after another. With 3 or more waiting to be
+listened to (`talkOrder.toServer`, `SERVER_FROM`) and a server that answers `/talk`, the phone hands them over:
+
+- **Listening.** `CampaignApp.talkTick` (every 3 s, and at once when videos are added) marks them `onServer:
+  'listen'` (kept on the job row - `store.setJobFields`), and `sendForListening` sends each recording up
+  (`/files`, id `t-<job>`, made H.264 fast if it is HEVC) and a `ListenOrder` (`PUT /talk/<job>`). The phone's own
+  queue leaves them alone, and while 3+ wait for a server that is up it starts none of them itself. The server's
+  page (`serverTalk.talkLoop`) listens to up to 4 at once (`atOnce`, from its memory), writing progress and the plan
+  back (`/local/talk/<id>`). The phone reads `GET /talk`, takes the plan (`GET /talk/<id>`) and sorts it and writes
+  its headline exactly as if it had listened itself (`afterListen`); the job becomes `onServer: 'listened'` - its
+  recording stays on the phone for the check screens, and on the server.
+- **Making.** Approved, a listened-to video this phone sends (`makesOnServer`: its campaign posts from here, not a
+  remake) goes back as a `MakeOrder` (`makeOrderFor`: every choice the phone's own make takes, files it needs sent
+  up - clips `clip-<id>`, pictures/videos from the phone `ov-...`, bank videos it says the words of `vb-<id>`).
+  The server makes up to 2 at once and sends the video through its own send queue under the phone's key
+  (`postKeyOf`), so it is one post whoever sends it. The phone shows "Made on the server", forgets its copy, and
+  `DELETE /talk/<id>` lets the server's go.
+- **Trouble** (server down, an upload failing, listening or making failing there, the campaign not on the server
+  yet): the video goes back to the phone (`backToPhone`), which does it itself. Stop on one being done there
+  stops it there (`stopJob`), with no restart.
+- Measured here (Chrome for Testing, 4 cores, 61 s 1080p videos): 5 listened to in about 30 s at once; making is
+  bound by cores (about 23 s a video on 4).
+- Not on the server: reactions, montages, batches, formats, joins, remakes (Edit again), and videos whose
+  campaign doesn't post from this phone - and a video made there can't be edited again from Posts (its recording
+  left the phone).
 
 ## The engine (`engine/`, on Railway)
 

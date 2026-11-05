@@ -33,6 +33,7 @@ const WORKING: Record<Job['phase'], string> = {
   cutting: 'Making it',
   joining: 'Putting the parts together',
   cutout: 'Cutting you out - once per reaction',
+  sending: 'Sending it to the server',
 }
 
 export function JobRow({
@@ -141,17 +142,23 @@ export function JobRow({
     job.status === 'queued'
       ? job.prejoin || (job.day?.parts && !job.day.plan)
         ? 'Waiting to be put together'
+        : job.onServer
+        ? 'On the server · waiting to be listened to'
         : job.day
         ? `Waiting to be listened to${behind ? ` · ${behind}` : ''}`
         : `Waiting · ${label}${behind ? ` · ${behind}` : ''}`
       : job.status === 'working'
-        ? `${WORKING[job.phase]}… ${Math.round(job.progress * 100)}%`
+        ? `${job.onServer && job.phase !== 'sending' ? 'On the server · ' : ''}${WORKING[job.phase]}… ${Math.round(job.progress * 100)}%`
         : job.status === 'sorted'
           ? unsure
             ? `Needs you · ${job.day?.guess?.why ?? ''}`
             : [label, job.headlineText && `"${job.headlineText}"`].filter(Boolean).join(' · ')
           : job.status === 'approved'
-            ? `Approved · waiting its turn to be made · ${label}`
+            ? job.onServer
+              ? `Approved · going to the server to be made · ${label}`
+              : `Approved · waiting its turn to be made · ${label}`
+            : job.status === 'done' && job.madeOnServer
+              ? `Made on the server · on its way to Postiz · ${label}`
             : job.status === 'done' && result
               ? plain
                 ? `Plain cut · the look couldn't be added · ${formatTime(result.newDurationSec)}`

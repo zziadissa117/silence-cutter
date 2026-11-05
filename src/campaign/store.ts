@@ -37,7 +37,7 @@ import type { CampaignPlan } from './plan'
 import type { Guess } from './sort'
 import { SERVER_MODE } from './serverFlag'
 
-export type JobPhase = 'reading' | 'model' | 'listening' | 'cutting' | 'joining' | 'cutout'
+export type JobPhase = 'reading' | 'model' | 'listening' | 'cutting' | 'joining' | 'cutout' | 'sending'
 
 interface StoredJob {
   id: string
@@ -48,6 +48,9 @@ interface StoredJob {
   headlineText: string
   headlineMine?: boolean
   videoHeadline?: string
+  /** Done on the Cutter server (talkLink.ts): being listened to there,
+   *  listened to there (its recording is there), or being made there. */
+  onServer?: 'listen' | 'listened' | 'make'
   settings: SilenceSettings
   cleanSpeech: boolean
   attempts: number
@@ -1232,6 +1235,11 @@ export async function resetAttempts(id: string): Promise<void> {
  *  until he starts it or removes it. */
 export async function holdJob(id: string): Promise<void> {
   await db.jobs.update(id, { attempts: MAX_ATTEMPTS, failed: undefined }).catch(() => {})
+}
+
+/** A job's fields, as they are now (talkLink: where it is being done). */
+export async function setJobFields(id: string, fields: Partial<StoredJob>): Promise<void> {
+  await db.jobs.update(id, fields).catch(() => {})
 }
 
 export async function recordFailure(id: string, message: string): Promise<void> {

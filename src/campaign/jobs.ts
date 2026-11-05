@@ -27,6 +27,11 @@ export type Job = {
   /** The headline Claude wrote from this video (postiz/videoHeadline.ts),
    *  kept for when it moves to another campaign whose angle writes its own. */
   videoHeadline?: string
+  /** Done on the Cutter server (talkLink.ts): being listened to there,
+   *  listened to there (its recording is there), or being made there. */
+  onServer?: 'listen' | 'listened' | 'make'
+  /** Made on the Cutter server and sent to Postiz from there. */
+  madeOnServer?: boolean
   settings: SilenceSettings
   cleanSpeech: boolean
   /** A day's video goes queued → working (listening) → sorted → approved →
@@ -128,6 +133,7 @@ export const PHASE_LABEL: Record<JobPhase, string> = {
   cutting: 'cutting and adding the look',
   joining: 'putting the parts together',
   cutout: 'cutting you out of the background',
+  sending: 'sending it to the server',
 }
 
 export function formatTime(seconds: number): string {

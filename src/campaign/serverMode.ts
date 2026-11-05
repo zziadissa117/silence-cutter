@@ -85,6 +85,8 @@ export async function startServerMode(): Promise<void> {
   for (const id of serverCampaigns()) void loadBatchBank(id).then((bank) => loadEmojiSprites(bank?.emojis, loadBankFile))
   void inboxLoop()
   void statusLoop()
+  // His talking videos, several at once (serverTalk.ts) - loaded only here.
+  void import('./serverTalk').then(({ talkLoop }) => talkLoop())
 }
 
 const wait = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))

@@ -205,6 +205,7 @@ import {
   loadMontageFile,
   loadPendingJobs,
   holdJob,
+  setJobFields,
   loadProductFile,
   persistJob,
   persistJobRow,
@@ -230,6 +231,8 @@ import {
 import { SERVER_MODE } from './serverFlag'
 import { keepEven } from './keepEven'
 import { linkBatches, SERVER_URL_EVENT, serverUrl } from './serverLink'
+import { dropTalk, orderListen, orderMake, serverLetDown, talkNow, talkPlan, talkServerUp, upload } from './talkLink'
+import { popsSaid, talkFileId, toServer, type MakeOrder, type TalkSummary } from './talkOrder'
 import { reportMaking, SERVER_BANKS_EVENT, SERVER_COMMAND_EVENT, serverLog, type ServerCommand, type ServerMaking } from './serverMode'
 import { TabBar, type Tab } from './TabBar'
 import { BackToMore, MoreView } from './MoreView'
@@ -513,6 +516,313 @@ export function CampaignApp() {
     !job.montage && (!job.reaction || Boolean(job.day?.plan && talksIn(job.day.plan.words, job.day.plan.keep)))
 
   /** A video's plan with its cuts as he fixed them, if he did. */
+  /** What a video becomes once it has been listened to - here or on the
+   *  Cutter server (talkLink.ts): sorted into a campaign and angle (unless he
+   *  chose them), its headline written, kept on the phone. Returns the job's
+   *  new fields. */
+  const afterListen = async (next: Job, plan: CampaignPlan): Promise<Partial<Job>> => {
+    const campaigns = campaignsRef.current.filter((c) => !isReaction(c) || c.id === next.campaignId)
+    // A video he added for a campaign himself stays there: it was
+    // listened to for its captions, not to be sorted.
+    // A format is never a guess: his takes go to one by hand.
+    const guess = next.day?.chosen
+      ? { campaignId: next.campaignId, angleId: next.angleId, sure: true, why: 'Chosen by you' }
+      : sortVideo(
+          plan.words,
+          campaigns.filter((c) => !isReaction(c)).map((c) => ({ ...c, angles: c.angles.filter((a) => !a.isFormat || a.general) })),
+        )
+    const campaign = campaigns.find((c) => c.id === guess.campaignId)
+    const angle = campaign?.angles.find((a) => a.id === guess.angleId)
+    // A reaction's headline is the hook he typed, never a line he says.
+    // An angle that writes its own: Claude, from all he says in the
+    // video, like his past headlines (his ask, 2026-11-04: "stop
+    // automatically putting the headline as the first line"); his first
+    // line only when Claude can't be reached.
+    const typed = Boolean(next.day?.chosen && next.headlineText)
+    const written =
+      !next.reaction && angle?.headline.fromFirstLine && !typed
+        ? await videoHeadline(plan.words.map((w) => w.text.trim()).filter(Boolean).join(' '), campaign?.name ?? '')
+        : ''
+    const headlineText = next.reaction
+      ? next.headlineText
+      : angle
+        ? written || headlineFor(angle, plan, typed ? next.headlineText : angle.headline.text)
+        : ''
+    // A format's take is made straight away: he checks the finished
+    // videos on the Formats tab instead.
+    const approved = Boolean(next.forFormat)
+    const day = { plan, guess, approved, ...(next.day?.chosen ? { chosen: true } : {}) }
+    await recordDay(next.id, day, { campaignId: guess.campaignId, angleId: guess.angleId, headlineText, ...(written ? { videoHeadline: written } : {}) })
+    return {
+      status: approved ? 'approved' : 'sorted',
+      day,
+      campaignId: guess.campaignId,
+      angleId: guess.angleId,
+      headlineText,
+      ...(written ? { videoHeadline: written } : {}),
+      label: campaign && angle ? labelOf(campaign, angle) : '',
+    }
+  }
+
+  // --- His talking videos on the Cutter server (talkOrder.ts, talkLink.ts) ---
+  //
+  // Three or more waiting to be listened to, and a server that is up: they go
+  // up one after another and are listened to there, several at once; what is
+  // heard comes back and they are sorted and given a headline here, as
+  // always, for him to check. Approved, one listened to there is made there
+  // and sent to Postiz from there. Any trouble: the phone does it itself.
+
+  /** A video waiting to be listened to that the server could take. */
+  function listensOnServer(j: Job): boolean {
+    return j.status === 'queued' && Boolean(j.day) && !j.day?.plan && !j.onServer && !j.prejoin && !j.day?.parts && !j.reaction && !j.montage && !j.batch && !j.forFormat
+  }
+
+  /** Recordings sent and asked for in this visit (the server keeps them
+   *  across a reload: asking again changes nothing there). */
+  const talkOrdered = useRef(new Set<string>())
+  /** The server said no lately (talkServerUp): the phone listens itself. */
+  const [talkDown, setTalkDown] = useState(false)
+  const talkSending = useRef(false)
+  const talkLooking = useRef(false)
+
+  const patchJob = (id: string, fields: Partial<Job>) => setJobs((js) => js.map((j) => (j.id === id ? { ...j, ...fields } : j)))
+
+  /** Back to the phone: it does this one itself. */
+  const backToPhone = (job: Job) => {
+    talkOrdered.current.delete(job.id)
+    const status = job.day?.plan ? (job.day.approved ? 'approved' : 'sorted') : 'queued'
+    patchJob(job.id, { onServer: undefined, status, progress: 0 })
+    void setJobFields(job.id, { onServer: undefined })
+  }
+
+  /** Whether a listened-to video can be made on the server: one this phone
+   *  sends (the server sends it the same way), not a remake of a post. */
+  const makesOnServer = (job: Job): boolean => {
+    const campaign = campaignsRef.current.find((c) => c.id === job.campaignId)
+    const local = postingHere()
+    return Boolean(campaign && local && sendsFrom(campaign, local) && planFor(job) && !job.version && !job.replaces && !job.reaction && !job.montage && !job.batch && !job.forFormat)
+  }
+
+  /** Everything the server needs to make it as the phone would - the same
+   *  choices as the phone's own make below - and its files sent up first. */
+  const makeOrderFor = async (job: Job): Promise<MakeOrder> => {
+    const plan = planFor(job)!
+    const campaign = campaignsRef.current.find((c) => c.id === job.campaignId)!
+    const local = postingHere()!
+    const up = async (fileId: string, blob: Blob | null | undefined, name: string): Promise<string | null> => {
+      if (!blob) return null
+      await upload(fileId, blob, name, blob.type || 'video/mp4')
+      return fileId
+    }
+    // The videos before, after and in the middle, as clipsFor reads them.
+    const angleClips = (await loadAngleClips().catch(() => ({}) as Record<string, AngleClips>))[angleKey(job.campaignId, job.angleId)] ?? {}
+    const clips: MakeOrder['clips'] = {}
+    for (const place of CLIP_PLACES) {
+      const id = clipFor(job.day?.clips?.[place], angleClips[place])
+      if (!id) continue
+      const fileId = await up(talkFileId('clip', id), await clipFile(id).catch(() => null), `${place}.mp4`)
+      if (fileId) clips[place] = fileId
+      else clips.missing = [...(clips.missing ?? []), place]
+    }
+    if (job.day?.clips?.cues !== 'none') {
+      for (const cue of angleClips.cues ?? []) {
+        const fileId = await up(talkFileId('clip', cue.clip), await clipFile(cue.clip).catch(() => null), 'cue.mp4')
+        if (fileId) clips.cues = [...(clips.cues ?? []), { phrase: cue.phrase, fileId }]
+        else clips.cuesMissing = (clips.cuesMissing ?? 0) + 1
+      }
+    }
+    const manual: MakeOrder['manual'] = []
+    for (const picture of (job.day?.overlays ?? []).filter(isPicture)) {
+      if (picture.source.kind === 'bank') manual.push({ picture })
+      else if (picture.source.kind === 'phone') {
+        const fileId = await up(talkFileId('ov', job.id, picture.id), await loadOverlayFile(job.id, picture.id, picture.source.type).catch(() => null), picture.source.name)
+        if (fileId) manual.push({ picture, fileId })
+      }
+    }
+    const handVideos: MakeOrder['byHand']['videos'] = []
+    for (const picture of (job.day?.overlays ?? []).filter(isVideo)) {
+      const source = picture.source
+      const fileId =
+        source.kind === 'video'
+          ? await up(talkFileId('vb', source.videoId), await bankVideoFile(source.videoId), 'video.mp4')
+          : source.kind === 'phone'
+            ? await up(talkFileId('ov', job.id, picture.id), await loadOverlayFile(job.id, picture.id, source.type).catch(() => null), source.name)
+            : null
+      if (fileId) handVideos.push({ picture, fileId })
+    }
+    // Only the bank videos it says the words of: the others never come up.
+    const pops = popsFor(job)
+    const said = popsSaid(pops.videos, plan.words)
+    const popFiles: Record<string, string> = {}
+    for (const cue of said) {
+      const video = videoBankRef.current.find((v) => v.id === cue.id)
+      const fileId = video ? await up(talkFileId('vb', cue.id), await videoFile(video), video.name ?? 'pop.mp4') : null
+      if (fileId) popFiles[cue.id] = fileId
+    }
+    return {
+      id: job.id,
+      fileId: talkFileId('t', job.id),
+      plan,
+      campaignId: job.campaignId,
+      angleId: job.angleId,
+      ...(job.day?.headlineStyle ? { headlineStyle: job.day.headlineStyle } : {}),
+      headlinePlace: headlinePlaceOf(job.day, job.angleId),
+      headlineText: job.headlineText,
+      captions: captionsRef.current ? drawnWords(captionsFor(job, plan), bareRef.current) : [],
+      voice: voiceRef.current,
+      ...(job.day?.music ? { music: job.day.music } : {}),
+      clips,
+      defaults: job.day?.noEffects ? null : defaultEffects(),
+      skipPictures: job.day?.skipPictures ?? [],
+      captionPosition: job.day?.captionPosition ?? defaultCaptionPosition(),
+      noCut: job.noCut === true,
+      manual,
+      captionSize: job.day?.captionSize ?? defaultCaptionSize(),
+      captionStyle: job.day?.captionStyle ?? defaultCaptionStyle(),
+      pops: { videos: said.filter((c) => popFiles[c.id]), files: popFiles, sizePct: pops.sizePct, position: pops.position },
+      byHand: { texts: (job.day?.overlays ?? []).filter(isText), videos: handVideos },
+      send: {
+        key: postKeyOf(job.id, job.version),
+        profileId: local.profile.id,
+        campaign: { id: campaign.id, name: campaign.name, posting: campaign.posting ?? NO_POSTING },
+        transcript: captionWordsFor(job, plan)
+          .map((w) => w.text.trim())
+          .filter(Boolean)
+          .join(' '),
+        fileName: job.name,
+      },
+    }
+  }
+
+  /** The recordings going to be listened to there, up one after another,
+   *  each with its order. A failure hands what is left back to the phone. */
+  const sendForListening = async () => {
+    if (talkSending.current) return
+    talkSending.current = true
+    try {
+      for (;;) {
+        const job = jobsRef.current.find((j) => j.onServer === 'listen' && !talkOrdered.current.has(j.id))
+        if (!job) return
+        try {
+          const file = job.file ?? (await loadJobFile(job.id))
+          if (!file) throw new Error('The recording is not on the phone.')
+          patchJob(job.id, { status: 'working', phase: 'sending', progress: 0 })
+          await upload(talkFileId('t', job.id), file, job.name, file.type || 'video/mp4', (f) => patchJob(job.id, { progress: f }))
+          const campaigns = campaignsRef.current.filter((c) => !isReaction(c))
+          await orderListen({
+            id: job.id,
+            fileId: talkFileId('t', job.id),
+            settings: job.settings,
+            cleanSpeech: job.cleanSpeech,
+            names: dayWords(campaigns, [...bankRef.current, ...videoBankRef.current]),
+            align: captionsRef.current,
+            keepWhole: job.noCut === true,
+          })
+          talkOrdered.current.add(job.id)
+          patchJob(job.id, { status: 'queued', progress: 0 })
+        } catch (error) {
+          report({ page: 'campaign', kind: 'fallback', phase: 'server', message: `Talking videos back to the phone: ${error instanceof Error ? error.message : String(error)}` })
+          serverLetDown()
+          for (const j of jobsRef.current.filter((x) => x.onServer === 'listen' && !talkOrdered.current.has(x.id))) backToPhone(j)
+          return
+        }
+      }
+    } finally {
+      talkSending.current = false
+    }
+  }
+
+  /** Every few seconds: new videos to hand over, and what the server did. */
+  const talkTick = async () => {
+    if (SERVER_MODE || !serverUrl() || talkLooking.current) return
+    talkLooking.current = true
+    try {
+      const jobsNow = jobsRef.current
+      const waiting = jobsNow.filter(listensOnServer)
+      const listening = jobsNow.filter((j) => j.onServer === 'listen').length
+      const up = waiting.length > 0 ? await talkServerUp() : !talkDown
+      if (up === talkDown) setTalkDown(!up)
+      if (waiting.length > 0 && toServer({ waiting: waiting.length, onServer: listening, serverUp: up })) {
+        const ids = new Set(waiting.map((j) => j.id))
+        setJobs((js) => js.map((j) => (ids.has(j.id) && j.status === 'queued' ? { ...j, onServer: 'listen' } : j)))
+        for (const id of ids) await setJobFields(id, { onServer: 'listen' })
+        jobsRef.current = jobsRef.current.map((j) => (ids.has(j.id) && j.status === 'queued' ? { ...j, onServer: 'listen' } : j))
+      }
+      if (jobsRef.current.some((j) => j.onServer === 'listen' && !talkOrdered.current.has(j.id))) void sendForListening()
+
+      const mine = jobsRef.current.filter((j) => j.onServer)
+      if (mine.length === 0) return
+      let there: Record<string, TalkSummary>
+      try {
+        there = await talkNow()
+      } catch {
+        return
+      }
+      for (const job of mine) {
+        const rec = there[job.id]
+        if (job.onServer === 'listen') {
+          if (!talkOrdered.current.has(job.id)) {
+            // Sent before this visit and still there: carried on.
+            if (rec?.kind === 'listen') talkOrdered.current.add(job.id)
+            else continue
+          }
+          if (!rec) {
+            // The server lost it (a new disk): sent again.
+            talkOrdered.current.delete(job.id)
+            continue
+          }
+          if (rec.state === 'listened') {
+            const plan = await talkPlan(job.id).catch(() => null)
+            if (!plan) continue
+            const fields = await afterListen(job, plan)
+            patchJob(job.id, { ...fields, onServer: 'listened', progress: 0 })
+            await setJobFields(job.id, { onServer: 'listened' })
+          } else if (rec.state === 'failed') {
+            report({ page: 'campaign', kind: 'fallback', phase: 'server listening', message: rec.error ?? 'failed' })
+            backToPhone(job)
+          } else if (rec.state === 'listening') patchJob(job.id, { status: 'working', phase: 'listening', progress: rec.progress })
+        } else if (job.onServer === 'listened' && job.status === 'approved') {
+          if (!rec || !makesOnServer(job) || !(await talkServerUp())) {
+            backToPhone(job)
+            continue
+          }
+          try {
+            await orderMake(await makeOrderFor(job))
+            patchJob(job.id, { onServer: 'make' })
+            await setJobFields(job.id, { onServer: 'make' })
+          } catch (error) {
+            report({ page: 'campaign', kind: 'fallback', phase: 'server making', message: error instanceof Error ? error.message : String(error) })
+            backToPhone(job)
+          }
+        } else if (job.onServer === 'make') {
+          if (!rec || rec.kind !== 'make') {
+            // Lost there, or the order never arrived: asked again.
+            patchJob(job.id, { onServer: 'listened', status: 'approved' })
+            continue
+          }
+          if (rec.state === 'made') {
+            patchJob(job.id, { status: 'done', madeOnServer: true, onServer: undefined, progress: 1 })
+            await forgetJob(job.id)
+            void dropTalk(job.id)
+          } else if (rec.state === 'failed') {
+            report({ page: 'campaign', kind: 'fallback', phase: 'server making', message: rec.error ?? 'failed' })
+            backToPhone(job)
+          } else if (rec.state === 'making') patchJob(job.id, { status: 'working', phase: 'cutting', progress: rec.progress })
+        }
+      }
+    } finally {
+      talkLooking.current = false
+    }
+  }
+  const talkTickRef = useRef(talkTick)
+  talkTickRef.current = talkTick
+  useEffect(() => {
+    if (SERVER_MODE) return
+    const timer = window.setInterval(() => void talkTickRef.current(), 3000)
+    return () => window.clearInterval(timer)
+  }, [])
+
+
   const planFor = (job: Job): CampaignPlan | undefined => {
     const plan = job.day?.plan
     return plan && job.day?.keep ? { ...plan, keep: job.day.keep } : plan
@@ -750,6 +1060,11 @@ export function CampaignApp() {
   const setShowPosts = useCallback((on: boolean) => setTab(on ? 'posts' : 'videos'), [])
   const [openCampaignId, setOpenCampaignId] = useState<string | null>(null)
   const [jobs, setJobs] = useState<Job[]>([])
+  // Videos just added: looked at at once, not in up to 3 s.
+  const listenCandidates = jobs.filter(listensOnServer).length
+  useEffect(() => {
+    if (listenCandidates > 0) void talkTickRef.current()
+  }, [listenCandidates])
   /** Posts being made again (Edit again): kept out of Posts and its count
    *  until the new version is sent and replaces them. */
   const remaking = useMemo(() => jobs.flatMap((j) => (j.replaces ? [j.replaces] : [])), [jobs])
@@ -1263,6 +1578,7 @@ export function CampaignApp() {
         headlineText: p.headlineText,
         ...(p.headlineMine ? { headlineMine: true } : {}),
         ...(p.videoHeadline ? { videoHeadline: p.videoHeadline } : {}),
+        ...(p.onServer ? { onServer: p.onServer } : {}),
         settings: p.settings,
         cleanSpeech: p.cleanSpeech,
         status: p.joinedInto
@@ -1324,12 +1640,16 @@ export function CampaignApp() {
     // While he checks captions, only listening goes on - that is sound
     // alone. Making a video would have the page's decoder and the player on
     // screen fighting over the phone's video hardware.
+    // A video the Cutter server is doing (talkLink.ts) is left to it - and
+    // while enough wait for the server to take them, none is started here.
+    const serverTakes = !SERVER_MODE && Boolean(serverUrl()) && !talkDown && toServer({ waiting: jobs.filter(listensOnServer).length, onServer: jobs.filter((j) => j.onServer === 'listen').length, serverUp: true })
+    const here = jobs.filter((j) => !j.onServer && !(serverTakes && listensOnServer(j)))
     const next = reviewing
-      ? jobs.find((j) => j.status === 'queued' && j.day && !j.day.parts && !j.prejoin)
-      : (jobs.find((j) => j.status === 'approved') ??
-        jobs.find((j) => j.status === 'queued' && j.day) ??
-        jobs.find((j) => j.status === 'queued' && !j.day && !j.batch && !j.forFormat) ??
-        jobs.find((j) => j.status === 'queued' && !j.day))
+      ? here.find((j) => j.status === 'queued' && j.day && !j.day.parts && !j.prejoin)
+      : (here.find((j) => j.status === 'approved') ??
+        here.find((j) => j.status === 'queued' && j.day) ??
+        here.find((j) => j.status === 'queued' && !j.day && !j.batch && !j.forFormat) ??
+        here.find((j) => j.status === 'queued' && !j.day))
     if (!next) return
     processing.current = true
 
@@ -1454,47 +1774,8 @@ export function CampaignApp() {
               onTranscribeProgress: (p) => setPhase('listening', p),
             },
           ))
-          // A video he added for a campaign himself stays there: it was
-          // listened to for its captions, not to be sorted.
-          // A format is never a guess: his takes go to one by hand.
-          const guess = next.day?.chosen
-            ? { campaignId: next.campaignId, angleId: next.angleId, sure: true, why: 'Chosen by you' }
-            : sortVideo(
-                plan.words,
-                campaigns.filter((c) => !isReaction(c)).map((c) => ({ ...c, angles: c.angles.filter((a) => !a.isFormat || a.general) })),
-              )
-          const campaign = campaigns.find((c) => c.id === guess.campaignId)
-          const angle = campaign?.angles.find((a) => a.id === guess.angleId)
-          // A reaction's headline is the hook he typed, never a line he says.
-          // An angle that writes its own: Claude, from all he says in the
-          // video, like his past headlines (his ask, 2026-11-04: "stop
-          // automatically putting the headline as the first line"); his first
-          // line only when Claude can't be reached.
-          const typed = Boolean(next.day?.chosen && next.headlineText)
-          const written =
-            !next.reaction && angle?.headline.fromFirstLine && !typed
-              ? await videoHeadline(plan.words.map((w) => w.text.trim()).filter(Boolean).join(' '), campaign?.name ?? '')
-              : ''
-          const headlineText = next.reaction
-            ? next.headlineText
-            : angle
-              ? written || headlineFor(angle, plan, typed ? next.headlineText : angle.headline.text)
-              : ''
-          // A format's take is made straight away: he checks the finished
-          // videos on the Formats tab instead.
-          const approved = Boolean(next.forFormat)
-          const day = { plan, guess, approved, ...(next.day?.chosen ? { chosen: true } : {}) }
-          patch({
-            status: approved ? 'approved' : 'sorted',
-            day,
-            campaignId: guess.campaignId,
-            angleId: guess.angleId,
-            headlineText,
-            ...(written ? { videoHeadline: written } : {}),
-            label: campaign && angle ? labelOf(campaign, angle) : '',
-          })
+          patch(await afterListen(next, plan))
           await resetAttempts(next.id)
-          await recordDay(next.id, day, { campaignId: guess.campaignId, angleId: guess.angleId, headlineText, ...(written ? { videoHeadline: written } : {}) })
           return
         }
 
@@ -1816,7 +2097,7 @@ export function CampaignApp() {
         setJobs((js) => [...js])
       }
     })()
-  }, [jobs, campaigns, visible, reviewing, updateWaiting])
+  }, [jobs, campaigns, visible, reviewing, updateWaiting, talkDown])
 
   // The new version, once no video is being made (the queue starts none
   // while it waits): the same safe restart as after a stall - never while he
@@ -2153,6 +2434,17 @@ export function CampaignApp() {
   const stopJob = async (id: string) => {
     const job = jobs.find((j) => j.id === id)
     if (!job || job.status !== 'working') return
+    // On the server: it stops there; the phone was never busy with it.
+    if (job.onServer) {
+      void dropTalk(id)
+      talkOrdered.current.delete(id)
+      const back = job.day?.plan ? { status: 'sorted' as const, day: { ...job.day, approved: false } } : { status: 'held' as const }
+      setJobs((js) => js.map((j) => (j.id === id ? { ...j, ...back, onServer: undefined, progress: 0 } : j)))
+      if (back.status === 'held') await holdJob(id)
+      else await recordDay(id, back.day!)
+      await setJobFields(id, { onServer: undefined })
+      return
+    }
     if (job.day?.plan && job.day.approved) {
       await recordDay(id, { ...job.day, approved: false })
       await resetAttempts(id)
@@ -2188,6 +2480,7 @@ export function CampaignApp() {
         void (copying.current.get(id) ?? Promise.resolve()).finally(() => forgetCut(cut))
       }
       if (going?.joinedAs) void forgetCut(going.joinedAs)
+      if (going?.onServer) void dropTalk(id)
       const gone = withParts([id], js)
       return js.filter((j) => !gone.has(j.id))
     })
