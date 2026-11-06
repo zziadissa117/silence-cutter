@@ -3,6 +3,29 @@
 Newest first. Every change says what it does, how to use it, and how it works
 underneath. Kept up to date with each commit.
 
+## Batches: talking and not-talking reactions in the same batch, mixed at a share he sets
+App only: run ./deploy.sh.
+**What he said (2026-11-06):** one batch per account, with videos where he doesn't talk and videos where he talks -
+"Do not mute the videos where I'm going to talk ... alternate between the two. Maybe do 65% non-talking and the
+rest talking, but that's something that we could set ourselves", with product steps and green screen for both.
+- The Batch tab now opens on **Your reactions**, two lists: **Not talking** (music only) and **Talking** (his voice
+  kept, the music under it, dipping while he talks). Each has its own + Add; "→ Talking" / "→ Not talking" moves a
+  clip from one to the other. Each clip carries `talks` (`BankFile.talks`); a clip from before follows the old
+  one-for-all "Sound" switch (`batch.talksIn`), which is gone from the screen.
+- With both kinds, a **Talking** slider (10-90 %, default 35 %) sets the share, and says what it means for his
+  number a day ("Of your 10 a day: 7 not talking, 3 talking - taking turns"). `batch.kindsFor` picks each video's
+  kind in turn, furthest behind its share first; `BatchBank.kinds` keeps the count from one top-up to the next
+  (a progress field, so the server's count wins). When one kind has every video made, the other makes the rest.
+  Each kind is mixed from its own reactions with the same products, steps, headlines, looks and music
+  (`batchRun.pickKinds`), never the same video twice.
+- **The product** (was "Layout"): After you / Behind you (green screen). Product steps now work in green screen too:
+  the steps' clips play behind him one after the other (`usesSteps`, `greenScreenRender` takes several backgrounds).
+- Green screen keeps his voice in a talking reaction: the background's sound drops to a quarter under it, and the
+  video lasts as long as he talks - the background starting again if shorter (`greenScreenRender` `voice`,
+  `voiceGain`, `UNDER_VOICE`). A not-talking green screen video is as before.
+- Tests: `batchKinds.test.ts`, `batchView.test.tsx`, `batch.test.ts`.
+- Not tested here: a real green screen render with his voice (this browser can't make video) - needs one real test.
+
 ## Save: a joined video gets a short name (the iPhone's share sheet choked on ~250 letters)
 App only: run ./deploy.sh.
 **What he said (2026-11-06):** after the last fix the Thetawave video still opened the empty preview, while his

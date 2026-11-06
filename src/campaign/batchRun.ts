@@ -25,7 +25,11 @@ import {
   hookOf,
   mixFrom,
   pickBatch,
+  kindsFor,
+  reactionsOfKind,
   spend,
+  talkShareOf,
+  talksIn,
   looksToMix,
   formulaAmounts,
   hasFormula,
@@ -308,9 +312,38 @@ function videoOf(bank: BatchBank, pick: BatchPick, slot: BatchSlot, { id, seed, 
       ? { headline: formulaText(onFormula, line), formula: { left: onFormula.left, right: onFormula.right, line, ...(says === 'headlines' ? { plain: true } : {}) } }
       : { headline: pick.headline }),
     ...(style ? { headlineStyle: style } : {}),
-    ...(bank.voice && !green ? { voice: true } : {}),
+    ...(talksIn(bank, byId(bank.reactions, pick.reaction)!) ? { voice: true } : {}),
     batch: { id, date: slot.date, time: slot.time, size, ...(ending ? { last: true as const } : {}) },
   }
+}
+
+/** The next `count` picks: with reactions he talks in and others he doesn't,
+ *  each video one kind or the other at his share (kindsFor), in turn - each
+ *  kind mixed from its own reactions and everything else the batch has.
+ *  With one kind only, as always. */
+function pickKinds(bank: BatchBank, mixable: BatchBank, count: number, rand: () => number) {
+  const talk = reactionsOfKind(bank, true)
+  const quiet = reactionsOfKind(bank, false)
+  if (talk.length === 0 || quiet.length === 0) return { ...pickBatch(mixable, count, rand), kinds: undefined }
+  const of = (reactions: BankFile[]) => ({ ...mixable, reactions })
+  const room = (n: number) => (Number.isFinite(n) ? n : Number.MAX_SAFE_INTEGER)
+  const order = kindsFor(count, talkShareOf(bank), bank.kinds, { talk: room(combos(of(talk)).left), quiet: room(combos(of(quiet)).left) })
+  let state = { used: bank.used, lastPair: bank.lastPair, made: bank.made }
+  const byKind = new Map<string, BatchPick[]>()
+  for (const kind of ['talk', 'quiet'] as const) {
+    const n = order.filter((k) => k === kind).length
+    if (n === 0) continue
+    // Each kind sees only its own videos made - pickBatch forgets the made
+    // ones whose reaction it isn't given - and the other kind's stay.
+    const mine = new Set((kind === 'talk' ? talk : quiet).map((f) => f.id))
+    const ours = (key: string) => mine.has(key.split('|')[0])
+    const out = pickBatch({ ...of(kind === 'talk' ? talk : quiet), ...state, made: (state.made ?? []).filter(ours) }, n, rand)
+    byKind.set(kind, out.picks)
+    state = { used: out.used, lastPair: out.lastPair, made: [...(state.made ?? []).filter((key) => !ours(key)), ...out.made] }
+  }
+  const picks = order.map((kind) => byKind.get(kind)!.shift()!).filter(Boolean)
+  const kinds = { talk: (bank.kinds?.talk ?? 0) + order.filter((k) => k === 'talk').length, quiet: (bank.kinds?.quiet ?? 0) + order.filter((k) => k === 'quiet').length }
+  return { picks, used: state.used, lastPair: state.lastPair, made: state.made ?? [], kinds }
 }
 
 export function planVideos(
@@ -325,11 +358,11 @@ export function planVideos(
   const taking = Number.isFinite(left) ? slots.slice(0, left) : slots
   if (taking.length === 0) return { videos: [], slots: [], bank, retire: [] }
 
-  const { picks, used, lastPair, made } = pickBatch(mixable, taking.length, rand)
+  const { picks, used, lastPair, made, kinds } = pickKinds(bank, mixable, taking.length, rand)
   // That is every different video left: the footage goes after these.
   const ending = Number.isFinite(left) && taking.length >= left
   const videos = picks.map((pick, i) => videoOf(bank, pick, taking[i], { id, seed: `${id}-${i}`, size: taking.length, ending }))
-  let next = fill({ ...bank, used, lastPair, made }, taking, now)
+  let next = fill({ ...bank, used, lastPair, made, ...(kinds ? { kinds } : {}) }, taking, now)
   let retire: string[] = []
   if (ending) {
     // That was every different video: the footage goes, for new filming.

@@ -28,6 +28,11 @@ export interface BankFile {
    *  before: when. It is its own clip then (usedKey) - what the earlier
    *  videos used it up for doesn't turn it away. */
   again?: number
+  /** A reaction he talks in (his ask, 2026-11-06: "one batch ... where I'm
+   *  not going to talk, and ... where I'm going to talk"): its video keeps his
+   *  voice, the music under it. Absent: as the bank's old `voice` said - a
+   *  reaction he is silent in, music alone, unless the whole batch talked. */
+  talks?: boolean
 }
 
 export interface BatchBank {
@@ -137,6 +142,12 @@ export interface BatchBank {
    *  the music under it, dipping while he talks. Off (the default): music
    *  alone, the clips muted. (His ask, 2026-11-03.) */
   voice?: boolean
+  /** Of every 100 videos, how many are made from the reactions he talks in,
+   *  while there are both kinds (talkShareOf; default TALK_SHARE). */
+  talkShare?: number
+  /** How many videos of each kind the batch has made, so the share holds
+   *  from one top-up to the next. */
+  kinds?: { talk: number; quiet: number }
   /** When he last tapped Start anyway: the mixes made before were forgotten
    *  then, so the same clips make the same videos again - read by fromPhone,
    *  which takes the phone's `made` for that Start. */
@@ -166,7 +177,7 @@ export const FAVOUR = 2
 /** What the making of a batch has done so far - what was made, used, put on
  *  which day, why it stopped. On the server these are the server's own; every
  *  other field is a setting he changes on the phone. */
-export const PROGRESS_FIELDS = ['used', 'lastPair', 'made', 'usedClips', 'madeThrough', 'filled', 'runProblem', 'spent', 'lastPerDay'] as const
+export const PROGRESS_FIELDS = ['used', 'lastPair', 'made', 'usedClips', 'madeThrough', 'filled', 'runProblem', 'spent', 'lastPerDay', 'kinds'] as const
 
 /** The bank the server makes from, after the phone sent its latest: his
  *  settings from the phone (clips, headlines, looks, the number a day, Start
@@ -235,7 +246,8 @@ export function stepTitle(name: string | undefined): string {
 /** The product showcase is in steps: the layout plays the reaction then the
  *  product, and he has set an order for the campaign. */
 export function usesSteps(bank: Pick<BatchBank, 'layout' | 'steps'>): boolean {
-  return (bank.layout ?? 'after') === 'after' && (bank.steps?.length ?? 0) > 0
+  // Green screen too: the steps' clips play behind him, one after the other.
+  return ((bank.layout ?? 'after') === 'after' || bank.layout === 'greenscreen') && (bank.steps?.length ?? 0) > 0
 }
 
 export type BatchLayout = 'after' | 'greenscreen' | 'engine' | 'trial'
@@ -438,6 +450,58 @@ export function styleFor(planned: HeadlineStyle | undefined, picked: readonly He
   let hash = 0
   for (let i = 0; i < seed.length; i++) hash = (Math.imul(hash, 31) + seed.charCodeAt(i)) >>> 0
   return picked[hash % picked.length]
+}
+
+/** Whether he talks in this reaction: its own mark, else the bank's old
+ *  one-for-all sound setting. */
+export function talksIn(bank: Pick<BatchBank, 'voice'>, file: BankFile): boolean {
+  return file.talks ?? bank.voice === true
+}
+
+/** Of every 100 videos, how many talk, when there are reactions of both
+ *  kinds (his "maybe do 65% non-talking and the rest talking"). */
+export const TALK_SHARE = 35
+
+export function talkShareOf(bank: Pick<BatchBank, 'talkShare'>): number {
+  const share = bank.talkShare
+  return typeof share === 'number' && Number.isFinite(share) ? Math.min(100, Math.max(0, Math.round(share))) : TALK_SHARE
+}
+
+/** The reactions of one kind. */
+export function reactionsOfKind(bank: Pick<BatchBank, 'voice' | 'reactions'>, talking: boolean): BankFile[] {
+  return bank.reactions.filter((f) => talksIn(bank, f) === talking)
+}
+
+export type ReactionKind = 'talk' | 'quiet'
+
+/** Which kind each of the next `count` videos is: the one furthest behind
+ *  its share, from what was made before (`done`), and only while it has
+ *  videos left (`left`) - when one kind runs out, the other makes the rest.
+ *  Ties go to the not-talking ones, his bigger share. */
+export function kindsFor(
+  count: number,
+  share: number,
+  done: { talk: number; quiet: number } | undefined,
+  left: { talk: number; quiet: number },
+): ReactionKind[] {
+  const out: ReactionKind[] = []
+  const made = { talk: done?.talk ?? 0, quiet: done?.quiet ?? 0 }
+  const room = { ...left }
+  const want = { talk: share / 100, quiet: 1 - share / 100 }
+  for (let i = 0; i < count; i++) {
+    const can = (k: ReactionKind) => room[k] > 0 && want[k] > 0
+    let kind: ReactionKind | null
+    if (can('talk') && can('quiet')) {
+      const total = made.talk + made.quiet + 1
+      // How far each is under its share if the next one isn't it.
+      kind = made.talk / total - want.talk < made.quiet / total - want.quiet ? 'talk' : 'quiet'
+    } else kind = can('quiet') ? 'quiet' : can('talk') ? 'talk' : room.quiet > 0 ? 'quiet' : room.talk > 0 ? 'talk' : null
+    if (!kind) break
+    out.push(kind)
+    made[kind]++
+    room[kind]--
+  }
+  return out
 }
 
 export function emptyBank(campaignId: string, angleId: string): BatchBank {

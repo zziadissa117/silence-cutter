@@ -205,8 +205,9 @@ describe('a product showcase in steps (Set order)', () => {
     expect(combos(stepped()).total).toBe(3 * 12 * 2 * 2)
     // The old list of product showcases isn't used while there are steps.
     expect(usesSteps(stepped())).toBe(true)
-    // ...and is again in green screen, which has no steps.
-    expect(usesSteps({ ...stepped(), layout: 'greenscreen' })).toBe(false)
+    // Green screen plays them behind him, one after the other; the engine has none.
+    expect(usesSteps({ ...stepped(), layout: 'greenscreen' })).toBe(true)
+    expect(usesSteps({ ...stepped(), layout: 'engine' })).toBe(false)
   })
 
   it('puts one clip of every step in each video, in order, and none twice before all are made', () => {

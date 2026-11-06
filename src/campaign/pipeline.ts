@@ -497,17 +497,17 @@ export async function makeMontage(
 /** A green screen video: the campaign's video behind, him cut out in a
  *  corner over it, the background's sound only (greenScreenRender.ts). */
 export async function makeGreenScreen(
-  background: Blob,
+  background: Blob | Blob[],
   cutout: Blob,
   campaign: Campaign,
   angle: Angle,
   headlineText: string,
   corner: Corner,
   onRenderProgress?: (fraction: number) => void,
-  extra: { reactionName?: string } = {},
+  extra: { reactionName?: string; voice?: Blob } = {},
 ): Promise<CampaignResult> {
   const rendered = await renderGreenScreen(
-    { background, cutout, look: videoLook(campaign, angle, [], null), headlineText, corner, reactionName: extra.reactionName },
+    { background, cutout, look: videoLook(campaign, angle, [], null), headlineText, corner, reactionName: extra.reactionName, voice: extra.voice },
     onRenderProgress,
   )
   return {

@@ -30,6 +30,10 @@ import {
   type LookShare,
   todayHere,
   usesSteps,
+  kindsFor,
+  reactionsOfKind,
+  talkShareOf,
+  TALK_SHARE,
   type BankFile,
   type BatchBank,
   type BatchFormula,
@@ -163,7 +167,7 @@ function WhenDue({ due, signal, run }: { due: boolean; signal: string; run: () =
 
 type Kind = 'reactions' | 'products' | 'music'
 /** Where new clips go: one of the bank's lists, or a step of the product. */
-type Target = Kind | { step: string }
+type Target = Kind | { step: string } | { talking: boolean }
 
 const LEFT_KEY = 'batch.formulaLeft'
 
@@ -448,8 +452,10 @@ export function BatchView({
    *  videos made before are taken in again, each as a clip of its own
    *  (batch.usedKey). */
   const add = async (target: Target, files: File[], again = false) => {
-    const kind: Kind = typeof target === 'string' ? target : 'products'
-    const stepId = typeof target === 'string' ? null : target.step
+    const kind: Kind = typeof target === 'string' ? target : 'step' in target ? 'products' : 'reactions'
+    const stepId = typeof target === 'object' && 'step' in target ? target.step : null
+    // A reaction he talks in, or one he doesn't (batch.talksIn).
+    const talking = typeof target === 'object' && 'talking' in target ? target.talking : undefined
     const listOf = (b: BatchBank | null): BankFile[] => (stepId ? (b?.steps?.find((s) => s.id === stepId)?.files ?? []) : (b?.[kind] ?? []))
     if (kind !== 'music') {
       const problemPicking = pickArrived(files)
@@ -501,6 +507,7 @@ export function BatchView({
           fp,
           ...(seconds ? { seconds } : {}),
           ...(again ? { again: Date.now() + i } : {}),
+          ...(talking !== undefined ? { talks: talking } : {}),
         })
       }
     } catch (error) {
@@ -598,6 +605,16 @@ export function BatchView({
   const due = bank ? runSlots({ bank, place, campaignId: campaign.id, taken: takenOn, disliked: dislikedOn }) : []
   const green = bank?.layout === 'greenscreen'
   const onEngine = bank?.layout === 'engine'
+  // Reactions he talks in and ones he doesn't, mixed at his share.
+  const talkCount = bank ? reactionsOfKind(bank, true).length : 0
+  const quietCount = bank ? reactionsOfKind(bank, false).length : 0
+  const talkShare = bank ? Math.min(90, Math.max(10, talkShareOf(bank))) : TALK_SHARE
+  const mixLine = (() => {
+    const a = bank?.perDay ?? 0
+    const of = a > 0 ? a : 10
+    const talks = kindsFor(of, talkShare, undefined, { talk: of, quiet: of }).filter((k) => k === 'talk').length
+    return `${a > 0 ? 'Of your' : 'Of every'} ${of}${a > 0 ? ' a day' : ''}: ${of - talks} not talking, ${talks} talking - taking turns.`
+  })()
   // Made on the Cutter server (serverLink.ts), or about to be: nothing is made here.
   const onServer = !onEngine && (bank?.where === 'server' || serverConnected())
   const sending = sendingLine(campaign.id)
@@ -1037,11 +1054,19 @@ export function BatchView({
     </div>
   )
 
-  const list = (kind: Kind, title: string, hint: string) => (
+  /** The files of a list: a kind's reactions only, when `talking` is given. */
+  const filesIn = (kind: Kind, talking?: boolean): BankFile[] =>
+    !bank ? [] : kind === 'reactions' && talking !== undefined ? reactionsOfKind(bank, talking) : bank[kind]
+  /** A reaction moved to the other kind: its videos not made yet follow. */
+  const moveKind = (file: BankFile, talks: boolean) => {
+    if (!bank) return
+    keep({ ...bank, reactions: bank.reactions.map((f) => (f.id === file.id ? { ...f, talks } : f)) })
+  }
+  const list = (kind: Kind, title: string, hint: string, talking?: boolean) => (
     <div className="group">
       <div className="bank-head">
         <span className="group-title">
-          {title} <span className="bank-count">{bank?.[kind].length ?? 0}</span>
+          {title} <span className="bank-count">{filesIn(kind, talking).length}</span>
         </span>
         {kind === 'music' ? (
           <div className="btn small picker">
@@ -1060,7 +1085,11 @@ export function BatchView({
             />
           </div>
         ) : (
-          <VideoPicker className="btn small" label={`Add ${title.toLowerCase()}`} onFiles={(files) => void add(kind, files)}>
+          <VideoPicker
+            className="btn small"
+            label={`Add ${title.toLowerCase()}`}
+            onFiles={(files) => void add(kind === 'reactions' && talking !== undefined ? { talking } : kind, files)}
+          >
             + Add
           </VideoPicker>
         )}
@@ -1087,9 +1116,9 @@ export function BatchView({
           </select>
         </label>
       ) : null}
-      {bank && bank[kind].length > 0 ? (
+      {bank && filesIn(kind, talking).length > 0 ? (
         <ul className="bank-list">
-          {bank[kind].map((file) => (
+          {filesIn(kind, talking).map((file) => (
             <li key={file.id} className="bank-item">
               {kind === 'music' && bank ? (
                 <>
@@ -1111,6 +1140,16 @@ export function BatchView({
               <span className="hint">{[file.seconds ? formatTime(file.seconds) : '', mb(file.size)].filter(Boolean).join(' · ')}</span>
               {kind === 'reactions' && madeWith(posts, campaign.id, file.name, true).rejected > 0 ? (
                 <span className="hint rejected">{madeNote(file, true)}</span>
+              ) : null}
+              {kind === 'reactions' && talking !== undefined ? (
+                <button
+                  type="button"
+                  className="btn small"
+                  aria-label={`${file.name}: ${talking ? 'move to not talking' : 'move to talking'}`}
+                  onClick={() => moveKind(file, !talking)}
+                >
+                  {talking ? '→ Not talking' : '→ Talking'}
+                </button>
               ) : null}
               <button type="button" className="btn small icon-btn" aria-label={`Take out ${file.name}`} onClick={() => takeOut(kind, file)}>
                 ✕
@@ -1194,11 +1233,6 @@ export function BatchView({
             </option>
           ))}
         </select>
-        {bank && (bank.layout ?? 'after') === 'after' ? (
-          <button type="button" className="btn small" aria-expanded={ordering} onClick={() => setOrdering((o) => !o)}>
-            {bank.steps?.length ? `Product steps · ${bank.steps.length}` : 'Product steps'}
-          </button>
-        ) : null}
         </div>
         {batchAngles.length > 1 && bank ? (
           <div className="seg chips" role="radiogroup" aria-label="Headline look">
@@ -1270,14 +1304,49 @@ export function BatchView({
 
       {bank ? (
         <>
+          {onEngine ? null : (
+            <div className="group batch-kinds">
+              <div className="group-title">Your reactions</div>
+              <p className="hint">
+                Every video starts with one. Not talking: the music is the only sound. Talking: your voice stays, the music plays
+                under it and dips while you talk. Both make the same videos - the same products, headlines and music.
+              </p>
+              {list('reactions', 'Not talking', 'You react without a word.', false)}
+              {list('reactions', 'Talking', 'You say something to the camera - your voice is kept.', true)}
+              {talkCount > 0 && quietCount > 0 ? (
+                <div className="batch-mix">
+                  <label className="slider">
+                    <span>Talking</span>
+                    <input
+                      type="range"
+                      min={10}
+                      max={90}
+                      step={5}
+                      value={talkShare}
+                      aria-label="How many of the videos are talking ones"
+                      onChange={(e) => keep({ ...bank, talkShare: Number(e.target.value) })}
+                    />
+                    <output>{talkShare}%</output>
+                  </label>
+                  <p className="hint">{mixLine}</p>
+                </div>
+              ) : talkCount > 0 || quietCount > 0 ? (
+                <p className="hint tip">
+                  {talkCount > 0
+                    ? 'Every video talks. Add reactions where you don\'t talk to mix them in.'
+                    : 'Every video is music only. Add reactions where you talk to mix them in.'}
+                </p>
+              ) : null}
+            </div>
+          )}
           <div className="group">
-            <div className="group-title">Layout</div>
-            <div className="seg full" role="radiogroup" aria-label="Layout">
-              <button type="button" role="radio" aria-checked={!green} className={!green ? 'active' : ''} onClick={() => keep({ ...bank, layout: 'after' })}>
-                Reaction + video
+            <div className="group-title">The product</div>
+            <div className="seg full" role="radiogroup" aria-label="How the product is shown">
+              <button type="button" role="radio" aria-checked={!green && !onEngine} className={!green && !onEngine ? 'active' : ''} onClick={() => keep({ ...bank, layout: 'after' })}>
+                After you
               </button>
               <button type="button" role="radio" aria-checked={green} className={green ? 'active' : ''} onClick={() => keep({ ...bank, layout: 'greenscreen' })}>
-                Green screen
+                Behind you (green screen)
               </button>
               {engineUrl() || onEngine ? (
                 <button type="button" role="radio" aria-checked={onEngine} className={onEngine ? 'active' : ''} onClick={() => keep({ ...bank, layout: 'engine' })}>
@@ -1285,17 +1354,24 @@ export function BatchView({
                 </button>
               ) : null}
             </div>
-            {onEngine ? (
-              <p className="hint tip">
-                Made on the server - close the app once it says the batch is handed over. Each take gives several hooks, every video
-                a little different, never a near-copy. They wait in Posts: watch one, then Approve all.
-              </p>
+            <p className="hint">
+              {onEngine
+                ? 'Made on the server - close the app once it says the batch is handed over. Each take gives several hooks, every video a little different, never a near-copy. They wait in Posts: watch one, then Approve all.'
+                : green
+                  ? 'The product plays full screen and you are cut out of your background, in a corner. Talking: the video lasts as long as you talk.'
+                  : 'Your reaction first, slowly zooming in, then the product. To show several clips in a set order, tap Product steps.'}
+            </p>
+            {!onEngine ? (
+              <button type="button" className="btn small" aria-expanded={ordering} onClick={() => setOrdering((o) => !o)}>
+                {bank.steps?.length ? `Product steps · ${bank.steps.length}` : 'Product steps'}
+              </button>
             ) : null}
           </div>
           {green ? (
             <>
-              {list('reactions', 'Reactions', 'You, cut out of your background and put in the corner. Film them as long as the background videos.')}
-              {list('products', 'Background videos', "The brief's videos. Each plays full screen with its own sound, and the video lasts as long as it does.")}
+              {stepped
+                ? bank.steps!.map((step, i) => stepList(step, i))
+                : list('products', 'Background videos', "The brief's videos. Each plays full screen with its own sound.")}
               <div className="group">
                 <div className="group-title">Your corner</div>
                 <div className="seg full" role="radiogroup" aria-label="Corner">
@@ -1332,13 +1408,10 @@ export function BatchView({
               {list('reactions', 'Hooks - your face', 'Takes of 10-12 s; the engine cuts several hooks out of each.')}
               {list('products', 'Product clips', 'Shown after the hook.')}
             </>
+          ) : stepped ? (
+            bank.steps!.map((step, i) => stepList(step, i))
           ) : (
-            <>
-              {list('reactions', 'Reactions', 'They go first, with the headline over them - slowly zooming in.')}
-              {stepped
-                ? bank.steps!.map((step, i) => stepList(step, i))
-                : list('products', 'Product showcases', 'Shown after the reaction. To show several in a set order, tap Product steps at the top.')}
-            </>
+            list('products', 'Product showcases', 'Shown after your reaction.')
           )}
           {green || onEngine ? null : (
           <div className="group">
@@ -1522,38 +1595,14 @@ export function BatchView({
               ? list('music', 'Songs', 'Each video gets the song this campaign used least, starting on its chorus.')
               : (
                 <>
-                  {/* A talking batch keeps his voice; a reaction-only one is music alone (2026-11-03). */}
-                  <div className="group">
-                    <div className="group-title">Sound</div>
-                    <div className="seg full" role="radiogroup" aria-label="Sound of the videos">
-                      {[
-                        { voice: false, label: 'Music only' },
-                        { voice: true, label: 'My voice + music' },
-                      ].map((o) => (
-                        <button
-                          key={o.label}
-                          type="button"
-                          role="radio"
-                          aria-checked={Boolean(bank.voice) === o.voice}
-                          className={Boolean(bank.voice) === o.voice ? 'active' : ''}
-                          onClick={() => keep({ ...bank, voice: o.voice || undefined })}
-                        >
-                          {o.label}
-                        </button>
-                      ))}
-                    </div>
-                    <p className="hint">
-                      {bank.voice
-                        ? 'You talk in your reactions: your voice stays, the music plays under it and dips while you talk. The product clips stay muted.'
-                        : 'Reactions without talking: the music is the only sound.'}
-                    </p>
-                  </div>
                   {list(
                     'music',
                     'Music',
-                    bank.voice
-                      ? 'Under your voice. With one track every video uses it; with more, each gets one at random. None: your voice alone.'
-                      : 'The only sound - the clips are muted. With one track every video uses it; with more, each gets one at random.',
+                    talkCount > 0 && quietCount > 0
+                      ? 'The only sound in the videos you don\'t talk in, under your voice in the others. With more than one, each video gets one in turn.'
+                      : talkCount > 0
+                        ? 'Under your voice. With more than one, each video gets one in turn. None: your voice alone.'
+                        : 'The only sound - the clips are muted. With more than one, each video gets one in turn.',
                   )}
                 </>
               )}

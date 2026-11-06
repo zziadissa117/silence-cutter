@@ -327,6 +327,15 @@ mixes unmade, the days recounted, the bank changed (`dropHook` / `dropLook` / `c
 next top-up fills with the other hooks. `BatchBank.dropWeakHooks` does that by itself from the Batch tab, one hook
 at a time, writing `droppedHooks`.
 
+Talking and not-talking reactions (2026-11-06): each reaction is one or the other (`BankFile.talks`; untagged
+follows the bank's old `voice`, `batch.talksIn`). With both kinds, `batchRun.pickKinds` gives each slot a kind
+(`batch.kindsFor`: furthest behind `talkShareOf` - default 35 % talking - counting `BatchBank.kinds`, a progress
+field), then runs `pickBatch` once per kind on that kind's reactions, each seeing only its own `made` keys (keys
+start with the reaction id) so neither forgets the other's. A talking pick is `voice: true` on its `BatchVideo`:
+montageRender keeps the reaction's sound with the music under it; greenScreenRender keeps his voice with the
+background at `UNDER_VOICE` and lasts as long as he talks. Green screen also takes product steps (`usesSteps`):
+their clips play behind him in order.
+
 Hooks in shares: `BatchBank.looks` - `{ look, parts }` for White box / Outline / Snapchat
 headlines and Claude + X (`BatchLook`), picked in the Batch tab's Hook section (`HookLooks`,
 − / + per look as a %). Older banks read through `looksOf` (`hook: 'formula'` alone, or

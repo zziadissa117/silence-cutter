@@ -461,7 +461,7 @@ describe('a clip already in videos made before', () => {
     const file = new File([new Uint8Array(4096).fill(7)], 'old-reaction.mov', { type: 'video/quicktime' })
     storedBank = { ...bank, usedClips: [await fingerprint(file)] }
     await show({})
-    const input = host.querySelector('input[aria-label="Add reactions"]') as HTMLInputElement
+    const input = host.querySelector('input[aria-label="Add not talking"]') as HTMLInputElement
     Object.defineProperty(input, 'files', { value: [file] })
     await act(async () => input.dispatchEvent(new Event('change', { bubbles: true })))
     // Reading what is in the file takes a moment.
@@ -478,7 +478,7 @@ describe('a clip already in videos made before', () => {
     const fp = await fingerprint(file)
     storedBank = { ...bank, usedClips: [fp] }
     await show({})
-    const input = host.querySelector('input[aria-label="Add reactions"]') as HTMLInputElement
+    const input = host.querySelector('input[aria-label="Add not talking"]') as HTMLInputElement
     Object.defineProperty(input, 'files', { value: [file] })
     await act(async () => input.dispatchEvent(new Event('change', { bubbles: true })))
     await act(async () => new Promise((resolve) => setTimeout(resolve, 200)))
@@ -699,5 +699,32 @@ describe('how each hook is doing', () => {
     const { saveBatchBank } = await import('./store')
     const saved = vi.mocked(saveBatchBank).mock.calls.map((c) => c[0] as BatchBank).at(-1)!
     expect(saved.looks).toEqual([{ look: 'snap', parts: 2 }])
+  })
+})
+
+describe('reactions he talks in and ones he does not, in one batch', () => {
+  it('lists each kind apart and shows the mix only when there are both', async () => {
+    storedBank = bank
+    await show({})
+    expect(host.querySelector('input[aria-label="Add talking"]')).toBeTruthy()
+    expect(host.querySelector('input[aria-label="How many of the videos are talking ones"]')).toBeNull()
+    expect(host.textContent).toContain('Every video is music only')
+  })
+
+  it('shows the mix at 35% talking when there are both', async () => {
+    storedBank = { ...bank, reactions: bank.reactions.map((r, i) => (i === 0 ? { ...r, talks: true } : r)) }
+    await show({})
+    const slider = host.querySelector('input[aria-label="How many of the videos are talking ones"]') as HTMLInputElement
+    expect(slider.value).toBe('35')
+    expect(host.textContent).toContain('Of your 3 a day: 2 not talking, 1 talking')
+  })
+
+  it('moves a reaction to the other kind with one tap', async () => {
+    storedBank = bank
+    await show({})
+    const move = host.querySelector('button[aria-label="r2.mp4: move to talking"]') as HTMLButtonElement
+    await act(async () => move.click())
+    const saved = await savedBank()
+    expect(saved.reactions.find((r) => r.id === 'r2')?.talks).toBe(true)
   })
 })

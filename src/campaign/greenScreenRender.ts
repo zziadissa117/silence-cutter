@@ -1,8 +1,10 @@
 // A green screen video: the campaign's own video playing full screen, and
 // him cut out of his background, reacting, in a bottom corner - the way
-// TikTok's green screen effect looks. The only sound is the background
-// video's; his reaction is silent. It lasts as long as the background video;
-// a reaction shorter than that starts over.
+// TikTok's green screen effect looks. A reaction he doesn't talk in is
+// silent: the background's sound is the only sound, and the video lasts as
+// long as the background, a shorter reaction starting over. One he talks in
+// (batch.talksIn) keeps his voice, the background's sound low under it, and
+// lasts as long as he talks - the background starting over when shorter.
 //
 // His cut-out is made once per reaction (cutout.ts): his frame with the mask
 // stacked under it. Each frame here, the mask half is made see-through again
@@ -114,8 +116,9 @@ class CutoutFrames {
 }
 
 export interface GreenScreenInput {
-  /** The campaign's video, playing behind him. Its sound is the video's sound. */
-  background: Blob
+  /** The campaign's video, playing behind him - or its product steps' clips,
+   *  one after the other. Its sound is the video's sound. */
+  background: Blob | Blob[]
   /** His reaction, cut out (cutout.ts). */
   cutout: Blob
   /** The headline's look. */
@@ -125,10 +128,24 @@ export interface GreenScreenInput {
   corner: Corner
   /** The reaction's file name, for the report on a start that froze or lagged. */
   reactionName?: string
+  /** A reaction he talks in: the reaction itself, for his voice. */
+  voice?: Blob
+}
+
+/** His voice is brought to the loudness of a talking video's (voice.ts). */
+const VOICE_TARGET = -14
+/** The background's sound under his voice, while he talks. */
+export const UNDER_VOICE = 0.25
+
+/** The gain that brings a voice measured at `lufs` to VOICE_TARGET, never
+ *  more than 8 times (a near-silent take stays near silent). */
+export function voiceGain(lufs: number): number {
+  if (!Number.isFinite(lufs)) return 1
+  return Math.min(8, Math.pow(10, (VOICE_TARGET - lufs) / 20))
 }
 
 export async function renderGreenScreen(
-  { background, cutout, look, headlineText, corner, reactionName }: GreenScreenInput,
+  { background, cutout, look, headlineText, corner, reactionName, voice }: GreenScreenInput,
   onProgress?: (fraction: number) => void,
 ): Promise<{ blob: Blob; storedAs: string | null; totalSec: number }> {
   if (!(await isSilenceCutSupported())) {
@@ -143,17 +160,58 @@ export async function renderGreenScreen(
   let him: CutoutFrames | null = null
   let finished = false
   try {
-    const bg = await openClip(background, 'background')
-    clips.push(bg)
+    const backgrounds: Clip[] = []
+    for (const [i, file] of (Array.isArray(background) ? background : [background]).entries()) {
+      const clip = await openClip(file, Array.isArray(background) ? `step ${i + 1}` : 'background')
+      clips.push(clip)
+      backgrounds.push(clip)
+    }
+    if (backgrounds.length === 0) throw new SilenceCutError('This green screen video has no background video.')
+    const bg = backgrounds[0]
     const cut = await openClip(cutout, "reaction's cut-out")
     clips.push(cut)
-    const total = Math.max(0.1, bg.duration - bg.first)
+    const lengthOf = (clip: Clip) => Math.max(0.1, clip.duration - clip.first)
+    const bgLength = backgrounds.reduce((n, clip) => n + lengthOf(clip), 0)
+
+    // His voice, the whole of it, at a talking video's loudness.
+    let voicePlanes: Float32Array[] | null = null
+    if (voice) {
+      const own = await openClip(voice, 'reaction')
+      clips.push(own)
+      const parts: Float32Array[][] = []
+      await eachSound(own, [wholeOf(own)], RATE, CHANNELS, (p) => {
+        parts.push(p.map((plane) => plane.slice()))
+      })
+      const length = parts.reduce((n, p) => n + p[0].length, 0)
+      const planes = Array.from({ length: CHANNELS }, (_, c) => {
+        const out = new Float32Array(length)
+        let at = 0
+        for (const p of parts) {
+          out.set(p[c] ?? p[0], at)
+          at += p[0].length
+        }
+        return out
+      })
+      let vGain = 1
+      try {
+        vGain = voiceGain(await measureLoudness(RATE, CHANNELS, async (visit) => visit(planes)))
+      } catch {
+        vGain = 1
+      }
+      for (const plane of planes) for (let k = 0; k < plane.length; k++) plane[k] *= vGain
+      voicePlanes = planes
+    }
+    const voiceSec = voicePlanes ? voicePlanes[0].length / RATE : 0
+    // Talking: as long as he talks. Silent: as long as the background.
+    const total = voicePlanes && voiceSec > 0.5 ? voiceSec : bgLength
 
     // The background's own sound, set to where TikTok plays things.
     let gain = 1
-    if (bg.audio) {
+    if (backgrounds.some((clip) => clip.audio)) {
       try {
-        const lufs = await measureLoudness(RATE, CHANNELS, (visit) => eachSound(bg, [wholeOf(bg)], RATE, CHANNELS, visit))
+        const lufs = await measureLoudness(RATE, CHANNELS, async (visit) => {
+          for (const clip of backgrounds) await eachSound(clip, [wholeOf(clip)], RATE, CHANNELS, visit)
+        })
         gain = soloMusicGain(lufs) || 1
       } catch {
         gain = 1
@@ -176,7 +234,7 @@ export async function renderGreenScreen(
     await headlineFontReady()
     // A little lower than the angle's headline, as on every batch video.
     const headline = lowered(headlineText.trim() ? layoutHeadline(ctx, width, height, { ...look.headline, text: headlineText }) : null, height)
-    const place = cover(bg.width, bg.height, width, height)
+    let place = cover(bg.width, bg.height, width, height)
     const spot = cornerBox(width, height, corner)
     him = new CutoutFrames(cut.video, cut.first, cut.duration - cut.first)
 
@@ -223,32 +281,50 @@ export async function renderGreenScreen(
     let made = 0
     let shown: VideoSample | null = null
     try {
-      const at = await writeWhole(bg, 0, {
-        rate: RATE,
-        channels: CHANNELS,
-        videoClock: forwardOnly(),
-        audioClock: contiguousAudio(),
-        maxRecoveries: MAX_RECOVERIES,
-        onFrame: async (sample, timestamp) => {
-          const before = shown ?? sample
-          for (const by = framesBy(timestamp, FPS); made < by; made++) await draw(before, made / FPS)
-          shown?.close()
-          shown = sample.clone()
-        },
-        onSound: async (planes, timestamp) => {
-          const length = planes[0].length
-          const data = new Float32Array(length * CHANNELS)
-          const out = [data.subarray(0, length), data.subarray(length)]
-          for (let c = 0; c < CHANNELS; c++) {
-            const from = planes[c] ?? planes[0]
-            for (let k = 0; k < length; k++) out[c][k] = from[k] * gain
-          }
-          limiter.process(out)
-          const audio = new AudioSample({ data, format: 'f32-planar', numberOfChannels: CHANNELS, sampleRate: RATE, timestamp })
-          await audioSource.add(audio)
-          audio.close()
-        },
-      })
+      const videoClock = forwardOnly()
+      const audioClock = contiguousAudio()
+      let at = 0
+      // The background, from its start again until the video is as long as
+      // it should be - once, unless he talks for longer.
+      for (let turn = 0; ; turn++) {
+        const clip = backgrounds[turn % backgrounds.length]
+        const part = Math.min(lengthOf(clip), total - at)
+        const wasAt = at
+        place = cover(clip.width, clip.height, width, height)
+        at = await writeWhole(clip, at, {
+          rate: RATE,
+          channels: CHANNELS,
+          videoClock,
+          audioClock,
+          maxRecoveries: MAX_RECOVERIES,
+          ...(part < lengthOf(clip) - 0.01 ? { window: { start: clip.first, end: clip.first + part } } : {}),
+          onFrame: async (sample, timestamp) => {
+            const before = shown ?? sample
+            for (const by = framesBy(timestamp, FPS); made < by; made++) await draw(before, made / FPS)
+            shown?.close()
+            shown = sample.clone()
+          },
+          onSound: async (planes, timestamp) => {
+            const length = planes[0].length
+            const data = new Float32Array(length * CHANNELS)
+            const out = [data.subarray(0, length), data.subarray(length)]
+            const start = Math.round(timestamp * RATE)
+            for (let c = 0; c < CHANNELS; c++) {
+              const from = planes[c] ?? planes[0]
+              const his = voicePlanes?.[c]
+              for (let k = 0; k < length; k++) {
+                // Under his voice while he talks, on its own after.
+                out[c][k] = his && start + k < his.length ? from[k] * gain * UNDER_VOICE + his[start + k] : from[k] * gain
+              }
+            }
+            limiter.process(out)
+            const audio = new AudioSample({ data, format: 'f32-planar', numberOfChannels: CHANNELS, sampleRate: RATE, timestamp })
+            await audioSource.add(audio)
+            audio.close()
+          },
+        })
+        if (at >= total - 0.05 || at <= wasAt) break
+      }
       const last = shown as VideoSample | null
       if (last) for (const by = framesBy(at, FPS); made < by; made++) await draw(last, made / FPS)
       const start = openingProblem(opening, await usualFrame(cut.video, cut.first))

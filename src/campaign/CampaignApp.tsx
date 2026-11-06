@@ -1916,7 +1916,9 @@ export function CampaignApp() {
         if (next.montage?.bank && green) {
           // Green screen: him cut out once per reaction, then over the background.
           const reactionId = next.montage.bank.reaction.id
-          const background = await bankFileOf(next.montage.bank.product)
+          // The product steps' clips one after the other, or the one video.
+          const stepFiles = next.montage.bank.steps
+          const background = stepFiles?.length ? await Promise.all(stepFiles.map((s) => bankFileOf(s.file))) : await bankFileOf(next.montage.bank.product)
           let cut = await loadCutout(reactionId).catch(() => null)
           if (!cut) {
             setPhase('cutout', 0)
@@ -1930,6 +1932,8 @@ export function CampaignApp() {
           result = await watched(
             makeGreenScreen(background, cut, jobCampaign, jobAngle, next.headlineText, green, (p) => setPhase('cutting', p), {
               reactionName: file instanceof File ? file.name : undefined,
+              // A reaction he talks in keeps his voice (batch.talksIn).
+              ...(next.montage.bank.voice ? { voice: file } : {}),
             }),
           )
         } else if (next.montage) {
