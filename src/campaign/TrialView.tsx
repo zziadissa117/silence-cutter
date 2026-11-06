@@ -333,36 +333,40 @@ export function TrialView({
 
   // Copies made before 2026-11-06 played the clean clip twice (montageClips):
   // the ones not out yet are taken out once, and the loop makes them again.
+  // Each clip's length from the bank, or measured from the file.
   const undoubled = useRef(false)
   useEffect(() => {
     if (!campaign || !bank || undoubled.current || checking.current) return
-    const clipSec = (sourceId: string) => {
-      const s = bank.trial?.sources.find((x) => x.id === sourceId)
-      return bank.reactions.find((f) => f.id === s?.clip)?.seconds
-    }
-    const doubled = (p: ServerPost) =>
-      Boolean(p.batch?.trial && p.batch.source && ['waiting', 'approved', 'scheduled'].includes(p.status) && doubledCopy(p.duration, clipSec(p.batch.source)))
-    if (!posts.some(doubled)) return
+    const notOut = (p: ServerPost) => Boolean(p.batch?.trial && p.batch.source && ['waiting', 'approved', 'scheduled', 'uploading'].includes(p.status))
+    if (!posts.some(notOut)) return
     undoubled.current = true
-    void takeOutHook({
-      bank,
-      campaignId: campaign.id,
-      jobs,
-      matches: ({ post }) => Boolean(post && doubled(post)),
-      change: (b) => b,
-      removeJob,
-      save: saveBatchBank,
+    void (async () => {
+      const seconds = new Map<string, number>()
+      for (const s of bank.trial?.sources ?? []) {
+        const clip = bank.reactions.find((f) => f.id === s.clip)
+        if (!clip) continue
+        const known = clip.seconds ?? (await loadBankFile(clip).then((f) => (f ? measureSong(f) : null)).catch(() => null))
+        if (known) seconds.set(s.id, known)
+      }
+      const doubled = (p: ServerPost) => notOut(p) && doubledCopy(p.duration, seconds.get(p.batch!.source!))
+      if (!posts.some(doubled)) return
+      const out = await takeOutHook({
+        bank,
+        campaignId: campaign.id,
+        jobs,
+        matches: ({ post }) => Boolean(post && doubled(post)),
+        change: (b) => b,
+        removeJob,
+        save: saveBatchBank,
+      })
+      setBank(out.bank)
+      if (out.taken > 0) {
+        setSaid(`${out.taken} cop${out.taken === 1 ? 'y' : 'ies'} that played the clip twice ${out.taken === 1 ? 'was' : 'were'} taken out - new ones are made, one clip each.`)
+        onRun()
+      }
+    })().catch(() => {
+      undoubled.current = false
     })
-      .then((out) => {
-        setBank(out.bank)
-        if (out.taken > 0) {
-          setSaid(`${out.taken} cop${out.taken === 1 ? 'y' : 'ies'} that played the clip twice ${out.taken === 1 ? 'was' : 'were'} taken out - new ones are made, one clip each.`)
-          onRun()
-        }
-      })
-      .catch(() => {
-        undoubled.current = false
-      })
   }, [posts, bank, campaign?.id]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // A reel whose sound came out shorter than its clip (its start found too
@@ -531,6 +535,34 @@ export function TrialView({
     }
   }
 
+  /** Every copy not out yet taken out and made again - the reels and the
+   *  number a day stay (his ask, 2026-11-06: "a button ... to fix the videos
+   *  that are already scheduled"). */
+  const remakeAll = async () => {
+    if (!bank || !campaign) return
+    if (!window.confirm('Make every copy not out yet again? They are taken out (from Postiz too) and new ones are made for the same days.')) return
+    setBusy('Taking them out…')
+    setProblem(null)
+    try {
+      const out = await takeOutHook({
+        bank,
+        campaignId: campaign.id,
+        jobs,
+        matches: ({ post, job }) => Boolean(job?.batch?.trial || post?.batch?.trial),
+        change: (b) => b,
+        removeJob,
+        save: saveBatchBank,
+      })
+      setBank(out.bank)
+      setSaid(`${out.taken} cop${out.taken === 1 ? 'y' : 'ies'} taken out - new ones are being made${out.failed > 0 ? `; ${out.failed} couldn't be (${out.reason ?? 'already going out'})` : ''}.`)
+      onRun()
+    } catch (err) {
+      setProblem(err instanceof Error ? err.message : String(err))
+    } finally {
+      setBusy(null)
+    }
+  }
+
   /** Everything stopped: every video not out yet comes out. */
   const stopAll = async () => {
     if (!bank || !campaign) return
@@ -686,6 +718,14 @@ export function TrialView({
                 +5
               </button>
             </div>
+          </div>
+          <div className="setting">
+            <div className="setting-text">
+              <span className="row-line">Something wrong with the copies already made? Take out every one not out yet and make them again.</span>
+            </div>
+            <button type="button" className="btn small" disabled={busy !== null} onClick={() => void remakeAll()}>
+              Make again
+            </button>
           </div>
           {sources.map((s) => (
             <div key={s.id} className="setting">

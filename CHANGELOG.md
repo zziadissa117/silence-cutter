@@ -3,6 +3,16 @@
 Newest first. Every change says what it does, how to use it, and how it works
 underneath. Kept up to date with each commit.
 
+## Trial reels: "Make again" - every copy not out yet taken out and made again
+App only: run ./deploy.sh.
+**What he said (2026-11-06):** "it does the same exact thing for me ... Is there a button to do that, to fix the videos
+that are already scheduled?" His 49 copies not out yet (30 approved, 11 in Postiz, 7 waiting) were all 14 s.
+- The automatic clean-up of the doubled copies now measures a clip whose length the bank doesn't have, and takes the
+  ones still uploading too.
+- Trial reels has a "Make again" button: every trial copy not out yet - from Postiz too - is taken out and the loop
+  makes new ones for the same days; the reels, the number a day and the approval of each reel stay
+  (`TrialView.remakeAll`).
+
 ## Trial reels: a copy is its clip once - it played the clean clip a second time, without the words
 Needs deploying: run ./deploy-server.sh (./deploy.sh runs it by itself).
 **What he said (2026-11-06):** for Ilyan "the original video plays first ... the raw video plays right after. It makes
