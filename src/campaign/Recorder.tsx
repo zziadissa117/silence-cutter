@@ -21,17 +21,19 @@
 import { useCallback, useEffect, useRef, useState, type TouchEvent as ReactTouchEvent } from 'react'
 
 import { report } from '../report'
+import { describeClip } from './clipCheck'
 
 type Facing = 'user' | 'environment'
 
 /** Bitrate asked of the recorder by how many pixels the camera gives: the
  *  video is made again by the Cutter after, so this only has to keep all the
  *  detail there is (an iPhone's own 1080p is about 16 Mbps, 4K about 45). */
-function bitrateFor(width: number, height: number): number {
+export function bitrateFor(width: number, height: number, fps = 30): number {
   const pixels = width * height
-  if (pixels >= 3840 * 2160 * 0.9) return 45_000_000
-  if (pixels >= 2560 * 1440 * 0.9) return 28_000_000
-  return 16_000_000
+  const base = pixels >= 3840 * 2160 * 0.9 ? 45_000_000 : pixels >= 2560 * 1440 * 0.9 ? 28_000_000 : 20_000_000
+  // Twice the frames: more bits, so none is spent thinner (he pays for the
+  // space gladly - 2026-11-06: "Don't lower the quality").
+  return fps > 40 ? Math.round(base * 1.6) : base
 }
 
 /** The best kind of file this phone records: an iPhone's MP4 first. */
@@ -65,7 +67,10 @@ export function cameraConstraints(facing: Facing): MediaStreamConstraints {
       // for no sharper a picture, the video being 1080x1920 either way.
       width: { ideal: 1920 },
       height: { ideal: 1080 },
-      frameRate: { ideal: 30 },
+      // 60 frames a second where the camera has it (his ask, 2026-11-06:
+      // "It needs to be 60 FPS. Why is it 30 FPS?"); the video made from it
+      // keeps the same rate (quality.frameRateOf), which every platform takes.
+      frameRate: { ideal: 60 },
     },
     // His voice as the mic hears it: the Cutter does its own clean-up.
     audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false },
@@ -323,7 +328,7 @@ export function Recorder({ onDone, onCancel }: { onDone: (files: File[], clipSta
     try {
       r = new MediaRecorder(s, {
         ...(type.current ? { mimeType: type.current } : {}),
-        videoBitsPerSecond: bitrateFor(RECORD_WIDTH, RECORD_HEIGHT),
+        videoBitsPerSecond: bitrateFor(RECORD_WIDTH, RECORD_HEIGHT, camera.current?.getVideoTracks()[0]?.getSettings().frameRate ?? 30),
         audioBitsPerSecond: 192_000,
       })
     } catch (error) {
@@ -350,6 +355,10 @@ export function Recorder({ onDone, onCancel }: { onDone: (files: File[], clipSta
       const kind = r.mimeType || type.current || 'video/mp4'
       const blob = new Blob(chunks.current, { type: kind.split(';')[0] })
       if (blob.size > 0) {
+        // How evenly its frames came out, for when a take looks laggy.
+        void describeClip('recording', blob)
+          .then((line) => report({ kind: 'check', phase: 'record file', message: line }))
+          .catch(() => {})
         takes.current.push(new File([blob], takeName(began, kind, takes.current.length), { type: blob.type, lastModified: began.getTime() }))
         lengths.current.push(Date.now() - began.getTime())
         setTakeCount(takes.current.length)

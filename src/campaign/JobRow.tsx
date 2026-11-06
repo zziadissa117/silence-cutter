@@ -707,7 +707,7 @@ export function VideoFields({
               ))}
             <option value="none">No music</option>
           </select>
-          {picked ? <PlayButton name={picked.name} load={picked.load} /> : null}
+          {picked ? <PlayButton key={choice || 'angle'} name={picked.name} load={picked.load} /> : null}
         </div>
         {songs.length === 0 ? <span className="hint">Keep songs with names in Bank → Music to pick them here.</span> : null}
       </label>

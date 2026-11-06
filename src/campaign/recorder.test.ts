@@ -9,12 +9,12 @@ describe('the recorder', () => {
     expect(takeName(at, 'video/webm;codecs=vp9', 1)).toBe('REC 2026-11-03 14-05-09 (2).webm')
   })
 
-  it('asks the camera for Full HD - the recording size - at 30 fps, and the mic as it hears', () => {
+  it('asks the camera for Full HD - the recording size - at 60 fps, and the mic as it hears', () => {
     const c = cameraConstraints('user') as { video: MediaTrackConstraints; audio: MediaTrackConstraints }
     expect(c.video.facingMode).toEqual({ ideal: 'user' })
     expect(c.video.width).toEqual({ ideal: 1920 })
     expect(c.video.height).toEqual({ ideal: 1080 })
-    expect(c.video.frameRate).toEqual({ ideal: 30 })
+    expect(c.video.frameRate).toEqual({ ideal: 60 })
     expect(c.audio.noiseSuppression).toBe(false)
   })
 })

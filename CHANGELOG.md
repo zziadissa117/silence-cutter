@@ -3,6 +3,22 @@
 Newest first. Every change says what it does, how to use it, and how it works
 underneath. Kept up to date with each commit.
 
+## Recording at 60 frames a second; one track plays at a time
+App only: run ./deploy.sh.
+**What he said (2026-11-06):** a recording "looks like it's at a lower FPS at all times ... It needs to be 60 FPS.
+Why is it 30 FPS? Don't lower the quality"; and picking another song and pressing play, "the old music still goes
+on".
+- **60 fps** (`Recorder.cameraConstraints`): the camera is asked for 60 frames a second (it was asked for 30 - his
+  reports said "camera user: 1080x1920 @ 30 fps"); the recording takes a frame for each one, and the video made from
+  it keeps the same rate (`quality.frameRateOf`), at most 60 as every platform takes. Recorded at 32 Mbps at 60 fps
+  (20 at 30; was 16) - `bitrateFor`. A camera that can't do 60 gives its most.
+- Each part recorded now sends how evenly its frames came out (`record file`, `clipCheck.describeClip`): gaps between
+  frames, frames missing or held - so a laggy start can be seen in his report, not guessed.
+- His 2-minute Vertus take was drawn at a steady 30 a second, but while it was made the phone's decoder gave up once
+  mid-video and the Cutter carried on from the last frame - which can show as a hitch there.
+- **Music** (`TrackPlayer.PlayButton`): one track plays anywhere at a time - playing another stops the one playing at
+  once (not after it loads), a track still loading when another is picked never starts, and a new pick stops it.
+
 ## The video before keeps its sound; mute it if you want; see it on the questions screen
 App only: run ./deploy.sh.
 **What he said (2026-11-06):** the angle's video before (his format's, e.g. Vertus) came out muted - "If the video

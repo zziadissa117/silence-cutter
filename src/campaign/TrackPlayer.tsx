@@ -11,16 +11,33 @@ export function TrackPlayer({ file }: { file: BankFile }) {
   return <PlayButton name={file.name} load={() => loadBankFile(file)} />
 }
 
+/** The one track playing anywhere on the page, and how to tell its button
+ *  it stopped. Playing another always stops it first - a track picked while
+ *  another played went on under the new one (his report, 2026-11-06). */
+let current: { element: HTMLAudioElement; stopped: () => void } | null = null
+
+function stopCurrent(): void {
+  if (!current) return
+  current.element.pause()
+  current.stopped()
+  current = null
+}
+
 /** Play/stop for whichever track is picked: `load` reads it when he taps,
  *  and a new `name` (another track picked) stops the one playing. Only one
  *  plays at a time, anywhere on the page. */
 export function PlayButton({ name, load, disabled = false }: { name: string; load: () => Promise<Blob | null>; disabled?: boolean }) {
   const audio = useRef<HTMLAudioElement | null>(null)
   const url = useRef<string | null>(null)
+  /** Bumped by each tap and each track change: a load still going for an
+   *  older one never starts playing. */
+  const turn = useRef(0)
   const [playing, setPlaying] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
   const release = () => {
+    turn.current++
+    if (current && current.element === audio.current) stopCurrent()
     audio.current?.pause()
     audio.current = null
     if (url.current) URL.revokeObjectURL(url.current)
@@ -28,35 +45,45 @@ export function PlayButton({ name, load, disabled = false }: { name: string; loa
     setPlaying(false)
   }
 
-  // Another track picked: the old one stops and is let go.
+  // Another track picked, or the button gone: the old one stops and is let go.
   useEffect(() => {
     setError(null)
     return release
-  }, [name])
+  }, [name]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const toggle = async () => {
+    const mine = ++turn.current
     if (playing) {
-      audio.current?.pause()
+      if (current && current.element === audio.current) stopCurrent()
+      else audio.current?.pause()
       setPlaying(false)
       return
     }
     setError(null)
+    // Whatever plays elsewhere stops now, not once this one has loaded.
+    stopCurrent()
     try {
       if (!audio.current) {
         const stored = await load()
+        if (turn.current !== mine) return
         if (!stored) throw new Error('This track is no longer on the phone.')
         url.current = URL.createObjectURL(stored)
         const element = new Audio(url.current)
-        element.onended = () => setPlaying(false)
+        element.onended = () => {
+          if (current?.element === element) current = null
+          setPlaying(false)
+        }
         audio.current = element
       }
-      nowPlaying?.()
-      nowPlaying = () => {
-        audio.current?.pause()
-        setPlaying(false)
+      const element = audio.current
+      stopCurrent()
+      current = { element, stopped: () => setPlaying(false) }
+      element.currentTime = 0
+      await element.play()
+      if (turn.current !== mine) {
+        element.pause()
+        return
       }
-      audio.current.currentTime = 0
-      await audio.current.play()
       setPlaying(true)
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e))
@@ -78,9 +105,6 @@ export function PlayButton({ name, load, disabled = false }: { name: string; loa
     </>
   )
 }
-
-/** Stops whatever PlayButton is playing, so two never play over each other. */
-let nowPlaying: (() => void) | null = null
 
 /** The track's name, tap to rename. Empty keeps the old name. */
 export function TrackName({ name, onRename }: { name: string; onRename: (name: string) => void }) {
