@@ -457,6 +457,8 @@ export async function makeMontage(
     brightness?: number
     keepLines?: boolean
     keepShape?: boolean
+    /** A talking batch's captions (talkCaptions.ts). */
+    captions?: Parameters<typeof renderMontage>[0]['captions']
   } = {},
 ): Promise<CampaignResult> {
   const rendered = await renderMontage(
@@ -474,6 +476,7 @@ export async function makeMontage(
       brightness: extra.brightness,
       keepLines: extra.keepLines,
       keepShape: extra.keepShape,
+      captions: extra.captions ?? null,
     },
     onRenderProgress,
   )

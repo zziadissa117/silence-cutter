@@ -3,6 +3,16 @@
 Newest first. Every change says what it does, how to use it, and how it works
 underneath. Kept up to date with each commit.
 
+## Talking head formats: captions of what he says
+App only: run ./deploy.sh.
+- A talking head format's clip plays whole with his voice and now his captions too - in his own caption style, size
+  and position (Settings), unless captions are off. Each clip is listened to once, the first time a video is made
+  from it (`talkCaptions.ts` `talkWords`: the whole clip, never cut, timed with the letter model), and the words are
+  kept by what is in the clip, so every later video reuses them; montageRender draws them over the first clip
+  (`captions`). A clip that can't be heard is made without captions, and says why in his report (`talk captions`).
+- Not yet: captions on a green screen format where he talks.
+- Test: `talkCaptions.test.ts`.
+
 ## Batch formats: more of the ones whose videos get more views
 Needs deploying: run ./deploy-server.sh (./deploy.sh runs it by itself).
 - Each batch video's line keeps its format on the server too (`postiz/batch.ts` `format`, in the posts the phone

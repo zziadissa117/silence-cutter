@@ -25,6 +25,7 @@ import { isSilenceCutSupported } from '../media/silenceCut'
 import { openClip, usualFrame, writeWhole, type Clip } from './clipParts'
 import { framingAt, planMotion, randomFrom, reactionZoom, zoomPlace } from './effects'
 import { ONLY_HOOK_ELSE } from './batch'
+import { CAPTION_LEAD, PHRASE_HOLD_SEC, captionAt, captionRanges, drawStyledCaption, type CaptionPosition, type CaptionSize, type CaptionStyle, type CaptionWord } from './captions'
 import { drawFormula, formulaPush, layoutFormula, type FormulaLayout } from './formulaOverlay'
 import { headlineFontReady } from './headlineFont'
 import type { VideoLook } from './look'
@@ -165,6 +166,9 @@ export interface MontageRenderInput {
   /** The video keeps the first clip's own shape - a horizontal clip stays
    *  horizontal (a Trial reel, his ask 2026-11-06) - instead of 9:16. */
   keepShape?: boolean
+  /** A talking batch's captions: what he says in the first clip, on that
+   *  clip's own timeline (talkCaptions.ts), drawn as his talking videos'. */
+  captions?: { words: CaptionWord[]; position: CaptionPosition; size: CaptionSize; style: CaptionStyle } | null
 }
 
 /** The headline laid out a little smaller, step by step, until it takes no
@@ -261,7 +265,7 @@ export function liftMusic(channels: Float32Array[], gain: number, sampleRate: nu
 }
 
 export async function renderMontage(
-  { clips: files, look, headlineText, music, seed = '', formula = null, windows = [], reactionFirst = false, titles = [], voice = false, brightness = 0, keepLines = false, keepShape = false }: MontageRenderInput,
+  { clips: files, look, headlineText, music, seed = '', formula = null, windows = [], reactionFirst = false, titles = [], voice = false, brightness = 0, keepLines = false, keepShape = false, captions = null }: MontageRenderInput,
   onProgress?: (fraction: number) => void,
 ): Promise<MontageRenderResult> {
   if (files.length === 0) throw new SilenceCutError('Add at least one clip.')
@@ -391,6 +395,11 @@ export async function renderMontage(
     // for its first second and a half: a start that froze or lagged says so.
     const opening: { own: number; at: number }[] = []
     const stretches: { fill: ReturnType<typeof cover>; start: number; length: number }[] = []
+    // His words over the first clip, on the video's timeline: the clip plays
+    // from its first frame shown (clips[0].first).
+    const said = captions?.words.length ? captions.words.map((w) => ({ ...w, start: w.start - clips[0].first, end: w.end - clips[0].first })) : []
+    const saidRanges = captions ? captionRanges(said, captions.style) : []
+    const saidTimes = said.map((w) => w.start)
     const frameAt = async (sample: VideoSample, i: number, t: number) => {
       const { fill, start, length } = stretches[i]
       onProgress?.(Math.min(0.99, t / total))
@@ -422,6 +431,11 @@ export async function renderMontage(
       const title = titleLayouts[i]
       if (title) drawHeadline(ctx, title)
       if (i === 0 && formulaLayout && logos) drawFormula(ctx, formulaLayout, logos)
+      // What he says, on top of everything, while his clip plays.
+      if (i === 0 && captions && said.length > 0) {
+        const word = captionAt(saidTimes, said, t, captions.style === 'word' ? undefined : PHRASE_HOLD_SEC)
+        if (word >= 0) drawStyledCaption(ctx, width, height, said, saidRanges, word, t + CAPTION_LEAD - saidTimes[word], false, captions.position, captions.size, captions.style)
+      }
       const frame = new VideoSample(canvas, { timestamp: t, duration: 1 / FPS })
       await videoSource.add(frame)
       frame.close()

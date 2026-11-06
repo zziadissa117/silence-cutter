@@ -50,6 +50,7 @@ import type { PictureReview, PopReview } from './CaptionReview'
 import { CutsEditor } from './CutsEditor'
 import { EditScreen, type EditedCuts } from './EditScreen'
 import { CheckQuestions } from './CheckQuestions'
+import { keptWords, talkWords } from './talkCaptions'
 import {
   captionWords,
   withRestored,
@@ -1938,6 +1939,29 @@ export function CampaignApp() {
         } else if (next.montage) {
           const rest = await montageClips(next)
           const track = await montageMusic(next)
+          // A talking head batch: what he says, heard once per clip
+          // (talkCaptions.ts), drawn over it - unless captions are off.
+          let said: CaptionWord[] = []
+          const talkingClip = next.montage.bank?.voice && !trialLook ? next.montage.bank.reaction : null
+          if (talkingClip && captionsRef.current) {
+            try {
+              if (!keptWords(talkingClip)) setPhase('listening', 0)
+              said = drawnWords(
+                await watched(
+                  talkWords(talkingClip, file, {
+                    settings: next.settings,
+                    names: jobCampaign.brandWords ?? [],
+                    onModel: (p) => setPhase('model', p),
+                    onListen: (p) => setPhase('listening', p),
+                  }),
+                ),
+                bareRef.current,
+              )
+            } catch (error) {
+              // Made without its captions rather than not at all.
+              report({ page: 'campaign', kind: 'fallback', phase: 'talk captions', message: error instanceof Error ? error.message : String(error) })
+            }
+          }
           setPhase('cutting', 0)
           // Each step's name over its clip. Videos planned before the name was
           // kept with them take it from the campaign's steps as they are now -
@@ -1970,6 +1994,9 @@ export function CampaignApp() {
               reactionFirst: Boolean(next.montage.bank) && !trialLook,
               brightness: trialLook?.brightness,
               keepLines: Boolean(trialLook),
+              ...(said.length > 0
+                ? { captions: { words: said, position: defaultCaptionPosition(), size: defaultCaptionSize(), style: defaultCaptionStyle() } }
+                : {}),
               // A Trial reel keeps its clip's shape: horizontal stays horizontal.
               keepShape: Boolean(trialLook),
               voice: next.montage.bank?.voice === true,

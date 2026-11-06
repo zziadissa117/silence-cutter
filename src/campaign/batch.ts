@@ -60,7 +60,7 @@ export interface BatchFormat {
 
 export const FORMAT_KINDS: { kind: FormatKind; label: string; hint: string }[] = [
   { kind: 'reaction', label: 'Reaction', hint: 'You react without a word, then the product. Music only.' },
-  { kind: 'talking', label: 'Talking head', hint: 'You talk to the camera - your voice kept, music under it - then the product.' },
+  { kind: 'talking', label: 'Talking head', hint: 'You talk to the camera - your voice kept with captions, music under it - then the product.' },
   { kind: 'greenscreen', label: 'Green screen', hint: 'The product plays full screen, you cut out of your background in a corner.' },
 ]
 

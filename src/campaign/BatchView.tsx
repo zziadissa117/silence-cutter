@@ -1187,7 +1187,7 @@ export function BatchView({
               'reactions',
               f.kind === 'talking' ? 'You talking' : 'You',
               f.kind === 'talking'
-                ? 'Each plays whole with your voice, the headline over it, then the product.'
+                ? 'Each plays whole with your voice, the headline and captions of what you say over it, then the product. Each clip is listened to once, the first time it is used.'
                 : green
                   ? 'You, cut out of your background and put in the corner. Talking: the video lasts as long as you do.'
                   : 'They go first, with the headline over them - slowly zooming in. No sound but the music.',
