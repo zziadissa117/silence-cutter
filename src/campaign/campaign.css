@@ -1081,8 +1081,8 @@ input[type='color']::-webkit-color-swatch { border: 0.5px solid var(--edge); bor
 .recorder-round { width: 46px; height: 46px; border: 0; border-radius: 50%; background: rgb(0 0 0 / 0.45); color: #fff; font-size: 20px; cursor: pointer; }
 .recorder-round.on { background: #ffd60a; color: #000; }
 .recorder-round:disabled { opacity: 0.35; }
-.recorder-bottom { position: absolute; left: 0; right: 0; bottom: calc(env(safe-area-inset-bottom) + 36px); display: flex; align-items: center; justify-content: space-around; }
-.recorder-shutter { width: 78px; height: 78px; padding: 0; border: 5px solid #fff; border-radius: 50%; background: none; display: grid; place-items: center; cursor: pointer; }
+.recorder-bottom { position: absolute; left: 0; right: 0; bottom: calc(env(safe-area-inset-bottom) + 72px); display: flex; align-items: center; justify-content: space-around; }
+.recorder-shutter { position: relative; width: 84px; height: 84px; padding: 0; border: 0; border-radius: 50%; background: none; display: grid; place-items: center; cursor: pointer; }
 .recorder-shutter span { width: 62px; height: 62px; border-radius: 50%; background: #ff3b30; transition: all 0.2s ease; }
 .recorder-shutter.on span { width: 30px; height: 30px; border-radius: 7px; }
 .recorder.lit .recorder-shutter { border-color: #ddd; }
@@ -1129,3 +1129,18 @@ input[type='color']::-webkit-color-swatch { border: 0.5px solid var(--edge); bor
 .brand-line { display: flex; align-items: center; gap: 12px; margin: 0 0 16px; }
 .brand-line img { width: 40px; height: 40px; border-radius: 10px; flex-shrink: 0; }
 .brand-line > span { display: flex; flex-direction: column; }
+
+/* The record button's ring: white, filling red around like a clock, a minute a lap (2026-11-06). */
+.recorder-ring { position: absolute; inset: 0; width: 100%; height: 100%; transform: rotate(-90deg); pointer-events: none; }
+.recorder-ring circle { fill: none; stroke-width: 6; }
+.recorder-ring-track { stroke: #fff; }
+.recorder-ring-done { stroke: #ff3b30; stroke-linecap: round; transition: stroke-dasharray 0.25s linear; }
+.recorder.lit .recorder-ring-track { stroke: #ddd; }
+.recorder-zoom { position: absolute; top: 45%; left: 50%; transform: translateX(-50%); padding: 6px 12px; border-radius: 14px; background: rgb(0 0 0 / 0.55); color: #fff; font-weight: 700; font-variant-numeric: tabular-nums; pointer-events: none; }
+.recorder-ask { position: absolute; z-index: 5; left: 16px; right: 16px; bottom: calc(env(safe-area-inset-bottom) + 170px); padding: 16px; border-radius: 18px; background: #1c1c1e; color: #fff; box-shadow: 0 8px 30px rgb(0 0 0 / 0.5); }
+.recorder-ask p { margin: 0 0 12px; font-weight: 600; text-align: center; }
+.recorder-ask-buttons { display: flex; gap: 10px; }
+.recorder-ask-buttons .btn { flex: 1; }
+.recorder-ask .btn.danger { background: #ff3b30; color: #fff; }
+@media (prefers-reduced-motion: reduce) { .recorder-ring-done { transition: none; } }
+.reaction-fields { display: flex; flex-direction: column; gap: 10px; margin: 6px 0 10px; }

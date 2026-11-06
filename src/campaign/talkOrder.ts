@@ -38,6 +38,9 @@ export interface MakeOrder {
   angleId: string
   headlineStyle?: HeadlineStyle
   headlinePlace: HeadlinePlace | null
+  /** How long the headline stays, when not the angle's (a reaction's: the
+   *  whole video or its first clip - noTalk.ts). */
+  headlineSeconds?: number
   headlineText: string
   captions: CaptionWord[]
   voice: boolean

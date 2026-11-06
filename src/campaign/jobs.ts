@@ -54,6 +54,15 @@ export type Job = {
     noCaptions?: boolean
     hookCaptions?: boolean
     keep?: Range[]
+    /** Where each new clip starts (s): flips and pauses while recording in
+     *  the Cutter (Recorder.clipStarts). */
+    marks?: number[]
+    /** No talking heard: a reaction - kept whole, no captions (noTalk.ts). */
+    noSpeech?: boolean
+    /** A reaction's headline: the whole video (true) or the first clip only. */
+    headlineWhole?: boolean
+    /** Words on clips 2, 3 and on, by clip. */
+    clipTexts?: string[]
     /** The track under this video: an angle's, as "campaignId:angleId", or
      *  "none". Absent means the video's own angle's. */
     music?: string

@@ -14,6 +14,7 @@ import { totalDuration } from '../media/silenceMath'
 import { ChevronDown } from './icons'
 import type { PictureChoice } from './skipPictures'
 import { canShareFiles, formatTime, outputName, share, type Job } from './jobs'
+import { clipsOf } from './noTalk'
 import { HEADLINE_STYLES, LIMITS, type Campaign, type HeadlineStyle } from './look'
 import { songFile, useMusicBank } from './musicBank'
 import { PlayButton } from './TrackPlayer'
@@ -52,6 +53,7 @@ export function JobRow({
   onHeadlineStyle,
   onRetry,
   onRemove,
+  onReaction,
   onStop,
   onPost,
   onEditAgain,
@@ -88,6 +90,8 @@ export function JobRow({
   onHeadlineStyle?: (style: HeadlineStyle) => void
   onRetry: () => void
   onRemove: () => void
+  /** A reaction (no talking): the headline's length and words on each clip. */
+  onReaction?: (fields: { headlineWhole?: boolean; clipTexts?: string[] }) => void
   /** Stops it while it is being made or joined - approved by mistake. */
   onStop?: () => void
   /** Sends a finished video to Postiz by hand, when it didn't go itself. */
@@ -152,7 +156,7 @@ export function JobRow({
         : job.status === 'sorted'
           ? unsure
             ? `Needs you · ${job.day?.guess?.why ?? ''}`
-            : [label, job.headlineText && `"${job.headlineText}"`].filter(Boolean).join(' · ')
+            : [job.day?.noSpeech ? 'Reaction, no talking' : null, label, job.headlineText && `"${job.headlineText}"`].filter(Boolean).join(' · ')
           : job.status === 'approved'
             ? job.onServer
               ? `Approved · going to the server to be made · ${label}`
@@ -278,6 +282,7 @@ export function JobRow({
               joinWith={joinWith}
               onJoin={onJoin}
               parts={parts}
+              onReaction={onReaction}
             />
           ) : null}
 
@@ -465,7 +470,9 @@ function SortedDetails({
   joinWith,
   onJoin,
   parts,
+  onReaction,
 }: {
+  onReaction?: (fields: { headlineWhole?: boolean; clipTexts?: string[] }) => void
   job: Job
   campaigns: Campaign[]
   onChoose: (campaignId: string, angleId: string) => void
@@ -491,7 +498,8 @@ function SortedDetails({
   const toCheck = (plan?.checks ?? []).filter((c) => c.kind !== 'noise').length
   return (
     <>
-      <div className="quote">{heard ? `"${heard.length > 160 ? `${heard.slice(0, 160)}…` : heard}"` : 'No words heard.'}</div>
+      {/* A reaction: what the model made up over the sound is not shown. */}
+      <div className="quote">{heard && !job.day?.noSpeech ? `"${heard.length > 160 ? `${heard.slice(0, 160)}…` : heard}"` : 'No words heard.'}</div>
       {asked ? null : (
         <VideoFields
           job={job}
@@ -503,6 +511,7 @@ function SortedDetails({
           onMusic={onMusic}
         />
       )}
+      {job.day?.noSpeech && onReaction ? <ReactionFields job={job} onReaction={onReaction} /> : null}
       {asked ? null : <PictureToggles pictures={pictures} skipped={job.day?.skipPictures} onSkip={onSkipPicture} />}
       {clips}
       {parts ? (
@@ -544,6 +553,63 @@ function SortedDetails({
         <div className="facts">No talking over the product, so it is kept whole.</div>
       ) : null}
     </>
+  )
+}
+
+/** A video with no talking: a reaction (noTalk.ts). Kept whole with no
+ *  captions; the headline the whole video or only the first clip, and words
+ *  on each clip after it - asked simply, here (his ask, 2026-11-06). */
+function ReactionFields({ job, onReaction }: { job: Job; onReaction: (fields: { headlineWhole?: boolean; clipTexts?: string[] }) => void }) {
+  const clips = clipsOf(job.day?.marks, job.day?.plan?.duration ?? 0)
+  const texts = job.day?.clipTexts ?? []
+  const whole = job.day?.headlineWhole === true
+  return (
+    <div className="reaction-fields">
+      <div className="facts">No talking, so it's a reaction: kept whole, no captions.</div>
+      {clips.length > 1 ? (
+        <>
+          <div className="field">
+            <span className="label">The headline stays on</span>
+            <div className="seg full" role="radiogroup" aria-label="How long the headline stays">
+              {[
+                { whole: false, label: 'First clip only' },
+                { whole: true, label: 'Whole video' },
+              ].map((o) => (
+                <button
+                  key={o.label}
+                  type="button"
+                  role="radio"
+                  aria-checked={whole === o.whole}
+                  className={whole === o.whole ? 'active' : ''}
+                  onClick={() => onReaction({ headlineWhole: o.whole })}
+                >
+                  {o.label}
+                </button>
+              ))}
+            </div>
+          </div>
+          {clips.slice(1).map((clip, i) => (
+            <label className="field" key={i}>
+              <span className="label">
+                Words on clip {i + 2} <span className="hint">({formatTime(clip.start)} on)</span>
+              </span>
+              <input
+                type="text"
+                value={texts[i] ?? ''}
+                maxLength={LIMITS.headlineChars}
+                placeholder="None"
+                onChange={(e) => {
+                  const next = clips.slice(1).map((_, k) => (k === i ? e.target.value : (texts[k] ?? '')))
+                  onReaction({ clipTexts: next })
+                }}
+              />
+            </label>
+          ))}
+        </>
+      ) : (
+        <div className="hint">Flip the camera while recording to make clips: then you can put other words on each one.</div>
+      )}
+    </div>
   )
 }
 
@@ -613,7 +679,7 @@ export function VideoFields({
           onChange={(e) => onHeadline(e.target.value)}
           onBlur={onHeadlineDone}
         />
-        {angle?.headline.fromFirstLine ? <span className="hint">{job.headlineMine ? 'Yours.' : 'Written from the video.'}</span> : null}
+        {angle?.headline.fromFirstLine && !job.day?.noSpeech ? <span className="hint">{job.headlineMine ? 'Yours.' : 'Written from the video.'}</span> : null}
       </label>
       {onHeadlineStyle ? <HeadlineLook value={job.day?.headlineStyle ?? angle?.headline.style ?? 'box'} onPick={onHeadlineStyle} /> : null}
       <label className="field">

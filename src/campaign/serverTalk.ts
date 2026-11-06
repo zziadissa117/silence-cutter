@@ -98,7 +98,8 @@ async function runMake(order: MakeOrder): Promise<void> {
   const campaign = campaigns.find((c) => c.id === order.campaignId)
   const own = campaign?.angles.find((a) => a.id === order.angleId)
   if (!campaign || !own) throw new SilenceCutError("The server doesn't have this campaign yet - it makes it on the phone.")
-  const angle = withHeadlinePlace(withHeadlineStyle(own, order.headlineStyle), order.headlinePlace)
+  const placed = withHeadlinePlace(withHeadlineStyle(own, order.headlineStyle), order.headlinePlace)
+  const angle = order.headlineSeconds ? { ...placed, headline: { ...placed.headline, seconds: order.headlineSeconds } } : placed
   const file = await fileOf(order.fileId, order.send.fileName)
   const bank = await loadBank()
   const clips = {

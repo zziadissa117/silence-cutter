@@ -3,6 +3,29 @@
 Newest first. Every change says what it does, how to use it, and how it works
 underneath. Kept up to date with each commit.
 
+## Recorder: a clock ring, Delete asks first, pinch to zoom; a video with no talking is a reaction
+App only: run ./deploy.sh.
+**What he asked (2026-11-06):** the record button with a one-minute timer going round it in red like TikTok, a little
+higher; Delete (back) asks Confirm/Cancel; no limit on length; zoom; and "If you don't detect any speech ... put it
+under the reaction section ... not silenced or cut at all. No need to put captions", with the headline the whole video
+or only the first clip, and other words on the second, third... clip. "Clips + music, no talking" taken out.
+- **Recorder** (`Recorder.tsx`): a ring around the record button fills red a minute a lap, like a clock, and goes
+  round again after a minute - nothing stops at a minute (`ringFraction`). The buttons sit higher. ⌫ asks "Delete the
+  last clip?" Cancel / Delete. Pinch the picture to zoom: the camera's own zoom where the phone has it, else the
+  picture itself up to 4× (in the recording too); "2.0×" shows while pinching; a flip starts unzoomed.
+- **Clips**: each flip while recording and each part after a pause starts a new clip; where each starts is kept with
+  the video (`clipStarts`, `day.marks`).
+- **No talking = a reaction** (`noTalk.ts` `noSpeechIn`, `CampaignApp.afterListen`): fewer than 3 real words heard -
+  or only what the speech model makes up over other sound ("Thank you", one phrase looping) - and it goes to the
+  reaction campaign his last one went to (the first otherwise, marked Needs you): kept whole (no cuts), no captions,
+  no caption check (Approve on its row), the timeline editor not opened by itself.
+- **Its row** (`JobRow.ReactionFields`): "The headline stays on: First clip only / Whole video" (remembered for the
+  next), and "Words on clip 2 (0:04 on)", clip 3 and on - each up for its whole clip where the headline sits, in its
+  look (`noTalk.clipTexts`, drawn like words typed in the edit screen). Made on the phone or on the Cutter server
+  (`MakeOrder.headlineSeconds`).
+- Checked in a test browser with the fake camera: the ring fills, Delete asks and Cancel keeps the clip, a recording
+  with a flip and no talking came back as "Reaction, no talking" with clip 2 at the flip. Tests: `noTalk.test.ts`.
+
 ## Branded with UGC Roadmap's logo
 App only: run ./deploy.sh.
 **What he asked (2026-11-05):** "Brand the cutter with this UGC Roadmap logo somewhere".

@@ -233,6 +233,7 @@ import { keepEven } from './keepEven'
 import { linkBatches, SERVER_URL_EVENT, serverUrl } from './serverLink'
 import { dropTalk, orderListen, orderMake, serverLetDown, talkNow, talkPlan, talkServerUp, upload } from './talkLink'
 import { popsSaid, talkFileId, toServer, type MakeOrder, type TalkSummary } from './talkOrder'
+import { clipTexts, clipsOf, headlineSeconds, noSpeechIn } from './noTalk'
 import { reportMaking, SERVER_BANKS_EVENT, SERVER_COMMAND_EVENT, serverLog, type ServerCommand, type ServerMaking } from './serverMode'
 import { TabBar, type Tab } from './TabBar'
 import { BackToMore, MoreView } from './MoreView'
@@ -271,6 +272,39 @@ function remember(campaignId: string, angleId: string | null): void {
 }
 
 const MODE_KEY = 'campaign.mode'
+const LAST_REACTION_KEY = 'campaign.lastReaction'
+const HEADLINE_WHOLE_KEY = 'campaign.reactionHeadlineWhole'
+/** The reaction campaign his last no-talking video went to. */
+function lastReactionCampaign(): string | null {
+  try {
+    return localStorage.getItem(LAST_REACTION_KEY)
+  } catch {
+    return null
+  }
+}
+function keepLastReactionCampaign(id: string): void {
+  try {
+    localStorage.setItem(LAST_REACTION_KEY, id)
+  } catch {
+    // Asked again next time.
+  }
+}
+/** Whether his last reaction's headline stayed the whole video. */
+function lastHeadlineWhole(): boolean {
+  try {
+    return localStorage.getItem(HEADLINE_WHOLE_KEY) === '1'
+  } catch {
+    return false
+  }
+}
+function keepLastHeadlineWhole(whole: boolean): void {
+  try {
+    localStorage.setItem(HEADLINE_WHOLE_KEY, whole ? '1' : '0')
+  } catch {
+    // Asked again next time.
+  }
+}
+
 type Mode = 'one' | 'day' | 'clips' | 'join'
 
 /** Sorting the day is where it starts; picking the campaign by hand is the
@@ -513,14 +547,52 @@ export function CampaignApp() {
   /** Whether a video has talking to check and cut: every talking-head one,
    *  and a reaction only when he talks over the product. */
   const talkingIn = (job: Job): boolean =>
-    !job.montage && (!job.reaction || Boolean(job.day?.plan && talksIn(job.day.plan.words, job.day.plan.keep)))
+    !job.montage && !job.day?.noSpeech && (!job.reaction || Boolean(job.day?.plan && talksIn(job.day.plan.words, job.day.plan.keep)))
 
   /** A video's plan with its cuts as he fixed them, if he did. */
+  /** A reaction (no talking - noTalk.ts): how long its headline stays and
+   *  the words he put on its clips, for making it. */
+  const reactionHeadlineSeconds = (job: Job, angle: Angle): number | undefined =>
+    job.day?.noSpeech ? headlineSeconds(job.day.headlineWhole === true, clipsOf(job.day.marks, job.day.plan?.duration ?? 0), angle.headline.seconds) : undefined
+  const reactionTexts = (job: Job): ManualPicture[] => {
+    if (!job.day?.noSpeech) return []
+    const angle = campaignsRef.current.find((c) => c.id === job.campaignId)?.angles.find((a) => a.id === job.angleId)
+    const place = headlinePlaceOf(job.day, job.angleId)
+    return clipTexts(job.day.clipTexts, clipsOf(job.day.marks, job.day.plan?.duration ?? 0), job.day.headlineStyle ?? angle?.headline.style ?? 'box', place ? { x: place.x, y: place.y } : undefined)
+  }
+
   /** What a video becomes once it has been listened to - here or on the
    *  Cutter server (talkLink.ts): sorted into a campaign and angle (unless he
    *  chose them), its headline written, kept on the phone. Returns the job's
    *  new fields. */
   const afterListen = async (next: Job, plan: CampaignPlan): Promise<Partial<Job>> => {
+    // No talking at all: a reaction (his ask, 2026-11-06) - kept whole, no
+    // captions, in the reaction campaign he used last.
+    if (!next.reaction && !next.forFormat && !next.day?.chosen && noSpeechIn(plan.words)) {
+      const reactions = campaignsRef.current.filter(isReaction)
+      const last = reactions.find((c) => c.id === lastReactionCampaign())
+      const campaign = last ?? reactions[0] ?? campaignsRef.current.find((c) => c.general)
+      const angle = campaign?.angles.find((a) => !a.isFormat) ?? campaign?.angles[0]
+      const guess = {
+        campaignId: campaign?.id ?? '',
+        angleId: angle?.id ?? '',
+        sure: Boolean(last),
+        why: last ? 'No talking: a reaction, for the campaign of your last one' : 'No talking: a reaction - which campaign?',
+      }
+      const headlineText = angle && !angle.headline.fromFirstLine ? angle.headline.text : ''
+      const day = {
+        plan,
+        guess,
+        approved: false,
+        noSpeech: true,
+        keep: [{ start: 0, end: plan.duration }],
+        noCaptions: true,
+        headlineWhole: lastHeadlineWhole(),
+        ...(next.day?.marks ? { marks: next.day.marks } : {}),
+      }
+      await recordDay(next.id, day, { campaignId: guess.campaignId, angleId: guess.angleId, headlineText })
+      return { status: 'sorted', day, campaignId: guess.campaignId, angleId: guess.angleId, headlineText, label: campaign && angle ? labelOf(campaign, angle) : '' }
+    }
     const campaigns = campaignsRef.current.filter((c) => !isReaction(c) || c.id === next.campaignId)
     // A video he added for a campaign himself stays there: it was
     // listened to for its captions, not to be sorted.
@@ -551,7 +623,7 @@ export function CampaignApp() {
     // A format's take is made straight away: he checks the finished
     // videos on the Formats tab instead.
     const approved = Boolean(next.forFormat)
-    const day = { plan, guess, approved, ...(next.day?.chosen ? { chosen: true } : {}) }
+    const day = { plan, guess, approved, ...(next.day?.chosen ? { chosen: true } : {}), ...(next.day?.marks ? { marks: next.day.marks } : {}) }
     await recordDay(next.id, day, { campaignId: guess.campaignId, angleId: guess.angleId, headlineText, ...(written ? { videoHeadline: written } : {}) })
     return {
       status: approved ? 'approved' : 'sorted',
@@ -580,6 +652,8 @@ export function CampaignApp() {
   /** Recordings sent and asked for in this visit (the server keeps them
    *  across a reload: asking again changes nothing there). */
   const talkOrdered = useRef(new Set<string>())
+  /** Where each clip of a recording made in the Cutter starts, by its name. */
+  const recordedClips = useRef(new Map<string, number[]>())
   /** The server said no lately (talkServerUp): the phone listens itself. */
   const [talkDown, setTalkDown] = useState(false)
   const talkSending = useRef(false)
@@ -667,6 +741,11 @@ export function CampaignApp() {
       angleId: job.angleId,
       ...(job.day?.headlineStyle ? { headlineStyle: job.day.headlineStyle } : {}),
       headlinePlace: headlinePlaceOf(job.day, job.angleId),
+      ...((): { headlineSeconds?: number } => {
+        const own = campaignsRef.current.find((c) => c.id === job.campaignId)?.angles.find((a) => a.id === job.angleId)
+        const seconds = own ? reactionHeadlineSeconds(job, own) : undefined
+        return seconds ? { headlineSeconds: seconds } : {}
+      })(),
       headlineText: job.headlineText,
       captions: captionsRef.current ? drawnWords(captionsFor(job, plan), bareRef.current) : [],
       voice: voiceRef.current,
@@ -680,7 +759,7 @@ export function CampaignApp() {
       captionSize: job.day?.captionSize ?? defaultCaptionSize(),
       captionStyle: job.day?.captionStyle ?? defaultCaptionStyle(),
       pops: { videos: said.filter((c) => popFiles[c.id]), files: popFiles, sizePct: pops.sizePct, position: pops.position },
-      byHand: { texts: (job.day?.overlays ?? []).filter(isText), videos: handVideos },
+      byHand: { texts: [...(job.day?.overlays ?? []).filter(isText), ...reactionTexts(job)], videos: handVideos },
       send: {
         key: postKeyOf(job.id, job.version),
         profileId: local.profile.id,
@@ -1904,7 +1983,10 @@ export function CampaignApp() {
             plan,
             jobCampaign,
             // Where he moved the headline in the edit screen.
-            withHeadlinePlace(jobAngle, headlinePlaceOf(next.day, next.angleId)),
+            ((placed) => {
+              const seconds = reactionHeadlineSeconds(next, placed)
+              return seconds ? { ...placed, headline: { ...placed.headline, seconds } } : placed
+            })(withHeadlinePlace(jobAngle, headlinePlaceOf(next.day, next.angleId))),
             bankRef.current,
             next.headlineText,
             next.id,
@@ -2134,6 +2216,8 @@ export function CampaignApp() {
       js.map((j) => (j.id === id ? { ...j, campaignId, angleId, headlineText, label: labelOf(campaign, angle) } : j)),
     )
     void recordDay(id, job.day, { campaignId, angleId, headlineText })
+    // A reaction put in a reaction campaign: the next one goes there by itself.
+    if (job.day.noSpeech && isReaction(campaign)) keepLastReactionCampaign(campaign.id)
   }
 
   const setHeadline = (id: string, headlineText: string) =>
@@ -2323,7 +2407,11 @@ export function CampaignApp() {
           status: 'queued',
           phase: 'cutting',
           progress: 0,
-          ...(day ? { day: { approved: false } } : check ? { day: { approved: false, chosen: true } } : {}),
+          ...(day
+            ? { day: { approved: false, ...(recordedClips.current.get(file.name) ? { marks: recordedClips.current.get(file.name) } : {}) } }
+            : check
+              ? { day: { approved: false, chosen: true } }
+              : {}),
           ...order[files.indexOf(file)].filming,
           // A wide clip he asked to only make 9:16; a 9:16 one is always cut.
           ...(!cutWide && order[files.indexOf(file)].filming.vertical === false ? { noCut: true } : {}),
@@ -3200,7 +3288,7 @@ export function CampaignApp() {
       status: 'queued',
       phase: 'joining',
       progress: 0,
-      day: { approved: false },
+      day: { approved: false, ...(recordedClips.current.get(files.map((f) => f.name).join(' + ')) ? { marks: recordedClips.current.get(files.map((f) => f.name).join(' + ')) } : {}) },
       prejoin: { clips, files: rest },
     }
     setJobs((current) => [...current, job])
@@ -3435,9 +3523,6 @@ export function CampaignApp() {
                   Reaction video
                 </button>
               ) : null}
-              <button type="button" className="btn small" onClick={() => setMode('clips')}>
-                Clips + music, no talking
-              </button>
               <button type="button" className="btn small" onClick={() => setMode('join')}>
                 Join recordings first
               </button>
@@ -3580,6 +3665,7 @@ export function CampaignApp() {
                 onRetry={() => startHeld(job.id)}
                 onRemove={() => removeJob(job.id)}
                 onStop={() => void stopJob(job.id)}
+                onReaction={(fields) => setReaction(job.id, fields)}
                 onPost={postByHand(job)}
                 postingNote={
                   unsent.includes(job)
@@ -3743,7 +3829,7 @@ export function CampaignApp() {
       else lost++
     }
     if (lost > 0) setNotice(`${lost} video${lost === 1 ? '' : 's'} you put on this video could not be found, so ${lost === 1 ? 'it was' : 'they were'} left off.`)
-    return { texts: overlays.filter(isText), videos }
+    return { texts: [...overlays.filter(isText), ...reactionTexts(job)], videos }
   }
 
   /** A talking video's headline on the edit screen: as it will be made, at
@@ -3877,6 +3963,17 @@ export function CampaignApp() {
   }
 
   /** This video's pop-up videos: how big, where, and which are left out. */
+  /** A reaction's headline length and words on its clips; the length is
+   *  remembered for the next one. */
+  const setReaction = (id: string, fields: { headlineWhole?: boolean; clipTexts?: string[] }) => {
+    const job = jobs.find((j) => j.id === id)
+    if (!job?.day) return
+    const day = { ...job.day, ...fields }
+    if (fields.headlineWhole !== undefined) keepLastHeadlineWhole(fields.headlineWhole)
+    setJobs((js) => js.map((j) => (j.id === id ? { ...j, day } : j)))
+    void recordDay(id, day, { campaignId: job.campaignId, angleId: job.angleId, headlineText: job.headlineText })
+  }
+
   const setPops = (id: string, fields: { popSize?: number; popPosition?: PopPosition; skipPops?: string[] }) => {
     const job = jobs.find((j) => j.id === id)
     if (!job?.day) return
@@ -4007,6 +4104,9 @@ export function CampaignApp() {
     }
     if (job.status !== 'sorted' || !job.day?.plan || inFlowRef.current || tab !== 'videos') return
     setEditorWanted(null)
+    // A reaction (no talking) has no captions to check: its headline and the
+    // words on its clips are on its row.
+    if (job.day.noSpeech) return
     setOpenFull((all) => new Set(all).add(job.id))
     startCheck([job.id])
   }, [jobs, editorWanted, tab]) // eslint-disable-line react-hooks/exhaustive-deps
@@ -4220,8 +4320,10 @@ export function CampaignApp() {
     ) : recordingOpen ? (
       <Recorder
         onCancel={() => setRecordingOpen(false)}
-        onDone={(files) => {
+        onDone={(files, starts) => {
           setRecordingOpen(false)
+          // Where each clip starts (flips and pauses): for a reaction's words per clip.
+          if (starts.length > 0) recordedClips.current.set(files.length === 1 ? files[0].name : files.map((f) => f.name).join(' + '), starts)
           // One part is a video, sorted like a picked one; several are joined first.
           setEditorWanted(files.length === 1 ? files[0].name : files.map((f) => f.name).join(' + '))
           if (files.length === 1) addFiles(files, true, true)

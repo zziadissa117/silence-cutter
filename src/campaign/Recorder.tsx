@@ -18,7 +18,7 @@
 // What he records goes on exactly as a picked video does: one take is one
 // video, sorted into its campaign; several are joined first (addJoined).
 
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState, type TouchEvent as ReactTouchEvent } from 'react'
 
 import { report } from '../report'
 
@@ -83,7 +83,31 @@ export function coverBox(w: number, h: number, width = RECORD_WIDTH, height = RE
   return { x: (width - w * scale) / 2, y: (height - h * scale) / 2, w: w * scale, h: h * scale }
 }
 
-export function Recorder({ onDone, onCancel }: { onDone: (files: File[]) => void; onCancel: () => void }) {
+/** Where a new clip starts in the finished recording, in seconds: each flip
+ *  of the camera while recording and each part after a pause - for a
+ *  reaction's texts, one per clip (his ask, 2026-11-06). Marks closer than
+ *  half a second to the start, the end or each other are one. */
+export function clipStarts(marksMs: readonly number[], totalMs: number): number[] {
+  const out: number[] = []
+  for (const ms of [...marksMs].sort((a, b) => a - b)) {
+    if (ms < 500 || ms > totalMs - 500) continue
+    if (out.length > 0 && ms - out[out.length - 1] * 1000 < 500) continue
+    out.push(Math.round(ms) / 1000)
+  }
+  return out
+}
+
+/** The red ring around the record button: a minute around, like a clock -
+ *  and round again after a minute (nothing stops at a minute). */
+export function ringFraction(totalMs: number): number {
+  return totalMs <= 0 ? 0 : (totalMs % 60_000) / 60_000 || 1
+}
+
+/** How far the camera can be zoomed by pinching: the camera's own zoom when
+ *  it has one, else the picture itself, up to 4 times. */
+const MAX_DIGITAL_ZOOM = 4
+
+export function Recorder({ onDone, onCancel }: { onDone: (files: File[], clipStarts: number[]) => void; onCancel: () => void }) {
   const video = useRef<HTMLVideoElement>(null)
   /** The camera now - only its picture; switched on a flip. */
   const camera = useRef<MediaStream | null>(null)
@@ -109,6 +133,17 @@ export function Recorder({ onDone, onCancel }: { onDone: (files: File[]) => void
   const [light, setLight] = useState(false)
   const [torch, setTorch] = useState(false)
   const [quality, setQuality] = useState<string | null>(null)
+  /** Where each new clip starts, in ms of the finished recording. */
+  const marks = useRef<number[]>([])
+  const recordingRef = useRef(false)
+  const startedRef = useRef(0)
+  /** Delete pressed: asked first (his ask, 2026-11-06). */
+  const [askDelete, setAskDelete] = useState(false)
+  /** Pinch zoom: the camera's own (hardware) when it has it, else the picture. */
+  const zoom = useRef(1)
+  const [zoomShown, setZoomShown] = useState<number | null>(null)
+  const hardZoom = useRef<{ min: number; max: number } | null>(null)
+  const pinch = useRef<{ distance: number; zoom: number } | null>(null)
   const lastTap = useRef(0)
   const wake = useRef<{ release: () => Promise<void> } | null>(null)
   const type = useRef(recordingType())
@@ -149,10 +184,16 @@ export function Recorder({ onDone, onCancel }: { onDone: (files: File[]) => void
       arm()
       mirrored.current = which === 'user'
       switching.current = false
+      // A flip while recording starts a new clip here.
+      if (recordingRef.current) marks.current.push(lengths.current.reduce((a, b) => a + b, 0) + (Date.now() - startedRef.current))
+      // A new camera starts unzoomed.
+      zoom.current = 1
+      applyZoom()
       const track = next.getVideoTracks()[0]
       const settings = track?.getSettings() ?? {}
-      const caps = (track?.getCapabilities?.() ?? {}) as MediaTrackCapabilities & { torch?: boolean }
+      const caps = (track?.getCapabilities?.() ?? {}) as MediaTrackCapabilities & { torch?: boolean; zoom?: { min: number; max: number } }
       setTorch(Boolean(caps.torch))
+      hardZoom.current = caps.zoom && caps.zoom.max > caps.zoom.min ? { min: caps.zoom.min, max: caps.zoom.max } : null
       const w = settings.width ?? 0
       const h = settings.height ?? 0
       const fps = Math.round(settings.frameRate ?? 30)
@@ -186,7 +227,10 @@ export function Recorder({ onDone, onCancel }: { onDone: (files: File[]) => void
     const v = video.current
     if (!ctx || !v || switching.current || v.readyState < 2 || v.videoWidth === 0) return
     const began = performance.now()
-    const box = coverBox(v.videoWidth, v.videoHeight)
+    const cover = coverBox(v.videoWidth, v.videoHeight)
+    // Zoomed with the picture itself (no camera zoom): drawn bigger around the middle.
+    const z = hardZoom.current ? 1 : zoom.current
+    const box = { w: cover.w * z, h: cover.h * z, x: (RECORD_WIDTH - cover.w * z) / 2, y: (RECORD_HEIGHT - cover.h * z) / 2 }
     if (mirrored.current) ctx.setTransform(-1, 0, 0, 1, RECORD_WIDTH, 0)
     ctx.drawImage(v, box.x, box.y, box.w, box.h)
     ctx.setTransform(1, 0, 0, 1, 0, 0)
@@ -306,6 +350,11 @@ export function Recorder({ onDone, onCancel }: { onDone: (files: File[]) => void
     }
     r.start(1000)
     recorder.current = r
+    // A part after a pause is a new clip.
+    const before = lengths.current.reduce((a, b) => a + b, 0)
+    if (before > 0) marks.current.push(before)
+    recordingRef.current = true
+    startedRef.current = Date.now()
     setStartedAt(Date.now())
     setElapsed(0)
     setRecording(true)
@@ -322,6 +371,7 @@ export function Recorder({ onDone, onCancel }: { onDone: (files: File[]) => void
     new Promise<void>((resolve) => {
       const r = recorder.current
       setRecording(false)
+      recordingRef.current = false
       void wake.current?.release().catch(() => {})
       wake.current = null
       if (!r || r.state === 'inactive') {
@@ -351,17 +401,55 @@ export function Recorder({ onDone, onCancel }: { onDone: (files: File[]) => void
   const done = async () => {
     if (recording) await stop()
     stopAll()
-    if (takes.current.length > 0) onDone([...takes.current])
+    const total = lengths.current.reduce((a, b) => a + b, 0)
+    if (takes.current.length > 0) onDone([...takes.current], clipStarts(marks.current, total))
     else onCancel()
   }
 
   /** The last part recorded taken off - a stutter - and nothing else, so it
    *  can be recorded again (TikTok's delete-last-segment). */
   const deleteLast = () => {
+    setAskDelete(false)
     if (recording || takes.current.length === 0) return
     takes.current.pop()
     lengths.current.pop()
+    // Its clips go with it.
+    const left = lengths.current.reduce((a, b) => a + b, 0)
+    marks.current = marks.current.filter((ms) => ms < left)
     setTakeCount(takes.current.length)
+  }
+
+  /** The zoom as it is now: the camera's own, or the picture's (drawn bigger
+   *  in the recording, and the same on screen). */
+  const applyZoom = () => {
+    const hard = hardZoom.current
+    const track = camera.current?.getVideoTracks()[0]
+    if (hard && track) {
+      const value = Math.min(hard.max, Math.max(hard.min, hard.min * zoom.current))
+      void track.applyConstraints({ advanced: [{ zoom: value } as MediaTrackConstraintSet] }).catch(() => {})
+    }
+    const v = video.current
+    if (v) v.style.transform = `${mirrored.current ? 'scaleX(-1) ' : ''}${hard ? '' : `scale(${zoom.current})`}`.trim()
+  }
+  const zoomMax = () => (hardZoom.current ? Math.min(10, hardZoom.current.max / hardZoom.current.min) : MAX_DIGITAL_ZOOM)
+  const between = (t: ReactTouchEvent['touches']) => Math.hypot(t[0].clientX - t[1].clientX, t[0].clientY - t[1].clientY)
+  const onTouchStart = (e: ReactTouchEvent) => {
+    if (e.touches.length === 2) pinch.current = { distance: between(e.touches), zoom: zoom.current }
+  }
+  const onTouchMove = (e: ReactTouchEvent) => {
+    const p = pinch.current
+    if (!p || e.touches.length !== 2) return
+    zoom.current = Math.min(zoomMax(), Math.max(1, p.zoom * (between(e.touches) / p.distance)))
+    applyZoom()
+    setZoomShown(zoom.current)
+  }
+  const onTouchEnd = (e: ReactTouchEvent) => {
+    if (e.touches.length < 2 && pinch.current) {
+      pinch.current = null
+      // A pinch is not a tap: no flip from it.
+      lastTap.current = 0
+      window.setTimeout(() => setZoomShown(null), 900)
+    }
   }
 
   const recorded = lengths.current.reduce((a, b) => a + b, 0)
@@ -374,8 +462,9 @@ export function Recorder({ onDone, onCancel }: { onDone: (files: File[]) => void
 
   return (
     <section className={`recorder${selfieLight ? ' lit' : ''}`} aria-label="Record a video">
-      <div className="recorder-view" onClick={onTap}>
+      <div className="recorder-view" onClick={onTap} onTouchStart={onTouchStart} onTouchMove={onTouchMove} onTouchEnd={onTouchEnd}>
         <video ref={video} playsInline muted autoPlay className={facing === 'user' ? 'mirror' : ''} />
+        {zoomShown !== null ? <span className="recorder-zoom">{zoomShown.toFixed(1)}×</span> : null}
         {problem ? <p className="recorder-problem">{problem}</p> : null}
       </div>
 
@@ -430,7 +519,7 @@ export function Recorder({ onDone, onCancel }: { onDone: (files: File[]) => void
           type="button"
           className="recorder-round recorder-delete"
           aria-label="Delete the last part"
-          onClick={deleteLast}
+          onClick={() => setAskDelete(true)}
           disabled={recording || takeCount === 0}
         >
           ⌫
@@ -442,14 +531,40 @@ export function Recorder({ onDone, onCancel }: { onDone: (files: File[]) => void
           onClick={() => (recording ? void stop() : start())}
           disabled={problem !== null && !recording}
         >
+          {/* A minute around, like a clock, in red (TikTok's) - and round
+              again after a minute: nothing stops at a minute. */}
+          <svg className="recorder-ring" viewBox="0 0 100 100" aria-hidden>
+            <circle cx="50" cy="50" r="46" className="recorder-ring-track" />
+            <circle
+              cx="50"
+              cy="50"
+              r="46"
+              className="recorder-ring-done"
+              pathLength={1}
+              strokeDasharray={`${ringFraction(recorded + (recording ? elapsed : 0))} 1`}
+            />
+          </svg>
           <span />
         </button>
         <button type="button" className="recorder-check" aria-label="Done - to the timeline editor" disabled={takeCount === 0 && !recording} onClick={() => void done()}>
           ✓
         </button>
       </div>
+      {askDelete ? (
+        <div className="recorder-ask" role="dialog" aria-label="Delete the last clip?">
+          <p>Delete the last clip?</p>
+          <div className="recorder-ask-buttons">
+            <button type="button" className="btn" onClick={() => setAskDelete(false)}>
+              Cancel
+            </button>
+            <button type="button" className="btn danger" onClick={deleteLast}>
+              Delete
+            </button>
+          </div>
+        </div>
+      ) : null}
       <p className="recorder-hint">
-        {takeCount > 0 && !recording ? 'Tap to record more · ⌫ takes off the last part' : 'Double tap to flip the camera'}
+        {takeCount > 0 && !recording ? 'Tap to record more · ⌫ takes off the last clip' : 'Double tap to flip · pinch to zoom'}
       </p>
     </section>
   )
