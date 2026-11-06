@@ -3,6 +3,14 @@
 Newest first. Every change says what it does, how to use it, and how it works
 underneath. Kept up to date with each commit.
 
+## Save: a joined video gets a short name (the iPhone's share sheet choked on ~250 letters)
+App only: run ./deploy.sh.
+**What he said (2026-11-06):** after the last fix the Thetawave video still opened the empty preview, while his
+Astrocade video saved fine. The Thetawave one is joined from 8 recordings, and its name was all of theirs - "REC
+2026-11-05 22-43-08.mp4 + REC ... (8)_thetawave.mp4", about 250 letters.
+- `shareFile.shareName`: what is shared is named after the first recording, how many more, and the campaign -
+  "REC-2026-11-05-22-43-08+7_thetawave.mp4" - plain letters, at most 60. Test: `shareFile.test.ts`.
+
 ## Save a made video: the share sheet gets a copy in memory
 App only: run ./deploy.sh.
 **What he said (2026-11-06):** a Thetawave video "doesn't let me save it. I press Save, and it pops up a widget that

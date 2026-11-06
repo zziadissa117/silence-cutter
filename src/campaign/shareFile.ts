@@ -11,6 +11,22 @@ import { useEffect, useState } from 'react'
 
 import { report } from '../report'
 
+/** A file name the share sheet takes: a joined video's name was all its
+ *  recordings' names one after another - "REC 2026-11-05 22-43-08.mp4 +
+ *  REC ... (8).mp4_thetawave.mp4", some 250 letters - and the iPhone's sheet
+ *  opened on an empty preview for it, while a short-named video saved fine
+ *  (his Thetawave video, 2026-11-06). The first recording's name, how many
+ *  more, the campaign; plain letters, at most 60. */
+export function shareName(name: string): string {
+  const ext = /\.mp4$/i.test(name) ? '' : '.mp4'
+  const parts = name.replace(/\.mp4$/i, '').split(' + ')
+  const tag = parts.length > 1 ? (parts[parts.length - 1].match(/_([^_]+)$/)?.[1] ?? '') : ''
+  const first = parts[0].replace(/\.[^./]+$/, '').replace(/_[^_]+$/, (m) => (parts.length > 1 ? '' : m))
+  const joined = parts.length > 1 ? `${first}+${parts.length - 1}${tag ? `_${tag}` : ''}` : first
+  const plain = joined.replace(/[^\p{L}\p{N}_+-]+/gu, '-').replace(/-+/g, '-').replace(/^-|-$/g, '')
+  return `${(plain || 'video').slice(0, 60)}${ext || '.mp4'}`
+}
+
 /** A copy of `blob` held in memory, named and typed for the share sheet;
  *  null until it is ready (or with nothing to copy). */
 export function useSharable(blob: Blob | null | undefined, name: string): File | null {
@@ -22,11 +38,11 @@ export function useSharable(blob: Blob | null | undefined, name: string): File |
     void blob
       .arrayBuffer()
       .then((bytes) => {
-        if (alive) setFile(new File([bytes], name, { type: 'video/mp4' }))
+        if (alive) setFile(new File([bytes], shareName(name), { type: 'video/mp4' }))
       })
       .catch(() => {
         // Read straight from where it is kept, then.
-        if (alive) setFile(new File([blob], name, { type: 'video/mp4' }))
+        if (alive) setFile(new File([blob], shareName(name), { type: 'video/mp4' }))
       })
     return () => {
       alive = false
