@@ -317,8 +317,10 @@ export async function renderMontage(
           const gain = soloMusicGain(loudness)
           if (gain > 0) {
             liftMusic(channels, gain, RATE)
-            // Nothing else is heard, so nothing ever dips it.
-            bed = new MusicBed(channels, RATE, Math.round(total * RATE), 1, Infinity)
+            // Nothing else is heard, so nothing ever dips it. A Trial reel's
+            // sound is the viral reel's own, for this clip: it never starts
+            // over (Ilyan's copies looped, 2026-11-06).
+            bed = new MusicBed(channels, RATE, Math.round(total * RATE), 1, Infinity, !keepLines)
           }
           else musicFailed = 'the track is silent'
         }

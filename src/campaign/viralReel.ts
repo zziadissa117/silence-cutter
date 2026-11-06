@@ -9,6 +9,7 @@ import { ALL_FORMATS, BlobSource, CanvasSink, Conversion, Input, Mp4OutputFormat
 
 import { within } from '../media/within'
 import { firstShown } from './clipParts'
+import { report } from '../report'
 
 /** Frames compared this small, grey: enough to tell the same picture. */
 const W = 18
@@ -21,6 +22,11 @@ const SAME = 0.6
 /** The still Claude reads: big enough for the words, small enough to send. */
 const STILL_WIDTH = 720
 const STILL_QUALITY = 0.8
+/** How much later the start may be than the viral reel is longer than its
+ *  clean clip: their lengths are read off the files, a frame or two apart. */
+const FIT_SLACK = 0.25
+/** What the last look found, for his report. */
+let lastLook: { viral: number; clean: number; best: number; start: number } | null = null
 /** When the still is taken, after the reel's start: its words are up by then. */
 const STILL_AT = 1
 
@@ -65,7 +71,11 @@ export function likeness(a: Float32Array, b: Float32Array, width = W, height = H
 /** Of the viral reel's frames (time, likeness to the clean clip's first),
  *  where it starts: the first that is clearly the same picture - or 0 when
  *  none is (a saved reel that starts at once, or footage too unlike to tell). */
-export function startOf(frames: readonly { at: number; like: number }[]): number {
+export function startOf(frames: readonly { at: number; like: number }[], latest = Infinity): number {
+  // The clean clip has to fit after the start: never later than the viral
+  // reel is longer (a reel and its clip of the same length start together -
+  // matched further in, its sound came out short and looped, 2026-11-06).
+  frames = frames.filter((f) => f.at <= latest)
   const best = frames.reduce<{ at: number; like: number } | null>((b, f) => (!b || f.like > b.like ? f : b), null)
   if (!best || best.like < SAME) return 0
   // The first frame nearly as alike as the best: where the picture begins.
@@ -97,14 +107,23 @@ async function findStart(viral: Blob, clean: Blob): Promise<number> {
     if (!first) return 0
     const target = greys(first.canvas)
     const from = await firstShown(viralTrack)
-    const until = Math.min(from + LOOK_SEC, await b.computeDuration())
+    const [viralLength, cleanLength] = await Promise.all([b.computeDuration(), a.computeDuration()])
+    const latest = from + Math.max(0, viralLength - cleanLength) + FIT_SLACK
+    const until = Math.min(from + LOOK_SEC, viralLength, latest + STEP_SEC)
     const times: number[] = []
     for (let t = from; t < until; t += STEP_SEC) times.push(t)
     const frames: { at: number; like: number }[] = []
     for await (const frame of new CanvasSink(viralTrack, size).canvasesAtTimestamps(times)) {
       if (frame) frames.push({ at: frame.timestamp, like: likeness(greys(frame.canvas), target) })
     }
-    return Math.max(0, startOf(frames) - from)
+    const start = Math.max(0, startOf(frames, latest) - from)
+    lastLook = {
+      viral: viralLength,
+      clean: cleanLength,
+      best: frames.reduce((n, f) => Math.max(n, f.like), -1),
+      start,
+    }
+    return start
   } finally {
     a.dispose()
     b.dispose()
@@ -163,10 +182,18 @@ export interface ViralParts {
 /** The viral reel taken apart: where it starts, its sound from there, and a
  *  still to read its words from. */
 export async function takeApart(viral: File, clean: File, say: (step: string) => void = () => {}): Promise<ViralParts> {
+  lastLook = null
   say('Finding where the viral reel starts…')
   const start = await within(findStart(viral, clean).catch(() => 0), 60_000, 0)
   say('Taking its sound…')
   const sound = await soundFrom(viral, start)
+  // What was found, for when copies come out wrong (Ilyan's looped).
+  const look = lastLook as { viral: number; clean: number; best: number; start: number } | null
+  report({
+    kind: 'check',
+    phase: 'trial',
+    message: `viral reel ${viral.name}: ${look ? `${look.viral.toFixed(1)} s, clean clip ${look.clean.toFixed(1)} s, best match ${look.best.toFixed(2)}, ` : ''}starts ${start.toFixed(2)} s in, ${sound ? 'sound taken' : 'no sound'}`,
+  })
   say('Taking a still of its words…')
   const still = await within(stillOf(viral, start).catch(() => ''), 30_000, '')
   return { start, sound, still }

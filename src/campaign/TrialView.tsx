@@ -23,7 +23,8 @@ import type { Campaign } from './look'
 import { BackToMore } from './MoreView'
 import { listPosts, placeFor, postAction, readViralReel, rewordTrial, whenLabel, type LocalPosting, type ServerPost } from './posting'
 import { Watch } from './PostsView'
-import { BATCH_BANK_SAVED, loadBatchBank, retireBankFiles, saveBankFile, saveBatchBank } from './store'
+import { BATCH_BANK_SAVED, loadBankFile, loadBatchBank, retireBankFiles, saveBankFile, saveBatchBank } from './store'
+import { measureSong } from './songLength'
 import {
   FIRST_PER_DAY,
   NOT_ALLOWED,
@@ -334,6 +335,30 @@ export function TrialView({
     })()
   }, [bank, campaign?.id]) // eslint-disable-line react-hooks/exhaustive-deps
 
+  // A reel whose sound came out shorter than its clip (its start found too
+  // far in, before 2026-11-06): said, so he starts it again.
+  const [short, setShort] = useState<Record<string, number>>({})
+  const sourceKey = bank ? activeSources(bank).map((s) => s.id).join(',') : ''
+  useEffect(() => {
+    if (!bank) return
+    let alive = true
+    void (async () => {
+      const out: Record<string, number> = {}
+      for (const s of activeSources(bank)) {
+        const clip = bank.reactions.find((f) => f.id === s.clip)
+        const sound = s.sound ? bank.music.find((f) => f.id === s.sound) : null
+        if (!clip || !sound) continue
+        const [clipFile, soundFile] = await Promise.all([loadBankFile(clip).catch(() => null), loadBankFile(sound).catch(() => null)])
+        const [clipSec, soundSec] = await Promise.all([clipFile ? measureSong(clipFile) : null, soundFile ? measureSong(soundFile) : null])
+        if (clipSec && soundSec && clipSec - soundSec > 1) out[s.id] = Math.round(clipSec - soundSec)
+      }
+      if (alive) setShort(out)
+    })()
+    return () => {
+      alive = false
+    }
+  }, [sourceKey]) // eslint-disable-line react-hooks/exhaustive-deps
+
   const today = todayHere()
   const days = useMemo(() => (campaign ? trialDays(posts, campaign.id, today) : null), [posts, campaign, today])
   const sources = bank ? activeSources(bank) : []
@@ -569,6 +594,11 @@ export function TrialView({
                 <span className="row-line">
                   {s.name} · {bank.used[s.id] ?? 0} made · {s.read.rewordings.length} rewordings
                 </span>
+                {short[s.id] ? (
+                  <span className="row-line warn-text wrap">
+                    Its sound is {short[s.id]} s shorter than the clip - the start was found too late. Stop it and start it again with the same two videos.
+                  </span>
+                ) : null}
               </div>
               <button type="button" className="btn small" disabled={busy !== null} onClick={() => void stopSource(s)}>
                 Stop

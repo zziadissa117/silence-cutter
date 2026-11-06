@@ -3,6 +3,21 @@
 Newest first. Every change says what it does, how to use it, and how it works
 underneath. Kept up to date with each commit.
 
+## Trial reels: a reel and its clean clip of the same length start together - the sound never loops
+App only: run ./deploy.sh.
+**What he said (2026-11-06):** Trial reels don't work for Ilyan: "it makes his videos loop, both vids same length, he
+is correctly selecting the viral one". His 106 copies were 17.9 s each.
+- The viral reel's start is found by matching the clean clip's first picture in it. A picture that comes back later
+  could be taken as the start, and the sound was cut from there - shorter than the clip - and a batch's sound starts
+  over when it runs out. Now the start can't be later than the viral reel is longer than the clean clip (+0.25 s):
+  the same length, it starts at 0 (`viralReel.startOf` `latest`). And a Trial reel's sound never loops
+  (`montageRender`, `MusicBed` loop off for `keepLines`).
+- Each start is reported (`check` / `trial`: both lengths, the best match, where it starts) so the next one can be read.
+- A reel started before with a sound shorter than its clip says so on Trial reels: "Its sound is N s shorter than the
+  clip - Stop it and start it again with the same two videos" (the viral reel itself isn't kept, so it can't be redone
+  by itself).
+- Test: `trialLoop.test.ts`.
+
 ## Trial reels: every reworded headline checked by Claude - it has to make sense
 Needs deploying: run ./deploy-server.sh (./deploy.sh runs it by itself).
 **What he said (2026-11-06):** a trial reel went out saying "I promise you this is the most starving I've ever been",

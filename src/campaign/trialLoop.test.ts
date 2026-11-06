@@ -224,6 +224,11 @@ describe('where the viral reel starts', () => {
     expect(startOf([{ at: 0, like: 0.1 }, { at: 0.5, like: 0.2 }, { at: 1, like: 0.9 }, { at: 1.1, like: 0.95 }])).toBe(1)
     expect(startOf([{ at: 0, like: 0.2 }, { at: 1, like: 0.3 }])).toBe(0)
     expect(startOf([])).toBe(0)
+    // A reel and its clean clip of the same length start together: a match
+    // further in (a picture that comes back) is not its start.
+    expect(startOf([{ at: 0, like: 0.7 }, { at: 3, like: 0.95 }], 0.25)).toBe(0)
+    // A screen recording 2 s longer may start up to 2 s in.
+    expect(startOf([{ at: 0, like: 0.1 }, { at: 1.5, like: 0.9 }, { at: 6, like: 0.97 }], 2.25)).toBe(1.5)
   })
 
   it('tells the same picture from another', () => {
