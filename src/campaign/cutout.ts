@@ -21,6 +21,7 @@ import { openClip } from './clipParts'
 import { onEncodedPacketMatchingColour } from './colourCheck'
 import { videoQuality } from './quality'
 import { cover } from './reaction'
+import { report as reportProblem } from '../report'
 
 /** The size of his picture in the cut-out: enough for a corner of up to half
  *  the width of a 1080 video. */
@@ -74,30 +75,91 @@ interface Segmenter {
   close(): void
 }
 
-async function openSegmenter(): Promise<Segmenter> {
+/** The ways the cut-out tool is started, best first. Safari on his iPhone
+ *  failed with "Cannot read properties of undefined (reading 'activeTexture')"
+ *  (2026-11-06): the tool made its own canvas for its graphics and got none
+ *  from it. A canvas of the page's own works there; failing that, the tool
+ *  runs on the processor with the frame handed over as plain pixels. */
+export const SEGMENTER_WAYS = [
+  { delegate: 'GPU', pageCanvas: true, pixels: false },
+  { delegate: 'CPU', pageCanvas: true, pixels: false },
+  { delegate: 'CPU', pageCanvas: true, pixels: true },
+  { delegate: 'GPU', pageCanvas: false, pixels: false },
+] as const
+export type SegmenterWay = (typeof SEGMENTER_WAYS)[number]
+
+let engine: unknown = null
+
+async function openSegmenter(way: SegmenterWay): Promise<Segmenter> {
   const { FilesetResolver, ImageSegmenter } = await import('@mediapipe/tasks-vision')
-  let engine
-  try {
-    engine = await FilesetResolver.forVisionTasks(ENGINE)
-  } catch {
-    throw new SilenceCutError("The cut-out tool couldn't be downloaded. Check the signal and try again.")
-  }
-  const open = (delegate: 'GPU' | 'CPU') =>
-    ImageSegmenter.createFromOptions(engine, {
-      baseOptions: { modelAssetPath: MODEL, delegate },
-      runningMode: 'VIDEO',
-      outputConfidenceMasks: true,
-      outputCategoryMask: false,
-    })
-  try {
-    return (await open('GPU')) as unknown as Segmenter
-  } catch {
-    // No GPU for it on this phone: slower, but it still cuts.
+  if (!engine) {
     try {
-      return (await open('CPU')) as unknown as Segmenter
+      engine = await FilesetResolver.forVisionTasks(ENGINE)
     } catch {
-      throw new SilenceCutError("The cut-out tool couldn't start on this phone. Close the app, open it again and try again.")
+      throw new SilenceCutError("The cut-out tool couldn't be downloaded. Check the signal and try again.")
     }
+  }
+  const canvas = way.pageCanvas && typeof document !== 'undefined' ? document.createElement('canvas') : undefined
+  return (await ImageSegmenter.createFromOptions(engine as Parameters<typeof ImageSegmenter.createFromOptions>[0], {
+    baseOptions: { modelAssetPath: MODEL, delegate: way.delegate },
+    runningMode: 'VIDEO',
+    outputConfidenceMasks: true,
+    outputCategoryMask: false,
+    ...(canvas ? { canvas } : {}),
+  })) as unknown as Segmenter
+}
+
+/** The cut-out tool that works on this phone, tried on a real frame: each
+ *  way in turn until one gives a mask. */
+export class WorkingSegmenter {
+  private segmenter: Segmenter | null = null
+  private way = 0
+  private proven = false
+  private readonly tried: string[] = []
+
+  /** His mask for `frame`, or null when the tool gave none for it. */
+  async segment(frame: OffscreenCanvas, ctx: OffscreenCanvasRenderingContext2D, timestamp: number): Promise<{ confidence: Float32Array; width: number; height: number } | null> {
+    for (;;) {
+      const way = SEGMENTER_WAYS[this.way]
+      if (!way) throw new SilenceCutError(`The cut-out tool couldn't run on this phone (${this.tried.join('; ')}). Close the app, open it again and try again.`)
+      try {
+        this.segmenter ??= await openSegmenter(way)
+        let out: { confidence: Float32Array; width: number; height: number } | null = null
+        const input: TexImageSource | ImageData = way.pixels ? ctx.getImageData(0, 0, frame.width, frame.height) : frame
+        this.segmenter.segmentForVideo(input as TexImageSource, timestamp, (result) => {
+          const mask = result.confidenceMasks?.[0]
+          if (mask) out = { confidence: mask.getAsFloat32Array().slice(), width: mask.width, height: mask.height }
+        })
+        this.proven = true
+        return out
+      } catch (error) {
+        if (error instanceof SilenceCutError) throw error
+        // Once it has cut a frame, a failure is the video's, not the way's.
+        if (this.proven) throw error
+        this.tried.push(`${way.delegate}${way.pageCanvas ? '' : ' own canvas'}${way.pixels ? ' pixels' : ''}: ${error instanceof Error ? error.message : String(error)}`)
+        this.close()
+        this.way++
+      }
+    }
+  }
+
+  /** How it ended up running, for his report. */
+  describe(): string {
+    const way = SEGMENTER_WAYS[this.way]
+    return `${way ? `${way.delegate}${way.pixels ? ' pixels' : ''}` : 'none'}${this.tried.length ? ` after ${this.tried.join('; ')}` : ''}`
+  }
+
+  get fellBack(): boolean {
+    return this.tried.length > 0
+  }
+
+  close(): void {
+    try {
+      this.segmenter?.close()
+    } catch {
+      // Already gone.
+    }
+    this.segmenter = null
   }
 }
 
@@ -107,10 +169,9 @@ export async function makeCutout(reaction: Blob, onProgress?: (fraction: number)
   const clip = await openClip(reaction, 'reaction')
   const sink = await createOutputSink()
   const output = new Output({ format: new Mp4OutputFormat({ fastStart: false }), target: sink.target })
-  let segmenter: Segmenter | null = null
+  const segmenter = new WorkingSegmenter()
   let finished = false
   try {
-    segmenter = await openSegmenter()
     const W = CUTOUT_WIDTH
     const H = CUTOUT_HEIGHT
     const frame = new OffscreenCanvas(W, H)
@@ -138,14 +199,9 @@ export async function makeCutout(reaction: Blob, onProgress?: (fraction: number)
         frameCtx.fillStyle = '#000'
         frameCtx.fillRect(0, 0, W, H)
         sample.draw(frameCtx, place.x, place.y, place.width, place.height)
-        let confidence: Float32Array | null = null
-        let size = { width: 0, height: 0 }
-        segmenter.segmentForVideo(frame, Math.round(at * 1000) + 1, (result) => {
-          const mask = result.confidenceMasks?.[0]
-          if (!mask) return
-          size = { width: mask.width, height: mask.height }
-          confidence = mask.getAsFloat32Array().slice()
-        })
+        const got = await segmenter.segment(frame, frameCtx, Math.round(at * 1000) + 1)
+        const confidence = got?.confidence ?? null
+        const size = { width: got?.width ?? 0, height: got?.height ?? 0 }
         stackedCtx.drawImage(frame, 0, 0)
         if (confidence && size.width > 0) {
           if (!maskCanvas || maskCanvas.width !== size.width || maskCanvas.height !== size.height) {
@@ -173,6 +229,7 @@ export async function makeCutout(reaction: Blob, onProgress?: (fraction: number)
       }
     }
     if (written === 0) throw new SilenceCutError('The reaction has no frames to cut out.')
+    if (segmenter.fellBack) reportProblem({ kind: 'fallback', phase: 'cutout', message: `cut-out ran ${segmenter.describe()}` })
     await output.finalize()
     const blob = await sink.finish()
     if (blob.size === 0) throw new SilenceCutError('Cutting out finished but produced no file. Try again.')
@@ -180,7 +237,7 @@ export async function makeCutout(reaction: Blob, onProgress?: (fraction: number)
     onProgress?.(1)
     return blob
   } finally {
-    segmenter?.close()
+    segmenter.close()
     clip.input.dispose()
     if (!finished) {
       await output.cancel().catch(() => {})

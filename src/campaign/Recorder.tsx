@@ -36,6 +36,16 @@ export function bitrateFor(width: number, height: number, fps = 30): number {
   return fps > 40 ? Math.round(base * 1.6) : base
 }
 
+/** Whether a part can be recorded straight from the camera, not through the
+ *  drawing canvas: a camera that isn't mirrored, already portrait, and not
+ *  zoomed by enlarging the picture. Through the canvas, Safari's recordings
+ *  of the back camera came out at 24 frames a second with frames 2 to 83 ms
+ *  apart - shaky - and softer (his reports, 2026-11-06); the camera's own
+ *  stream keeps every frame at its time, at the camera's own quality. */
+export function recordsDirect({ mirrored, width, height, digitalZoom }: { mirrored: boolean; width: number; height: number; digitalZoom: number }): boolean {
+  return !mirrored && width > 0 && height > width && digitalZoom <= 1.001
+}
+
 /** The best kind of file this phone records: an iPhone's MP4 first. */
 function recordingType(): string {
   const types = ['video/mp4;codecs=avc1', 'video/mp4', 'video/webm;codecs=vp9,opus', 'video/webm']
@@ -152,12 +162,19 @@ export function Recorder({ onDone, onCancel }: { onDone: (files: File[], clipSta
   const lastTap = useRef(0)
   const wake = useRef<{ release: () => Promise<void> } | null>(null)
   const type = useRef(recordingType())
+  /** A part straight from the camera ended for a flip: the next starts as
+   *  soon as the other camera is showing. */
+  const resumeAfterFlip = useRef(false)
+  const startRef = useRef<() => void>(() => {})
   /** A flip is opening the other camera: the recording holds the last picture. */
   const switching = useRef(false)
   /** The camera now in the picture faces him: the recording is mirrored,
    *  as he sees himself on screen and as TikTok keeps it (his ask,
    *  2026-11-03). Set only once that camera's picture is showing. */
   const mirrored = useRef(false)
+  /** The part being recorded is the camera's own stream (recordsDirect):
+   *  a flip ends it and starts the next part on the other camera. */
+  const direct = useRef(false)
 
   const stopCamera = () => {
     for (const track of camera.current?.getTracks() ?? []) track.stop()
@@ -187,6 +204,15 @@ export function Recorder({ onDone, onCancel }: { onDone: (files: File[], clipSta
         .getUserMedia({ video: { ...asked, frameRate: { min: 50, ideal: 60 } } })
         .catch(() => navigator.mediaDevices.getUserMedia({ video: wanted }))
       camera.current = next
+      // Still under 50 though the camera can do 60: asked again on the
+      // track itself, which Safari sometimes takes when getUserMedia didn't.
+      {
+        const t = next.getVideoTracks()[0]
+        const max = (t?.getCapabilities?.() as MediaTrackCapabilities | undefined)?.frameRate?.max ?? 0
+        if (t && (t.getSettings().frameRate ?? 30) < 50 && max >= 59) {
+          await t.applyConstraints({ ...asked, frameRate: { exact: 60 } }).catch(() => t.applyConstraints({ ...asked, frameRate: { min: 50, ideal: 60 } })).catch(() => {})
+        }
+      }
       if (!mic.current) mic.current = await navigator.mediaDevices.getUserMedia({ audio })
       const v = video.current
       if (v) {
@@ -215,6 +241,11 @@ export function Recorder({ onDone, onCancel }: { onDone: (files: File[], clipSta
         phase: 'record',
         message: `camera ${which}: ${w}x${h} @ ${fps} fps (most ${caps.frameRate?.max ?? '?'}), recording ${type.current || 'none'} at ${RECORD_WIDTH}x${RECORD_HEIGHT}, max ${caps.width?.max ?? '?'}x${caps.height?.max ?? '?'}`,
       })
+      if (resumeAfterFlip.current) {
+        resumeAfterFlip.current = false
+        // A frame drawn first, so a canvas part never opens on black.
+        window.setTimeout(() => startRef.current(), 150)
+      }
     } catch (error) {
       switching.current = false
       const name = error instanceof DOMException ? error.name : ''
@@ -331,7 +362,14 @@ export function Recorder({ onDone, onCancel }: { onDone: (files: File[], clipSta
     // A frame for each one drawn - one per camera frame - where frame
     // callbacks exist; else 30 a second.
     const byFrame = typeof (video.current as (HTMLVideoElement & Partial<FrameCallbacks>) | null)?.requestVideoFrameCallback === 'function'
-    const picture = (byFrame ? c.captureStream() : c.captureStream(30)).getVideoTracks()[0]
+    const own = camera.current?.getVideoTracks()[0]
+    const ownSize = own?.getSettings() ?? {}
+    direct.current = Boolean(
+      own && own.readyState === 'live' && recordsDirect({ mirrored: mirrored.current, width: ownSize.width ?? 0, height: ownSize.height ?? 0, digitalZoom: hardZoom.current ? 1 : zoom.current }),
+    )
+    // The camera's own picture - a copy, so ending the part never stops the camera.
+    const picture = direct.current ? own!.clone() : (byFrame ? c.captureStream() : c.captureStream(30)).getVideoTracks()[0]
+    const how = direct.current ? 'straight from the camera' : byFrame ? 'by camera frame' : 'by the clock'
     drawn.current = { frames: 0, slow: 0, since: performance.now() }
     const s = new MediaStream([picture, ...(sound ? [sound] : [])])
     chunks.current = []
@@ -360,7 +398,7 @@ export function Recorder({ onDone, onCancel }: { onDone: (files: File[], clipSta
         report({
           kind: 'check',
           phase: 'record',
-          message: `part ${secs.toFixed(1)} s: ${drawn.current.frames} frames drawn (${(drawn.current.frames / secs).toFixed(1)} a second, ${drawn.current.slow} slow), ${byFrame ? 'by camera frame' : 'by the clock'}, camera ${settings.width ?? '?'}x${settings.height ?? '?'}`,
+          message: `part ${secs.toFixed(1)} s: ${drawn.current.frames} frames drawn (${(drawn.current.frames / secs).toFixed(1)} a second, ${drawn.current.slow} slow), ${how}, camera ${settings.width ?? '?'}x${settings.height ?? '?'}`,
         })
       }
       const kind = r.mimeType || type.current || 'video/mp4'
@@ -393,6 +431,8 @@ export function Recorder({ onDone, onCancel }: { onDone: (files: File[], clipSta
       .catch(() => {})
   }
 
+  startRef.current = start
+
   /** The part ends; resolves once its file is kept. */
   const stop = () =>
     new Promise<void>((resolve) => {
@@ -415,7 +455,18 @@ export function Recorder({ onDone, onCancel }: { onDone: (files: File[], clipSta
 
   /** Double tap: the other camera - while recording too, without a break:
    *  the recording goes on, only the picture changes. */
-  const flip = () => setFacing((f) => (f === 'user' ? 'environment' : 'user'))
+  const flip = () => {
+    // Straight from the camera, the recording can't carry on through the
+    // other camera: this part ends and the next starts on it - a new clip.
+    if (recordingRef.current && direct.current) {
+      void stop().then(() => {
+        resumeAfterFlip.current = true
+        setFacing((f) => (f === 'user' ? 'environment' : 'user'))
+      })
+      return
+    }
+    setFacing((f) => (f === 'user' ? 'environment' : 'user'))
+  }
 
   const onTap = () => {
     const now = performance.now()
@@ -466,6 +517,8 @@ export function Recorder({ onDone, onCancel }: { onDone: (files: File[], clipSta
   const onTouchMove = (e: ReactTouchEvent) => {
     const p = pinch.current
     if (!p || e.touches.length !== 2) return
+    // Straight from the camera, only the camera's own zoom reaches the recording.
+    if (recordingRef.current && direct.current && !hardZoom.current) return
     zoom.current = Math.min(zoomMax(), Math.max(1, p.zoom * (between(e.touches) / p.distance)))
     applyZoom()
     setZoomShown(zoom.current)

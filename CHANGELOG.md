@@ -3,6 +3,25 @@
 Newest first. Every change says what it does, how to use it, and how it works
 underneath. Kept up to date with each commit.
 
+## Green screen: the cut-out starts on his iPhone; the back camera records straight from the camera
+App only: run ./deploy.sh.
+**What he said (2026-11-06):** "the green screen reactions just could not be made", and on the back camera the
+recorder "looks very shaky, and the quality is just bad".
+- **Green screen:** his report: "Something went wrong while cutting you out of the background (Cannot read
+  properties of undefined (reading 'activeTexture'))" - MediaPipe made its own canvas for its graphics and Safari gave
+  it none. `cutout.ts` `WorkingSegmenter` now tries, on the first real frame, the graphics chip with a canvas of the
+  page's own, then the processor, then the processor with the frame as plain pixels (`SEGMENTER_WAYS`), and keeps
+  the first that cuts; which one it took goes in his report (`fallback` / `cutout`). Test: `cutoutStart.test.ts`.
+- **Recorder, back camera:** his reports showed every take at 24 fps with frames 2-83 ms apart, though the camera gave
+  30: the picture went through the drawing canvas, which Safari records unevenly and softer. A part on a camera that
+  isn't mirrored, is portrait and isn't zoomed by enlarging the picture is now recorded straight from the camera's
+  own stream (`Recorder.recordsDirect`) - every frame at its time, at the camera's quality. Flipping during such a
+  part ends it and starts the next on the other camera (a new clip, as after a pause). A pinch during it only uses
+  the camera's own zoom. The front camera stays as it was (mirrored through the canvas).
+- After opening, a camera still under 50 fps that can do 60 is asked again on its track (`applyConstraints`).
+- Not checked on an iPhone: the report after a back-camera take now says "straight from the camera" and its fps.
+  The camera in a web page gets no image stabilisation from iOS - if it still shakes in the hand, that is why.
+
 ## Trial reels: see every copy, approve the first 3 of each reel, and the numbers that were always 0
 Needs deploying: run ./deploy-server.sh (./deploy.sh runs it by itself).
 **What he said (2026-11-06):** "it says making 5 a day, but I don't know how it works ... There are no videos that I

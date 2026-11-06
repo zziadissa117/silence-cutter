@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { RECORD_HEIGHT, RECORD_WIDTH, cameraConstraints, coverBox, takeName } from './Recorder'
+import { RECORD_HEIGHT, RECORD_WIDTH, cameraConstraints, coverBox, recordsDirect, takeName } from './Recorder'
 
 describe('the recorder', () => {
   it('names a take by when it was filmed, the next ones numbered', () => {
@@ -28,5 +28,15 @@ describe('what is recorded', () => {
     const wide = coverBox(1920, 1080)
     expect(wide.h).toBe(1920)
     expect(wide.x).toBeLessThan(0)
+  })
+})
+
+describe('recording straight from the camera', () => {
+  it('takes the back camera as it is - never the mirrored front one, a landscape picture or a picture zoom', () => {
+    expect(recordsDirect({ mirrored: false, width: 1080, height: 1920, digitalZoom: 1 })).toBe(true)
+    expect(recordsDirect({ mirrored: true, width: 1080, height: 1920, digitalZoom: 1 })).toBe(false)
+    expect(recordsDirect({ mirrored: false, width: 1920, height: 1080, digitalZoom: 1 })).toBe(false)
+    expect(recordsDirect({ mirrored: false, width: 1080, height: 1920, digitalZoom: 2 })).toBe(false)
+    expect(recordsDirect({ mirrored: false, width: 0, height: 0, digitalZoom: 1 })).toBe(false)
   })
 })
