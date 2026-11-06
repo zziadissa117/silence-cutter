@@ -4492,6 +4492,7 @@ export function CampaignApp() {
         onCreate={createTrialCampaign}
         onRun={() => runBatchesRef.current()}
         removeJob={removeJob}
+        onRetry={startHeld}
       />
     ) : tab === 'campaigns' ? (
       <CampaignsView

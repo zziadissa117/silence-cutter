@@ -33,7 +33,7 @@ function batchPosts(posts: readonly ServerPost[], campaignId: string): ServerPos
  *  which the bank's count of the day still holds; on the server, that count
  *  as the server has it. */
 export function statusDays(
-  bank: Pick<BatchBank, 'campaignId' | 'perDay' | 'growth' | 'growthFrom' | 'filled' | 'madeThrough' | 'lastPerDay'>,
+  bank: Pick<BatchBank, 'campaignId' | 'perDay' | 'growth' | 'growthFrom' | 'filled' | 'madeThrough' | 'lastPerDay' | 'most'>,
   posts: readonly ServerPost[],
   { jobs, now = new Date() }: { jobs?: readonly Job[]; now?: Date } = {},
 ): StatusDay[] {

@@ -3,6 +3,18 @@
 Newest first. Every change says what it does, how to use it, and how it works
 underneath. Kept up to date with each commit.
 
+## Trial reels: what it is doing, at the top - made where, the copy being made, each day
+App only: run ./deploy.sh.
+**What he said (2026-11-06):** "make a UI for trial reels to make sure if they're being sent or being made or not,
+because right now it doesn't say, and it kind of doesn't look good".
+- Trial reels now opens on the Batch tab's status panel (`BatchStatus`): what the loop is doing in one line ("Making
+  videos", "All set", "The server went quiet", what went wrong), where (this phone or the server), the copy being
+  made now with how far it is, how many wait to be made, the clips going up to the server, when the last copy was
+  ready, and the next 3 days - each with gone out / ready / being made, against Instagram's trial limit a day
+  (`statusDays` takes `most`). Stop everything and, for copies that couldn't be made, Try again sit in it.
+- Below it: copies a day and the reels, then the copies themselves (To approve / Going out / Out); the old one-line
+  counts and the "being made" card that said the same twice are gone. It redraws whenever the server reports.
+
 ## Trial reels: a reel and its clean clip of the same length start together - the sound never loops
 App only: run ./deploy.sh.
 **What he said (2026-11-06):** Trial reels don't work for Ilyan: "it makes his videos loop, both vids same length, he

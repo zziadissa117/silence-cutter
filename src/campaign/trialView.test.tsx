@@ -175,7 +175,7 @@ describe('Trial reels', () => {
     })
     act(() => root.render(<TrialView campaigns={[campaign]} posting={profile} jobs={[]} onBack={() => {}} onCreate={vi.fn()} onRun={vi.fn()} removeJob={() => {}} />))
     await flush()
-    expect(host.textContent).toContain('On · 20 copies a day')
+    expect(host.textContent).toContain('20 copies a day')
     expect(host.textContent).toContain('Instagram takes 20 trial reels a day')
     expect(host.textContent).toContain('12 made')
     const plus = host.querySelector('button[aria-label="More a day"]') as HTMLButtonElement

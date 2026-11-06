@@ -21,6 +21,10 @@ import { fingerprint } from './fingerprint'
 import type { Job } from './jobs'
 import type { Campaign } from './look'
 import { BackToMore } from './MoreView'
+import { BatchStatus } from './BatchStatus'
+import { batchState, lastReadyAt, statusDays } from './batchNow'
+import { serverConnected } from './serverFlag'
+import { lastServerStatus, linkProblem, roomProblem, sendingLine, serverMaking, SERVER_LINK_EVENT } from './serverLink'
 import { listPosts, placeFor, postAction, readViralReel, rewordTrial, whenLabel, type LocalPosting, type ServerPost } from './posting'
 import { Watch } from './PostsView'
 import { BATCH_BANK_SAVED, loadBankFile, loadBatchBank, retireBankFiles, saveBankFile, saveBatchBank } from './store'
@@ -135,25 +139,13 @@ function TrialVideos({
   const going = mine.filter((p) => p.status !== 'waiting' && p.status !== 'posted').sort(byTime)
   const out = mine.filter((p) => p.status === 'posted').sort((a, b) => byTime(b, a))
   const making = jobs.filter((j) => j.campaignId === campaignId && j.batch?.trial && j.status !== 'done' && j.status !== 'failed')
-  const working = making.find((j) => j.status === 'working')
   return (
     <>
-      <div className="list-title">The videos</div>
-      <div className="card-group">
-        {making.length > 0 ? (
-          <div className="setting">
-            <div className="setting-text">
-              <span className="row-name">Being made: {making.length}</span>
-              <span className="row-line">
-                {working ? `Now ${Math.round((working.progress ?? 0) * 100)}% - ` : ''}keep the app open; each then waits here for you.
-              </span>
-            </div>
-          </div>
-        ) : null}
-        {mine.length === 0 && making.length === 0 ? (
-          <p className="hint">None yet - they are made as soon as the app is open, and show up here.</p>
-        ) : null}
-      </div>
+      {mine.length === 0 ? (
+        <p className="hint">
+          {making.length > 0 ? 'The first copies are being made - they show up here to approve.' : 'No copies yet - they are made as soon as the app is open, and show up here.'}
+        </p>
+      ) : null}
       {waiting.length > 0 ? (
         <>
           <div className="list-title">To approve · {waiting.length}</div>
@@ -230,6 +222,7 @@ export function TrialView({
   onCreate,
   onRun,
   removeJob,
+  onRetry,
 }: {
   campaigns: Campaign[]
   posting: LocalPosting | null
@@ -240,6 +233,8 @@ export function TrialView({
   /** Runs the loops now: tops up or trims to the number a day. */
   onRun: () => void
   removeJob: (id: string) => void
+  /** Makes a copy that couldn't be made again. */
+  onRetry?: (id: string) => void
 }) {
   const profile = posting?.profile ?? null
   const campaign = campaigns.find((c) => c.trial) ?? null
@@ -359,6 +354,14 @@ export function TrialView({
     }
   }, [sourceKey]) // eslint-disable-line react-hooks/exhaustive-deps
 
+  // The server's progress: drawn again whenever it says something.
+  const [, setLinkTick] = useState(0)
+  useEffect(() => {
+    const onLink = () => setLinkTick((n) => n + 1)
+    window.addEventListener(SERVER_LINK_EVENT, onLink)
+    return () => window.removeEventListener(SERVER_LINK_EVENT, onLink)
+  }, [])
+
   const today = todayHere()
   const days = useMemo(() => (campaign ? trialDays(posts, campaign.id, today) : null), [posts, campaign, today])
   const sources = bank ? activeSources(bank) : []
@@ -366,7 +369,6 @@ export function TrialView({
   const limit = instagramLimit(profile?.settings.trial, loopAccounts)
   const blocked = notAllowedOn(profile?.settings.trial, loopAccounts)
   const accountNames = loopAccounts.map((id) => profile?.accounts.find((a) => a.id === id)?.name ?? 'your account').join(', ')
-  const making = jobs.filter((j) => campaign && j.campaignId === campaign.id && j.batch?.trial).length
 
   const save = async (next: BatchBank) => {
     await saveBatchBank(next)
@@ -514,6 +516,44 @@ export function TrialView({
     }
   }
 
+  // What the loop is doing now, as the Batch tab says it (BatchStatus):
+  // where it is made, the copy being made and how far, how many wait, and
+  // each of the next days - gone out, ready, being made.
+  const where: 'phone' | 'server' = bank?.where === 'server' || serverConnected() ? 'server' : 'phone'
+  const serverNow = campaign && where === 'server' ? serverMaking(campaign.id) : null
+  const mineMaking = campaign ? jobs.filter((j) => j.campaignId === campaign.id && j.batch?.trial && j.status !== 'failed' && j.status !== 'held' && j.status !== 'done') : []
+  const working = mineMaking.find((j) => j.status === 'working') ?? null
+  const makingNow =
+    where === 'server'
+      ? serverNow?.now
+        ? { name: serverNow.now, progress: serverNow.progress ?? null }
+        : null
+      : working
+        ? { name: working.name, progress: working.progress }
+        : null
+  const waitingNow = where === 'server' ? (serverNow?.queued ?? 0) : mineMaking.filter((j) => j.status === 'queued').length
+  const failedNow = where === 'server' ? (serverNow?.failed ?? 0) : campaign ? jobs.filter((j) => j.campaignId === campaign.id && j.batch?.trial && j.status === 'failed').length : 0
+  // No more a day than Instagram takes trials on the account.
+  const statusDaysNow = bank && campaign ? statusDays({ ...bank, ...(limit !== null ? { most: limit } : {}) }, posts, where === 'phone' ? { jobs } : {}) : []
+  const linkTrouble = campaign && where === 'server' ? linkProblem(campaign.id) : null
+  const statusProblem = linkTrouble
+    ? `Couldn't reach the server: ${linkTrouble} It tries again by itself.`
+    : (roomProblem(lastServerStatus()) ?? (bank?.runProblem ? bank.runProblem : null))
+  const loopState =
+    bank && campaign
+      ? batchState({
+          running: Boolean(bank.running),
+          perDay: bank.perDay,
+          where,
+          problem: statusProblem,
+          making: makingNow !== null || waitingNow > 0,
+          failed: failedNow,
+          heardAt: where === 'server' ? (lastServerStatus()?.page?.at ?? null) : null,
+          askedAt: where === 'server' ? (lastServerStatus()?.askedAt ?? null) : null,
+          days: statusDaysNow,
+        })
+      : null
+
   if (!profile) {
     return (
       <section className="screen trial">
@@ -541,19 +581,44 @@ export function TrialView({
         who don&rsquo;t follow you, never to your followers.
       </p>
 
+      {campaign && bank && loopState && sources.length > 0 ? (
+        <BatchStatus
+          state={loopState}
+          where={where}
+          days={statusDaysNow}
+          making={makingNow}
+          waiting={waitingNow}
+          failed={failedNow}
+          lastReady={lastReadyAt(posts, campaign.id)}
+          heardAt={where === 'server' ? (lastServerStatus()?.page?.at ?? null) : null}
+          freeGB={where === 'server' ? (lastServerStatus()?.freeGB ?? null) : null}
+          sending={where === 'server' ? sendingLine(campaign.id) : null}
+          stop={
+            where === 'phone' && failedNow > 0 && onRetry
+              ? {
+                  label: `Try again (${failedNow})`,
+                  busy: busy !== null,
+                  run: () => {
+                    for (const j of jobs) if (j.campaignId === campaign.id && j.batch?.trial && j.status === 'failed') onRetry(j.id)
+                  },
+                }
+              : null
+          }
+          stopAll={{ label: 'Stop everything', busy: busy !== null, run: () => void stopAll() }}
+        />
+      ) : null}
+
       {campaign && bank && sources.length > 0 ? (
         <div className="card-group">
           <div className="setting">
             <div className="setting-text">
-              <span className="row-name">{bank.running ? `On · ${limit !== null ? Math.min(limit, perDay) : perDay} copies a day` : 'Stopped'}</span>
+              <span className="row-name">{bank.running ? `${limit !== null ? Math.min(limit, perDay) : perDay} copies a day` : 'Stopped'}</span>
               <span className="row-line wrap">
                 Each copy is your clean clip with the reel&rsquo;s sound and its words - moved, or a word changed, a touch brighter or darker.
                 They&rsquo;re made a few days ahead and spread around the clock; the first {TRUST} of each reel wait below for your OK.
               </span>
               <span className="row-line">
-                On {accountNames || 'your account'}
-                {days ? ` · today ${days.outToday} out, ${days.toGoToday} to go · ${days.ahead} ready for the next days` : ''}
-                {making > 0 ? ` · ${making} being made` : ''}
+                To {accountNames || 'your account'} as Trial Reels - people who don&rsquo;t follow you
               </span>
               {limit !== null && limit < perDay ? (
                 <span className="row-line">Instagram takes {limit} trial reels a day on this account, so that&rsquo;s the most made.</span>
@@ -605,14 +670,6 @@ export function TrialView({
               </button>
             </div>
           ))}
-          <div className="setting">
-            <div className="setting-text">
-              <span className="row-line">Stop every loop and take out every video not out yet.</span>
-            </div>
-            <button type="button" className="linkbtn danger" disabled={busy !== null} onClick={() => void stopAll()}>
-              Stop everything
-            </button>
-          </div>
           {days && days.refused.length > 0 ? (
             <div className="setting">
               <div className="setting-text">
