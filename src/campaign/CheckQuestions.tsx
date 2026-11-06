@@ -11,7 +11,7 @@
 // videos at once asks for each of them here, and the hook once for all.
 // The hook answer given last on this phone is the one offered first.
 
-import { useState } from 'react'
+import { useState, type ReactNode } from 'react'
 
 import { ChevronLeft } from './icons'
 import type { Job } from './jobs'
@@ -49,9 +49,13 @@ export function CheckQuestions({
   onMusic,
   pictures,
   onSkipPicture,
+  clips,
   onNext,
   onCancel,
 }: {
+  /** The videos joined on before and after it, to watch, change or mute -
+   *  so he sees they are in it (2026-11-06). */
+  clips?: (job: Job) => ReactNode
   /** The videos about to be checked. */
   videos: Job[]
   campaigns: Campaign[]
@@ -102,6 +106,7 @@ export function CheckQuestions({
             onSkip={(pictureId, skip) => onSkipPicture(job.id, pictureId, skip)}
             sayNone
           />
+          {clips?.(job)}
         </div>
       ))}
       {hook ? (

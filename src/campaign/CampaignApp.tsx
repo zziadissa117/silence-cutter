@@ -70,6 +70,8 @@ import {
   CLIP_PLACES,
   addClip,
   angleKey,
+  clipMuted,
+  keepClipMuted,
   clipFile,
   clipFor,
   listClips,
@@ -478,8 +480,10 @@ export function CampaignApp() {
       const id = clipFor(job.day?.clips?.[place], angle[place])
       if (!id) continue
       const file = await clipFile(id).catch(() => null)
-      if (file) joined[place] = file
-      else missing.push(place)
+      if (file) {
+        joined[place] = file
+        if (clipMuted(job.day?.clips?.mute?.[place], job.campaignId, job.angleId, place)) joined.muted = [...(joined.muted ?? []), place]
+      } else missing.push(place)
     }
     // The angle's videos in the middle, unless he left them off this one.
     if (job.day?.clips?.cues !== 'none') {
@@ -695,8 +699,10 @@ export function CampaignApp() {
       const id = clipFor(job.day?.clips?.[place], angleClips[place])
       if (!id) continue
       const fileId = await up(talkFileId('clip', id), await clipFile(id).catch(() => null), `${place}.mp4`)
-      if (fileId) clips[place] = fileId
-      else clips.missing = [...(clips.missing ?? []), place]
+      if (fileId) {
+        clips[place] = fileId
+        if (clipMuted(job.day?.clips?.mute?.[place], job.campaignId, job.angleId, place)) clips.muted = [...(clips.muted ?? []), place]
+      } else clips.missing = [...(clips.missing ?? []), place]
     }
     if (job.day?.clips?.cues !== 'none') {
       for (const cue of angleClips.cues ?? []) {
@@ -1411,6 +1417,18 @@ export function CampaignApp() {
     void recordDay(id, day, { campaignId: job.campaignId, angleId: job.angleId, headlineText: job.headlineText })
   }
 
+  /** A video before or after with its sound off or on - for this video, and
+   *  the angle's next ones. */
+  const setClipMute = (id: string, place: ClipPlace, muted: boolean) => {
+    const job = jobsRef.current.find((j) => j.id === id)
+    if (!job?.day) return
+    keepClipMuted(job.campaignId, job.angleId, place, muted)
+    const clips: JobClips = { ...job.day.clips, mute: { ...job.day.clips?.mute, [place]: muted } }
+    const day = { ...job.day, clips }
+    setJobs((js) => js.map((j) => (j.id === id ? { ...j, day } : j)))
+    void recordDay(id, day, { campaignId: job.campaignId, angleId: job.angleId, headlineText: job.headlineText })
+  }
+
   /** The angle's videos in the middle left off one video, or put back on. */
   const setCuesOff = (id: string, off: boolean) => {
     const job = jobsRef.current.find((j) => j.id === id)
@@ -1457,6 +1475,8 @@ export function CampaignApp() {
         cues={cuesOf(job)}
         cuesOff={job.day.clips?.cues === 'none'}
         onCuesOff={(off) => setCuesOff(job.id, off)}
+        muted={(place) => clipMuted(job.day?.clips?.mute?.[place], job.campaignId, job.angleId, place)}
+        onMute={(place, muted) => setClipMute(job.id, place, muted)}
       />
     )
 
@@ -4327,6 +4347,7 @@ export function CampaignApp() {
         onMusic={setMusic}
         pictures={picturesFor}
         onSkipPicture={setSkipPicture}
+        clips={(job) => clipsField(job, true)}
         onNext={(hookCaptions) => answerQuestions(asking, hookCaptions)}
         onCancel={() => setAsking(null)}
       />

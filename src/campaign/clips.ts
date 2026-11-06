@@ -29,7 +29,32 @@ export type ClipInfo = StoredClip
 export type AngleClips = Partial<Record<ClipPlace, string>> & { cues?: ClipCue[] }
 /** The clips one video is made with, and any it should have had that are
  *  no longer on this phone. */
+/** Whether a video's clip before or after plays without its sound: as he set
+ *  it for this video, else as he last set it for the angle, else with its
+ *  sound (his ask, 2026-11-06: "if it's not already muted, then don't mute
+ *  it"). */
+const MUTE_KEY = 'clips.muted'
+function mutedByAngle(): Record<string, boolean> {
+  try {
+    return (JSON.parse(localStorage.getItem(MUTE_KEY) ?? '{}') as Record<string, boolean>) ?? {}
+  } catch {
+    return {}
+  }
+}
+export function clipMuted(own: boolean | undefined, campaignId: string, angleId: string, place: ClipPlace): boolean {
+  return own ?? mutedByAngle()[`${angleKey(campaignId, angleId)}/${place}`] ?? false
+}
+export function keepClipMuted(campaignId: string, angleId: string, place: ClipPlace, muted: boolean): void {
+  try {
+    localStorage.setItem(MUTE_KEY, JSON.stringify({ ...mutedByAngle(), [`${angleKey(campaignId, angleId)}/${place}`]: muted }))
+  } catch {
+    // This video's own choice still holds.
+  }
+}
+
 export type JoinedClips = Partial<Record<ClipPlace, Blob>> & {
+  /** Played without their sound. */
+  muted?: ClipPlace[]
   missing?: ClipPlace[]
   /** The videos in the middle, each with the phrase that brings it in. */
   cues?: { phrase: string; file: Blob }[]

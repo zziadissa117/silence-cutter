@@ -214,6 +214,9 @@ export interface JobClips {
   after?: string
   /** "none": the angle's videos in the middle are left off this video. */
   cues?: 'none'
+  /** The video before or after with its sound off (true) or on (false) for
+   *  this video; absent: as last set for the angle (clips.clipMuted). */
+  mute?: Partial<Record<'before' | 'after', boolean>>
 }
 
 export interface ReactionParts {

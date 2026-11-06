@@ -108,6 +108,7 @@ async function runMake(order: MakeOrder): Promise<void> {
     ...(order.clips.cues?.length ? { cues: await Promise.all(order.clips.cues.map(async (c) => ({ phrase: c.phrase, file: await fileOf(c.fileId) }))) } : {}),
     ...(order.clips.missing?.length ? { missing: order.clips.missing } : {}),
     ...(order.clips.cuesMissing ? { cuesMissing: order.clips.cuesMissing } : {}),
+    ...(order.clips.muted?.length ? { muted: order.clips.muted } : {}),
   }
   const manual: { picture: MakeOrder['manual'][number]['picture']; image: Blob }[] = []
   for (const m of order.manual) {

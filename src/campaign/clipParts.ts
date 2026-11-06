@@ -29,6 +29,11 @@ export interface Clip {
   video: InputVideoTrack
   /** Null when the clip has no sound, or sound this browser can't read. */
   audio: InputAudioTrack | null
+  /** It has a sound track at all - read another way when `audio` can't be
+   *  (soundOf). */
+  hasSound?: boolean
+  /** The file itself, for reading its sound another way. */
+  file?: Blob
   width: number
   height: number
   /** Where its picture starts and the clip ends, on its own timeline. */
@@ -133,7 +138,7 @@ export async function openClip(file: Blob, which: string): Promise<Clip> {
     ])
     if (!(duration > shownFrom)) throw new SilenceCutError(`The ${which} clip is empty.`)
     const first = await steadyStart(video, shownFrom, duration)
-    return { input, video, audio: soundReadable ? audio : null, width, height, first, duration }
+    return { input, video, audio: soundReadable ? audio : null, hasSound: Boolean(audio), file, width, height, first, duration }
   } catch (error) {
     input.dispose()
     throw error
@@ -154,8 +159,35 @@ function planesOf(sample: AudioSample): Float32Array[] {
   })
 }
 
-/** Clips whose sound the phone couldn't decode: silent from then on. */
+/** Clips whose sound the phone's video decoder couldn't decode: read the
+ *  other way (soundOf) from then on. */
 const unplayable = new WeakSet<Clip>()
+
+/** A clip's whole sound read by the browser's own audio decoder (Web Audio),
+ *  at `rate` - for when the video decoder's (WebCodecs) can't: the iPhone's
+ *  failed on his video before ("InternalAudioDecoderCocoa decoding failed")
+ *  and it went silent (2026-11-04); Safari's audio decoder reads the same
+ *  file. Null when that can't either. Once per clip and rate. */
+const decoded = new WeakMap<Clip, Map<number, Promise<AudioBuffer | null>>>()
+export function soundOf(clip: Clip, rate: number): Promise<AudioBuffer | null> {
+  let byRate = decoded.get(clip)
+  if (!byRate) decoded.set(clip, (byRate = new Map()))
+  let buffer = byRate.get(rate)
+  if (!buffer) {
+    buffer = (async () => {
+      if (!clip.file || typeof OfflineAudioContext === 'undefined') return null
+      try {
+        const context = new OfflineAudioContext(2, 1, rate)
+        return await context.decodeAudioData(await clip.file.arrayBuffer())
+      } catch (error) {
+        console.warn("A clip's sound couldn't be read either way:", error)
+        return null
+      }
+    })()
+    byRate.set(rate, buffer)
+  }
+  return buffer
+}
 
 /** The sound of `ranges` of a clip at `rate` with `channels` channels, each
  *  range exactly as long as its picture - silence where the clip has no
@@ -184,8 +216,8 @@ export async function eachSound(
             next = await samples.next()
           } catch (error) {
             unplayable.add(clip)
-            console.warn("A clip's sound couldn't be decoded, so it plays silent:", error)
-            report({ kind: 'fallback', phase: 'clip sound', message: `${error instanceof Error ? error.message : String(error)} - the clip plays silent` })
+            console.warn("A clip's sound couldn't be decoded by the video decoder; read another way:", error)
+            report({ kind: 'fallback', phase: 'clip sound', message: `${error instanceof Error ? error.message : String(error)} - read with the audio decoder instead` })
             break
           }
           if (next.done) break
@@ -205,6 +237,21 @@ export async function eachSound(
         }
       } finally {
         await samples.return?.().catch(() => {})
+      }
+    }
+    // The video decoder couldn't (or the track can't be read that way): the
+    // browser's audio decoder, from where it got to.
+    if (given < needed && clip.hasSound && (unplayable.has(clip) || !clip.audio)) {
+      const buffer = await soundOf(clip, rate)
+      if (buffer) {
+        const planes = Array.from({ length: buffer.numberOfChannels }, (_, c) => buffer.getChannelData(c))
+        let at = Math.round(range.start * rate) + given
+        while (given < needed && at < buffer.length) {
+          const length = Math.min(Math.round(rate / 10), needed - given, buffer.length - at)
+          await visit(fitChannels(planes.map((p) => p.slice(at, at + length)), channels))
+          given += length
+          at += length
+        }
       }
     }
     while (given < needed) {

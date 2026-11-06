@@ -3,10 +3,10 @@
 // and a line for each clip in use, to swap it for another clip on the phone,
 // take a new one from the phone, or leave it off this video.
 
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 
 import { VideoPicker } from '../VideoPicker'
-import { CLIP_PLACES, type AngleClips, type ClipInfo, type ClipPlace } from './clips'
+import { CLIP_PLACES, clipFile, type AngleClips, type ClipInfo, type ClipPlace } from './clips'
 import { formatTime } from './jobs'
 
 const LABEL: Record<ClipPlace, string> = { before: 'Video before', after: 'Video after' }
@@ -23,7 +23,13 @@ export function ClipsField({
   cues = [],
   cuesOff = false,
   onCuesOff,
+  muted,
+  onMute,
 }: {
+  /** Whether its clip before or after plays without its sound, and a way to
+   *  change it (2026-11-06: with its sound unless he mutes it). */
+  muted?: (place: ClipPlace) => boolean
+  onMute?: (place: ClipPlace, muted: boolean) => void
   /** This video's own picks: a clip's id, or "none". Absent: the angle's. */
   picks: Partial<Record<ClipPlace, string>>
   /** The clips set on its angle. */
@@ -65,6 +71,8 @@ export function ClipsField({
           }}
           onNew={(file) => onNew(place, file)}
           onCancel={() => setAdded((a) => a.filter((p) => p !== place))}
+          muted={muted?.(place)}
+          onMute={onMute ? (m) => onMute(place, m) : undefined}
         />
       ))}
       {cues.length > 0 ? (
@@ -117,7 +125,11 @@ function ClipLine({
   onPick,
   onNew,
   onCancel,
+  muted,
+  onMute,
 }: {
+  muted?: boolean
+  onMute?: (muted: boolean) => void
   place: ClipPlace
   pick: string | undefined
   angleClip: ClipInfo | undefined
@@ -130,6 +142,25 @@ function ClipLine({
   const [error, setError] = useState<string | null>(null)
   const others = all.filter((c) => c.id !== angleClip?.id)
   const nothingYet = !pick && !angleClip
+  // The clip this video gets, to watch here with its sound.
+  const chosen = pick === 'none' ? undefined : pick ? all.find((c) => c.id === pick) : angleClip
+  const [watching, setWatching] = useState<string | null>(null)
+  useEffect(
+    () => () => {
+      if (watching) URL.revokeObjectURL(watching)
+    },
+    [watching],
+  )
+  const watch = async () => {
+    if (watching) {
+      setWatching(null)
+      return
+    }
+    if (!chosen) return
+    const blob = await clipFile(chosen.id).catch(() => null)
+    if (blob) setWatching(URL.createObjectURL(blob))
+    else setError("This clip isn't on the phone any more. Choose it again.")
+  }
 
   return (
     <div className="clip-line">
@@ -175,6 +206,19 @@ function ClipLine({
           Cancel
         </button>
       ) : null}
+      {chosen ? (
+        <span className="clip-sound">
+          <button type="button" className="btn small" onClick={() => void watch()} aria-label={watching ? 'Close' : `Watch the ${LABEL[place].toLowerCase()}`}>
+            {watching ? 'Close' : '▶ Watch'}
+          </button>
+          {onMute ? (
+            <button type="button" className={`btn small${muted ? '' : ' on'}`} aria-pressed={!muted} onClick={() => onMute(!muted)}>
+              {muted ? '🔇 Muted' : '🔊 Sound on'}
+            </button>
+          ) : null}
+        </span>
+      ) : null}
+      {watching ? <video className="clip-watch" src={watching} controls playsInline autoPlay muted={muted} /> : null}
       {error ? <div className="error">{error}</div> : null}
     </div>
   )

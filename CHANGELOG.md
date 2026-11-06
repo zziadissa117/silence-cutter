@@ -3,6 +3,23 @@
 Newest first. Every change says what it does, how to use it, and how it works
 underneath. Kept up to date with each commit.
 
+## The video before keeps its sound; mute it if you want; see it on the questions screen
+App only: run ./deploy.sh.
+**What he said (2026-11-06):** the angle's video before (his format's, e.g. Vertus) came out muted - "If the video
+comes as a video with sound, then why in the hell are you muting it?" - he chooses to mute it or not; and on the
+screen where he picks the headline and music he wants to see the video is included.
+- **Why it was muted** (`clipParts.eachSound`): the iPhone's video decoder can't read that clip's sound
+  ("InternalAudioDecoderCocoa decoding failed", his report 2026-11-04), and since 2026-11-03 such a clip played silent
+  rather than losing the look. Now its sound is read with the browser's own audio decoder instead (`soundOf`, Web
+  Audio `decodeAudioData` - Safari reads the same file that way), from where the first one stopped; silent only if
+  neither can. A clip whose track the video decoder can't read at all is read that way too (`hasSound`).
+- **Sound on / Muted** (`ClipsField`, `clips.clipMuted`/`keepClipMuted`, `JobClips.mute`, `JoinedClips.muted`): on
+  each video before/after line, with its sound unless he mutes it; his choice holds for that angle's next videos.
+  Made on the phone or on the Cutter server (`MakeOrder.clips.muted`).
+- **▶ Watch** on each clip line plays it with its sound, and the questions screen (where it goes, headline, music -
+  `CheckQuestions`) now lists the videos before/after/in the middle, to watch, change or mute.
+- Test: `clipSound.test.ts` (read the other way when the first fails).
+
 ## Timeline editor straight away; out of memory starts the Cutter again by itself
 App only: run ./deploy.sh.
 **What he asked (2026-11-06):** "just open the timeline editor ... we click on the videos we want to put in, and we can

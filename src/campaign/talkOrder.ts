@@ -53,6 +53,7 @@ export interface MakeOrder {
     cues?: { phrase: string; fileId: string }[]
     missing?: ('before' | 'after')[]
     cuesMissing?: number
+    muted?: ('before' | 'after')[]
   }
   defaults: AngleEffects | null
   skipPictures: string[]

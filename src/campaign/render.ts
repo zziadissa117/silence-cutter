@@ -160,7 +160,7 @@ export interface CampaignRenderInput {
   /** A track to play under the voice; see music.ts. */
   music?: { audio: Blob; level: MusicLevel } | null
   /** Videos joined on whole, before him and after him. */
-  clips?: Partial<Record<ClipPlace, Blob | null>>
+  clips?: Partial<Record<ClipPlace, Blob | null>> & { muted?: ClipPlace[] }
   /** Videos played whole in the middle of him, each after kept part `after`
    *  (cueClips.ts splits the cut so each lands between two parts). */
   inserts?: { after: number; file: Blob }[]
@@ -412,8 +412,8 @@ export async function renderCampaignCut(
       }
     }
     traceStep('the clips joined on')
-    const beforeGain = await levelFor(beforeClip)
-    const afterGain = await levelFor(afterClip)
+    const beforeGain = joining.muted?.includes('before') ? 0 : await levelFor(beforeClip)
+    const afterGain = joining.muted?.includes('after') ? 0 : await levelFor(afterClip)
     const middleGains: number[] = []
     for (const m of middle) middleGains.push(await levelFor(m.clip))
 

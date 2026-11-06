@@ -275,7 +275,7 @@ export async function make(
       forceVertical,
       voice,
       music: track ? { audio: track.audio, level: track.level } : null,
-      clips: { before: clips.before, after: clips.after },
+      clips: { before: clips.before, after: clips.after, ...(clips.muted?.length ? { muted: clips.muted } : {}) },
       inserts: middle.placed.map((p) => ({ after: p.after, file: clips.cues![p.cue].file })),
       pops: { clips: popClips, sizePct: pop.sizePct, position: pop.position },
       texts: (byHand.texts ?? []).filter(isText).flatMap((m) => {
