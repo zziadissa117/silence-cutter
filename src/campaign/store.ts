@@ -242,9 +242,11 @@ export interface JobBatch {
    *  can be counted (postiz/hookInsights.ts). Absent on videos from before
    *  2026-11-01 and on ones without music. */
   song?: string
-  /** A Trial loop's video (trialLoop.ts): an Instagram Trial Reel, scheduled
-   *  at its time without approval. */
+  /** A Trial loop's video (trialLoop.ts): an Instagram Trial Reel. It waits
+   *  for his yes like any batch video, until he has approved 3 copies of its
+   *  viral reel (`source`) - then the rest go by themselves (postiz trustKey). */
   trial?: true
+  source?: string
 }
 
 /** A clips-and-music video's other files, by name and type: the clips after

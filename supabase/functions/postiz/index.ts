@@ -85,7 +85,7 @@ import { GONE_MS, serverTrouble, troubleNote, type ServerPing } from './serverWa
 import { accountName, baseNote, clearOfTaken, failedRefs, goodHoursEnd, missingAccounts, notPostedNote, reconnectedAs, youtubeRetryTime, youtubeTime } from './failed.ts'
 import { carryOver, cleanCaptions, cleanRepost, repostDueAt, textFor, variationNote, type AccountText } from './repost.ts'
 import { FAKE_CLAUDE, FakeError, fakeCaption, fakePostiz, isFakePostiz } from './fake.ts'
-import { approvalFor, batchChoices, batchInfo, batchReady, batchTrusted, freeBatchTimes, type BatchInfo } from './batch.ts'
+import { approvalFor, batchChoices, batchInfo, batchReady, batchTrusted, freeBatchTimes, trustKey, type BatchInfo } from './batch.ts'
 import { handFields } from './hand.ts'
 import { laterWhileWaiting, lastTimeToday, nextSlot, normalTimes, pickTime, sessionOf, spreadDay, spreadEnd, spreadUntil, timesFor, type OtherPost, type Spread, addDays, localDate, localTime, zoned } from './slots.ts'
 import { cleanWindow, type PostingWindow } from './window.ts'
@@ -1088,7 +1088,7 @@ function postView(post: Post) {
     byHand: post.by_hand,
     ready: Boolean(post.ready_at),
     batch: post.batch
-      ? { id: post.batch.id, date: post.batch.date, time: post.batch.time, size: post.batch.size, ...(post.batch.look ? { look: post.batch.look } : {}), ...(post.batch.disliked ? { disliked: true } : {}) }
+      ? { id: post.batch.id, date: post.batch.date, time: post.batch.time, size: post.batch.size, ...(post.batch.look ? { look: post.batch.look } : {}), ...(post.batch.disliked ? { disliked: true } : {}), ...(post.batch.trial ? { trial: true } : {}), ...(post.batch.source ? { source: post.batch.source } : {}) }
       : null,
     ...(post.views ? { views: post.views } : {}),
   }
@@ -2065,7 +2065,8 @@ async function prepare(start: Post): Promise<Post> {
  *  the rest of it to go by itself. */
 async function batchHasHisYes(post: Post): Promise<boolean> {
   if (!post.batch) return false
-  const { data } = await db.from('cutter_posts').select('status').eq('profile_id', post.profile_id).eq('batch->>id', post.batch.id)
+  const by = trustKey(post.batch)
+  const { data } = await db.from('cutter_posts').select('status').eq('profile_id', post.profile_id).eq(`batch->>${by.field}`, by.value)
   return batchTrusted(((data ?? []) as Pick<Post, 'status'>[]).map((r) => r.status))
 }
 
@@ -2080,7 +2081,7 @@ async function approveRestOfBatch(post: Post): Promise<number> {
     .from('cutter_posts')
     .update({ status: 'approved', error: null, attempts: 0, retry_at: null, updated_at: new Date().toISOString() })
     .eq('profile_id', post.profile_id)
-    .eq('batch->>id', post.batch.id)
+    .eq(`batch->>${trustKey(post.batch).field}`, trustKey(post.batch).value)
     .eq('status', 'waiting')
     .eq('rules->>approval', 'me')
     .is('ready_at', null)

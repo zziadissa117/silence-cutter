@@ -389,7 +389,7 @@ function planTrialVideos(
     headline: plan.text,
     headlineStyle: plan.look.style,
     trial: plan.look,
-    batch: trialBatch({ id, date: taking[i].date, time: taking[i].time, size: taking.length }),
+    batch: trialBatch({ id, date: taking[i].date, time: taking[i].time, size: taking.length }, plan.source.id),
   }))
   return { videos, slots: taking, bank: fill({ ...bank, made, used, lastPair }, taking, now), retire: [] }
 }

@@ -21,7 +21,8 @@ import { fingerprint } from './fingerprint'
 import type { Job } from './jobs'
 import type { Campaign } from './look'
 import { BackToMore } from './MoreView'
-import { listPosts, placeFor, readViralReel, type LocalPosting, type ServerPost } from './posting'
+import { listPosts, placeFor, postAction, readViralReel, whenLabel, type LocalPosting, type ServerPost } from './posting'
+import { Watch } from './PostsView'
 import { BATCH_BANK_SAVED, loadBatchBank, retireBankFiles, saveBankFile, saveBatchBank } from './store'
 import {
   FIRST_PER_DAY,
@@ -41,6 +42,152 @@ import {
 } from './trialLoop'
 import { takeApart } from './viralReel'
 import type { BankFile, BatchBank } from './batch'
+
+/** As the server's batch.ts BATCH_TRUST: his 3rd yes on copies of one
+ *  viral reel lets every copy of it after go by itself. */
+const TRUST = 3
+
+/** One trial video: its words, its time, and - while it isn't out - watch,
+ *  approve or take it out. */
+function TrialPost({ post, onChanged }: { post: ServerPost; onChanged: (post: ServerPost, message?: string) => void }) {
+  const [watching, setWatching] = useState(false)
+  const [busy, setBusy] = useState(false)
+  const [problem, setProblem] = useState<string | null>(null)
+  const waiting = post.status === 'waiting'
+  const out = post.status === 'posted'
+  const act = async (action: 'approve' | 'reject' | 'unschedule') => {
+    setBusy(true)
+    setProblem(null)
+    try {
+      const next = await postAction(action, post.id, action === 'reject' ? { disliked: true } : {})
+      onChanged(next, next.alsoApproved ? `Approved - and the ${next.alsoApproved} other copies of this reel waiting go by themselves.` : undefined)
+    } catch (err) {
+      setProblem(err instanceof Error ? err.message : String(err))
+    } finally {
+      setBusy(false)
+    }
+  }
+  const link = Object.values(post.links ?? {})[0]
+  return (
+    <li className="post trial-post">
+      <div className="post-head">
+        <span className={`dot ${waiting ? 'now' : out ? 'ok' : post.status === 'error' ? 'bad' : 'later'}`} aria-hidden />
+        <span className="post-title">{waiting ? 'Waiting for you' : out ? 'Out' : post.status === 'error' ? 'Instagram turned it down' : 'Going out'}</span>
+        <span className="post-when">{whenLabel(post.postAt)}</span>
+      </div>
+      <div className="post-line wrap trial-words">{post.headline}</div>
+      {post.error ? <div className="hint warn-text">{post.error}</div> : null}
+      {watching ? <Watch post={post} /> : null}
+      {problem ? <p className="hint warn-text">{problem}</p> : null}
+      <div className="post-actions">
+        {waiting ? (
+          <button type="button" className="btn small primary" disabled={busy} onClick={() => void act('approve')}>
+            {busy ? 'Sending…' : 'Approve'}
+          </button>
+        ) : null}
+        <button type="button" className="linkbtn" onClick={() => setWatching((w) => !w)}>
+          {watching ? 'Hide video' : 'Watch'}
+        </button>
+        {out && link ? (
+          <a className="linkbtn" href={link} target="_blank" rel="noreferrer">
+            On Instagram
+          </a>
+        ) : null}
+        {!out && post.status !== 'error' ? (
+          <button
+            type="button"
+            className="linkbtn danger"
+            disabled={busy}
+            onClick={() =>
+              window.confirm(waiting ? 'Reject this copy? Another is made in its place.' : 'Take this one out? It won\'t be posted.') &&
+              void act(waiting ? 'reject' : 'unschedule')
+            }
+          >
+            {waiting ? 'Reject' : 'Take out'}
+          </button>
+        ) : null}
+      </div>
+    </li>
+  )
+}
+
+/** Every trial video, by where it is: being made, waiting for his yes, going
+ *  out at its time, out. */
+function TrialVideos({
+  posts,
+  campaignId,
+  jobs,
+  onChanged,
+}: {
+  posts: ServerPost[]
+  campaignId: string
+  jobs: Job[]
+  onChanged: (post: ServerPost, message?: string) => void
+}) {
+  const [showOut, setShowOut] = useState(false)
+  const mine = posts.filter((p) => p.campaignId === campaignId && p.batch?.trial && p.status !== 'rejected' && p.status !== 'failed')
+  const byTime = (a: ServerPost, b: ServerPost) => (a.postAt ?? '').localeCompare(b.postAt ?? '')
+  const waiting = mine.filter((p) => p.status === 'waiting').sort(byTime)
+  const going = mine.filter((p) => p.status !== 'waiting' && p.status !== 'posted').sort(byTime)
+  const out = mine.filter((p) => p.status === 'posted').sort((a, b) => byTime(b, a))
+  const making = jobs.filter((j) => j.campaignId === campaignId && j.batch?.trial && j.status !== 'done' && j.status !== 'failed')
+  const working = making.find((j) => j.status === 'working')
+  return (
+    <>
+      <div className="list-title">The videos</div>
+      <div className="card-group">
+        {making.length > 0 ? (
+          <div className="setting">
+            <div className="setting-text">
+              <span className="row-name">Being made: {making.length}</span>
+              <span className="row-line">
+                {working ? `Now ${Math.round((working.progress ?? 0) * 100)}% - ` : ''}keep the app open; each then waits here for you.
+              </span>
+            </div>
+          </div>
+        ) : null}
+        {mine.length === 0 && making.length === 0 ? (
+          <p className="hint">None yet - they are made as soon as the app is open, and show up here.</p>
+        ) : null}
+      </div>
+      {waiting.length > 0 ? (
+        <>
+          <div className="list-title">To approve · {waiting.length}</div>
+          <p className="hint">Watch a few: once you approve {TRUST} copies of a reel, every copy of it after goes by itself.</p>
+          <ul className="posts">
+            {waiting.map((p) => (
+              <TrialPost key={p.id} post={p} onChanged={onChanged} />
+            ))}
+          </ul>
+        </>
+      ) : null}
+      {going.length > 0 ? (
+        <>
+          <div className="list-title">Going out · {going.length}</div>
+          <ul className="posts">
+            {going.map((p) => (
+              <TrialPost key={p.id} post={p} onChanged={onChanged} />
+            ))}
+          </ul>
+        </>
+      ) : null}
+      {out.length > 0 ? (
+        <>
+          <button type="button" className="list-title linkbtn" onClick={() => setShowOut((s) => !s)}>
+            Out · {out.length} {showOut ? '▾' : '▸'}
+          </button>
+          {showOut ? (
+            <ul className="posts">
+              {out.slice(0, 20).map((p) => (
+                <TrialPost key={p.id} post={p} onChanged={onChanged} />
+              ))}
+            </ul>
+          ) : null}
+        </>
+      ) : null}
+    </>
+  )
+}
 
 const isInstagram = (platform: string) => platform === 'instagram' || platform === 'instagram-standalone'
 
@@ -321,7 +468,11 @@ export function TrialView({
         <div className="card-group">
           <div className="setting">
             <div className="setting-text">
-              <span className="row-name">{bank.running ? `Making ${limit !== null ? Math.min(limit, perDay) : perDay} a day` : 'Stopped'}</span>
+              <span className="row-name">{bank.running ? `On · ${limit !== null ? Math.min(limit, perDay) : perDay} copies a day` : 'Stopped'}</span>
+              <span className="row-line wrap">
+                Each copy is your clean clip with the reel&rsquo;s sound and its words - moved, or a word changed, a touch brighter or darker.
+                They&rsquo;re made a few days ahead and spread around the clock; the first {TRUST} of each reel wait below for your OK.
+              </span>
               <span className="row-line">
                 On {accountNames || 'your account'}
                 {days ? ` · today ${days.outToday} out, ${days.toGoToday} to go · ${days.ahead} ready for the next days` : ''}
@@ -393,6 +544,20 @@ export function TrialView({
             </div>
           ) : null}
         </div>
+      ) : null}
+
+      {campaign && (sources.length > 0 || posts.some((p) => p.campaignId === campaign.id)) ? (
+        <TrialVideos
+          posts={posts}
+          campaignId={campaign.id}
+          jobs={jobs}
+          onChanged={(post, message) => {
+            setPosts((list) => list.map((p) => (p.id === post.id ? post : p)))
+            if (message) setSaid(message)
+            // His 3rd yes approved others too: read them again.
+            void listPosts().then(setPosts).catch(() => {})
+          }}
+        />
       ) : null}
 
       <div className="list-title">{sources.length > 0 ? 'Another viral reel' : 'Start a Trial loop'}</div>

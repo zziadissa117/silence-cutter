@@ -1063,10 +1063,9 @@ export function CampaignApp() {
           duration: result.newDurationSec,
           fileName: job.name,
           later: job.later === true,
+          // A Trial loop's video waits for his yes like any batch video,
+          // until 3 copies of its viral reel have it (postiz trustKey).
           ...(job.batch ? { batch: job.batch } : {}),
-          // A Trial loop's video goes at its time without approval, as a
-          // Formats video he scheduled does (postiz batch.approvalFor).
-          ...(job.batch?.trial ? { scheduled: true } : {}),
         },
       },
       result.blob,

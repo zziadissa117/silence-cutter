@@ -219,8 +219,8 @@ export function trialAngle(angle: Angle, look: TrialLook): Angle {
 }
 
 /** A trial video's batch line: its day and time, marked a trial. */
-export function trialBatch(batch: Omit<JobBatch, 'trial'>): JobBatch {
-  return { ...batch, trial: true }
+export function trialBatch(batch: Omit<JobBatch, 'trial' | 'source'>, source: string): JobBatch {
+  return { ...batch, trial: true, source }
 }
 
 /** The loop's bank as the accounts allow it: no more a day than Instagram

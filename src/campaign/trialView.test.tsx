@@ -32,6 +32,7 @@ vi.mock('./viralReel', () => ({
 vi.mock('./posting', async (original) => ({
   ...(await original<Record<string, unknown>>()),
   listPosts: vi.fn(async () => []),
+  postAction: vi.fn(),
   readViralReel: vi.fn(async () => ({
     read: { text: 'POV: you found the hack', style: 'outline', outlineColor: '#000000', size: 'large', x: 0.5, y: 0.3, rewordings: ['POV: you found the trick'] },
   })),
@@ -174,12 +175,44 @@ describe('Trial reels', () => {
     })
     act(() => root.render(<TrialView campaigns={[campaign]} posting={profile} jobs={[]} onBack={() => {}} onCreate={vi.fn()} onRun={vi.fn()} removeJob={() => {}} />))
     await flush()
-    expect(host.textContent).toContain('Making 20 a day')
+    expect(host.textContent).toContain('On · 20 copies a day')
     expect(host.textContent).toContain('Instagram takes 20 trial reels a day')
     expect(host.textContent).toContain('12 made')
     const plus = host.querySelector('button[aria-label="More a day"]') as HTMLButtonElement
     await act(async () => plus.click())
     await flush()
     expect(saved?.perDay).toBe(35)
+  })
+
+  it('lists its videos: to approve, going out, out - and approves one', async () => {
+    const { listPosts, postAction } = await import('./posting')
+    const post = (id: string, status: string, postAt: string, headline: string) => ({
+      id, key: id, campaignId: 'trial-c', campaignName: 'Trial reels', approval: 'me', captionBy: 'claude', remind: false, status,
+      fileName: 'clip (trial).mp4', headline, caption: 'c', title: null, postAt, accounts: [], videoUrl: null, links: {}, error: null,
+      retryAt: null, createdAt: postAt, batch: { id: 'b1', date: postAt.slice(0, 10), time: '10:00', size: 3, trial: true, source: 's1' },
+    })
+    vi.mocked(listPosts).mockResolvedValue([
+      post('w1', 'waiting', '2099-01-01T10:00:00Z', 'Words moved'),
+      post('g1', 'approved', '2099-01-02T10:00:00Z', 'A word changed'),
+      post('o1', 'posted', '2020-01-01T10:00:00Z', 'Out already'),
+    ] as never)
+    vi.mocked(postAction).mockResolvedValue({ ...post('w1', 'approved', '2099-01-01T10:00:00Z', 'Words moved'), alsoApproved: 0 } as never)
+    saved = {
+      campaignId: 'trial-c', angleId: 'a1', layout: 'trial', reactions: [{ id: 'clip', name: 'clip.mp4', type: 'video/mp4', size: 1 }],
+      products: [], headlines: [], music: [], perDay: 5, days: 0, used: {}, running: true,
+      trial: { sources: [{ id: 's1', name: 'viral.mp4', clip: 'clip', sound: null, addedAt: 1, read: { text: 'Hook', style: 'outline', outlineColor: '#000000', size: 'large', x: 0.5, y: 0.3, rewordings: [] } }] },
+    }
+    const campaign: Campaign = { ...blankCampaign('trial-c'), name: 'Trial reels', trial: true }
+    const profile = posting({ settings: { campaigns: { 'trial-c': { accounts: ['ig1'], times: [] } } } })
+    act(() => root.render(<TrialView campaigns={[campaign]} posting={profile} jobs={[]} onBack={() => {}} onCreate={vi.fn()} onRun={vi.fn()} removeJob={() => {}} />))
+    await flush()
+    expect(host.textContent).toContain('To approve · 1')
+    expect(host.textContent).toContain('Words moved')
+    expect(host.textContent).toContain('Going out · 1')
+    expect(host.textContent).toContain('Out · 1')
+    const approve = [...host.querySelectorAll('button')].find((b) => b.textContent === 'Approve') as HTMLButtonElement
+    await act(async () => approve.click())
+    await flush()
+    expect(postAction).toHaveBeenCalledWith('approve', 'w1', {})
   })
 })

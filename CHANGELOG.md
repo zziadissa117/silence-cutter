@@ -3,6 +3,22 @@
 Newest first. Every change says what it does, how to use it, and how it works
 underneath. Kept up to date with each commit.
 
+## Trial reels: see every copy, approve the first 3 of each reel, and the numbers that were always 0
+Needs deploying: run ./deploy-server.sh (./deploy.sh runs it by itself).
+**What he said (2026-11-06):** "it says making 5 a day, but I don't know how it works ... There are no videos that I
+can check for approval ... Nothing's happening." It was working - 10 copies of his reel were made at 04:45 UTC and
+scheduled 5 a day - but the screen showed none of them, and its "today 0 out, 0 to go" was always 0: the server never
+told the phone a post was a trial (`batch.trial` missing from the posts it lists).
+- **The videos, on the Trial reels screen** (`TrialView` `TrialVideos`): being made (how many, how far), **To approve**
+  (Watch, Approve, Reject - another copy is made in its place), **Going out** (time, words, Watch, Take out), **Out**
+  (with a link to it on Instagram). The top says what a copy is and that the first 3 of each reel wait for him.
+- **Approval:** copies no longer skip it (`meta.scheduled` gone for trials). Each carries its viral reel
+  (`JobBatch.source`, `trialBatch(…, source)`); the server counts his yeses per reel, not per day's making
+  (`postiz/batch.ts trustKey`, used by `batchHasHisYes` / `approveRestOfBatch`): approve 3 copies of a reel and
+  every copy of it after - waiting now or made later - goes by itself.
+- The 10 already scheduled go as they are; Take out on any he doesn't want.
+- Tests: `trialView.test.tsx`, `postiz/batch.test.ts`.
+
 ## Batches: talking and not-talking reactions in the same batch, mixed at a share he sets
 App only: run ./deploy.sh.
 **What he said (2026-11-06):** one batch per account, with videos where he doesn't talk and videos where he talks -

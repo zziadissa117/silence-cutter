@@ -32,6 +32,9 @@ export interface BatchInfo {
    *  never handed to Buffer. Kept only for a login allowed Trial reels
    *  (trial.ts trialAllowed). */
   trial?: boolean
+  /** A Trial loop's video: the viral reel it is a copy of. His yes counts
+   *  per viral reel, not per making (trustKey). */
+  source?: string
 }
 
 const LOOKS = new Set(['box', 'outline', 'snap', 'formula'])
@@ -56,7 +59,16 @@ export function batchInfo(value: unknown): BatchInfo | null {
     ...(look ? { look } : {}),
     ...(song ? { song } : {}),
     ...(v.trial === true ? { trial: true } : {}),
+    ...(v.trial === true && typeof v.source === 'string' && /^[\w-]{1,80}$/.test(v.source) ? { source: v.source } : {}),
   }
+}
+
+/** What his yeses are counted over (BATCH_TRUST): a Trial loop's copies of
+ *  one viral reel, whichever day's making they came from - approve 3 of a
+ *  reel and every copy of it after goes by itself (his ask, 2026-11-06:
+ *  videos "I can check for approval"); any other batch, its own making. */
+export function trustKey(batch: Pick<BatchInfo, 'id' | 'trial' | 'source'>): { field: 'source' | 'id'; value: string } {
+  return batch.trial && batch.source ? { field: 'source', value: batch.source } : { field: 'id', value: batch.id }
 }
 
 /** Where a batch video goes: its own time first, then the day's other

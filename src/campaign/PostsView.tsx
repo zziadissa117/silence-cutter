@@ -154,7 +154,7 @@ function SaveVideo({ post, primary = false }: { post: ServerPost; primary?: bool
   )
 }
 
-function Watch({ post }: { post: ServerPost }) {
+export function Watch({ post }: { post: ServerPost }) {
   const { file: copy, load } = useCopy(post.key)
   useEffect(() => load?.(), [load])
   const [url, setUrl] = useState<string | null>(null)

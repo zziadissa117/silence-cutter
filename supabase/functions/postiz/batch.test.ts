@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { BATCH_TRUST, approvalFor, batchChoices, batchInfo, batchReady, batchSpan, batchTrusted, freeBatchTimes } from './batch.ts'
+import { BATCH_TRUST, approvalFor, batchChoices, batchInfo, batchReady, batchSpan, batchTrusted, freeBatchTimes, trustKey } from './batch.ts'
 
 describe('a batch video', () => {
   it('is only taken as one with a real id, day, time and size', () => {
@@ -111,5 +111,25 @@ describe('batchTrusted', () => {
 
   it('does not count ones turned down, failed, held or still being made', () => {
     expect(batchTrusted(['rejected', 'rejected', 'rejected', 'approved', 'failed', 'writing', 'waiting'])).toBe(false)
+  })
+})
+
+describe('a Trial loop copy', () => {
+  it('keeps the viral reel it copies, and his yes counts per reel, across makings', () => {
+    const info = batchInfo({ id: 'b-1', date: '2026-11-06', time: '10:00', size: 5, trial: true, source: 't-abc' })
+    expect(info?.source).toBe('t-abc')
+    expect(trustKey(info!)).toEqual({ field: 'source', value: 't-abc' })
+    // Not a trial: its own making, as always - a source on it is dropped.
+    const plain = batchInfo({ id: 'b-1', date: '2026-11-06', time: '10:00', size: 5, source: 't-abc' })
+    expect(plain?.source).toBeUndefined()
+    expect(trustKey(plain!)).toEqual({ field: 'id', value: 'b-1' })
+    // A trial from before sources were kept: its making.
+    expect(trustKey({ id: 'b-2', trial: true })).toEqual({ field: 'id', value: 'b-2' })
+    // A bad id never reaches a query.
+    expect(batchInfo({ id: 'b-1', date: '2026-11-06', time: '10:00', size: 5, trial: true, source: "x' or 1=1" })?.source).toBeUndefined()
+  })
+
+  it('waits for his yes like any batch video', () => {
+    expect(approvalFor('direct', { hand: false, approveNow: false, batch: true, scheduled: false })).toBe('me')
   })
 })

@@ -1115,6 +1115,8 @@ input[type='color']::-webkit-color-swatch { border: 0.5px solid var(--edge); bor
 
 /* Trial reels (TrialView): the number a day with −5 / +5 beside it, and the
    two picked videos to tap the viral one of. */
+.trial-words { white-space: pre-line; font-size: 0.9em; }
+.trial-post .post-video { max-height: 60vh; }
 .trial-perday { display: flex; align-items: center; gap: 6px; flex-shrink: 0; }
 .trial-perday input { width: 56px; text-align: center; }
 .trial-which { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
