@@ -3,6 +3,19 @@
 Newest first. Every change says what it does, how to use it, and how it works
 underneath. Kept up to date with each commit.
 
+## Music: each song's length, against your video's length once cut
+App only: run ./deploy.sh.
+**What he said (2026-11-06):** "when I choose music, it also tells me how long that music is ... my video, let's say,
+is 50 seconds long, and I don't want to put music that's under that."
+- The Music list (on the questions before Check captions, and in a video's row) shows each song's length - "Song name
+  · 0:42" - and "(too short)" on the ones that end before the video does. Under it: "Song 0:42 · your video 0:50 once
+  cut - the song ends 8 s before the video does" (in orange), or "... the song lasts the whole video".
+- The video's length is what is kept after the cuts - his own cuts when he changed them, all of it for a video that
+  isn't cut (`songLength.cutLength`); a video before/after isn't counted. A song's length is read from its file's
+  header once and kept on the phone (`measureSong`, `useSongLengths`); a bank song not on this phone yet is never
+  downloaded just to measure it - it shows its length once it has been played or used.
+- Test: `songLength.test.ts`.
+
 ## Trial reels' captions in his account's own voice - and every one written before, written again
 Needs deploying: run ./deploy-server.sh (./deploy.sh runs it by itself).
 **What he said (2026-11-06):** the "hungriest I've ever been" reel's captions came out as "no words needed", "I was

@@ -18,6 +18,8 @@ import { hasShareSheet, shareVideo, useSharable } from './shareFile'
 import { clipsOf } from './noTalk'
 import { HEADLINE_STYLES, LIMITS, type Campaign, type HeadlineStyle } from './look'
 import { songFile, useMusicBank } from './musicBank'
+import { loadBankFile } from './store'
+import { cutLength, songAgainstVideo, songTime, useSongLengths } from './songLength'
 import { PlayButton } from './TrackPlayer'
 
 type Tone = 'now' | 'later' | 'ok' | 'warn' | 'bad'
@@ -652,6 +654,22 @@ export function VideoFields({
     return music ? { name: music.name, load: async () => music.audio } : null
   })()
   const angle = campaigns.find((c) => c.id === job.campaignId)?.angles.find((a) => a.id === job.angleId)
+  // Each song's length against the video's once cut (songLength.ts): bank
+  // songs measured only when on the phone, never downloaded for it.
+  const tracks = musicTracks(campaigns)
+  const angleTrack = (value: string) => {
+    const [c, a] = value.split(':')
+    return campaigns.find((x) => x.id === c)?.angles.find((x) => x.id === a)?.music ?? null
+  }
+  const lengths = useSongLengths([
+    ...songs.map((song) => ({ key: `bank:${song.id}`, seconds: song.seconds, load: () => loadBankFile(song) })),
+    ...tracks.map((t) => ({ key: t.value, load: async () => angleTrack(t.value)?.audio ?? null })),
+    ...(choice ? [] : [{ key: `${job.campaignId}:${job.angleId}`, load: async () => angle?.music?.audio ?? null }]),
+    ...(choice.startsWith('bank:') && picked ? [{ key: choice, load: picked.load }] : []),
+  ])
+  const video = cutLength(job)
+  const lengthOf = (key: string) => (lengths[key] ? ` · ${songTime(lengths[key])}${video !== null && lengths[key] < video - 0.5 ? ' (too short)' : ''}` : '')
+  const said = choice === 'none' ? null : songAgainstVideo(lengths[choice || `${job.campaignId}:${job.angleId}`], video)
   return (
     <>
       <label className="field">
@@ -691,27 +709,28 @@ export function VideoFields({
         <span className="label">Music</span>
         <div className="music-pick">
           <select value={job.day?.music ?? ''} onChange={(e) => onMusic(e.target.value)}>
-            <option value="">{angle?.music ? `The angle's: ${angle.music.name}` : "The angle's: none"}</option>
+            <option value="">{angle?.music ? `The angle's: ${angle.music.name}${lengthOf(`${job.campaignId}:${job.angleId}`)}` : "The angle's: none"}</option>
             {songs.length > 0 ? (
               <optgroup label="Music bank">
                 {songs.map((song) => (
                   <option key={song.id} value={`bank:${song.id}`}>
-                    {song.name}
+                    {`${song.name}${lengthOf(`bank:${song.id}`)}`}
                   </option>
                 ))}
               </optgroup>
             ) : null}
-            {musicTracks(campaigns)
+            {tracks
               .filter((t) => t.value !== `${job.campaignId}:${job.angleId}`)
               .map((t) => (
                 <option key={t.value} value={t.value}>
-                  {t.name}
+                  {`${t.name}${lengthOf(t.value)}`}
                 </option>
               ))}
             <option value="none">No music</option>
           </select>
           {picked ? <PlayButton key={choice || 'angle'} name={picked.name} load={picked.load} /> : null}
         </div>
+        {said ? <span className={`hint${said.short ? ' warn-text' : ''}`}>{said.text}</span> : null}
         {songs.length === 0 ? <span className="hint">Keep songs with names in Bank → Music to pick them here.</span> : null}
       </label>
     </>
