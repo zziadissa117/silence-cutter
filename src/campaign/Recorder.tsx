@@ -178,7 +178,14 @@ export function Recorder({ onDone, onCancel }: { onDone: (files: File[], clipSta
       // An iPhone runs one camera at a time: the old one goes first.
       switching.current = true
       stopCamera()
-      const next = await navigator.mediaDevices.getUserMedia({ video: wanted })
+      // 60 frames a second insisted on: Safari takes "ideal: 60" as a wish
+      // and gives its usual 30 (his report, 2026-11-06, after asking for 60:
+      // "camera user: 1080x1920 @ 30 fps"). A camera that can't do 60 says
+      // so, and then gets its best.
+      const asked = wanted as MediaTrackConstraints
+      const next = await navigator.mediaDevices
+        .getUserMedia({ video: { ...asked, frameRate: { min: 50, ideal: 60 } } })
+        .catch(() => navigator.mediaDevices.getUserMedia({ video: wanted }))
       camera.current = next
       if (!mic.current) mic.current = await navigator.mediaDevices.getUserMedia({ audio })
       const v = video.current
@@ -203,7 +210,11 @@ export function Recorder({ onDone, onCancel }: { onDone: (files: File[], clipSta
       const h = settings.height ?? 0
       const fps = Math.round(settings.frameRate ?? 30)
       setQuality(`${Math.min(w, h)}×${Math.max(w, h)} · ${fps} fps`)
-      report({ kind: 'check', phase: 'record', message: `camera ${which}: ${w}x${h} @ ${fps} fps, recording ${type.current || 'none'} at ${RECORD_WIDTH}x${RECORD_HEIGHT}, max ${caps.width?.max ?? '?'}x${caps.height?.max ?? '?'}` })
+      report({
+        kind: 'check',
+        phase: 'record',
+        message: `camera ${which}: ${w}x${h} @ ${fps} fps (most ${caps.frameRate?.max ?? '?'}), recording ${type.current || 'none'} at ${RECORD_WIDTH}x${RECORD_HEIGHT}, max ${caps.width?.max ?? '?'}x${caps.height?.max ?? '?'}`,
+      })
     } catch (error) {
       switching.current = false
       const name = error instanceof DOMException ? error.name : ''

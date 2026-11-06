@@ -3,6 +3,15 @@
 Newest first. Every change says what it does, how to use it, and how it works
 underneath. Kept up to date with each commit.
 
+## Recording: 60 fps insisted on (Safari gave 30 to "ideal: 60")
+App only: run ./deploy.sh.
+**What he saw (2026-11-06):** after the 60 fps change the recorder still said "1080 × 1920 · 30 fps" - his report
+from that build: "camera user: 1080x1920 @ 30 fps". Safari takes `frameRate: { ideal: 60 }` as a wish.
+- `Recorder.open`: the camera is asked for at least 50 (ideal 60) first; a camera that can't do it refuses, and then
+  it is opened as before at its best. The report now says the most the camera offers ("most 60") - so if a camera
+  still gives 30, it says whether it could do more.
+- Checked in the test browser, whose camera only does 20: the first ask is refused and it opens at 20 as before.
+
 ## Recording at 60 frames a second; one track plays at a time
 App only: run ./deploy.sh.
 **What he said (2026-11-06):** a recording "looks like it's at a lower FPS at all times ... It needs to be 60 FPS.
