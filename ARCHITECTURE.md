@@ -327,6 +327,13 @@ mixes unmade, the days recounted, the bank changed (`dropHook` / `dropLook` / `c
 next top-up fills with the other hooks. `BatchBank.dropWeakHooks` does that by itself from the Batch tab, one hook
 at a time, writing `droppedHooks`.
 
+Formats (2026-11-06, replacing the talking/not-talking split below): a batch is one per campaign (account) and holds
+`formats` - reaction, talking head, green screen, several of a kind. Each clip lists its formats (`BankFile.formats`,
+`BatchStep.formats`; product clips may be shared). `formatBank(bank, format)` is one format as a plain bank (its
+layout, `talks` on its clips, its corner; `formats: []` so it is never converted again). `planFormats` gives each slot
+a format (`turnsFor` by `formatShare`, done counted in `formatDone`), runs `pickBatch` per format on its own made keys,
+and `videoOf` writes `batch.format`. `withFormats` converts a bank from before with fixed ids (`OLD_FORMAT`).
+
 Talking and not-talking reactions (2026-11-06): each reaction is one or the other (`BankFile.talks`; untagged
 follows the bank's old `voice`, `batch.talksIn`). With both kinds, `batchRun.pickKinds` gives each slot a kind
 (`batch.kindsFor`: furthest behind `talkShareOf` - default 35 % talking - counting `BatchBank.kinds`, a progress

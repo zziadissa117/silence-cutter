@@ -30,10 +30,12 @@ import {
   type LookShare,
   todayHere,
   usesSteps,
-  kindsFor,
-  reactionsOfKind,
-  talkShareOf,
-  TALK_SHARE,
+  formatBank,
+  formatsOf,
+  withFormats,
+  FORMAT_KINDS,
+  type BatchFormat,
+  type FormatKind,
   type BankFile,
   type BatchBank,
   type BatchFormula,
@@ -167,7 +169,7 @@ function WhenDue({ due, signal, run }: { due: boolean; signal: string; run: () =
 
 type Kind = 'reactions' | 'products' | 'music'
 /** Where new clips go: one of the bank's lists, or a step of the product. */
-type Target = Kind | { step: string } | { talking: boolean }
+type Target = Kind | { step: string } | { format: string; as: 'reactions' | 'products' }
 
 const LEFT_KEY = 'batch.formulaLeft'
 
@@ -306,7 +308,11 @@ export function BatchView({
   const [perDayDraft, setPerDayDraft] = useState<string | null>(null)
   const [growthDraft, setGrowthDraft] = useState<string | null>(null)
   /** The Set order sheet is open. */
-  const [ordering, setOrdering] = useState(false)
+  /** The format whose product steps are being set (StepOrder). */
+  const [ordering, setOrdering] = useState<string | null>(null)
+  /** The format open below its card; "+ Add a format" choosing a kind. */
+  const [openFormat, setOpenFormat] = useState<string | null>(null)
+  const [choosingKind, setChoosingKind] = useState(false)
   /** The batch the engine is making for this campaign, as it last said. */
   const [engineState, setEngineState] = useState<EngineJob | null>(null)
   useEffect(() => {
@@ -343,7 +349,8 @@ export function BatchView({
       .then(() => loadBatchBank(campaign.id))
       .then((stored) => {
         if (cancelled) return
-        const loaded = stored ?? emptyBank(campaign.id, campaign.angles[0].id)
+        // A batch from before gets its formats (batch.withFormats).
+        const loaded = withFormats(stored ?? emptyBank(campaign.id, campaign.angles[0].id))
         setBank(loaded)
         setHeadlineText(loaded.headlines.join('\n'))
       })
@@ -362,8 +369,9 @@ export function BatchView({
       if (!changed || id !== campaign?.id) return
       void loadBatchBank(id).then((stored) => {
         if (!stored || stored.campaignId !== bankRef.current?.campaignId) return
-        setBank(stored)
-        bankRef.current = stored
+        const withThem = withFormats(stored)
+        setBank(withThem)
+        bankRef.current = withThem
       })
     }
     window.addEventListener(SERVER_LINK_EVENT, onLink)
@@ -452,10 +460,10 @@ export function BatchView({
    *  videos made before are taken in again, each as a clip of its own
    *  (batch.usedKey). */
   const add = async (target: Target, files: File[], again = false) => {
-    const kind: Kind = typeof target === 'string' ? target : 'step' in target ? 'products' : 'reactions'
+    const kind: Kind = typeof target === 'string' ? target : 'step' in target ? 'products' : target.as
     const stepId = typeof target === 'object' && 'step' in target ? target.step : null
-    // A reaction he talks in, or one he doesn't (batch.talksIn).
-    const talking = typeof target === 'object' && 'talking' in target ? target.talking : undefined
+    // The format the clip is for (BankFile.formats).
+    const format = typeof target === 'object' && 'format' in target ? target.format : null
     const listOf = (b: BatchBank | null): BankFile[] => (stepId ? (b?.steps?.find((s) => s.id === stepId)?.files ?? []) : (b?.[kind] ?? []))
     if (kind !== 'music') {
       const problemPicking = pickArrived(files)
@@ -507,7 +515,7 @@ export function BatchView({
           fp,
           ...(seconds ? { seconds } : {}),
           ...(again ? { again: Date.now() + i } : {}),
-          ...(talking !== undefined ? { talks: talking } : {}),
+          ...(format ? { formats: [format] } : {}),
         })
       }
     } catch (error) {
@@ -575,8 +583,14 @@ export function BatchView({
 
   // A clip taken out after videos were made from it is remembered, so it
   // can't come back in and make the same videos again (rememberUsed).
-  const takeOut = (kind: Kind, file: BankFile) => {
-    if (!bank || !window.confirm(`Take ${file.name} out of the bank?`)) return
+  const takeOut = (kind: Kind, file: BankFile, formatId?: string) => {
+    if (!bank) return
+    // Shared with another format: out of this one only, kept for the others.
+    if (formatId && kind !== 'music' && (file.formats?.length ?? 0) > 1) {
+      keep({ ...bank, [kind]: bank[kind].map((f) => (f.id === file.id ? { ...f, formats: f.formats!.filter((x) => x !== formatId) } : f)) })
+      return
+    }
+    if (!window.confirm(`Take ${file.name} out of the bank?`)) return
     void deleteBankFile(file.id).catch(() => {})
     const next = { ...bank, [kind]: bank[kind].filter((f) => f.id !== file.id) }
     keep(kind === 'music' ? next : rememberUsed(next, [file]))
@@ -591,13 +605,72 @@ export function BatchView({
     const { made, rejected } = madeWith(posts, campaign.id, file.name, first)
     return made === 0 ? '' : `${made} video${made === 1 ? '' : 's'}${rejected > 0 ? `, ${rejected} rejected` : ''}`
   }
-  /** The order saved: a step taken out goes with its clips. */
-  const saveOrder = (steps: BatchStep[]) => {
+  /** A format's steps saved, in his order: a step taken out goes with its
+   *  clips - or, shared with another format, only out of this one. */
+  const saveOrderFor = (formatId: string) => (steps: BatchStep[]) => {
     if (!bank) return
-    const kept = new Set(steps.map((s) => s.id))
-    const gone = (bank.steps ?? []).filter((s) => !kept.has(s.id)).flatMap((s) => s.files)
-    for (const f of gone) void deleteBankFile(f.id).catch(() => {})
-    keep(rememberUsed({ ...bank, steps }, gone))
+    const all = bank.steps ?? []
+    const mine = (st: BatchStep) => Boolean(st.formats?.includes(formatId))
+    const kept = new Set(steps.map((st) => st.id))
+    const gone = all.filter((st) => mine(st) && !kept.has(st.id))
+    const stillShared = gone.filter((st) => (st.formats?.length ?? 0) > 1).map((st) => ({ ...st, formats: st.formats!.filter((x) => x !== formatId) }))
+    const goneFiles = gone.filter((st) => (st.formats?.length ?? 0) <= 1).flatMap((st) => st.files)
+    for (const f of goneFiles) void deleteBankFile(f.id).catch(() => {})
+    const next = [...all.filter((st) => !mine(st)), ...stillShared, ...steps.map((st) => (st.formats?.length ? st : { ...st, formats: [formatId] }))]
+    keep(rememberUsed({ ...bank, steps: next.length > 0 ? next : undefined }, goneFiles))
+  }
+
+  /** A new format of `kind`, open to fill in. */
+  const addFormat = (kind: FormatKind) => {
+    if (!bank) return
+    const label = FORMAT_KINDS.find((k) => k.kind === kind)!.label
+    const same = formatsOf(bank).filter((f) => f.kind === kind).length
+    const format: BatchFormat = {
+      id: `f-${Date.now().toString(36)}`,
+      kind,
+      name: same > 0 ? `${label} ${same + 1}` : label,
+      ...(kind === 'greenscreen' ? { corner: DEFAULT_CORNER } : {}),
+    }
+    keep({ ...bank, formats: [...formatsOf(bank), format] })
+    setChoosingKind(false)
+    setOpenFormat(format.id)
+  }
+  const changeFormat = (id: string, change: Partial<BatchFormat>) => {
+    if (!bank) return
+    keep({ ...bank, formats: formatsOf(bank).map((f) => (f.id === id ? { ...f, ...change } : f)) })
+  }
+  /** A format taken out: its own clips go (remembered as used), the ones
+   *  shared with another format stay there. What was made stays. */
+  const removeFormat = (format: BatchFormat) => {
+    if (!bank) return
+    if (!window.confirm(`Take out "${format.name}"? Its own clips go; its videos already made stay.`)) return
+    const mine = (x: { formats?: string[] }) => Boolean(x.formats?.includes(format.id))
+    const only = (x: { formats?: string[] }) => mine(x) && (x.formats?.length ?? 0) <= 1
+    const drop = <T extends { formats?: string[] }>(list: T[]) => list.filter((x) => !only(x)).map((x) => (mine(x) ? { ...x, formats: x.formats!.filter((id) => id !== format.id) } : x))
+    const goneFiles = [...bank.reactions.filter(only), ...bank.products.filter(only), ...(bank.steps ?? []).filter(only).flatMap((st) => st.files)]
+    for (const f of goneFiles) void deleteBankFile(f.id).catch(() => {})
+    const { [format.id]: _done, ...formatDone } = bank.formatDone ?? {}
+    const steps = drop(bank.steps ?? [])
+    keep(
+      rememberUsed(
+        {
+          ...bank,
+          formats: formatsOf(bank).filter((f) => f.id !== format.id),
+          reactions: drop(bank.reactions),
+          products: drop(bank.products),
+          steps: steps.length > 0 ? steps : undefined,
+          formatDone,
+        },
+        goneFiles,
+      ),
+    )
+    setOpenFormat(null)
+  }
+  /** The product clips (or steps) of another format used in this one too. */
+  const shareProduct = (formatId: string, fromId: string) => {
+    if (!bank) return
+    const add = <T extends { formats?: string[] }>(x: T): T => (x.formats?.includes(fromId) && !x.formats.includes(formatId) ? { ...x, formats: [...x.formats, formatId] } : x)
+    keep({ ...bank, products: bank.products.map(add), ...(bank.steps ? { steps: bank.steps.map(add) } : {}) })
   }
 
   // The days the batch is still missing, up to AHEAD_DAYS ahead.
@@ -605,16 +678,9 @@ export function BatchView({
   const due = bank ? runSlots({ bank, place, campaignId: campaign.id, taken: takenOn, disliked: dislikedOn }) : []
   const green = bank?.layout === 'greenscreen'
   const onEngine = bank?.layout === 'engine'
-  // Reactions he talks in and ones he doesn't, mixed at his share.
-  const talkCount = bank ? reactionsOfKind(bank, true).length : 0
-  const quietCount = bank ? reactionsOfKind(bank, false).length : 0
-  const talkShare = bank ? Math.min(90, Math.max(10, talkShareOf(bank))) : TALK_SHARE
-  const mixLine = (() => {
-    const a = bank?.perDay ?? 0
-    const of = a > 0 ? a : 10
-    const talks = kindsFor(of, talkShare, undefined, { talk: of, quiet: of }).filter((k) => k === 'talk').length
-    return `${a > 0 ? 'Of your' : 'Of every'} ${of}${a > 0 ? ' a day' : ''}: ${of - talks} not talking, ${talks} talking - taking turns.`
-  })()
+  // The kinds of video this batch makes, each with its own clips.
+  const formatList = bank && !onEngine ? formatsOf(bank) : []
+  const anyTalking = formatList.some((f) => !f.paused && (f.kind === 'talking' || (f.kind === 'greenscreen' && f.voice)))
   // Made on the Cutter server (serverLink.ts), or about to be: nothing is made here.
   const onServer = !onEngine && (bank?.where === 'server' || serverConnected())
   const sending = sendingLine(campaign.id)
@@ -623,7 +689,6 @@ export function BatchView({
   const serverSeen = onServer ? lastServerStatus()?.page?.at : undefined
   // Out of disk or memory, the server makes nothing: said here, where he looks.
   const serverRoom = onServer ? roomProblem(lastServerStatus()) : null
-  const corner = bank?.corner ?? DEFAULT_CORNER
   // The hooks picked, with their shares - none picked: headlines in the
   // angle's look.
   const shownLooks: LookShare[] = !bank ? [] : looksOf(bank).length > 0 ? looksOf(bank) : [{ look: angle.headline.style, parts: 1 }]
@@ -1054,19 +1119,142 @@ export function BatchView({
     </div>
   )
 
-  /** The files of a list: a kind's reactions only, when `talking` is given. */
-  const filesIn = (kind: Kind, talking?: boolean): BankFile[] =>
-    !bank ? [] : kind === 'reactions' && talking !== undefined ? reactionsOfKind(bank, talking) : bank[kind]
-  /** A reaction moved to the other kind: its videos not made yet follow. */
-  const moveKind = (file: BankFile, talks: boolean) => {
-    if (!bank) return
-    keep({ ...bank, reactions: bank.reactions.map((f) => (f.id === file.id ? { ...f, talks } : f)) })
+  /** One format: its card - what it is, how much it has, how many videos it
+   *  can still make - and, open, everything it is made of. */
+  const formatCard = (f: BatchFormat) => {
+    if (!bank) return null
+    const sub = formatBank(bank, f)
+    const open = openFormat === f.id
+    const missingHere = missingFor(sub).map((m) => (m === 'a reaction' ? 'a clip of you' : m))
+    const { left: leftHere } = leftToMake(sub)
+    const kind = FORMAT_KINDS.find((k) => k.kind === f.kind)!
+    const green = f.kind === 'greenscreen'
+    const steps = sub.steps ?? []
+    const corner = f.corner ?? DEFAULT_CORNER
+    const n = sub.products.length
+    const products =
+      steps.length > 0
+        ? `${steps.length} product step${steps.length === 1 ? '' : 's'}`
+        : green
+          ? `${n} video${n === 1 ? '' : 's'} behind you`
+          : `${n} product clip${n === 1 ? '' : 's'}`
+    const others = formatList.filter((o) => o.id !== f.id && ((bank.steps ?? []).some((st) => st.formats?.includes(o.id)) || bank.products.some((p) => p.formats?.includes(o.id))))
+    const status = f.paused
+      ? 'Paused'
+      : missingHere.length > 0
+        ? `Needs ${missingHere.join(' and ')}`
+        : Number.isFinite(leftHere)
+          ? `${leftHere} different video${leftHere === 1 ? '' : 's'} left`
+          : 'Plenty of different videos'
+    return (
+      <li key={f.id} className={`format-card${open ? ' open' : ''}${f.paused ? ' paused' : ''}`}>
+        <button type="button" className="format-head" aria-expanded={open} onClick={() => setOpenFormat(open ? null : f.id)}>
+          <span className={`format-badge ${f.kind}`}>{kind.label}</span>
+          <span className="row-name">{f.name}</span>
+          <span className="hint">
+            {sub.reactions.length} clip{sub.reactions.length === 1 ? '' : 's'} of you · {products}
+            {f.kind === 'greenscreen' && f.voice ? ' · your voice' : ''}
+          </span>
+          <span className={`hint${missingHere.length > 0 && !f.paused ? ' warn-text' : ''}`}>{status}</span>
+        </button>
+        {open ? (
+          <div className="format-body">
+            <label className="field">
+              <span className="label">Name</span>
+              <input type="text" value={f.name} maxLength={60} aria-label="Format name" onChange={(e) => changeFormat(f.id, { name: e.target.value })} />
+            </label>
+            <p className="hint">{kind.hint}</p>
+            {list(
+              'reactions',
+              f.kind === 'talking' ? 'You talking' : 'You',
+              f.kind === 'talking'
+                ? 'Each plays whole with your voice, the headline over it, then the product.'
+                : green
+                  ? 'You, cut out of your background and put in the corner. Talking: the video lasts as long as you do.'
+                  : 'They go first, with the headline over them - slowly zooming in. No sound but the music.',
+              f.id,
+            )}
+            {green ? (
+              <div className="setting">
+                <div className="setting-text">
+                  <span className="row-name">You talk in these</span>
+                  <span className="row-line">Your voice is kept, the background&rsquo;s sound low under it.</span>
+                </div>
+                <input type="checkbox" className="switch" checked={Boolean(f.voice)} aria-label="You talk in these" onChange={(e) => changeFormat(f.id, { voice: e.target.checked || undefined })} />
+              </div>
+            ) : null}
+            {steps.length > 0
+              ? steps.map((st, i) => stepList(st, i))
+              : list('products', green ? 'Videos behind you' : 'Product showcases', green ? 'Each plays full screen with its own sound.' : 'Shown after you.', f.id)}
+            <div className="format-actions">
+              <button type="button" className="btn small" aria-expanded={ordering === f.id} onClick={() => setOrdering(ordering === f.id ? null : f.id)}>
+                {steps.length > 0 ? `Product steps · ${steps.length}` : 'Product steps'}
+              </button>
+              {others.length > 0 ? (
+                <select value="" aria-label="Use the product of another format" onChange={(e) => e.target.value && shareProduct(f.id, e.target.value)}>
+                  <option value="">Same product as…</option>
+                  {others.map((o) => (
+                    <option key={o.id} value={o.id}>
+                      {o.name}
+                    </option>
+                  ))}
+                </select>
+              ) : null}
+            </div>
+            {green ? (
+              <div className="group">
+                <div className="group-title">Your corner</div>
+                <div className="seg full" role="radiogroup" aria-label="Corner">
+                  {(['left', 'right'] as const).map((side) => (
+                    <button
+                      key={side}
+                      type="button"
+                      role="radio"
+                      aria-checked={corner.side === side}
+                      className={corner.side === side ? 'active' : ''}
+                      onClick={() => changeFormat(f.id, { corner: { ...corner, side } })}
+                    >
+                      Bottom {side}
+                    </button>
+                  ))}
+                </div>
+                <label className="slider">
+                  <span>Size</span>
+                  <input
+                    type="range"
+                    min={CORNER_SIZES.min}
+                    max={CORNER_SIZES.max}
+                    step={1}
+                    value={corner.sizePct}
+                    aria-label="How big you are in the corner"
+                    onChange={(e) => changeFormat(f.id, { corner: { ...corner, sizePct: Number(e.target.value) } })}
+                  />
+                  <output>{corner.sizePct}%</output>
+                </label>
+              </div>
+            ) : null}
+            <div className="format-actions">
+              <button type="button" className="btn small" onClick={() => changeFormat(f.id, { paused: !f.paused || undefined })}>
+                {f.paused ? 'Start it again' : 'Pause'}
+              </button>
+              <button type="button" className="linkbtn danger" onClick={() => removeFormat(f)}>
+                Take out this format
+              </button>
+            </div>
+          </div>
+        ) : null}
+      </li>
+    )
   }
-  const list = (kind: Kind, title: string, hint: string, talking?: boolean) => (
+
+  /** The files of a list: one format's only, when `formatId` is given. */
+  const filesIn = (kind: Kind, formatId?: string): BankFile[] =>
+    !bank ? [] : formatId && kind !== 'music' ? bank[kind].filter((f) => f.formats?.includes(formatId)) : bank[kind]
+  const list = (kind: Kind, title: string, hint: string, formatId?: string) => (
     <div className="group">
       <div className="bank-head">
         <span className="group-title">
-          {title} <span className="bank-count">{filesIn(kind, talking).length}</span>
+          {title} <span className="bank-count">{filesIn(kind, formatId).length}</span>
         </span>
         {kind === 'music' ? (
           <div className="btn small picker">
@@ -1088,7 +1276,7 @@ export function BatchView({
           <VideoPicker
             className="btn small"
             label={`Add ${title.toLowerCase()}`}
-            onFiles={(files) => void add(kind === 'reactions' && talking !== undefined ? { talking } : kind, files)}
+            onFiles={(files) => void add(formatId ? { format: formatId, as: kind as 'reactions' | 'products' } : kind, files)}
           >
             + Add
           </VideoPicker>
@@ -1116,9 +1304,9 @@ export function BatchView({
           </select>
         </label>
       ) : null}
-      {bank && filesIn(kind, talking).length > 0 ? (
+      {bank && filesIn(kind, formatId).length > 0 ? (
         <ul className="bank-list">
-          {filesIn(kind, talking).map((file) => (
+          {filesIn(kind, formatId).map((file) => (
             <li key={file.id} className="bank-item">
               {kind === 'music' && bank ? (
                 <>
@@ -1132,7 +1320,7 @@ export function BatchView({
                 <button
                   type="button"
                   className="bank-name watch"
-                  onClick={() => setWatching({ file, note: madeNote(file, kind === 'reactions'), out: () => takeOut(kind, file) })}
+                  onClick={() => setWatching({ file, note: madeNote(file, kind === 'reactions'), out: () => takeOut(kind, file, formatId) })}
                 >
                   {file.name}
                 </button>
@@ -1141,17 +1329,8 @@ export function BatchView({
               {kind === 'reactions' && madeWith(posts, campaign.id, file.name, true).rejected > 0 ? (
                 <span className="hint rejected">{madeNote(file, true)}</span>
               ) : null}
-              {kind === 'reactions' && talking !== undefined ? (
-                <button
-                  type="button"
-                  className="btn small"
-                  aria-label={`${file.name}: ${talking ? 'move to not talking' : 'move to talking'}`}
-                  onClick={() => moveKind(file, !talking)}
-                >
-                  {talking ? '→ Not talking' : '→ Talking'}
-                </button>
-              ) : null}
-              <button type="button" className="btn small icon-btn" aria-label={`Take out ${file.name}`} onClick={() => takeOut(kind, file)}>
+              {formatId && (file.formats?.length ?? 0) > 1 ? <span className="hint">shared</span> : null}
+              <button type="button" className="btn small icon-btn" aria-label={`Take out ${file.name}`} onClick={() => takeOut(kind, file, formatId)}>
                 ✕
               </button>
             </li>
@@ -1224,7 +1403,8 @@ export function BatchView({
             setCampaignId(e.target.value)
             remember(e.target.value)
             setProblem(null)
-            setOrdering(false)
+            setOrdering(null)
+            setOpenFormat(null)
           }}
         >
           {choices.map((c) => (
@@ -1286,7 +1466,12 @@ export function BatchView({
       ) : null}
 
       {bank && ordering ? (
-        <StepOrder campaignName={campaign.name} steps={bank.steps ?? []} onSave={saveOrder} onClose={() => setOrdering(false)} />
+        <StepOrder
+          campaignName={campaign.name}
+          steps={(bank.steps ?? []).filter((st) => st.formats?.includes(ordering))}
+          onSave={saveOrderFor(ordering)}
+          onClose={() => setOrdering(null)}
+        />
       ) : null}
 
       {bank && spentShown && bank.spent ? (
@@ -1304,114 +1489,58 @@ export function BatchView({
 
       {bank ? (
         <>
-          {onEngine ? null : (
-            <div className="group batch-kinds">
-              <div className="group-title">Your reactions</div>
-              <p className="hint">
-                Every video starts with one. Not talking: the music is the only sound. Talking: your voice stays, the music plays
-                under it and dips while you talk. Both make the same videos - the same products, headlines and music.
-              </p>
-              {list('reactions', 'Not talking', 'You react without a word.', false)}
-              {list('reactions', 'Talking', 'You say something to the camera - your voice is kept.', true)}
-              {talkCount > 0 && quietCount > 0 ? (
-                <div className="batch-mix">
-                  <label className="slider">
-                    <span>Talking</span>
-                    <input
-                      type="range"
-                      min={10}
-                      max={90}
-                      step={5}
-                      value={talkShare}
-                      aria-label="How many of the videos are talking ones"
-                      onChange={(e) => keep({ ...bank, talkShare: Number(e.target.value) })}
-                    />
-                    <output>{talkShare}%</output>
-                  </label>
-                  <p className="hint">{mixLine}</p>
-                </div>
-              ) : talkCount > 0 || quietCount > 0 ? (
-                <p className="hint tip">
-                  {talkCount > 0
-                    ? 'Every video talks. Add reactions where you don\'t talk to mix them in.'
-                    : 'Every video is music only. Add reactions where you talk to mix them in.'}
-                </p>
-              ) : null}
-            </div>
-          )}
-          <div className="group">
-            <div className="group-title">The product</div>
-            <div className="seg full" role="radiogroup" aria-label="How the product is shown">
-              <button type="button" role="radio" aria-checked={!green && !onEngine} className={!green && !onEngine ? 'active' : ''} onClick={() => keep({ ...bank, layout: 'after' })}>
-                After you
-              </button>
-              <button type="button" role="radio" aria-checked={green} className={green ? 'active' : ''} onClick={() => keep({ ...bank, layout: 'greenscreen' })}>
-                Behind you (green screen)
-              </button>
-              {engineUrl() || onEngine ? (
-                <button type="button" role="radio" aria-checked={onEngine} className={onEngine ? 'active' : ''} onClick={() => keep({ ...bank, layout: 'engine' })}>
-                  On the engine
-                </button>
-              ) : null}
-            </div>
-            <p className="hint">
-              {onEngine
-                ? 'Made on the server - close the app once it says the batch is handed over. Each take gives several hooks, every video a little different, never a near-copy. They wait in Posts: watch one, then Approve all.'
-                : green
-                  ? 'The product plays full screen and you are cut out of your background, in a corner. Talking: the video lasts as long as you talk.'
-                  : 'Your reaction first, slowly zooming in, then the product. To show several clips in a set order, tap Product steps.'}
-            </p>
-            {!onEngine ? (
-              <button type="button" className="btn small" aria-expanded={ordering} onClick={() => setOrdering((o) => !o)}>
-                {bank.steps?.length ? `Product steps · ${bank.steps.length}` : 'Product steps'}
-              </button>
-            ) : null}
-          </div>
-          {green ? (
+          {onEngine ? (
             <>
-              {stepped
-                ? bank.steps!.map((step, i) => stepList(step, i))
-                : list('products', 'Background videos', "The brief's videos. Each plays full screen with its own sound.")}
               <div className="group">
-                <div className="group-title">Your corner</div>
-                <div className="seg full" role="radiogroup" aria-label="Corner">
-                  {(['left', 'right'] as const).map((side) => (
-                    <button
-                      key={side}
-                      type="button"
-                      role="radio"
-                      aria-checked={corner.side === side}
-                      className={corner.side === side ? 'active' : ''}
-                      onClick={() => keep({ ...bank, corner: { ...corner, side } })}
-                    >
-                      Bottom {side}
-                    </button>
-                  ))}
-                </div>
-                <label className="slider">
-                  <span>Size</span>
-                  <input
-                    type="range"
-                    min={CORNER_SIZES.min}
-                    max={CORNER_SIZES.max}
-                    step={1}
-                    value={corner.sizePct}
-                    aria-label="How big you are in the corner"
-                    onChange={(e) => keep({ ...bank, corner: { ...corner, sizePct: Number(e.target.value) } })}
-                  />
-                  <output>{corner.sizePct}%</output>
-                </label>
+                <div className="group-title">On the engine</div>
+                <p className="hint tip">
+                  Made on the server - close the app once it says the batch is handed over. Each take gives several hooks, every video a little
+                  different, never a near-copy. They wait in Posts: watch one, then Approve all.
+                </p>
+                <button type="button" className="linkbtn" onClick={() => keep(withFormats({ ...bank, layout: 'after' }))}>
+                  Make them on this phone instead, in formats
+                </button>
               </div>
-            </>
-          ) : onEngine ? (
-            <>
               {list('reactions', 'Hooks - your face', 'Takes of 10-12 s; the engine cuts several hooks out of each.')}
               {list('products', 'Product clips', 'Shown after the hook.')}
             </>
-          ) : stepped ? (
-            bank.steps!.map((step, i) => stepList(step, i))
           ) : (
-            list('products', 'Product showcases', 'Shown after your reaction.')
+            <div className="group batch-formats">
+              <div className="bank-head">
+                <span className="group-title">
+                  Formats <span className="bank-count">{formatList.length}</span>
+                </span>
+                {engineUrl() ? (
+                  <button type="button" className="linkbtn" onClick={() => keep({ ...bank, layout: 'engine' })}>
+                    On the engine
+                  </button>
+                ) : null}
+              </div>
+              <p className="hint">
+                Every kind of video this account posts, in this one batch. They take turns in your {perDay > 0 ? `${perDay} a day` : 'videos'}, each from its own
+                clips; the headlines and music below are for all of them.
+              </p>
+              <ul className="format-cards">
+                {formatList.map((f) => formatCard(f))}
+              </ul>
+              {choosingKind ? (
+                <div className="format-kinds" role="group" aria-label="Kind of format">
+                  {FORMAT_KINDS.map((k) => (
+                    <button key={k.kind} type="button" className="format-kind" onClick={() => addFormat(k.kind)}>
+                      <span className="row-name">{k.label}</span>
+                      <span className="hint">{k.hint}</span>
+                    </button>
+                  ))}
+                  <button type="button" className="linkbtn" onClick={() => setChoosingKind(false)}>
+                    Cancel
+                  </button>
+                </div>
+              ) : (
+                <button type="button" className="btn small" onClick={() => setChoosingKind(true)}>
+                  + Add a format
+                </button>
+              )}
+            </div>
           )}
           {green || onEngine ? null : (
           <div className="group">
@@ -1598,11 +1727,9 @@ export function BatchView({
                   {list(
                     'music',
                     'Music',
-                    talkCount > 0 && quietCount > 0
-                      ? 'The only sound in the videos you don\'t talk in, under your voice in the others. With more than one, each video gets one in turn.'
-                      : talkCount > 0
-                        ? 'Under your voice. With more than one, each video gets one in turn. None: your voice alone.'
-                        : 'The only sound - the clips are muted. With more than one, each video gets one in turn.',
+                    anyTalking
+                      ? 'The only sound in reactions; under your voice in talking heads. Green screen videos keep their own sound. With more than one, each video gets one in turn.'
+                      : 'The only sound - the clips are muted. Green screen videos keep their own sound. With more than one, each video gets one in turn.',
                   )}
                 </>
               )}

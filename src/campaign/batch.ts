@@ -33,7 +33,36 @@ export interface BankFile {
    *  voice, the music under it. Absent: as the bank's old `voice` said - a
    *  reaction he is silent in, music alone, unless the whole batch talked. */
   talks?: boolean
+  /** The formats of the batch it belongs to (BatchFormat ids): a clip of him
+   *  belongs to one, a product clip to one or more. */
+  formats?: string[]
 }
+
+/** What one kind of video in a batch is: his silent reaction then the
+ *  product, him talking (his voice kept) then the product, or him cut out
+ *  in a corner over the product (his ask, 2026-11-06: "reaction format,
+ *  talking head format, green screen format" - all in the one batch of the
+ *  account, several of each when the angles differ). */
+export type FormatKind = 'reaction' | 'talking' | 'greenscreen'
+
+export interface BatchFormat {
+  id: string
+  kind: FormatKind
+  /** His name for it: "Reaction - shocked", "App demo behind me". */
+  name: string
+  /** Paused: no new videos of it; what was made stays. */
+  paused?: boolean
+  /** Green screen: his corner. */
+  corner?: { side: 'left' | 'right'; sizePct: number }
+  /** Green screen: he talks in these, so his voice is kept. */
+  voice?: boolean
+}
+
+export const FORMAT_KINDS: { kind: FormatKind; label: string; hint: string }[] = [
+  { kind: 'reaction', label: 'Reaction', hint: 'You react without a word, then the product. Music only.' },
+  { kind: 'talking', label: 'Talking head', hint: 'You talk to the camera - your voice kept, music under it - then the product.' },
+  { kind: 'greenscreen', label: 'Green screen', hint: 'The product plays full screen, you cut out of your background in a corner.' },
+]
 
 export interface BatchBank {
   campaignId: string
@@ -148,6 +177,15 @@ export interface BatchBank {
   /** How many videos of each kind the batch has made, so the share holds
    *  from one top-up to the next. */
   kinds?: { talk: number; quiet: number }
+  /** The kinds of video the batch makes, each with its own clips (BankFile
+   *  `formats`) - withFormats makes them for a bank from before. */
+  formats?: BatchFormat[]
+  /** How many videos of each format it has made, so they keep taking turns
+   *  from one top-up to the next. */
+  formatDone?: Record<string, number>
+  /** How much of the day each format gets, by id (1 when absent): set by
+   *  how its videos do (Analytics). */
+  formatShares?: Record<string, number>
   /** When he last tapped Start anyway: the mixes made before were forgotten
    *  then, so the same clips make the same videos again - read by fromPhone,
    *  which takes the phone's `made` for that Start. */
@@ -177,7 +215,7 @@ export const FAVOUR = 2
 /** What the making of a batch has done so far - what was made, used, put on
  *  which day, why it stopped. On the server these are the server's own; every
  *  other field is a setting he changes on the phone. */
-export const PROGRESS_FIELDS = ['used', 'lastPair', 'made', 'usedClips', 'madeThrough', 'filled', 'runProblem', 'spent', 'lastPerDay', 'kinds'] as const
+export const PROGRESS_FIELDS = ['used', 'lastPair', 'made', 'usedClips', 'madeThrough', 'filled', 'runProblem', 'spent', 'lastPerDay', 'kinds', 'formatDone'] as const
 
 /** The bank the server makes from, after the phone sent its latest: his
  *  settings from the phone (clips, headlines, looks, the number a day, Start
@@ -228,6 +266,8 @@ export interface BatchStep {
   id: string
   name: string
   files: BankFile[]
+  /** The formats whose product it is (BatchFormat ids). */
+  formats?: string[]
 }
 
 /** The look of every word on a batch video but its headline hook: the step
@@ -500,6 +540,119 @@ export function kindsFor(
     out.push(kind)
     made[kind]++
     room[kind]--
+  }
+  return out
+}
+
+/** The ids a bank from before formats is given (the same on every phone and
+ *  the server, which may each convert it). */
+export const OLD_FORMAT = { reaction: 'f-reaction', talking: 'f-talking', greenscreen: 'f-greenscreen' } as const
+
+/** Whether a bank's videos are mixed from formats: not on the engine, and
+ *  not a Trial loop. */
+export function hasFormats(bank: Pick<BatchBank, 'layout'>): boolean {
+  return bank.layout !== 'engine' && bank.layout !== 'trial'
+}
+
+const tag = <T extends { formats?: string[] }>(item: T, ids: string[]): T => (item.formats?.length ? item : { ...item, formats: ids })
+
+/** The bank with formats: as it is when it has them. A bank from before
+ *  gets them from how it was set up - green screen one format, otherwise the
+ *  reactions he is silent in one and the ones he talks in another, both with
+ *  the product clips - and every clip says which it belongs to. */
+export function withFormats(bank: BatchBank): BatchBank {
+  // An empty list is one format's own bank (formatBank): mixed as it is.
+  if (!hasFormats(bank) || bank.formats) return bank
+  let formats: BatchFormat[]
+  let reactions: BankFile[]
+  if (bank.layout === 'greenscreen') {
+    // The ones he talks in keep his voice: a green screen format of their own.
+    const talking = bank.reactions.filter((r) => talksIn(bank, r))
+    const silent = bank.reactions.filter((r) => !talksIn(bank, r))
+    const corner = bank.corner ? { corner: bank.corner } : {}
+    formats = [
+      ...(silent.length > 0 || talking.length === 0 ? [{ id: OLD_FORMAT.greenscreen, kind: 'greenscreen' as const, name: 'Green screen', ...corner }] : []),
+      ...(talking.length > 0 ? [{ id: `${OLD_FORMAT.greenscreen}-talking`, kind: 'greenscreen' as const, name: 'Green screen - talking', voice: true, ...corner }] : []),
+    ]
+    reactions = bank.reactions.map((r) => tag(r, [talksIn(bank, r) ? `${OLD_FORMAT.greenscreen}-talking` : OLD_FORMAT.greenscreen]))
+  } else {
+    const talking = bank.reactions.filter((r) => talksIn(bank, r))
+    const silent = bank.reactions.filter((r) => !talksIn(bank, r))
+    formats = [
+      ...(silent.length > 0 || talking.length === 0 ? [{ id: OLD_FORMAT.reaction, kind: 'reaction' as const, name: 'Reaction' }] : []),
+      ...(talking.length > 0 ? [{ id: OLD_FORMAT.talking, kind: 'talking' as const, name: 'Talking head' }] : []),
+    ]
+    reactions = bank.reactions.map((r) => tag(r, [talksIn(bank, r) ? OLD_FORMAT.talking : OLD_FORMAT.reaction]))
+  }
+  const all = formats.map((f) => f.id)
+  return {
+    ...bank,
+    layout: 'after',
+    formats,
+    reactions,
+    products: bank.products.map((p) => tag(p, all)),
+    ...(bank.steps ? { steps: bank.steps.map((s) => tag(s, all)) } : {}),
+  }
+}
+
+const inFormat = (id: string) => (item: { formats?: string[] }) => Boolean(item.formats?.includes(id))
+
+/** One format as a bank of its own, the way the mixing has always read one:
+ *  its own clips of him and product clips (or steps), its layout and sound,
+ *  with the batch's headlines, looks, music and progress. */
+export function formatBank(bank: BatchBank, format: BatchFormat): BatchBank {
+  const mine = inFormat(format.id)
+  const steps = bank.steps?.filter(mine)
+  const talks = format.kind === 'talking' || (format.kind === 'greenscreen' && Boolean(format.voice))
+  return {
+    ...bank,
+    layout: format.kind === 'greenscreen' ? 'greenscreen' : 'after',
+    reactions: bank.reactions.filter(mine).map((r) => ({ ...r, talks })),
+    products: bank.products.filter(mine),
+    steps: steps && steps.length > 0 ? steps : undefined,
+    ...(format.corner ? { corner: format.corner } : {}),
+    voice: undefined,
+    formats: [],
+  }
+}
+
+/** The formats of a bank (none on the engine or in a Trial loop). */
+export function formatsOf(bank: BatchBank): BatchFormat[] {
+  return withFormats(bank).formats ?? []
+}
+
+/** The format a clip of him belongs to. */
+export function formatOfReaction(bank: BatchBank, reactionId: string): BatchFormat | null {
+  const b = withFormats(bank)
+  const file = b.reactions.find((r) => r.id === reactionId)
+  return (b.formats ?? []).find((f) => file?.formats?.includes(f.id)) ?? null
+}
+
+/** Which format each of the next `count` videos is: the one furthest behind
+ *  its share (`weight`, counted from what each made before), only while it
+ *  has videos left (`room`) - when one runs out, the others make the rest.
+ *  Ties go to the first in his list. */
+export function turnsFor(count: number, groups: { id: string; weight: number; done: number; room: number }[]): string[] {
+  const out: string[] = []
+  const state = groups.filter((g) => g.weight > 0).map((g) => ({ ...g }))
+  const total = state.reduce((n, g) => n + g.weight, 0)
+  for (let i = 0; i < count; i++) {
+    const open = state.filter((g) => g.room > 0)
+    if (open.length === 0) break
+    const made = state.reduce((n, g) => n + g.done, 0) + 1
+    // How far under its share each is; the most under goes next.
+    let best = open[0]
+    let bestUnder = -Infinity
+    for (const g of open) {
+      const under = g.weight / total - g.done / made
+      if (under > bestUnder + 1e-9) {
+        best = g
+        bestUnder = under
+      }
+    }
+    out.push(best.id)
+    best.done++
+    best.room--
   }
   return out
 }
@@ -788,7 +941,9 @@ export function combos(bank: MixBank & Pick<BatchBank, 'made'>): { total: number
  *  name lists its clips ("IMG_0249 + IMG_0330 + ….mp4", CampaignApp.addBatch)
  *  and the headline is its hook, or the Claude + X line with its amount.
  *  Every reading that fits, as clip names can repeat. */
-export function mixPrefixes(bank: Pick<BatchBank, 'reactions' | 'products' | 'steps' | 'layout'>, fileName: string, headline: string): string[] {
+export function mixPrefixes(bank: Pick<BatchBank, 'reactions' | 'products' | 'steps' | 'layout' | 'formats'>, fileName: string, headline: string): string[] {
+  // Each format reads its own clips.
+  if (bank.formats?.length) return bank.formats.flatMap((f) => mixPrefixes(formatBank(bank as BatchBank, f), fileName, headline))
   const names = fileName.replace(/\.[^./]+$/, '').split(' + ')
   const named = (list: readonly BankFile[], name: string | undefined) => list.filter((f) => f.name.replace(/\.[^./]+$/, '') === name).map((f) => f.id)
   const reactions = named(bank.reactions, names[0])
@@ -946,7 +1101,14 @@ export interface RecastFrom {
 /** The clips a batch video was made of, read off its file name ("IMG_0249 +
  *  IMG_0330.mp4", the reaction first - CampaignApp.addBatch), or null when one
  *  of them is no longer in the bank. */
-export function recipeOf(bank: Pick<BatchBank, 'reactions' | 'products' | 'steps' | 'layout'>, fileName: string, headline: string): RecastFrom | null {
+export function recipeOf(bank: Pick<BatchBank, 'reactions' | 'products' | 'steps' | 'layout' | 'formats'>, fileName: string, headline: string): RecastFrom | null {
+  if (bank.formats?.length) {
+    for (const f of bank.formats) {
+      const found = recipeOf(formatBank(bank as BatchBank, f), fileName, headline)
+      if (found) return found
+    }
+    return null
+  }
   const names = fileName.replace(/\.[^./]+$/, '').split(' + ')
   const first = (list: readonly BankFile[], name: string | undefined) => list.find((f) => f.name.replace(/\.[^./]+$/, '') === name)?.id
   const reaction = first(bank.reactions, names[0])
@@ -970,6 +1132,22 @@ export function recastPicks(
   look: BatchLook,
   rand: () => number = Math.random,
 ): { picks: (BatchPick | null)[]; used: Record<string, number>; made: string[] } {
+  // With formats: each video made again from its own format's clips.
+  if (bank.formats?.length) {
+    const picks: (BatchPick | null)[] = videos.map(() => null)
+    let used = bank.used
+    let made = bank.made ?? []
+    for (const f of bank.formats) {
+      const sub = formatBank(bank, f)
+      const mine = videos.map((v, i) => ({ v, i })).filter(({ v }) => sub.reactions.some((r) => r.id === v.reaction))
+      if (mine.length === 0) continue
+      const out = recastPicks({ ...sub, used, made }, mine.map(({ v }) => v), look, rand)
+      mine.forEach(({ i }, k) => (picks[i] = out.picks[k]))
+      used = out.used
+      made = out.made
+    }
+    return { picks, used, made }
+  }
   const mixable = mixFrom(bank, headlinesToMix(bank))
   const dims = dimensions(mixable)
   const mixing = dims.parts.size > 0

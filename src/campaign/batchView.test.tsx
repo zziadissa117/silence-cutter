@@ -86,6 +86,12 @@ async function show(place: Partial<CampaignPlace>, jobs: Job[] = [], onMake = vi
 
 const makeButton = () => host.querySelector('.batch-make') as HTMLButtonElement
 
+/** Opens the first format's card. */
+const openFirstFormat = async () => {
+  const card = host.querySelector('.format-head') as HTMLButtonElement
+  await act(async () => card.click())
+}
+
 const savedBank = async () => {
   const { saveBatchBank } = await import('./store')
   return (saveBatchBank as unknown as { mock: { calls: [BatchBank][] } }).mock.calls.at(-1)![0]
@@ -461,7 +467,8 @@ describe('a clip already in videos made before', () => {
     const file = new File([new Uint8Array(4096).fill(7)], 'old-reaction.mov', { type: 'video/quicktime' })
     storedBank = { ...bank, usedClips: [await fingerprint(file)] }
     await show({})
-    const input = host.querySelector('input[aria-label="Add not talking"]') as HTMLInputElement
+    await openFirstFormat()
+    const input = host.querySelector('input[aria-label="Add you"]') as HTMLInputElement
     Object.defineProperty(input, 'files', { value: [file] })
     await act(async () => input.dispatchEvent(new Event('change', { bubbles: true })))
     // Reading what is in the file takes a moment.
@@ -478,7 +485,8 @@ describe('a clip already in videos made before', () => {
     const fp = await fingerprint(file)
     storedBank = { ...bank, usedClips: [fp] }
     await show({})
-    const input = host.querySelector('input[aria-label="Add not talking"]') as HTMLInputElement
+    await openFirstFormat()
+    const input = host.querySelector('input[aria-label="Add you"]') as HTMLInputElement
     Object.defineProperty(input, 'files', { value: [file] })
     await act(async () => input.dispatchEvent(new Event('change', { bubbles: true })))
     await act(async () => new Promise((resolve) => setTimeout(resolve, 200)))
@@ -702,29 +710,43 @@ describe('how each hook is doing', () => {
   })
 })
 
-describe('reactions he talks in and ones he does not, in one batch', () => {
-  it('lists each kind apart and shows the mix only when there are both', async () => {
+describe('one batch for the account, in formats', () => {
+  it('turns a batch from before into a format card, and opens it to show its clips', async () => {
     storedBank = bank
     await show({})
-    expect(host.querySelector('input[aria-label="Add talking"]')).toBeTruthy()
-    expect(host.querySelector('input[aria-label="How many of the videos are talking ones"]')).toBeNull()
-    expect(host.textContent).toContain('Every video is music only')
+    const card = host.querySelector('.format-head') as HTMLButtonElement
+    expect(card.textContent).toContain('Reaction')
+    expect(card.textContent).toContain('3 clips of you · 3 product clips')
+    await openFirstFormat()
+    expect(host.querySelector('input[aria-label="Add you"]')).toBeTruthy()
+    expect(host.querySelector('input[aria-label="Add product showcases"]')).toBeTruthy()
   })
 
-  it('shows the mix at 35% talking when there are both', async () => {
-    storedBank = { ...bank, reactions: bank.reactions.map((r, i) => (i === 0 ? { ...r, talks: true } : r)) }
-    await show({})
-    const slider = host.querySelector('input[aria-label="How many of the videos are talking ones"]') as HTMLInputElement
-    expect(slider.value).toBe('35')
-    expect(host.textContent).toContain('Of your 3 a day: 2 not talking, 1 talking')
-  })
-
-  it('moves a reaction to the other kind with one tap', async () => {
+  it('adds a talking head format next to it, open to fill in', async () => {
     storedBank = bank
     await show({})
-    const move = host.querySelector('button[aria-label="r2.mp4: move to talking"]') as HTMLButtonElement
-    await act(async () => move.click())
+    const add = [...host.querySelectorAll('button')].find((b) => b.textContent === '+ Add a format') as HTMLButtonElement
+    await act(async () => add.click())
+    const talking = [...host.querySelectorAll('.format-kind')].find((b) => b.textContent?.startsWith('Talking head')) as HTMLButtonElement
+    await act(async () => talking.click())
     const saved = await savedBank()
-    expect(saved.reactions.find((r) => r.id === 'r2')?.talks).toBe(true)
+    expect(saved.formats?.map((f) => f.kind)).toEqual(['reaction', 'talking'])
+    expect(host.textContent).toContain('You talking')
+    // It needs its own clips first.
+    expect(host.textContent).toContain('Needs a clip of you and a product showcase')
+  })
+
+  it('uses the product of another format with one pick', async () => {
+    storedBank = { ...bank, formats: [{ id: 'r', kind: 'reaction', name: 'Reaction' }, { id: 't', kind: 'talking', name: 'Talk' }], products: bank.products.map((p) => ({ ...p, formats: ['r'] })), reactions: bank.reactions.map((r) => ({ ...r, formats: ['r'] })) }
+    await show({})
+    const talk = [...host.querySelectorAll('.format-head')][1] as HTMLButtonElement
+    await act(async () => talk.click())
+    const pick = host.querySelector('select[aria-label="Use the product of another format"]') as HTMLSelectElement
+    await act(async () => {
+      pick.value = 'r'
+      pick.dispatchEvent(new Event('change', { bubbles: true }))
+    })
+    const saved = await savedBank()
+    expect(saved.products.every((p) => p.formats?.includes('t'))).toBe(true)
   })
 })

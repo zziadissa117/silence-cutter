@@ -3,6 +3,32 @@
 Newest first. Every change says what it does, how to use it, and how it works
 underneath. Kept up to date with each commit.
 
+## Batches: one batch per account, made of formats - reaction, talking head, green screen
+App only: run ./deploy.sh.
+**What he said (2026-11-06):** the talking / not-talking batch screen was confusing. "Reaction batches, talking head
+batches, green screen batches - all three are going to post under the same account ... I don't have to create a new
+batch ... they're going to work as formats ... it's not always going to be the same exact video behind me ... different
+angles sometimes." His picks: each format has its own clips of him and its own product (or steps); headlines, looks
+and music are the batch's; formats take turns evenly (by results next); talking clips play whole with captions (next).
+- **The Batch tab:** status and Start at the top as before, then **Formats** - one card per format: its kind (Reaction,
+  Talking head, Green screen), his name for it, how many clips of him and product clips it has, and how many different
+  videos it can still make (or what it needs, in orange). Tap a card to open it: its name, its clips of him, its
+  product showcases or product steps (or, green screen, the videos behind him, his corner, "You talk in these"),
+  "Same product as…" to use another format's product, Pause, Take out this format. **+ Add a format** asks the kind.
+  Several of one kind are fine ("Reaction 2"). Headlines, Hook and Music below are for every format.
+- **Underneath** (`batch.ts`): `BatchBank.formats` (`BatchFormat`: id, kind, name, paused, corner, voice); every clip
+  says its formats (`BankFile.formats`, `BatchStep.formats`) - the clips stay in the bank's own lists, so the server
+  hand-over, used clips and cut-outs work as before. `formatBank` makes one format a bank of its own (its layout, its
+  sound); `batchRun.planFormats` mixes each from its own clips with the batch's headlines and music, the formats taking
+  turns (`turnsFor`, counted in `formatDone`), a format with nothing left or missing a clip leaving its turns to the
+  others; `leftToMake`, `missingFor`, `variationParts`, `mixPrefixes`, `recipeOf`, `recastPicks` go format by format.
+  Each video's batch line carries its `format`.
+- **A batch from before** becomes formats by itself (`withFormats`, the same ids on the phone and the server): green
+  screen -> "Green screen" (and "Green screen - talking" for clips marked talking), otherwise "Reaction" and, for the
+  clips he talks in, "Talking head", both with the product clips. The talking/not-talking lists and their slider are
+  gone; the engine is still "On the engine" at the top of Formats.
+- Tests: `batchFormats.test.ts`, `batchView.test.tsx`, `batchKinds.test.ts`.
+
 ## Music: each song's length, against your video's length once cut
 App only: run ./deploy.sh.
 **What he said (2026-11-06):** "when I choose music, it also tells me how long that music is ... my video, let's say,

@@ -1148,3 +1148,22 @@ input[type='color']::-webkit-color-swatch { border: 0.5px solid var(--edge); bor
 .reaction-fields { display: flex; flex-direction: column; gap: 10px; margin: 6px 0 10px; }
 .clip-sound { display: inline-flex; gap: 8px; flex-wrap: wrap; }
 .clip-watch { width: 100%; max-height: 50vh; border-radius: 12px; background: #000; margin-top: 6px; }
+
+/* Batch formats (BatchView formatCard): one card per kind of video. */
+.format-cards { list-style: none; margin: 8px 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+.format-card { background: var(--surface-raised); border: 1px solid var(--edge); border-radius: 12px; overflow: hidden; }
+.format-card.paused { opacity: 0.6; }
+.format-card.open { border-color: var(--edge-lit); }
+.format-head { all: unset; box-sizing: border-box; display: grid; grid-template-columns: auto 1fr; gap: 2px 8px; width: 100%; padding: 12px; cursor: pointer; }
+.format-head .row-name { align-self: center; font-weight: 600; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.format-head .hint { grid-column: 1 / -1; }
+.format-badge { font-size: 12px; font-weight: 600; padding: 2px 8px; border-radius: 999px; background: var(--seg-track); color: var(--text); white-space: nowrap; }
+.format-badge.talking { background: color-mix(in srgb, var(--accent) 30%, transparent); }
+.format-badge.greenscreen { background: color-mix(in srgb, var(--ok) 30%, transparent); }
+.format-body { padding: 0 12px 12px; display: flex; flex-direction: column; gap: 10px; border-top: 1px solid var(--edge); }
+.format-body .group { margin: 0; }
+.format-actions { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.format-actions select { max-width: 100%; }
+.format-kinds { display: flex; flex-direction: column; gap: 8px; }
+.format-kind { all: unset; box-sizing: border-box; display: flex; flex-direction: column; gap: 2px; padding: 12px; border-radius: 12px; border: 1px solid var(--edge); background: var(--surface-raised); cursor: pointer; }
+.format-kind:active { border-color: var(--accent); }

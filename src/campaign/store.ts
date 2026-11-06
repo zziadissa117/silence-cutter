@@ -247,6 +247,9 @@ export interface JobBatch {
    *  viral reel (`source`) - then the rest go by themselves (postiz trustKey). */
   trial?: true
   source?: string
+  /** The batch format it was made in (batch.BatchFormat id), for how each
+   *  format does. */
+  format?: string
 }
 
 /** A clips-and-music video's other files, by name and type: the clips after

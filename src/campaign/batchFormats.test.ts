@@ -1,0 +1,87 @@
+import { describe, expect, it } from 'vitest'
+
+import { emptyBank, formatBank, formatsOf, turnsFor, withFormats, type BankFile, type BatchBank, type BatchFormat, type BatchSlot } from './batch'
+import { leftToMake, missingFor, planVideos, variationParts } from './batchRun'
+
+const files = (prefix: string, n: number, formats?: string[]): BankFile[] =>
+  Array.from({ length: n }, (_, i) => ({ id: `${prefix}${i}`, name: `${prefix}${i}.mp4`, type: 'video/mp4', size: 1, ...(formats ? { formats } : {}) }))
+const slots = (n: number): BatchSlot[] => Array.from({ length: n }, (_, i) => ({ date: '2026-11-07', time: `${String(i % 24).padStart(2, '0')}:00` }))
+
+const formats: BatchFormat[] = [
+  { id: 'r', kind: 'reaction', name: 'Reaction - shocked' },
+  { id: 't', kind: 'talking', name: 'Talking - story' },
+  { id: 'g', kind: 'greenscreen', name: 'Green screen - app', corner: { side: 'left', sizePct: 30 } },
+]
+const godari = (fields: Partial<BatchBank> = {}): BatchBank => ({
+  ...emptyBank('godari', 'a1'),
+  formats,
+  reactions: [...files('react', 2, ['r']), ...files('talk', 2, ['t']), ...files('green', 2, ['g'])],
+  products: [...files('prod', 2, ['r', 't']), ...files('bg', 2, ['g'])],
+  headlines: ['one', 'two'],
+  music: files('song', 1),
+  ...fields,
+})
+
+describe('one batch for the account, made of formats', () => {
+  it('takes turns between its formats evenly', () => {
+    expect(turnsFor(6, [{ id: 'a', weight: 1, done: 0, room: 99 }, { id: 'b', weight: 1, done: 0, room: 99 }, { id: 'c', weight: 1, done: 0, room: 99 }])).toEqual(['a', 'b', 'c', 'a', 'b', 'c'])
+    // One with nothing left: the others make the rest.
+    expect(turnsFor(4, [{ id: 'a', weight: 1, done: 0, room: 1 }, { id: 'b', weight: 1, done: 0, room: 99 }])).toEqual(['a', 'b', 'b', 'b'])
+    // A share of 2: twice as many.
+    expect(turnsFor(6, [{ id: 'a', weight: 2, done: 0, room: 99 }, { id: 'b', weight: 1, done: 0, room: 99 }]).filter((x) => x === 'a')).toHaveLength(4)
+  })
+
+  it('makes each format from its own clips: silent reactions, his voice, green screen in his corner', () => {
+    const plan = planVideos(godari(), slots(9), { id: 'b', rand: () => 0.4 })
+    expect(plan.videos).toHaveLength(9)
+    for (const v of plan.videos) {
+      const f = v.batch.format
+      if (f === 'r') expect(v.reaction.id.startsWith('react') && !v.voice && !v.greenScreen && v.product.id.startsWith('prod')).toBe(true)
+      if (f === 't') expect(v.reaction.id.startsWith('talk') && v.voice && !v.greenScreen && v.product.id.startsWith('prod')).toBe(true)
+      if (f === 'g') expect(v.reaction.id.startsWith('green') && !v.voice && v.greenScreen?.side === 'left' && v.product.id.startsWith('bg')).toBe(true)
+    }
+    expect(plan.bank.formatDone).toEqual({ r: 3, t: 3, g: 3 })
+  })
+
+  it('makes none of a paused format, and no video twice', () => {
+    let bank = godari({ formats: formats.map((f) => (f.id === 't' ? { ...f, paused: true } : f)) })
+    const seen = new Set<string>()
+    for (let round = 0; round < 3; round++) {
+      const plan = planVideos(bank, slots(4), { id: `b${round}`, rand: () => 0.5 })
+      for (const v of plan.videos) {
+        expect(v.batch.format).not.toBe('t')
+        const key = `${v.reaction.id}|${v.product.id}|${v.headline}`
+        expect(seen.has(key)).toBe(false)
+        seen.add(key)
+      }
+      bank = plan.bank
+    }
+  })
+
+  it('counts what is left across the formats, and goes on with the others while one waits for its clips', () => {
+    // 2 clips x 2 products x 2 headlines in each of three formats.
+    expect(leftToMake(godari()).total).toBe(24)
+    const noBackground = godari({ products: files('prod', 2, ['r', 't']) })
+    expect(missingFor(noBackground)).toEqual([])
+    expect(planVideos(noBackground, slots(4), { id: 'x' }).videos.every((v) => v.batch.format !== 'g')).toBe(true)
+    expect(variationParts(godari())[0]).toMatch(/^Reaction - shocked: 2 reactions × 2 product showcases/)
+  })
+
+  it('turns a batch from before into formats, the same way on every phone', () => {
+    const old: BatchBank = { ...emptyBank('c', 'a'), reactions: [...files('q', 1), { ...files('t', 1)[0], talks: true }], products: files('p', 1) }
+    const made = withFormats(old)
+    expect(made.formats?.map((f) => [f.id, f.kind])).toEqual([
+      ['f-reaction', 'reaction'],
+      ['f-talking', 'talking'],
+    ])
+    expect(made.products[0].formats).toEqual(['f-reaction', 'f-talking'])
+    expect(withFormats(made)).toBe(made)
+    const green = withFormats({ ...old, layout: 'greenscreen', corner: { side: 'right', sizePct: 40 } })
+    expect(green.formats?.map((f) => f.kind)).toEqual(['greenscreen', 'greenscreen'])
+    expect(green.formats?.[1].voice).toBe(true)
+    // The engine and Trial loops have none.
+    expect(formatsOf({ ...old, layout: 'engine' })).toEqual([])
+    // One format's own bank is mixed as it is.
+    expect(withFormats(formatBank(made, made.formats![0])).formats).toEqual([])
+  })
+})

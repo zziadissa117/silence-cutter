@@ -57,8 +57,9 @@ describe('talking and not-talking reactions in one batch', () => {
     const plan = planVideos(bank, slots(10), { id: 'b1', rand: () => 0.3 })
     expect(plan.videos).toHaveLength(10)
     for (const v of plan.videos) expect(Boolean(v.voice)).toBe(v.reaction.id.startsWith('t'))
-    expect(plan.videos.filter((v) => v.voice)).toHaveLength(3)
-    expect(plan.bank.kinds).toEqual({ talk: 3, quiet: 7 })
+    // A batch from before becomes two formats, taking turns evenly.
+    expect(plan.videos.filter((v) => v.voice)).toHaveLength(5)
+    expect(plan.bank.formatDone).toEqual({ 'f-reaction': 5, 'f-talking': 5 })
   })
 
   it('never makes the same video twice across both kinds', () => {

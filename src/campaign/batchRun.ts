@@ -25,11 +25,11 @@ import {
   hookOf,
   mixFrom,
   pickBatch,
-  kindsFor,
-  reactionsOfKind,
+  formatBank,
   spend,
-  talkShareOf,
   talksIn,
+  turnsFor,
+  withFormats,
   looksToMix,
   formulaAmounts,
   hasFormula,
@@ -42,6 +42,7 @@ import {
   stylesOf,
   type BankFile,
   type BatchBank,
+  type BatchFormat,
   type BatchLook,
   type BatchPick,
   type BatchSlot,
@@ -216,6 +217,16 @@ export function runSlots({
  *  needed: without one the videos have no words on them. */
 export function missingFor(bank: BatchBank): string[] {
   if (bank.layout === 'trial') return trialMissing(bank)
+  // Formats: missing only when not one of them can make a video - then what
+  // the first one waiting is missing, by its name.
+  const formats = liveFormats(bank)
+  if (formats.length > 0) {
+    const each = formats.map((f) => ({ f, missing: missingFor(formatBank(withFormats(bank), f)).map((m) => (m === 'a reaction' ? 'a clip of you' : m)) }))
+    if (each.some((e) => e.missing.length === 0)) return []
+    return each[0].missing.map((m) => (formats.length > 1 ? `${m} in ${each[0].f.name}` : m))
+  }
+  const all = withFormats(bank).formats ?? []
+  if (all.length > 0) return [all.every((f) => f.paused) ? 'a format that is not paused' : 'a clip of you in one of the formats']
   const green = bank.layout === 'greenscreen'
   const onEngine = bank.layout === 'engine'
   const formula = !green && !onEngine && hasFormula(bank)
@@ -233,6 +244,17 @@ export function missingFor(bank: BatchBank): string[] {
 export function leftToMake(bank: BatchBank): { total: number; left: number } {
   // A Trial loop never runs out: every way made, it starts over.
   if (bank.layout === 'trial') return { total: Infinity, left: Infinity }
+  if (withFormats(bank).formats?.length) {
+    let total = 0
+    let left = 0
+    const b = withFormats(bank)
+    for (const sub of liveFormats(b).map((f) => formatBank(b, f))) {
+      const c = combos({ ...mixFrom(sub, headlinesToMix(sub)), made: madeOf(sub, bank.made) })
+      total += c.total
+      left += c.left
+    }
+    return { total, left }
+  }
   return combos(mixFrom(bank, headlinesToMix(bank)))
 }
 
@@ -240,6 +262,13 @@ export function leftToMake(bank: BatchBank): { total: number; left: number } {
  *  counts them: "3 reactions × 4 product showcases × 5 headlines × 3
  *  headline looks". Songs and looks only when there is more than one. */
 export function variationParts(bank: BatchBank): string[] {
+  // Formats: each its own line - "Reaction: 3 reactions × 4 product showcases".
+  if (withFormats(bank).formats?.length) {
+    const b = withFormats(bank)
+    const each = liveFormats(b).map((format) => ({ format, sub: formatBank(b, format) }))
+    if (each.length === 1) return variationParts(each[0].sub)
+    return each.map(({ format, sub }) => `${format.name}: ${variationParts(sub).join(' × ')}`)
+  }
   if (bank.layout === 'trial') {
     const sources = bank.trial?.sources.filter((s) => !s.stopped) ?? []
     return [`${sources.length} viral reel${sources.length === 1 ? '' : 's'}`, 'their words moved or reworded', 'a touch brighter or darker']
@@ -288,7 +317,12 @@ function fill(bank: BatchBank, slots: readonly BatchSlot[], now: Date): BatchBan
  *  was the last of them, the footage goes (batch.spend) and the batch stops.
  *  On the engine it only counts the days - the engine does its own mixing. */
 /** One batch video from a pick, for its day and time. */
-function videoOf(bank: BatchBank, pick: BatchPick, slot: BatchSlot, { id, seed, size, ending }: { id: string; seed: string; size: number; ending: boolean }): BatchVideo {
+function videoOf(
+  bank: BatchBank,
+  pick: BatchPick,
+  slot: BatchSlot,
+  { id, seed, size, ending, format }: { id: string; seed: string; size: number; ending: boolean; format?: string },
+): BatchVideo {
   const green = bank.layout === 'greenscreen'
   const formulaOnly = !green && hookOf(bank) === 'formula'
   const formula = !green && hasFormula(bank) ? (bank.formula ?? DEFAULT_FORMULA) : undefined
@@ -313,37 +347,83 @@ function videoOf(bank: BatchBank, pick: BatchPick, slot: BatchSlot, { id, seed, 
       : { headline: pick.headline }),
     ...(style ? { headlineStyle: style } : {}),
     ...(talksIn(bank, byId(bank.reactions, pick.reaction)!) ? { voice: true } : {}),
-    batch: { id, date: slot.date, time: slot.time, size, ...(ending ? { last: true as const } : {}) },
+    batch: { id, date: slot.date, time: slot.time, size, ...(ending ? { last: true as const } : {}), ...(format ? { format } : {}) },
   }
 }
 
-/** The next `count` picks: with reactions he talks in and others he doesn't,
- *  each video one kind or the other at his share (kindsFor), in turn - each
- *  kind mixed from its own reactions and everything else the batch has.
- *  With one kind only, as always. */
-function pickKinds(bank: BatchBank, mixable: BatchBank, count: number, rand: () => number) {
-  const talk = reactionsOfKind(bank, true)
-  const quiet = reactionsOfKind(bank, false)
-  if (talk.length === 0 || quiet.length === 0) return { ...pickBatch(mixable, count, rand), kinds: undefined }
-  const of = (reactions: BankFile[]) => ({ ...mixable, reactions })
+/** The formats making videos now: not paused, with a clip of him. */
+function liveFormats(bank: BatchBank): BatchFormat[] {
+  const b = withFormats(bank)
+  return (b.formats ?? []).filter((f) => !f.paused && b.reactions.some((r) => r.formats?.includes(f.id)))
+}
+
+/** Each live format that has everything it needs, as a bank of its own. */
+function mixableFormats(bank: BatchBank): { format: BatchFormat; sub: BatchBank }[] {
+  const b = withFormats(bank)
+  return liveFormats(b)
+    .map((format) => ({ format, sub: formatBank(b, format) }))
+    .filter(({ sub }) => missingFor(sub).length === 0)
+}
+
+/** The made combinations of a format's own clips of him: keys start with
+ *  the clip's id. */
+function madeOf(sub: Pick<BatchBank, 'reactions'>, made: readonly string[] | undefined): string[] {
+  const mine = new Set(sub.reactions.map((r) => r.id))
+  return (made ?? []).filter((key) => mine.has(key.split('|')[0]))
+}
+
+/** The next `count` videos of a batch with formats: the formats take turns
+ *  (turnsFor), each mixed from its own clips with the batch's headlines,
+ *  looks and music - never the same video twice - and the bank after them. */
+function planFormats(bank: BatchBank, slots: BatchSlot[], { id, now, rand }: { id: string; now: Date; rand: () => number }) {
+  const formats = mixableFormats(bank)
   const room = (n: number) => (Number.isFinite(n) ? n : Number.MAX_SAFE_INTEGER)
-  const order = kindsFor(count, talkShareOf(bank), bank.kinds, { talk: room(combos(of(talk)).left), quiet: room(combos(of(quiet)).left) })
-  let state = { used: bank.used, lastPair: bank.lastPair, made: bank.made }
-  const byKind = new Map<string, BatchPick[]>()
-  for (const kind of ['talk', 'quiet'] as const) {
-    const n = order.filter((k) => k === kind).length
+  const lefts = formats.map(({ sub }) => combos({ ...mixFrom(sub, headlinesToMix(sub)), made: madeOf(sub, bank.made) }).left)
+  const left = lefts.reduce((n, l) => n + l, 0)
+  const taking = Number.isFinite(left) ? slots.slice(0, left) : slots
+  if (taking.length === 0) return { videos: [], slots: [], bank, retire: [] }
+  const order = turnsFor(
+    taking.length,
+    formats.map(({ format }, i) => ({ id: format.id, weight: formatShare(bank, format.id), done: bank.formatDone?.[format.id] ?? 0, room: room(lefts[i]) })),
+  )
+  let state = { used: bank.used, lastPair: bank.lastPair, made: bank.made ?? [] }
+  const picksOf = new Map<string, BatchPick[]>()
+  for (const { format, sub } of formats) {
+    const n = order.filter((f) => f === format.id).length
     if (n === 0) continue
-    // Each kind sees only its own videos made - pickBatch forgets the made
-    // ones whose reaction it isn't given - and the other kind's stay.
-    const mine = new Set((kind === 'talk' ? talk : quiet).map((f) => f.id))
-    const ours = (key: string) => mine.has(key.split('|')[0])
-    const out = pickBatch({ ...of(kind === 'talk' ? talk : quiet), ...state, made: (state.made ?? []).filter(ours) }, n, rand)
-    byKind.set(kind, out.picks)
-    state = { used: out.used, lastPair: out.lastPair, made: [...(state.made ?? []).filter((key) => !ours(key)), ...out.made] }
+    // Each format sees only its own videos made - pickBatch forgets the made
+    // ones whose clips it isn't given - and the others' stay.
+    const mine = madeOf(sub, state.made)
+    const out = pickBatch({ ...mixFrom(sub, headlinesToMix(sub)), used: state.used, lastPair: state.lastPair, made: mine }, n, rand)
+    picksOf.set(format.id, out.picks)
+    const kept = new Set(mine)
+    state = { used: out.used, lastPair: out.lastPair, made: [...state.made.filter((key) => !kept.has(key)), ...out.made] }
   }
-  const picks = order.map((kind) => byKind.get(kind)!.shift()!).filter(Boolean)
-  const kinds = { talk: (bank.kinds?.talk ?? 0) + order.filter((k) => k === 'talk').length, quiet: (bank.kinds?.quiet ?? 0) + order.filter((k) => k === 'quiet').length }
-  return { picks, used: state.used, lastPair: state.lastPair, made: state.made ?? [], kinds }
+  const ending = Number.isFinite(left) && taking.length >= left
+  const videos: BatchVideo[] = []
+  const done = { ...(bank.formatDone ?? {}) }
+  order.forEach((formatId, i) => {
+    const pick = picksOf.get(formatId)?.shift()
+    const sub = formats.find((f) => f.format.id === formatId)!.sub
+    if (!pick) return
+    videos.push(videoOf(sub, pick, taking[i], { id, seed: `${id}-${i}`, size: taking.length, ending, format: formatId }))
+    done[formatId] = (done[formatId] ?? 0) + 1
+  })
+  const used = taking.slice(0, videos.length)
+  let next = fill({ ...withFormats(bank), used: state.used, lastPair: state.lastPair, made: state.made, formatDone: done }, used, now)
+  let retire: string[] = []
+  if (ending) {
+    ;({ bank: next, retired: retire } = spend(next, next.madeThrough ?? todayHere(now)))
+    next = { ...next, running: false }
+  }
+  return { videos, slots: used, bank: next, retire }
+}
+
+/** How much of the day a format gets: the same for each (by results comes
+ *  with Analytics - BatchBank.formatShares). */
+export function formatShare(bank: Pick<BatchBank, 'formatShares'>, formatId: string): number {
+  const share = bank.formatShares?.[formatId]
+  return typeof share === 'number' && share > 0 ? share : 1
 }
 
 export function planVideos(
@@ -353,16 +433,17 @@ export function planVideos(
 ): { videos: BatchVideo[]; slots: BatchSlot[]; bank: BatchBank; retire: string[] } {
   if (bank.layout === 'engine') return { videos: [], slots, bank: fill(bank, slots, now), retire: [] }
   if (bank.layout === 'trial') return planTrialVideos(bank, slots, { id, now, rand })
+  if (withFormats(bank).formats?.length) return planFormats(bank, slots, { id, now, rand })
   const mixable = mixFrom(bank, headlinesToMix(bank))
   const { left } = combos(mixable)
   const taking = Number.isFinite(left) ? slots.slice(0, left) : slots
   if (taking.length === 0) return { videos: [], slots: [], bank, retire: [] }
 
-  const { picks, used, lastPair, made, kinds } = pickKinds(bank, mixable, taking.length, rand)
+  const { picks, used, lastPair, made } = pickBatch(mixable, taking.length, rand)
   // That is every different video left: the footage goes after these.
   const ending = Number.isFinite(left) && taking.length >= left
   const videos = picks.map((pick, i) => videoOf(bank, pick, taking[i], { id, seed: `${id}-${i}`, size: taking.length, ending }))
-  let next = fill({ ...bank, used, lastPair, made, ...(kinds ? { kinds } : {}) }, taking, now)
+  let next = fill({ ...bank, used, lastPair, made }, taking, now)
   let retire: string[] = []
   if (ending) {
     // That was every different video: the footage goes, for new filming.
