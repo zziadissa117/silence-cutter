@@ -13,7 +13,7 @@
 import { type ReactNode, useCallback, useEffect, useMemo, useState } from 'react'
 
 import { dayLabel } from './batch'
-import { canShareFiles, share } from './jobs'
+import { hasShareSheet, shareVideo, useSharable } from './shareFile'
 import { ChevronLeft, ScheduledIcon } from './icons'
 import type { Campaign } from './look'
 import { NewPost } from './NewPost'
@@ -119,15 +119,17 @@ function useCopy(key: string, remote: string | null = null): Copy {
 
 function SaveVideo({ post, primary = false }: { post: ServerPost; primary?: boolean }) {
   const { file: copy, load, loading } = useCopy(post.key, post.videoUrl)
-  const file = useMemo(() => (copy ? new File([copy], videoName(post), { type: 'video/mp4' }) : null), [copy, post])
+  // In memory for the share sheet (shareFile.ts): Save opened an empty
+  // preview on his iPhone when it was read from storage.
+  const sharable = useSharable(copy, videoName(post))
   const [shareFailed, setShareFailed] = useState(false)
   const [url, setUrl] = useState<string | null>(null)
   useEffect(() => {
-    if (!file) return
-    const next = URL.createObjectURL(file)
+    if (!copy) return
+    const next = URL.createObjectURL(copy)
     setUrl(next)
     return () => URL.revokeObjectURL(next)
-  }, [file])
+  }, [copy])
   const className = `btn small${primary ? ' primary' : ''}`
   if (load) {
     return (
@@ -136,10 +138,10 @@ function SaveVideo({ post, primary = false }: { post: ServerPost; primary?: bool
       </button>
     )
   }
-  if (file && canShareFiles([file]) && !shareFailed) {
+  if (copy && hasShareSheet()) {
     return (
-      <button type="button" className={className} onClick={() => void share([file]).then((ok) => !ok && setShareFailed(true))}>
-        Save video
+      <button type="button" className={className} disabled={!sharable} onClick={() => sharable && void shareVideo(sharable).then((ok) => setShareFailed(!ok))}>
+        {!sharable ? 'Getting it…' : shareFailed ? 'Save video · try again' : 'Save video'}
       </button>
     )
   }

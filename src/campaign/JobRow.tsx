@@ -13,7 +13,8 @@ import { useEffect, useMemo, useState, type ReactNode } from 'react'
 import { totalDuration } from '../media/silenceMath'
 import { ChevronDown } from './icons'
 import type { PictureChoice } from './skipPictures'
-import { canShareFiles, formatTime, outputName, share, type Job } from './jobs'
+import { formatTime, outputName, type Job } from './jobs'
+import { hasShareSheet, shareVideo, useSharable } from './shareFile'
 import { clipsOf } from './noTalk'
 import { HEADLINE_STYLES, LIMITS, type Campaign, type HeadlineStyle } from './look'
 import { songFile, useMusicBank } from './musicBank'
@@ -124,7 +125,6 @@ export function JobRow({
   const result = job.result
   const name = outputName(job.name, label)
   const file = useMemo(() => (result ? new File([result.blob], name, { type: 'video/mp4' }) : null), [result, name])
-  const canSend = useMemo(() => (file ? canShareFiles([file]) : false), [file])
   const missed = result && result.notHeard.length > 0
   const plain = Boolean(result?.lookFailed)
   const noMusic = Boolean(result?.montage?.musicFailed)
@@ -182,9 +182,12 @@ export function JobRow({
   // pauses still in is never a surprise.
   const shownLine = `${line}${job.ownEdit && fine ? (job.ownEdit === 'keep' && job.status !== 'done' ? ' · your edit, kept, not posted' : ' · your edit') : job.noCut && fine ? ' · not cut, only made 9:16' : ''}${job.later && fine ? ' · for the next days' : ''}`
 
+  // An in-memory copy for the share sheet (shareFile.ts): Save opened an
+  // empty preview on his iPhone.
+  const sharable = useSharable(job.status === 'done' ? result?.blob : null, name)
   const send = async () => {
-    if (!file) return
-    if (!(await share([file]))) setShareFailed(true)
+    if (!sharable) return
+    if (!(await shareVideo(sharable))) setShareFailed(true)
   }
 
   const action =
@@ -199,9 +202,9 @@ export function JobRow({
         </button>
       )
     ) : job.status === 'done' && file && job.url ? (
-      canSend && !shareFailed ? (
-        <button type="button" className="btn small" onClick={() => void send()}>
-          Send
+      hasShareSheet() ? (
+        <button type="button" className="btn small" disabled={!sharable} onClick={() => void send()}>
+          {!sharable ? 'Getting it…' : shareFailed ? 'Save · try again' : 'Save'}
         </button>
       ) : (
         <a className="btn small" href={job.url} download={name}>

@@ -3,6 +3,18 @@
 Newest first. Every change says what it does, how to use it, and how it works
 underneath. Kept up to date with each commit.
 
+## Save a made video: the share sheet gets a copy in memory
+App only: run ./deploy.sh.
+**What he said (2026-11-06):** a Thetawave video "doesn't let me save it. I press Save, and it pops up a widget that
+is like an iPhone widget that doesn't load anything."
+- A made video is often kept in the Cutter's private storage; the iPhone's share sheet and its download preview
+  couldn't read it from there. Now the video is copied into memory as soon as its row shows ("Getting it…" for a
+  moment), and Save opens the share sheet with that copy - Save Video, AirDrop, TikTok (`shareFile.ts`
+  `useSharable`, `shareVideo`). On the Videos list (`JobRow`) and in Posts (`SaveVideo`).
+- The old fallback - a download link, which is what opened the empty preview on an iPhone - is only used where there
+  is no share sheet at all (a computer). If the sheet still can't open, the button says "try again", and why goes in
+  his report (`share`).
+
 ## Recording: 60 fps insisted on (Safari gave 30 to "ideal: 60")
 App only: run ./deploy.sh.
 **What he saw (2026-11-06):** after the 60 fps change the recorder still said "1080 × 1920 · 30 fps" - his report
