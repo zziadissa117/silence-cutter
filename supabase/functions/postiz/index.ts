@@ -1145,6 +1145,7 @@ function postView(post: Post) {
     error: post.error,
     retryAt: post.retry_at,
     createdAt: post.created_at,
+    duration: post.duration,
     byHand: post.by_hand,
     ready: Boolean(post.ready_at),
     batch: post.batch

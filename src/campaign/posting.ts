@@ -133,6 +133,8 @@ export interface ServerPost {
   error: string | null
   retryAt: string | null
   createdAt: string
+  /** How long the video is, in seconds, as it was sent. */
+  duration?: number | null
   /** Made by hand from New post. */
   byHand?: boolean
   /** Approved with "post later": it waits until he taps Post. */

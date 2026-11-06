@@ -3,6 +3,18 @@
 Newest first. Every change says what it does, how to use it, and how it works
 underneath. Kept up to date with each commit.
 
+## Trial reels: a copy is its clip once - it played the clean clip a second time, without the words
+Needs deploying: run ./deploy-server.sh (./deploy.sh runs it by itself).
+**What he said (2026-11-06):** for Ilyan "the original video plays first ... the raw video plays right after. It makes
+a 16-second video when it should be only a 7- or 8-second video". His copies were 17.9 s.
+- A trial copy is a batch video whose reaction and "product" are both the clean clip (`planTrialVideos`), and the
+  maker took the product as a second clip (`CampaignApp.montageClips`): every copy was the clip with the words, then
+  the same clip again without them - twice as long, on every phone and the server. That was also the "loop" he
+  reported earlier. Now a trial copy is its clip alone (`montageClips` returns none for `bank.trial`).
+- The copies made before, not out yet, are taken out once when Trial reels opens and made again: a copy longer than
+  half again its clip (`trialLoop.doubledCopy`, from each post's `duration`, now in the posts the phone reads).
+- Test: `trialLoop.test.ts`.
+
 ## Trial reels: what it is doing, at the top - made where, the copy being made, each day
 App only: run ./deploy.sh.
 **What he said (2026-11-06):** "make a UI for trial reels to make sure if they're being sent or being made or not,

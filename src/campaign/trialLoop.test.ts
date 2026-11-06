@@ -15,6 +15,7 @@ import {
   trialFileName,
   trialMissing,
   sameWords,
+  doubledCopy,
   variantsOf,
   viralOf,
   withAccounts,
@@ -250,5 +251,14 @@ describe("a reel's rewordings, checked again", () => {
     expect(next.trial?.sources[0].read.rewordings).toEqual(['good  one', 'a new one'])
     expect(next.trial?.sources[0].read.checked).toBe(1)
     expect(sameWords("I'm\nhungry", "i'm  hungry")).toBe(true)
+  })
+})
+
+describe('a copy that played its clip twice', () => {
+  it('is told by being much longer than its clip', () => {
+    expect(doubledCopy(17.93, 8.97)).toBe(true)
+    expect(doubledCopy(9.0, 8.97)).toBe(false)
+    expect(doubledCopy(17.93, undefined)).toBe(false)
+    expect(doubledCopy(null, 9)).toBe(false)
   })
 })

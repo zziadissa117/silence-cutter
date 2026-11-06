@@ -34,6 +34,7 @@ import {
   NOT_ALLOWED,
   REWORD_CHECK,
   activeSources,
+  doubledCopy,
   sameWords,
   withCheckedWords,
   instagramLimit,
@@ -329,6 +330,40 @@ export function TrialView({
       }
     })()
   }, [bank, campaign?.id]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Copies made before 2026-11-06 played the clean clip twice (montageClips):
+  // the ones not out yet are taken out once, and the loop makes them again.
+  const undoubled = useRef(false)
+  useEffect(() => {
+    if (!campaign || !bank || undoubled.current || checking.current) return
+    const clipSec = (sourceId: string) => {
+      const s = bank.trial?.sources.find((x) => x.id === sourceId)
+      return bank.reactions.find((f) => f.id === s?.clip)?.seconds
+    }
+    const doubled = (p: ServerPost) =>
+      Boolean(p.batch?.trial && p.batch.source && ['waiting', 'approved', 'scheduled'].includes(p.status) && doubledCopy(p.duration, clipSec(p.batch.source)))
+    if (!posts.some(doubled)) return
+    undoubled.current = true
+    void takeOutHook({
+      bank,
+      campaignId: campaign.id,
+      jobs,
+      matches: ({ post }) => Boolean(post && doubled(post)),
+      change: (b) => b,
+      removeJob,
+      save: saveBatchBank,
+    })
+      .then((out) => {
+        setBank(out.bank)
+        if (out.taken > 0) {
+          setSaid(`${out.taken} cop${out.taken === 1 ? 'y' : 'ies'} that played the clip twice ${out.taken === 1 ? 'was' : 'were'} taken out - new ones are made, one clip each.`)
+          onRun()
+        }
+      })
+      .catch(() => {
+        undoubled.current = false
+      })
+  }, [posts, bank, campaign?.id]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // A reel whose sound came out shorter than its clip (its start found too
   // far in, before 2026-11-06): said, so he starts it again.

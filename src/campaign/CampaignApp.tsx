@@ -520,6 +520,10 @@ export function CampaignApp() {
    *  back from the phone - a batch's product from its bank. */
   const montageClips = async (job: Job): Promise<File[]> => {
     const parts = job.montage!
+    // A Trial reel's copy is its clean clip alone: its "product" is that same
+    // clip, which played a second time after it without the words - Ilyan's
+    // copies came out twice as long (2026-11-06).
+    if (parts.bank?.trial) return []
     if (parts.bank?.steps?.length) return Promise.all(parts.bank.steps.map((step) => bankFileOf(step.file)))
     if (parts.bank) return [await bankFileOf(parts.bank.product)]
     const files: File[] = []

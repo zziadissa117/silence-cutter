@@ -139,6 +139,12 @@ export function withCheckedWords(bank: BatchBank, sourceId: string, rewordings: 
   return { bank: { ...bank, trial: { ...bank.trial!, sources } }, dropped }
 }
 
+/** A trial copy made before 2026-11-06 played its clean clip twice: one much
+ *  longer than its clip (half again, give or take a frame) is one of them. */
+export function doubledCopy(duration: number | null | undefined, clipSeconds: number | undefined): boolean {
+  return Boolean(duration && clipSeconds && duration > clipSeconds * 1.5)
+}
+
 /** The sources still making videos, in the order they were added. */
 export function activeSources(bank: Pick<BatchBank, 'trial'>): TrialSource[] {
   return (bank.trial?.sources ?? []).filter((s) => !s.stopped)
