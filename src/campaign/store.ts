@@ -51,6 +51,7 @@ interface StoredJob {
   /** Done on the Cutter server (talkLink.ts): being listened to there,
    *  listened to there (its recording is there), or being made there. */
   onServer?: 'listen' | 'listened' | 'make'
+  ownEdit?: 'post' | 'keep'
   settings: SilenceSettings
   cleanSpeech: boolean
   attempts: number

@@ -3,6 +3,22 @@
 Newest first. Every change says what it does, how to use it, and how it works
 underneath. Kept up to date with each commit.
 
+## Timeline editor straight away; out of memory starts the Cutter again by itself
+App only: run ./deploy.sh.
+**What he asked (2026-11-06):** "just open the timeline editor ... we click on the videos we want to put in, and we can
+just edit them ourselves ... and then we can choose where it goes"; and his phone said "Something went wrong while
+getting the speech model ... [wasm] RangeError: Out of memory".
+- **Timeline editor** (Videos -> Other kinds of video -> Timeline editor; was "Join recordings first" - `JoinPicker`):
+  pick one or more videos in order (several are put together first), then "Then it": **Post it** (nothing cut by
+  itself; you edit, approve, and it goes to its campaign), **Cut the silences** (the silence cutter as usual, then the
+  editor), or **Just keep it** (made, not posted - Save or Send to Postiz from its row). Remembered for next time.
+  It is heard (for captions and its campaign), then opens in the timeline editor by itself. Pictures, words and other
+  videos go on in the editor (+ Overlay, + Text). `CampaignApp.addOwnEdit`, the job's `ownEdit`.
+- **Out of memory** (`CampaignApp`): his report - seven clips recorded in a row, then the speech model couldn't get
+  memory, tried again in the same page and failed. Now an out-of-memory error starts the Cutter again by itself (once
+  per video, like a stalled video) and the video carries on; and the recorder gives back its canvas and the camera's
+  picture as soon as it closes.
+
 ## Recorder: a clock ring, Delete asks first, pinch to zoom; a video with no talking is a reaction
 App only: run ./deploy.sh.
 **What he asked (2026-11-06):** the record button with a one-minute timer going round it in red like TikTok, a little

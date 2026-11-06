@@ -163,6 +163,8 @@ export function JobRow({
               : `Approved · waiting its turn to be made · ${label}`
             : job.status === 'done' && job.madeOnServer
               ? `Made on the server · on its way to Postiz · ${label}`
+              : job.status === 'done' && job.ownEdit === 'keep' && result
+              ? `Kept for you to look at · not posted · ${formatTime(result.newDurationSec)}`
             : job.status === 'done' && result
               ? plain
                 ? `Plain cut · the look couldn't be added · ${formatTime(result.newDurationSec)}`
@@ -178,7 +180,7 @@ export function JobRow({
   const fine = job.status !== 'failed' && job.status !== 'held'
   // A wide clip he asked to only make 9:16 says so, so a video with its
   // pauses still in is never a surprise.
-  const shownLine = `${line}${job.noCut && fine ? ' · not cut, only made 9:16' : ''}${job.later && fine ? ' · for the next days' : ''}`
+  const shownLine = `${line}${job.ownEdit && fine ? (job.ownEdit === 'keep' && job.status !== 'done' ? ' · your edit, kept, not posted' : ' · your edit') : job.noCut && fine ? ' · not cut, only made 9:16' : ''}${job.later && fine ? ' · for the next days' : ''}`
 
   const send = async () => {
     if (!file) return

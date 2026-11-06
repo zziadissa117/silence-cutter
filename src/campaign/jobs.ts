@@ -32,6 +32,9 @@ export type Job = {
   onServer?: 'listen' | 'listened' | 'make'
   /** Made on the Cutter server and sent to Postiz from there. */
   madeOnServer?: boolean
+  /** Opened in the timeline editor to edit by hand (TimelinePicker): nothing
+   *  cut by itself; then posted as usual ('post') or kept to look at ('keep'). */
+  ownEdit?: 'post' | 'keep'
   settings: SilenceSettings
   cleanSpeech: boolean
   /** A day's video goes queued → working (listening) → sorted → approved →

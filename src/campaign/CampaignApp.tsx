@@ -84,7 +84,7 @@ import {
 import { ClipsField, clipName } from './ClipsField'
 import { findPhrase } from './cueClips'
 import { ClipsMaker, type Montage } from './ClipsMaker'
-import { JoinPicker } from './JoinPicker'
+import { JoinPicker, type EditGoes } from './JoinPicker'
 import { filmingOf, joinSuggestions, type Filming } from './filming'
 import { joinRecordings } from './joinRender'
 import { joinPlans, type CampaignPlan } from './plan'
@@ -674,7 +674,7 @@ export function CampaignApp() {
   const makesOnServer = (job: Job): boolean => {
     const campaign = campaignsRef.current.find((c) => c.id === job.campaignId)
     const local = postingHere()
-    return Boolean(campaign && local && sendsFrom(campaign, local) && planFor(job) && !job.version && !job.replaces && !job.reaction && !job.montage && !job.batch && !job.forFormat)
+    return Boolean(campaign && local && sendsFrom(campaign, local) && planFor(job) && job.ownEdit !== 'keep' && !job.version && !job.replaces && !job.reaction && !job.montage && !job.batch && !job.forFormat)
   }
 
   /** Everything the server needs to make it as the phone would - the same
@@ -1658,6 +1658,7 @@ export function CampaignApp() {
         ...(p.headlineMine ? { headlineMine: true } : {}),
         ...(p.videoHeadline ? { videoHeadline: p.videoHeadline } : {}),
         ...(p.onServer ? { onServer: p.onServer } : {}),
+        ...(p.ownEdit ? { ownEdit: p.ownEdit } : {}),
         settings: p.settings,
         cleanSpeech: p.cleanSpeech,
         status: p.joinedInto
@@ -2048,7 +2049,8 @@ export function CampaignApp() {
           await holdFormat(next, result, plan ?? result.plan ?? null)
           return
         }
-        const sent = sendToPostiz(next, jobCampaign, result)
+        // Edited by hand to keep (TimelinePicker): made, not posted.
+        const sent = next.ownEdit === 'keep' ? false : sendToPostiz(next, jobCampaign, result)
         // A talking video keeps its recording and edits for a couple of hours,
         // so a caption, a cut or the music can be fixed and it made again.
         const keepTalking = (plan ?? result.plan) && !next.reaction && !next.montage && !next.batch && !next.prejoin && !next.day?.parts
@@ -2085,6 +2087,18 @@ export function CampaignApp() {
         if (pageLeaving()) return
         const known = err instanceof SilenceCutError
         const why = err instanceof Error ? err.message : String(err)
+        // The page ran out of memory (the speech model after a long session
+        // of recording: "[wasm] RangeError: Out of memory", 2026-11-06): only a
+        // fresh page gets it back. The Cutter starts again by itself - once
+        // per video - and this video carries on where it was.
+        if (/out of memory/i.test(why) && firstRestartFor(next.id)) {
+          patch({ status: next.status, progress: 0 })
+          await resetAttempts(next.id)
+          report({ page: 'campaign', kind: 'retried', phase, message: `${why} - the Cutter starts again by itself to free memory`, video: kept })
+          setNotice('The phone ran out of memory for the Cutter, so it is starting again to free it. Your videos carry on where they were.')
+          restartPage()
+          return
+        }
         // The phone's video maker went quiet. On an iPhone it then stays
         // quiet for as long as the page is open: every go after it sat at 0%
         // too - three tries of one video, then the next one (2026-10-22). A
@@ -3270,7 +3284,59 @@ export function CampaignApp() {
 
   /** Recordings he joined before adding: one video, put together first,
    *  then heard and sorted like any other he drops in. */
-  const addJoined = (files: File[]) => {
+  /** From the timeline editor's picker (JoinPicker): one video or several put
+   *  together, opened in the timeline editor once heard. Through the silence
+   *  cutter as usual, or nothing cut by itself - then posted, or kept. */
+  const addOwnEdit = (files: File[], goes: EditGoes) => {
+    if (files.length === 0) return
+    setEditorWanted(files.length === 1 ? files[0].name : files.map((f) => f.name).join(' + '))
+    if (goes === 'cut') {
+      if (files.length === 1) addFiles(files, true, true)
+      else addJoined(files)
+      return
+    }
+    const own = { noCut: true as const, ownEdit: goes }
+    if (files.length > 1) {
+      addJoined(files, own)
+      return
+    }
+    const file = files[0]
+    const settings = { ...PRESETS[preset] }
+    const job: Job = {
+      id: `${Date.now()}-${nextId++}`,
+      name: file.name,
+      file,
+      campaignId: '',
+      angleId: '',
+      label: '',
+      headlineText: '',
+      settings,
+      cleanSpeech,
+      status: 'queued',
+      phase: 'cutting',
+      progress: 0,
+      day: { approved: false },
+      ...own,
+    }
+    setJobs((current) => [...current, job])
+    setNotice(null)
+    const saved = persistJob({
+      id: job.id,
+      fileBlob: file,
+      fileName: job.name,
+      fileType: file.type,
+      campaignId: '',
+      angleId: '',
+      headlineText: '',
+      settings,
+      cleanSpeech,
+      day: job.day,
+      ...own,
+    }).catch(() => {})
+    persisting.current.set(job.id, saved)
+  }
+
+  const addJoined = (files: File[], own?: { noCut: true; ownEdit: 'post' | 'keep' }) => {
     if (files.length < 2) return
     const [first, ...rest] = files
     const settings = { ...PRESETS[preset] }
@@ -3290,6 +3356,7 @@ export function CampaignApp() {
       progress: 0,
       day: { approved: false, ...(recordedClips.current.get(files.map((f) => f.name).join(' + ')) ? { marks: recordedClips.current.get(files.map((f) => f.name).join(' + ')) } : {}) },
       prejoin: { clips, files: rest },
+      ...(own ?? {}),
     }
     setJobs((current) => [...current, job])
     setNotice(null)
@@ -3306,6 +3373,7 @@ export function CampaignApp() {
       day: job.day,
       prejoin: { clips },
       ...(job.later ? { later: true } : {}),
+      ...(own ?? {}),
     })
       .then(() => persistMontage(job.id, rest, null))
       .catch(() => {})
@@ -3489,7 +3557,14 @@ export function CampaignApp() {
       ) : null}
 
       {mode === 'join' ? (
-        <JoinPicker onJoin={addJoined} onBack={() => setMode('day')} onNotice={setNotice} />
+        <JoinPicker
+          onJoin={(files, goes) => {
+            addOwnEdit(files, goes)
+            setMode('day')
+          }}
+          onBack={() => setMode('day')}
+          onNotice={setNotice}
+        />
       ) : mode === 'clips' && campaign && angle ? (
         <ClipsMaker
           campaigns={campaigns ?? []}
@@ -3524,7 +3599,7 @@ export function CampaignApp() {
                 </button>
               ) : null}
               <button type="button" className="btn small" onClick={() => setMode('join')}>
-                Join recordings first
+                Timeline editor
               </button>
             </div>
           ) : null}
@@ -4106,7 +4181,7 @@ export function CampaignApp() {
     setEditorWanted(null)
     // A reaction (no talking) has no captions to check: its headline and the
     // words on its clips are on its row.
-    if (job.day.noSpeech) return
+    if (job.day.noSpeech && !job.ownEdit) return
     setOpenFull((all) => new Set(all).add(job.id))
     startCheck([job.id])
   }, [jobs, editorWanted, tab]) // eslint-disable-line react-hooks/exhaustive-deps

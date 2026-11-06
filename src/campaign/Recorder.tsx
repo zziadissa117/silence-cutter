@@ -279,6 +279,13 @@ export function Recorder({ onDone, onCancel }: { onDone: (files: File[], clipSta
     () => () => {
       recorder.current?.state === 'recording' && recorder.current.stop()
       stopAll()
+      // Its memory back at once: the drawing canvas, and the camera's picture.
+      if (canvas.current) {
+        canvas.current.width = 0
+        canvas.current.height = 0
+      }
+      context.current = null
+      if (video.current) video.current.srcObject = null
       void wake.current?.release().catch(() => {})
     },
     [],
