@@ -25,6 +25,24 @@ export interface PostingRules {
   remind: boolean
   /** Opt-in: repost the video later with a different caption (repost.ts). */
   repost?: { on: boolean; afterDays: number }
+  /** A Trial reel's caption was written in its account's own voice, under
+   *  this version of the rule (ACCOUNT_VOICE) - set by the server. */
+  voice?: number
+}
+
+/** The version of the rule a Trial reel's caption is written under: one
+ *  written under none, or an older one, is written again by itself. */
+export const ACCOUNT_VOICE = 1
+
+/** How the account a video goes out on writes its captions: his rules for
+ *  it and captions he posted there - for a Trial reel, which has no campaign
+ *  of its own to say (his ask, 2026-11-06: "use everything from ... the
+ *  account that those are being posted from, meaning Ziad Issa"). */
+export interface AccountVoice {
+  name: string
+  rules: string
+  hashtags: string[]
+  examples: string[]
 }
 
 export const NO_RULES: PostingRules = { caption: 'claude', rules: '', hashtags: [], approval: 'me', remind: false }
@@ -127,6 +145,8 @@ export interface CaptionInput {
   about?: string
   /** How many stills from the video come with the request. */
   stills?: number
+  /** A Trial reel: written as its account writes its own captions. */
+  voice?: AccountVoice | null
 }
 
 export const CAPTION_SYSTEM = `You write the caption for a short vertical video that a creator posts on TikTok, Instagram Reels, YouTube Shorts and Facebook for a brand campaign he works on.
@@ -144,6 +164,8 @@ The title is for YouTube Shorts: under 80 characters, no hashtags, a hook taken 
 
 /** What Claude is asked, for one video. */
 export function captionRequest(input: CaptionInput): string {
+  const voice = input.voice
+  if (voice) return voiceRequest(input, voice)
   const lines = [
     `Campaign: ${input.campaignName}`,
     `The campaign's rules for captions: ${input.rules.trim() || 'none beyond the usual.'}`,
@@ -160,6 +182,28 @@ export function captionRequest(input: CaptionInput): string {
     input.transcript.trim() || !input.about?.trim() ? `What he says in the video: ${input.transcript.trim() || '(no words were heard)'}` : '',
   ]
   return lines.filter(Boolean).join('\n')
+}
+
+/** A Trial reel's request: his own account, its rules and its captions are
+ *  everything - the video is a copy of a reel with words on screen and no
+ *  talking, and its own "campaign" says nothing about him. The words on
+ *  screen are a hook in that account's niche: "the hungriest I've ever
+ *  been" is about ambition there, not food. */
+function voiceRequest(input: CaptionInput, voice: AccountVoice): string {
+  const examples = voice.examples.map((c) => c.trim()).filter(Boolean).slice(0, 10)
+  return [
+    `This video goes out on his own account, ${voice.name}. Write the caption exactly the way that account's captions are written: the same length, tone, kind of words and the same hashtags - nothing like a generic creator caption.`,
+    `His rules for that account's captions: ${voice.rules.trim() || 'none written - go by his captions below.'}`,
+    voice.hashtags.length > 0 ? `Hashtags every post on that account carries: ${voice.hashtags.map(normalTag).join(' ')}` : '',
+    examples.length > 0 ? `Captions he posted on that account (match them; don't copy one word for word):\n${examples.map((c) => `- ${c.replace(/\n+/g, ' ')}`).join('\n')}` : '',
+    input.headline.trim()
+      ? `The words on the video: ${input.headline.trim()}\nThey are a hook in that account's niche - read them the way that account's captions would mean them, in its niche - never literally (on a money or mindset account, "hungry" is drive, not food).`
+      : '',
+    "Nobody talks in this video. Never mention that - no \"no words needed\", nothing about silence - and don't describe what is on screen.",
+    "Its hashtags are the account's own (from his rules and his captions), not ones about the words' literal topic.",
+  ]
+    .filter(Boolean)
+    .join('\n')
 }
 
 export const CAPTION_SCHEMA = {

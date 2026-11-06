@@ -3,6 +3,22 @@
 Newest first. Every change says what it does, how to use it, and how it works
 underneath. Kept up to date with each commit.
 
+## Trial reels' captions in his account's own voice - and every one written before, written again
+Needs deploying: run ./deploy-server.sh (./deploy.sh runs it by itself).
+**What he said (2026-11-06):** the "hungriest I've ever been" reel's captions came out as "no words needed", "I was
+starving for this one", #foodie #snacktime - "This is not the hashtag that we need. Use everything from ... the account
+that those are being posted from, meaning Ziad Issa ... rewrite all these captions that have been made".
+- Why: a trial's campaign ("Trial reels") has no caption rules, and the video has no talking, so Claude had only the
+  words on screen and took them literally.
+- Now (`postiz/index.ts` `voiceFor`, `caption.ts` `voiceRequest`): a trial's caption is written from the account it
+  goes out on - his rules for that account and up to 10 captions he posted there (for Ziad Issa: the ZIADTPS
+  campaign's "really short ... usually only onlinemoney and motivation ... personal brand" and its posted captions),
+  with the hook read in that niche, never literally, and never a word about there being no talking.
+- Every trial caption written before (`rules.voice` under `ACCOUNT_VOICE`), waiting, approved or scheduled more than
+  half an hour out, is marked on the first tick after the deploy (`markTrialCaptions`) and written again, a dozen a
+  tick (`rewriteMarked`); a scheduled one goes back into Postiz with the new caption at its own time.
+- Tests: `caption.test.ts`. Not run here: the function itself (no Deno here) and Claude's real answer.
+
 ## Trial reels: a horizontal clip stays horizontal; the words always centred across, moved only up or down
 App only: run ./deploy.sh.
 **What he said (2026-11-06):** "It needs to be able to work with horizontal videos ... Right now, when I put in a

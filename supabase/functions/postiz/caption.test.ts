@@ -87,3 +87,32 @@ describe('a post made by hand', () => {
     expect(finishTitle('', ['', captionLead('#a #b'), 'Polsha'])).toBe('Polsha')
   })
 })
+
+describe("a Trial reel's caption, in its account's own voice", () => {
+  const voice = {
+    name: 'Ziad Issa',
+    rules: 'Something really short ... usually only onlinemoney and motivation, this is for my personal brand',
+    hashtags: [],
+    examples: ['a year changes everything. keep going\n#onlinemoney #motivation', 'Printing while sleeping\n#onlinemoney #motivation'],
+  }
+  const asked = captionRequest({ campaignName: 'Trial reels', rules: '', hashtags: [], headline: "I promise you this is the\nhungriest I've ever been", transcript: '', voice })
+
+  it('goes by the account: its name, his rules for it and his captions there', () => {
+    expect(asked).toContain('Ziad Issa')
+    expect(asked).toContain('onlinemoney and motivation')
+    expect(asked).toContain('- a year changes everything. keep going #onlinemoney #motivation')
+  })
+
+  it('reads the hook in the account niche, never says there are no words, and never asks what was said', () => {
+    expect(asked).toContain('never literally')
+    expect(asked).toContain('no "no words needed"')
+    expect(asked).not.toContain('(no words were heard)')
+    expect(asked).not.toContain('Campaign: Trial reels')
+  })
+
+  it('leaves every other caption as it was', () => {
+    const plain = captionRequest({ campaignName: 'ZIADTPS', rules: 'short', hashtags: [], headline: '', transcript: 'hello' })
+    expect(plain).toContain('Campaign: ZIADTPS')
+    expect(plain).not.toContain('his own account')
+  })
+})

@@ -76,6 +76,8 @@ import {
   finishCaption,
   finishTitle,
   normalTag,
+  ACCOUNT_VOICE,
+  type AccountVoice,
   type PostingRules,
 } from './caption.ts'
 import { RECHECK_SCHEMA, RECHECK_SYSTEM, acceptFix, cleanContext, cleanUnsure, costCents, recheckMessage } from './recheck.ts'
@@ -2017,7 +2019,7 @@ async function prepare(start: Post): Promise<Post> {
       const { data: original } = await db.from('cutter_posts').select('caption').eq('id', post.repost_of).maybeSingle()
       previous = (original as { caption: string | null } | null)?.caption ?? null
     }
-    const written = await writeCaption(keys.anthropic, post, [], previous)
+    const written = await writeCaption(keys.anthropic, post, [], previous, await voiceFor(post))
     post = await update(post.id, written)
   }
 
@@ -2288,17 +2290,91 @@ async function settled(post: Post): Promise<boolean> {
   return (count ?? 0) === 0
 }
 
+/** How the account a Trial reel goes out on writes its own captions: the
+ *  rules and the captions of his other posts on it, newest first - his own
+ *  campaign for that account (ZIADTPS for Ziad Issa). Always one for a trial,
+ *  empty when the account has nothing else posted (still written without
+ *  "no words needed", and never again for it); null for any other post. */
+async function voiceFor(post: Pick<Post, 'profile_id' | 'campaign_id' | 'accounts' | 'batch'>): Promise<AccountVoice | null> {
+  if (!post.batch?.trial) return null
+  const account = post.accounts?.[0]
+  let id = account?.id
+  let name = account?.name
+  if (!id) {
+    const { data: profileRow } = await db.from('cutter_profiles').select('settings, accounts').eq('id', post.profile_id).single()
+    const profile = profileRow as Pick<Profile, 'settings' | 'accounts'> | null
+    id = profile?.settings.campaigns?.[post.campaign_id]?.accounts?.[0]
+    name = profile?.accounts.find((a) => a.id === id)?.name
+  }
+  const empty: AccountVoice = { name: name ?? 'his account', rules: '', hashtags: [], examples: [] }
+  if (!id) return empty
+  const { data } = await db
+    .from('cutter_posts')
+    .select('caption, rules, status')
+    .eq('profile_id', post.profile_id)
+    .neq('campaign_id', post.campaign_id)
+    .contains('accounts', JSON.stringify([{ id }]))
+    .not('caption', 'is', null)
+    .not('status', 'in', '(rejected,failed)')
+    .order('created_at', { ascending: false })
+    .limit(30)
+  const rows = ((data ?? []) as Pick<Post, 'caption' | 'rules' | 'status'>[]).filter((r) => !r.rules?.voice)
+  if (rows.length === 0) return empty
+  // The rules he wrote last for it, and what actually went out first.
+  const ruled = rows.find((r) => r.rules?.rules?.trim())
+  const posted = [...rows.filter((r) => r.status === 'posted'), ...rows.filter((r) => r.status !== 'posted')]
+  return {
+    name: name ?? 'his account',
+    rules: ruled?.rules.rules ?? '',
+    hashtags: ruled?.rules.hashtags ?? [],
+    examples: [...new Set(posted.map((r) => (r.caption ?? '').trim()).filter(Boolean))].slice(0, 10),
+  }
+}
+
+/** Trial reels' captions written before their account's voice was used (or
+ *  under an older ACCOUNT_VOICE) are marked to be written again, so none
+ *  goes out with the wrong one - "no words needed", food hashtags (his ask,
+ *  2026-11-06: "rewrite all these captions that have been made"). Not one
+ *  within half an hour of going out, nor one being written already. */
+async function markTrialCaptions(now: number): Promise<void> {
+  const { data } = await db
+    .from('cutter_posts')
+    .select('id, rules, post_at, error')
+    .eq('batch->>trial', 'true')
+    .in('status', ['waiting', 'approved', 'scheduled'])
+    .not('caption', 'is', null)
+    .eq('rules->>caption', 'claude')
+    .limit(200)
+  const soon = now + 30 * MINUTE
+  const old = ((data ?? []) as Pick<Post, 'id' | 'rules' | 'post_at' | 'error'>[]).filter(
+    (r) => (r.rules.voice ?? 0) < ACCOUNT_VOICE && r.error !== REWRITING && (!r.post_at || Date.parse(r.post_at) > soon),
+  )
+  for (const row of old) {
+    await db
+      .from('cutter_posts')
+      .update({ error: REWRITING, attempts: 0, updated_at: new Date(now).toISOString() })
+      .eq('id', row.id)
+      .is('creating_at', null)
+  }
+}
+
 async function writeCaption(
   apiKey: string | null,
   post: Pick<Post, 'campaign_name' | 'rules' | 'headline' | 'transcript' | 'about'>,
   stills: string[] = [],
   /** The caption this video went out with before, when this is a repost. */
   previous: string | null = null,
+  /** A Trial reel: its account's own way of writing captions (voiceFor). */
+  voice: AccountVoice | null = null,
 ): Promise<Partial<Post>> {
   if (!apiKey) throw new Problem('Your Anthropic key is missing - paste it in Settings, Posting.')
   if (apiKey === FAKE_CLAUDE) {
     const fake = fakeCaption(post.transcript || post.about || '', post.headline ?? '')
-    return { caption: finishCaption(fake.caption, post.rules.hashtags), title: finishTitle(fake.title, [post.campaign_name]) }
+    return {
+      caption: finishCaption(fake.caption, post.rules.hashtags),
+      title: finishTitle(fake.title, [post.campaign_name]),
+      ...(voice ? { rules: { ...post.rules, voice: ACCOUNT_VOICE } } : {}),
+    }
   }
   const client = new Anthropic({ apiKey, maxRetries: 2, timeout: 2 * MINUTE })
   const request = {
@@ -2321,6 +2397,7 @@ async function writeCaption(
               transcript: post.transcript ?? '',
               about: post.about ?? '',
               stills: stills.length,
+              voice,
             }) + variationNote(previous),
           },
         ],
@@ -2357,8 +2434,10 @@ async function writeCaption(
     return { caption: '', title: finishTitle('', [post.headline ?? '', post.campaign_name]), error: "Claude didn't write this caption - write it here." }
   }
   return {
-    caption: finishCaption(parsed.caption, post.rules.hashtags),
+    caption: finishCaption(parsed.caption, [...post.rules.hashtags, ...(voice?.hashtags ?? [])]),
     title: finishTitle(typeof parsed.title === 'string' ? parsed.title : '', [post.headline ?? '', post.campaign_name]),
+    // Written in its account's voice: not written again for it.
+    ...(voice ? { rules: { ...post.rules, voice: ACCOUNT_VOICE } } : {}),
   }
 }
 
@@ -3150,7 +3229,9 @@ async function rewriteMarked(profileId?: string): Promise<void> {
         await update(post.id, { error: null, attempts: 0 })
         return
       }
-      const written: Partial<Post> = rewrite ? await writeCaption(keys.anthropic, post) : { caption: finishCaption(post.caption ?? '', tags) }
+      const written: Partial<Post> = rewrite
+        ? await writeCaption(keys.anthropic, post, [], null, await voiceFor(post))
+        : { caption: finishCaption(post.caption ?? '', tags) }
       const captions = Object.fromEntries(
         Object.entries(post.captions ?? {}).map(([account, own]) => [account, { ...own, ...(own.caption ? { caption: finishCaption(own.caption, tags) } : {}) }]),
       )
@@ -3682,6 +3763,8 @@ async function tick(): Promise<void> {
   await unpostStopped()
   // Ended campaigns whose accounts are still to come out of Postiz.
   await finishEndings()
+  // Trial reels' captions from before their account's voice was used.
+  await markTrialCaptions(now).catch((error) => console.error('marking trial captions failed', error))
   // Captions marked to be written again with a campaign's new rules.
   await rewriteMarked()
   await checkPosted(now)
