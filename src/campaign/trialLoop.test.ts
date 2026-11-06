@@ -61,9 +61,10 @@ describe('where the words go', () => {
     for (let i = 1; i < ys.length; i++) expect(ys[i] - ys[i - 1]).toBeGreaterThanOrEqual(0.04)
   })
 
-  it('keeps words near the top inside the frame, never two in the same spot', () => {
+  it('keeps words centred across, moved only up or down inside the frame, never two in the same spot', () => {
     const places = placesFor({ x: 0.02, y: 0.05 })
-    expect(places.every((p) => p.x === 0.15 && p.y >= 0.12)).toBe(true)
+    expect(places.every((p) => p.x === 0.5 && p.y >= 0.12)).toBe(true)
+    expect(placesFor({ x: 0.9, y: 0.4 }).every((p) => p.x === 0.5)).toBe(true)
     expect(new Set(places.map((p) => p.y)).size).toBe(places.length)
   })
 })

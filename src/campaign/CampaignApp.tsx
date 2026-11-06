@@ -1970,6 +1970,8 @@ export function CampaignApp() {
               reactionFirst: Boolean(next.montage.bank) && !trialLook,
               brightness: trialLook?.brightness,
               keepLines: Boolean(trialLook),
+              // A Trial reel keeps its clip's shape: horizontal stays horizontal.
+              keepShape: Boolean(trialLook),
               voice: next.montage.bank?.voice === true,
               windows: stepped ? [false, ...stepped.map((s) => !playsWhole(stepOf(s)))] : undefined,
               titles,

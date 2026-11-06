@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { BATCH_LOWER, FPS, framesBy, liftMusic, lowered, musicTrack, soloMusicGain, verticalSize } from './montageRender'
+import { BATCH_LOWER, FPS, framesBy, liftMusic, lowered, montageSize, musicTrack, soloMusicGain, verticalSize } from './montageRender'
 import type { HeadlineLayout } from './overlay'
 
 /** Which of the clips' frames each steady frame shows: frames given as
@@ -154,5 +154,15 @@ describe('a talking batch', () => {
     expect(written).toHaveLength(rate / 2)
     // Past the limiter's look-ahead: the voice and the music together.
     expect(written[written.length - 1]).toBeCloseTo(0.35, 2)
+  })
+})
+
+describe("a Trial reel's frame", () => {
+  it('keeps a horizontal clip horizontal, at most 1080 on its short side', () => {
+    expect(montageSize(3840, 2160, true, 1080)).toEqual({ width: 1920, height: 1080 })
+    expect(montageSize(1920, 1080, true, 1080)).toEqual({ width: 1920, height: 1080 })
+    expect(montageSize(1080, 1920, true, 1080)).toEqual({ width: 1080, height: 1920 })
+    // Any other batch video: 9:16 as always.
+    expect(montageSize(1920, 1080, false, 1080)).toEqual({ width: 1080, height: 1920 })
   })
 })

@@ -3,6 +3,18 @@
 Newest first. Every change says what it does, how to use it, and how it works
 underneath. Kept up to date with each commit.
 
+## Trial reels: a horizontal clip stays horizontal; the words always centred across, moved only up or down
+App only: run ./deploy.sh.
+**What he said (2026-11-06):** "It needs to be able to work with horizontal videos ... Right now, when I put in a
+horizontal video, it automatically converts it to a 9:16 one", and "I want the text to be centered on the x-axis,
+but the y-axis can be on the top or bottom ... because of the profile picture of the captions".
+- A trial copy keeps its clean clip's own shape (`montageRender` `keepShape`, `montageSize`): a horizontal clip is made
+  horizontal (4K -> 1920x1080, inside Instagram's 1920 across), an upright one as before. Every other batch video is
+  still 9:16. The words are sized off the short side, so they fit a horizontal frame.
+- `trialLoop.placesFor`: every place is centred across (x 0.5); the copies differ only in how high the words sit,
+  still inside the safe band (12-68 % down). Copies already made keep their place.
+- Tests: `montage.test.ts`, `trialLoop.test.ts`.
+
 ## Green screen: the cut-out starts on his iPhone; the back camera records straight from the camera
 App only: run ./deploy.sh.
 **What he said (2026-11-06):** "the green screen reactions just could not be made", and on the back camera the

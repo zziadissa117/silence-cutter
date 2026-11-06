@@ -162,6 +162,9 @@ export interface MontageRenderInput {
   /** A Trial loop's video: the words keep the viral reel's own lines - a
    *  little smaller rather than break onto another line it didn't have. */
   keepLines?: boolean
+  /** The video keeps the first clip's own shape - a horizontal clip stays
+   *  horizontal (a Trial reel, his ask 2026-11-06) - instead of 9:16. */
+  keepShape?: boolean
 }
 
 /** The headline laid out a little smaller, step by step, until it takes no
@@ -200,6 +203,12 @@ export function verticalSize(width: number, height: number, maxShort = 2160): { 
   if (height > width) return outputSize(width, height, maxShort)
   const short = Math.max(1080, height)
   return outputSize(short, (short * 16) / 9, maxShort)
+}
+
+/** The video's frame: 9:16 (verticalSize), or - keeping its shape - the
+ *  first clip's own, horizontal or upright, at most 1080 on its short side. */
+export function montageSize(width: number, height: number, keepShape: boolean, maxShort = 2160): { width: number; height: number } {
+  return keepShape ? outputSize(width, height, maxShort) : verticalSize(width, height, maxShort)
 }
 
 /** The linear gain that puts a track at MUSIC_LUFS, up or down. */
@@ -252,7 +261,7 @@ export function liftMusic(channels: Float32Array[], gain: number, sampleRate: nu
 }
 
 export async function renderMontage(
-  { clips: files, look, headlineText, music, seed = '', formula = null, windows = [], reactionFirst = false, titles = [], voice = false, brightness = 0, keepLines = false }: MontageRenderInput,
+  { clips: files, look, headlineText, music, seed = '', formula = null, windows = [], reactionFirst = false, titles = [], voice = false, brightness = 0, keepLines = false, keepShape = false }: MontageRenderInput,
   onProgress?: (fraction: number) => void,
 ): Promise<MontageRenderResult> {
   if (files.length === 0) throw new SilenceCutError('Add at least one clip.')
@@ -316,7 +325,7 @@ export async function renderMontage(
     }
 
     // 1080p at a steady FPS, at a bitrate to match (quality.ts).
-    const { width, height } = makeSize((maxShort) => verticalSize(clips[0].width, clips[0].height, maxShort))
+    const { width, height } = makeSize((maxShort) => montageSize(clips[0].width, clips[0].height, keepShape, maxShort))
     const canvas = new OffscreenCanvas(width, height)
     const ctx = canvas.getContext('2d')
     if (!ctx) throw new SilenceCutError("This browser couldn't prepare a canvas to draw the headline on.")

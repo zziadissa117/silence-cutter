@@ -456,6 +456,7 @@ export async function makeMontage(
      *  words kept on the viral reel's lines. */
     brightness?: number
     keepLines?: boolean
+    keepShape?: boolean
   } = {},
 ): Promise<CampaignResult> {
   const rendered = await renderMontage(
@@ -472,6 +473,7 @@ export async function makeMontage(
       titles: extra.titles,
       brightness: extra.brightness,
       keepLines: extra.keepLines,
+      keepShape: extra.keepShape,
     },
     onRenderProgress,
   )

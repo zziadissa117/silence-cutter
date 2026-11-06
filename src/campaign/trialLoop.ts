@@ -81,10 +81,12 @@ const BOTTOM = 0.68
 /** Two places closer than this are the same place. */
 const APART = 0.04
 
-/** The places the words can go: the viral reel's own first, then moved up
- *  and down from it, inside the safe area. */
+/** The places the words can go: the viral reel's own height first, then
+ *  moved up and down from it, inside the safe area - always centred across
+ *  (his rule, 2026-11-06: to one side they run into the profile picture and
+ *  the caption; "make sure it changes on the y-axis only"). */
 export function placesFor(read: Pick<TrialRead, 'x' | 'y'>): HeadlinePlace[] {
-  const x = Math.min(0.85, Math.max(0.15, read.x))
+  const x = 0.5
   const out: HeadlinePlace[] = []
   for (const move of MOVES) {
     const y = Math.min(BOTTOM, Math.max(TOP, read.y + move))
