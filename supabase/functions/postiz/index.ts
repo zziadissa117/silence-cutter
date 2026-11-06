@@ -1090,7 +1090,7 @@ function postView(post: Post) {
     byHand: post.by_hand,
     ready: Boolean(post.ready_at),
     batch: post.batch
-      ? { id: post.batch.id, date: post.batch.date, time: post.batch.time, size: post.batch.size, ...(post.batch.look ? { look: post.batch.look } : {}), ...(post.batch.disliked ? { disliked: true } : {}), ...(post.batch.trial ? { trial: true } : {}), ...(post.batch.source ? { source: post.batch.source } : {}) }
+      ? { id: post.batch.id, date: post.batch.date, time: post.batch.time, size: post.batch.size, ...(post.batch.look ? { look: post.batch.look } : {}), ...(post.batch.disliked ? { disliked: true } : {}), ...(post.batch.trial ? { trial: true } : {}), ...(post.batch.source ? { source: post.batch.source } : {}), ...(post.batch.format ? { format: post.batch.format } : {}) }
       : null,
     ...(post.views ? { views: post.views } : {}),
   }

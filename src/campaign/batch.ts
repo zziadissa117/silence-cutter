@@ -657,6 +657,47 @@ export function turnsFor(count: number, groups: { id: string; weight: number; do
   return out
 }
 
+/** A format needs this many videos out with their views before how it does
+ *  counts. */
+export const FORMAT_EVIDENCE = 5
+/** The most and least of the day a format's results can give it, against an
+ *  even share. */
+export const FORMAT_SHARE_RANGE = { min: 0.5, max: 2 } as const
+
+/** How much of the day each format gets from how its videos do (his pick,
+ *  2026-11-06: "even, then by results"): a format's middle views against the
+ *  middle of all of them, kept between half and twice an even share. Even
+ *  (undefined) until two formats each have FORMAT_EVIDENCE videos out with
+ *  views; a format without enough yet keeps an even share. */
+export function formatSharesFrom(
+  posts: readonly { campaignId: string; status: string; batch?: { format?: string } | null; views?: Record<string, number> | null }[],
+  campaignId: string,
+  formats: readonly Pick<BatchFormat, 'id'>[],
+): Record<string, number> | undefined {
+  const viewsOf = new Map<string, number[]>()
+  for (const p of posts) {
+    const id = p.batch?.format
+    if (p.campaignId !== campaignId || p.status !== 'posted' || !id || !p.views) continue
+    const total = Object.values(p.views).reduce((n, v) => n + (Number.isFinite(v) ? v : 0), 0)
+    viewsOf.set(id, [...(viewsOf.get(id) ?? []), total])
+  }
+  const middle = (list: number[]) => {
+    const sorted = [...list].sort((a, b) => a - b)
+    const half = Math.floor(sorted.length / 2)
+    return sorted.length % 2 ? sorted[half] : (sorted[half - 1] + sorted[half]) / 2
+  }
+  const known = formats.filter((f) => (viewsOf.get(f.id)?.length ?? 0) >= FORMAT_EVIDENCE)
+  if (known.length < 2) return undefined
+  const all = middle(known.flatMap((f) => viewsOf.get(f.id)!))
+  if (all <= 0) return undefined
+  const out: Record<string, number> = {}
+  for (const f of known) {
+    const share = middle(viewsOf.get(f.id)!) / all
+    out[f.id] = Math.round(Math.min(FORMAT_SHARE_RANGE.max, Math.max(FORMAT_SHARE_RANGE.min, share)) * 10) / 10
+  }
+  return out
+}
+
 export function emptyBank(campaignId: string, angleId: string): BatchBank {
   return { campaignId, angleId, reactions: [], products: [], headlines: [], music: [], perDay: 3, days: 7, used: {} }
 }

@@ -35,6 +35,9 @@ export interface BatchInfo {
   /** A Trial loop's video: the viral reel it is a copy of. His yes counts
    *  per viral reel, not per making (trustKey). */
   source?: string
+  /** The batch format it was made in (the phone's batch.BatchFormat id), so
+   *  the phone can tell which formats do best. */
+  format?: string
 }
 
 const LOOKS = new Set(['box', 'outline', 'snap', 'formula'])
@@ -59,6 +62,7 @@ export function batchInfo(value: unknown): BatchInfo | null {
     ...(look ? { look } : {}),
     ...(song ? { song } : {}),
     ...(v.trial === true ? { trial: true } : {}),
+    ...(typeof v.format === 'string' && /^[\w-]{1,80}$/.test(v.format) ? { format: v.format } : {}),
     ...(v.trial === true && typeof v.source === 'string' && /^[\w-]{1,80}$/.test(v.source) ? { source: v.source } : {}),
   }
 }

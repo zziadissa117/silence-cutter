@@ -31,6 +31,7 @@ import {
   todayHere,
   usesSteps,
   formatBank,
+  formatSharesFrom,
   formatsOf,
   withFormats,
   FORMAT_KINDS,
@@ -418,6 +419,17 @@ export function BatchView({
     bankRef.current = next
     void saveBatchBank(next).catch(() => setProblem("The bank couldn't be saved on this phone. Free some space and try again."))
   }
+
+  // The formats doing better get more of the day, once their views say so
+  // (batch.formatSharesFrom) - kept in the bank, which the server follows.
+  const formatKey = bank?.formats?.map((f) => f.id).join(',') ?? ''
+  useEffect(() => {
+    const current = bankRef.current
+    if (!current?.formats?.length) return
+    const shares = formatSharesFrom(posts, current.campaignId, current.formats)
+    if (JSON.stringify(shares ?? null) === JSON.stringify(current.formatShares ?? null)) return
+    keep({ ...current, formatShares: shares })
+  }, [posts, formatKey]) // eslint-disable-line react-hooks/exhaustive-deps
 
   if (!profile) {
     return (
@@ -1156,6 +1168,13 @@ export function BatchView({
             {f.kind === 'greenscreen' && f.voice ? ' · your voice' : ''}
           </span>
           <span className={`hint${missingHere.length > 0 && !f.paused ? ' warn-text' : ''}`}>{status}</span>
+          {!f.paused && bank.formatShares?.[f.id] && bank.formatShares[f.id] !== 1 ? (
+            <span className="hint">
+              {bank.formatShares[f.id] > 1
+                ? `Gets ${bank.formatShares[f.id]}× its share of the day - its videos get more views`
+                : `Gets ${bank.formatShares[f.id]}× its share of the day - its videos get fewer views`}
+            </span>
+          ) : null}
         </button>
         {open ? (
           <div className="format-body">
@@ -1518,7 +1537,7 @@ export function BatchView({
               </div>
               <p className="hint">
                 Every kind of video this account posts, in this one batch. They take turns in your {perDay > 0 ? `${perDay} a day` : 'videos'}, each from its own
-                clips; the headlines and music below are for all of them.
+                clips - evenly at first, then more of the ones whose videos get more views. The headlines and music below are for all of them.
               </p>
               <ul className="format-cards">
                 {formatList.map((f) => formatCard(f))}

@@ -3,6 +3,15 @@
 Newest first. Every change says what it does, how to use it, and how it works
 underneath. Kept up to date with each commit.
 
+## Batch formats: more of the ones whose videos get more views
+Needs deploying: run ./deploy-server.sh (./deploy.sh runs it by itself).
+- Each batch video's line keeps its format on the server too (`postiz/batch.ts` `format`, in the posts the phone
+  reads). Once two formats each have 5 videos out with their views, each gets its middle views against the middle of
+  all of them as its share of the day, between half and twice an even share (`batch.formatSharesFrom`, kept in
+  `BatchBank.formatShares` whenever the Batch tab reads the posts; the server makes by it). Its card says so: "Gets
+  1.6× its share of the day - its videos get more views". Until then, even.
+- Tests: `batchFormats.test.ts`, `postiz/batch.test.ts`.
+
 ## Batches: one batch per account, made of formats - reaction, talking head, green screen
 App only: run ./deploy.sh.
 **What he said (2026-11-06):** the talking / not-talking batch screen was confusing. "Reaction batches, talking head

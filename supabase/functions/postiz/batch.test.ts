@@ -133,3 +133,10 @@ describe('a Trial loop copy', () => {
     expect(approvalFor('direct', { hand: false, approveNow: false, batch: true, scheduled: false })).toBe('me')
   })
 })
+
+describe('a batch video of a format', () => {
+  it('keeps the format it was made in, for how each format does', () => {
+    expect(batchInfo({ id: 'b-1', date: '2026-11-06', time: '10:00', size: 5, format: 'f-reaction' })?.format).toBe('f-reaction')
+    expect(batchInfo({ id: 'b-1', date: '2026-11-06', time: '10:00', size: 5, format: 'bad id!' })?.format).toBeUndefined()
+  })
+})

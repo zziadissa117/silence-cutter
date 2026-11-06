@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { emptyBank, formatBank, formatsOf, turnsFor, withFormats, type BankFile, type BatchBank, type BatchFormat, type BatchSlot } from './batch'
+import { emptyBank, formatBank, formatSharesFrom, formatsOf, turnsFor, withFormats, type BankFile, type BatchBank, type BatchFormat, type BatchSlot } from './batch'
 import { leftToMake, missingFor, planVideos, variationParts } from './batchRun'
 
 const files = (prefix: string, n: number, formats?: string[]): BankFile[] =>
@@ -83,5 +83,28 @@ describe('one batch for the account, made of formats', () => {
     expect(formatsOf({ ...old, layout: 'engine' })).toEqual([])
     // One format's own bank is mixed as it is.
     expect(withFormats(formatBank(made, made.formats![0])).formats).toEqual([])
+  })
+})
+
+describe('more of the formats whose videos do better', () => {
+  const post = (format: string, views: number) => ({ campaignId: 'godari', status: 'posted', batch: { format }, views: { ig: views } })
+  const ids = [{ id: 'r' }, { id: 't' }, { id: 'g' }]
+
+  it('stays even until two formats have enough videos out', () => {
+    expect(formatSharesFrom([...Array(9)].map(() => post('r', 1000)), 'godari', ids)).toBeUndefined()
+    expect(formatSharesFrom([...Array(5)].map(() => post('r', 1000)), 'godari', ids)).toBeUndefined()
+  })
+
+  it('gives more of the day to the one getting more views, between half and twice', () => {
+    const posts = [...[...Array(5)].map(() => post('r', 4000)), ...[...Array(5)].map(() => post('t', 1000)), ...[...Array(3)].map(() => post('g', 99999))]
+    const shares = formatSharesFrom(posts, 'godari', ids)!
+    expect(shares.r).toBe(1.6)
+    expect(shares.t).toBe(0.5)
+    // Too few of its own yet: an even share.
+    expect(shares.g).toBeUndefined()
+    // And the turns follow.
+    const plan = planVideos({ ...godari(), formatShares: shares }, slots(10), { id: 'x', rand: () => 0.3 })
+    const count = (f: string) => plan.videos.filter((v) => v.batch.format === f).length
+    expect(count('r')).toBeGreaterThan(count('t'))
   })
 })
