@@ -56,6 +56,8 @@
 //   video-headline { profile, campaignName, words } -> { headline }   a talking video's headline from all it says,
 //                  like his past headlines (videoHeadline.ts); "" when it can't - the phone uses his first line
 //   read-note      { profile, note, count }     -> { plan, caption }   New post's note: when, and the captions (handNote.ts)
+//   trial-reword   { profile, text, rewordings } -> { rewordings, checked, costCents }   Trial reels: a running reel's
+//                  rewordings checked again, the ones that don't sound right replaced.
 //   trial-read     { profile, still, hook? }    -> { read, costCents }   Trial reels: Claude reads the viral reel's
 //                  words, their look and place from one still, and rewords them a word or two (trial.ts); only a
 //                  login allowed Trial reels (the owner's, or one he turned it on for in People)
@@ -104,6 +106,11 @@ import {
   TRIAL_CONFIG,
   TRIAL_READ_SCHEMA,
   TRIAL_READ_SYSTEM,
+  REWORD_CHECK,
+  REWORD_CHECK_SCHEMA,
+  REWORD_CHECK_SYSTEM,
+  checkedRewordings,
+  rewordCheckRequest,
   cleanRead,
   learnedLimit,
   readFromHook,
@@ -867,12 +874,63 @@ async function trialRead(profile: Profile, body: Record<string, unknown>): Promi
     parsed = null
   }
   const read = cleanRead(parsed)
-  const cost = costCents(message.usage?.input_tokens ?? 0, message.usage?.output_tokens ?? 0)
+  let cost = costCents(message.usage?.input_tokens ?? 0, message.usage?.output_tokens ?? 0)
   if (!read || !read.text) {
     if (hook) return reply({ read: readFromHook(hook), costCents: cost })
     return reply({ read: null, costCents: cost, error: "Claude couldn't find words on the reel. Type the hook instead." })
   }
-  return reply({ read: hook ? { ...read, text: hook } : read, costCents: cost })
+  const text = hook || read.text
+  // Every rewording read again, and the ones that don't sound right replaced.
+  const checked = await checkRewordings(client, text, read.rewordings).catch(() => null)
+  if (checked) cost += checked.cost
+  return reply({ read: { ...read, text, rewordings: checked?.rewordings ?? read.rewordings, ...(checked ? { checked: REWORD_CHECK } : {}) }, costCents: cost })
+}
+
+/** Claude reads each rewording of a trial hook again and keeps only those a
+ *  native speaker would say, writing new ones for the rest (his ask,
+ *  2026-11-06: "I promise you this is the most starving I've ever been ...
+ *  literally makes no sense"). */
+async function checkRewordings(client: Anthropic, text: string, rewordings: string[]): Promise<{ rewordings: string[]; cost: number }> {
+  if (rewordings.length === 0) return { rewordings, cost: 0 }
+  const request = {
+    model: MODEL,
+    max_tokens: 3000,
+    system: REWORD_CHECK_SYSTEM,
+    output_config: { effort: 'medium', format: { type: 'json_schema', schema: REWORD_CHECK_SCHEMA } },
+    messages: [{ role: 'user', content: rewordCheckRequest(text, rewordings) }],
+  }
+  const response = await client.beta.messages.create(request as never).catch(anthropicProblem)
+  const message = response as unknown as { content: { type: string; text?: string }[]; usage?: { input_tokens?: number; output_tokens?: number } }
+  const said = message.content
+    .filter((b) => b.type === 'text')
+    .map((b) => b.text ?? '')
+    .join('')
+  let parsed: unknown = null
+  try {
+    parsed = JSON.parse(said)
+  } catch {
+    throw new Problem("Claude's check of the rewordings couldn't be read.", true)
+  }
+  return { rewordings: checkedRewordings(text, rewordings, parsed), cost: costCents(message.usage?.input_tokens ?? 0, message.usage?.output_tokens ?? 0) }
+}
+
+/** A running reel's rewordings checked again (REWORD_CHECK), for a reel
+ *  started before the check existed: the good ones and their replacements. */
+async function trialReword(profile: Profile, body: Record<string, unknown>): Promise<Response> {
+  if (!(await trialAllowedFor(profile.space_id))) throw new Problem('Trial reels are not turned on for this login.', false, 403)
+  const text = typeof body.text === 'string' ? body.text.trim().slice(0, 300) : ''
+  const rewordings = (Array.isArray(body.rewordings) ? body.rewordings : [])
+    .filter((r): r is string => typeof r === 'string')
+    .map((r) => r.trim().slice(0, 300))
+    .filter(Boolean)
+    .slice(0, 30)
+  if (!text) throw new Problem('Which hook?')
+  const keys = await keysFor(profile.id)
+  if (!keys.anthropic) throw new Problem('Your Anthropic key is missing - paste it in Settings, Posting.')
+  if (keys.anthropic === FAKE_CLAUDE) return reply({ rewordings, checked: REWORD_CHECK, costCents: 0 })
+  const client = new Anthropic({ apiKey: keys.anthropic, maxRetries: 2, timeout: 2 * MINUTE })
+  const checked = await checkRewordings(client, text, rewordings)
+  return reply({ rewordings: checked.rewordings, checked: REWORD_CHECK, costCents: checked.cost })
 }
 
 /** What a trial reel's refusal teaches (trial.ts trialProblem): Instagram's
@@ -4481,6 +4539,8 @@ Deno.serve(async (req) => {
         return await videoHeadline(profile, body)
       case 'trial-read':
         return await trialRead(profile, body)
+      case 'trial-reword':
+        return await trialReword(profile, body)
       default:
         return reply({ error: 'Unknown action.' }, 400)
     }

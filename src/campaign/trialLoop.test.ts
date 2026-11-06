@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import type { BankFile, BatchBank } from './batch'
+import { emptyBank, type BankFile, type BatchBank } from './batch'
 import { MOST_A_DAY, missingFor, perDayOn, planVideos, runSlots } from './batchRun'
 import { blankAngle } from './look'
 import {
@@ -14,9 +14,11 @@ import {
   trialDays,
   trialFileName,
   trialMissing,
+  sameWords,
   variantsOf,
   viralOf,
   withAccounts,
+  withCheckedWords,
   withSource,
   withoutSource,
   wordsOf,
@@ -232,5 +234,16 @@ describe('where the viral reel starts', () => {
     const other = Float32Array.from({ length: w * h }, (_, i) => (i * 91 + 13) % 255)
     expect(likeness(a, brighter, w, h)).toBeGreaterThan(0.99)
     expect(likeness(a, other, w, h)).toBeLessThan(0.6)
+  })
+})
+
+describe("a reel's rewordings, checked again", () => {
+  it('takes the checked ones and says which old ones went', () => {
+    const bank = { ...emptyBank('c', 'a'), layout: 'trial' as const, trial: { sources: [{ ...source('a'), read: { ...source('a').read, rewordings: ['good one', 'the most starving'] } }] } }
+    const { bank: next, dropped } = withCheckedWords(bank, 'a', ['good  one', 'a new one'], 1)
+    expect(dropped).toEqual(['the most starving'])
+    expect(next.trial?.sources[0].read.rewordings).toEqual(['good  one', 'a new one'])
+    expect(next.trial?.sources[0].read.checked).toBe(1)
+    expect(sameWords("I'm\nhungry", "i'm  hungry")).toBe(true)
   })
 })

@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 
 import { batchInfo } from './batch.ts'
-import { REWORDINGS, cleanRead, learnedLimit, readFromHook, trialAllowed, trialProblem, trialSpaces, withAllowed, withLimit, withNotAllowed } from './trial.ts'
+import { REWORDINGS, REWORD_CHECK_SYSTEM, TRIAL_READ_SYSTEM, checkedRewordings, cleanRead, rewordCheckRequest, learnedLimit, readFromHook, trialAllowed, trialProblem, trialSpaces, withAllowed, withLimit, withNotAllowed } from './trial.ts'
 
 describe('who may post Trial reels', () => {
   it('is the owner, and the logins he turned it on for', () => {
@@ -87,5 +87,24 @@ describe("Claude's reading of the viral reel", () => {
 
   it('takes his own words when he typed them', () => {
     expect(readFromHook('  my hook ')).toMatchObject({ text: 'my hook', rewordings: [] })
+  })
+})
+
+describe("the rewordings' check", () => {
+  const hook = "I promise you this is the\nhungriest I've ever been"
+  const rewordings = ["I promise you this is the\nmost starving I've ever been", "I swear this is the\nhungriest I've ever been", "I promise you this is the\nstarving-est I've ever been"]
+
+  it('asks about each by its number', () => {
+    const asked = rewordCheckRequest(hook, rewordings)
+    expect(asked).toContain('0: "I promise you this is the\\nmost starving')
+    expect(asked).toContain('2: ')
+    expect(REWORD_CHECK_SYSTEM).toContain('native English speaker')
+    expect(TRIAL_READ_SYSTEM).toContain('never "the most starving')
+  })
+
+  it('keeps the good ones and adds the new ones - never the hook, never twice', () => {
+    const out = checkedRewordings(hook, rewordings, { keep: [1], more: ["I promise you this is the\nhungriest I've ever felt", hook, "I swear this is the\nhungriest I've ever been"] })
+    expect(out).toEqual(["I swear this is the\nhungriest I've ever been", "I promise you this is the\nhungriest I've ever felt"])
+    expect(checkedRewordings(hook, rewordings, null)).toEqual([])
   })
 })

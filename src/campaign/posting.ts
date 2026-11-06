@@ -626,6 +626,12 @@ export async function headlineIdeas(campaignId: string, campaignName: string, ha
 /** Trial reels: Claude reads the viral reel's words from one still - their
  *  look, place and a dozen rewordings (postiz/trial.ts). `hook`: his own
  *  words, when he typed them. */
+/** A running Trial reel's rewordings checked again by Claude: the ones a
+ *  native speaker would say, and new ones in place of the rest. */
+export async function rewordTrial(text: string, rewordings: string[]): Promise<{ rewordings: string[]; checked: number }> {
+  return call<{ rewordings: string[]; checked: number }>('trial-reword', { profile: profileId(), text, rewordings })
+}
+
 export async function readViralReel(still: string, hook = ''): Promise<{ read: TrialRead | null; error?: string }> {
   return call<{ read: TrialRead | null; error?: string }>('trial-read', { profile: profileId(), still, hook })
 }

@@ -10,7 +10,7 @@
 // "Easy to start, modify and cancel ... if I want to start it, it takes 2
 // seconds" (2026-11-04).
 
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 
 import { VideoPicker } from '../VideoPicker'
 import { ALL_FORMATS, BlobSource, Input } from 'mediabunny'
@@ -21,13 +21,16 @@ import { fingerprint } from './fingerprint'
 import type { Job } from './jobs'
 import type { Campaign } from './look'
 import { BackToMore } from './MoreView'
-import { listPosts, placeFor, postAction, readViralReel, whenLabel, type LocalPosting, type ServerPost } from './posting'
+import { listPosts, placeFor, postAction, readViralReel, rewordTrial, whenLabel, type LocalPosting, type ServerPost } from './posting'
 import { Watch } from './PostsView'
 import { BATCH_BANK_SAVED, loadBatchBank, retireBankFiles, saveBankFile, saveBatchBank } from './store'
 import {
   FIRST_PER_DAY,
   NOT_ALLOWED,
+  REWORD_CHECK,
   activeSources,
+  sameWords,
+  withCheckedWords,
   instagramLimit,
   newTrialBank,
   notAllowedOn,
@@ -281,6 +284,55 @@ export function TrialView({
       window.clearInterval(timer)
     }
   }, [campaign?.id, profile?.id]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Reels started before their rewordings were checked: checked now, once -
+  // a wording that doesn't sound right ("the most starving I've ever been")
+  // replaced, and its copies not out yet taken out, made again by the loop.
+  const checking = useRef(false)
+  const tried = useRef(new Set<string>())
+  useEffect(() => {
+    if (!campaign || !bank || checking.current) return
+    const due = activeSources(bank).filter((s) => (s.read.checked ?? 0) < REWORD_CHECK && s.read.rewordings.length > 0 && !tried.current.has(s.id))
+    if (due.length === 0) return
+    checking.current = true
+    void (async () => {
+      let current = bank
+      let taken = 0
+      for (const source of due) {
+        tried.current.add(source.id)
+        try {
+          const answer = await rewordTrial(source.read.text, source.read.rewordings)
+          const { bank: next, dropped } = withCheckedWords(current, source.id, answer.rewordings, answer.checked)
+          const out =
+            dropped.length === 0
+              ? null
+              : await takeOutHook({
+                  bank: current,
+                  campaignId: campaign.id,
+                  jobs,
+                  matches: ({ post, job }) =>
+                    job
+                      ? job.montage?.bank?.trial?.sourceId === source.id && dropped.some((d) => sameWords(d, job.headlineText))
+                      : Boolean(post?.batch?.trial && dropped.some((d) => sameWords(d, post.headline))),
+                  change: () => next,
+                  removeJob,
+                  save: saveBatchBank,
+                })
+          current = out?.bank ?? next
+          taken += out?.taken ?? 0
+          if (!out) await saveBatchBank(current)
+        } catch {
+          // Checked again next time the screen opens.
+        }
+      }
+      setBank(current)
+      checking.current = false
+      if (taken > 0) {
+        setSaid(`${taken} cop${taken === 1 ? 'y' : 'ies'} with a wording that didn't sound right ${taken === 1 ? 'was' : 'were'} taken out - new ones are made with better words.`)
+        onRun()
+      }
+    })()
+  }, [bank, campaign?.id]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const today = todayHere()
   const days = useMemo(() => (campaign ? trialDays(posts, campaign.id, today) : null), [posts, campaign, today])

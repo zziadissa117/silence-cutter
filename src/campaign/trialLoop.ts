@@ -121,6 +121,24 @@ export function variantsOf(source: TrialSource, exact: boolean): TrialVariant[] 
   return out
 }
 
+/** The rewordings are checked by Claude under this version (the server's
+ *  trial.ts REWORD_CHECK): a reel read before is checked again. */
+export const REWORD_CHECK = 1
+
+/** The same words, however their spaces and line breaks fall. */
+export const sameWords = (a: string | null | undefined, b: string | null | undefined): boolean =>
+  (a ?? '').toLowerCase().replace(/\s+/g, ' ').trim() === (b ?? '').toLowerCase().replace(/\s+/g, ' ').trim()
+
+/** The reel with its checked rewordings, and the wordings that went: those
+ *  of the old ones not kept. */
+export function withCheckedWords(bank: BatchBank, sourceId: string, rewordings: string[], checked: number): { bank: BatchBank; dropped: string[] } {
+  const source = bank.trial?.sources.find((s) => s.id === sourceId)
+  if (!source) return { bank, dropped: [] }
+  const dropped = source.read.rewordings.filter((old) => !rewordings.some((r) => sameWords(r, old)))
+  const sources = bank.trial!.sources.map((s) => (s.id === sourceId ? { ...s, read: { ...s.read, rewordings, checked } } : s))
+  return { bank: { ...bank, trial: { ...bank.trial!, sources } }, dropped }
+}
+
 /** The sources still making videos, in the order they were added. */
 export function activeSources(bank: Pick<BatchBank, 'trial'>): TrialSource[] {
   return (bank.trial?.sources ?? []).filter((s) => !s.stopped)

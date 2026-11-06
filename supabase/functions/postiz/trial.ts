@@ -84,7 +84,8 @@ export const TRIAL_READ_SYSTEM = `You look at one still from a short vertical vi
 - outlineColor: for "outline", the colour of the outline or shadow around the letters as #rrggbb (#000000 when there is none or you can't tell).
 - size: "small", "medium" or "large" - how big the letters are against the frame (large: a line of a few words fills most of the width).
 - x, y: where the middle of the block of words is, as fractions of the video's width and height (0,0 top left, 1,1 bottom right). Measure against the video itself, not the screen around it if this is a screen recording.
-- rewordings: ${REWORDINGS} versions of the text, each changing only one or two words - a synonym, a slightly different way to say the same thing - so it reads the same, keeps the same meaning, tone, length, line breaks, capitals and emoji, and would hook just as well. Never change names, numbers or the brand. Each one different from the text and from the others.`
+- rewordings: ${REWORDINGS} versions of the text, each changing only one or two words - a synonym, a slightly different way to say the same thing - so it reads the same, keeps the same meaning, tone, length, line breaks, capitals and emoji, and would hook just as well. Never change names, numbers or the brand. Each one different from the text and from the others.
+  Every version must be a phrase a native English speaker would actually say, word for word - natural and grammatical. Never swap a word for one that doesn't fit the phrase around it ("the hungriest I've ever been" can become "the hungriest I've ever felt", never "the most starving I've ever been" or "the starving-est"). When a word has no natural swap, change a different word or the phrasing a little instead.`
 
 export const TRIAL_READ_SCHEMA = {
   type: 'object',
@@ -110,6 +111,8 @@ export interface TrialRead {
   x: number
   y: number
   rewordings: string[]
+  /** The rewordings were checked by Claude under this REWORD_CHECK. */
+  checked?: number
 }
 
 const clamp = (n: unknown, low: number, high: number, fallback: number) => {
@@ -138,6 +141,51 @@ export function cleanRead(value: unknown): TrialRead | null {
     if (rewordings.length >= REWORDINGS) break
   }
   return { text, style, outlineColor, size, x: clamp(v.x, 0.05, 0.95, 0.5), y: clamp(v.y, 0.05, 0.95, 0.3), rewordings: text ? rewordings : [] }
+}
+
+// --- Claude checks the rewordings ------------------------------------------------
+
+/** Rewordings are checked again under this version: a reel started before is
+ *  checked once more by itself (the phone's TrialRead.checked). */
+export const REWORD_CHECK = 1
+
+export const REWORD_CHECK_SYSTEM = `You check rewordings of a short hook written over a viral video. Each rewording changes a word or two of the hook. A rewording is good only if a native English speaker would naturally say it, word for word: grammatical, idiomatic, nothing awkward or made up ("the most starving I've ever been" and "starving-est" are bad; "the hungriest I've ever felt" is good), and it means the same as the hook with the same tone.
+
+- keep: the numbers (0 first) of the rewordings that are good. Leave out every one that isn't.
+- more: new rewordings to make up for the ones left out - as many as were left out - each changing only one or two words, every one good by the rule above, different from the hook, from the good ones and from each other, keeping its line breaks (as \n), capitals and emoji. Never change names, numbers or the brand.`
+
+export const REWORD_CHECK_SCHEMA = {
+  type: 'object',
+  properties: {
+    keep: { type: 'array', items: { type: 'integer' } },
+    more: { type: 'array', items: { type: 'string' } },
+  },
+  required: ['keep', 'more'],
+  additionalProperties: false,
+} as const
+
+/** What Claude's check is asked. */
+export function rewordCheckRequest(text: string, rewordings: readonly string[]): string {
+  return [`The hook: ${JSON.stringify(text)}`, 'The rewordings:', ...rewordings.map((r, i) => `${i}: ${JSON.stringify(r)}`)].join('\n')
+}
+
+/** The rewordings Claude's check left: the good ones in their order, then
+ *  its new ones - none the hook itself or twice, at most REWORDINGS. */
+export function checkedRewordings(text: string, rewordings: readonly string[], answer: unknown): string[] {
+  const v = (answer && typeof answer === 'object' ? answer : {}) as { keep?: unknown; more?: unknown }
+  const keep = new Set((Array.isArray(v.keep) ? v.keep : []).filter((n): n is number => Number.isInteger(n)))
+  const more = (Array.isArray(v.more) ? v.more : []).filter((t): t is string => typeof t === 'string')
+  const key = (t: string) => t.toLowerCase().replace(/\s+/g, ' ').trim()
+  const seen = new Set([key(text)])
+  const out: string[] = []
+  for (const t of [...rewordings.filter((_, i) => keep.has(i)), ...more]) {
+    const clean = t.trim().slice(0, 300)
+    if (!clean || seen.has(key(clean))) continue
+    seen.add(key(clean))
+    out.push(clean)
+    if (out.length >= REWORDINGS) break
+  }
+  return out
 }
 
 /** What he typed in place of reading (or Claude found no words): the same

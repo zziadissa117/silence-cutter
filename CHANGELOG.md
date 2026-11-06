@@ -3,6 +3,20 @@
 Newest first. Every change says what it does, how to use it, and how it works
 underneath. Kept up to date with each commit.
 
+## Trial reels: every reworded headline checked by Claude - it has to make sense
+Needs deploying: run ./deploy-server.sh (./deploy.sh runs it by itself).
+**What he said (2026-11-06):** a trial reel went out saying "I promise you this is the most starving I've ever been",
+which "literally makes no sense ... Use AI inside of it to make sure that it makes sense."
+- The rewordings were written in one go with "change one or two words" as the only rule, and nothing read them again.
+  Now the instructions say each must be something a native speaker would actually say (with this very example), and
+  a second Claude pass reads every rewording, keeps only the natural ones that mean the same, and writes new ones in
+  place of the rest (`postiz/trial.ts` `REWORD_CHECK_SYSTEM`, `checkedRewordings`; `index.ts` `checkRewordings`, in
+  `trial-read` and the new `trial-reword`).
+- Reels already running are checked once when Trial reels is opened (`TrialView`, `trialLoop.withCheckedWords`,
+  `TrialRead.checked`); copies with a dropped wording not out yet are taken out and the loop makes others in their
+  place. What already posted can't be changed.
+- Tests: `postiz/trial.test.ts`, `trialLoop.test.ts`.
+
 ## Talking head formats: captions of what he says
 App only: run ./deploy.sh.
 - A talking head format's clip plays whole with his voice and now his captions too - in his own caption style, size
