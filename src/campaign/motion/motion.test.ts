@@ -148,3 +148,13 @@ describe('motion graphics: word numbers to the finished video', () => {
     expect(rawTimeAt(99, keep)).toBeCloseTo(19.95)
   })
 })
+
+import { numbersSaid } from './Planning'
+
+describe('motion graphics: the numbers he says, shown while Claude plans', () => {
+  it('picks out each number with what it counts', () => {
+    expect(numbersSaid(['I', 'make', '10K', 'a', 'month,', 'with', '50', 'videos', 'and', '10', '000', 'views.', '10K'])).toEqual(['10K', '50 videos', '10 000 views'])
+    expect(numbersSaid(['at', '$4', 'per', '1000'])).toEqual(['$4', '1000'])
+    expect(numbersSaid(['no', 'numbers', 'here'])).toEqual([])
+  })
+})

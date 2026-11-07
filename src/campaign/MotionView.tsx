@@ -24,6 +24,7 @@ import { report } from '../report'
 import { BackToMore } from './MoreView'
 import { drawMotion, faceDropAt, fillBehindFace, type Timing } from './motion/draw'
 import { FrameReader } from './motion/frames'
+import { Planning, useElapsed } from './motion/Planning'
 import { drawCaptionAt, forClaude, hear, makeMotionVideo, storyWords } from './motion/make'
 import { clearSession, loadSession, saveSession, type MotionSession } from './motion/session'
 import { cutLength, cutTiming, rawTimeAt } from './motion/track'
@@ -34,12 +35,27 @@ type Step =
   | { kind: 'loading' }
   | { kind: 'pick' }
   | { kind: 'hearing'; what: string; fraction: number }
-  | { kind: 'planning' }
+  | { kind: 'planning'; words: string[]; raw: number }
   | { kind: 'plan' }
   | { kind: 'making'; fraction: number }
   | { kind: 'done' }
 
 const STILL = { width: 360, height: 640 }
+
+/** How long Claude may take before the phone stops waiting and says so: the
+ *  server says a job still going after 7 minutes was stopped. */
+const PLAN_MINUTES = 8
+
+/** `work`, or an error once `minutes` have gone by with no answer - never a
+ *  spinner for ever. */
+function withinMinutes<T>(work: Promise<T>, minutes: number): Promise<T> {
+  return Promise.race([
+    work,
+    new Promise<never>((_, reject) =>
+      setTimeout(() => reject(new Error(`Claude didn't answer in ${minutes} minutes. Try again - nothing is lost.`)), minutes * 60_000),
+    ),
+  ])
+}
 
 const clock = (t: number) => `${Math.floor(t / 60)}:${String(Math.floor(t % 60)).padStart(2, '0')}`
 
@@ -89,8 +105,9 @@ export function MotionView({ onBack }: { onBack: () => void }) {
       }
       const words = storyWords(current.plan!)
       if (words.length < 3) throw new Error("No words were heard in this video, so there's nothing to put graphics on.")
-      setStep({ kind: 'planning' })
-      const answer = await motionPlan({ ...forClaude(words, current.plan!), ask: current.ask })
+      const sent = forClaude(words, current.plan!)
+      setStep({ kind: 'planning', words: sent.words, raw: (current.plan!.keep[0]?.start ?? 0) + 1 })
+      const answer = await withinMinutes(motionPlan({ job: `${current.id}-${Date.now().toString(36)}`, ...sent, ask: current.ask }), PLAN_MINUTES)
       current = { ...current, storyboard: answer.storyboard, chat: [], costCents: current.costCents + answer.costCents }
       keep(current)
       setStep({ kind: 'plan' })
@@ -173,7 +190,7 @@ export function MotionView({ onBack }: { onBack: () => void }) {
         </>
       ) : null}
       {step.kind === 'hearing' ? <Working what={step.what} fraction={step.fraction} /> : null}
-      {step.kind === 'planning' ? <Working what="Claude is planning the graphics" /> : null}
+      {step.kind === 'planning' && session ? <Planning words={step.words} file={session.file} raw={step.raw} ask={session.ask} /> : null}
       {step.kind === 'making' ? <Working what="Making the video" fraction={step.fraction} note="Keep the app open - it is made on this phone." /> : null}
       {(step.kind === 'plan' || step.kind === 'making') && session?.plan && session.storyboard ? (
         <PlanScreen session={session} onChange={keep} onMake={() => void make()} onStartOver={() => void startOver()} making={step.kind === 'making'} />
@@ -380,6 +397,7 @@ async function drawStill(
 function Chat({ session, onChange, disabled }: { session: MotionSession; onChange: (next: MotionSession) => void; disabled: boolean }) {
   const [text, setText] = useState('')
   const [sending, setSending] = useState(false)
+  const seconds = useElapsed(sending)
   const [problem, setProblem] = useState<string | null>(null)
   const send = async () => {
     const said = text.trim()
@@ -389,7 +407,7 @@ function Chat({ session, onChange, disabled }: { session: MotionSession; onChang
     const chat: ChatTurn[] = [...session.chat, { from: 'him', text: said }]
     try {
       const words = storyWords(session.plan)
-      const answer = await motionPlan({ ...forClaude(words, session.plan), ask: session.ask, storyboard: session.storyboard, chat })
+      const answer = await withinMinutes(motionPlan({ job: `${session.id}-${Date.now().toString(36)}`, ...forClaude(words, session.plan), ask: session.ask, storyboard: session.storyboard, chat }), PLAN_MINUTES)
       onChange({
         ...session,
         storyboard: answer.storyboard,
@@ -427,7 +445,11 @@ function Chat({ session, onChange, disabled }: { session: MotionSession; onChang
           {sending ? '…' : 'Send'}
         </button>
       </div>
-      {sending ? <p className="hint">Claude is changing the plan…</p> : null}
+      {sending ? (
+        <p className="hint motion-changing">
+          <span className="motion-pulse" aria-hidden /> Claude is changing the plan · {seconds} s
+        </p>
+      ) : null}
       {problem ? <p className="hint warn-text">{problem}</p> : null}
     </div>
   )

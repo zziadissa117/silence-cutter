@@ -624,15 +624,38 @@ export async function videoHeadline(words: string, campaignName: string): Promis
 
 /** Motion graphics: Claude's storyboard for a talking video from its words
  *  (times: when each is said in the cut video), or the storyboard changed as
- *  he asks in the chat (postiz/motion.ts). Only the words go. */
-export async function motionPlan(ask: {
-  words: string[]
-  times: number[]
-  ask: string
-  storyboard?: Storyboard
-  chat?: ChatTurn[]
-}): Promise<{ storyboard: Storyboard; reply: string; costCents: number }> {
-  return call<{ storyboard: Storyboard; reply: string; costCents: number }>('motion-plan', { profile: profileId(), ...ask })
+ *  he asks in the chat (postiz/motion.ts). Only the words go.
+ *
+ *  Claude works on the server in the background (longer than one request may
+ *  last - a 504 on his first try): the job is started, then asked after
+ *  every few seconds until it is done. `job` names it, so a second start of
+ *  the same job is the same job. A dropped connection while waiting is just
+ *  asked again. */
+export async function motionPlan(
+  ask: { job: string; words: string[]; times: number[]; ask: string; storyboard?: Storyboard; chat?: ChatTurn[] },
+  { everyMs = 3000, wait = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms)) }: { everyMs?: number; wait?: (ms: number) => Promise<void> } = {},
+): Promise<{ storyboard: Storyboard; reply: string; costCents: number }> {
+  type Answer = { status?: 'working' | 'done' | 'failed'; storyboard?: Storyboard; reply?: string; costCents?: number; error?: string }
+  const finished = (answer: Answer) => {
+    if (answer.status === 'failed') throw new PostingError(answer.error ?? "Claude couldn't plan it. Try again.")
+    if (!answer.storyboard) return null
+    return { storyboard: answer.storyboard, reply: answer.reply ?? '', costCents: answer.costCents ?? 0 }
+  }
+  // A server from before jobs answers with the storyboard itself.
+  const first = finished(await call<Answer>('motion-plan', { profile: profileId(), ...ask }))
+  if (first) return first
+  for (;;) {
+    await wait(everyMs)
+    let answer: Answer
+    try {
+      answer = await call<Answer>('motion-result', { profile: profileId(), job: ask.job })
+    } catch (error) {
+      if (error instanceof PostingError && error.later) continue
+      throw error
+    }
+    const done = finished(answer)
+    if (done) return done
+  }
 }
 
 /** New headlines in the style of a campaign's best, for him to pick from

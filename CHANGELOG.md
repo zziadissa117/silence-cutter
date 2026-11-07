@@ -3,6 +3,20 @@
 Newest first. Every change says what it does, how to use it, and how it works
 underneath. Kept up to date with each commit.
 
+## Motion graphics: no more 504, and something to watch while Claude plans
+Needs deploying: run ./deploy-server.sh (./deploy.sh runs it by itself).
+**What he said (2026-11-07):** "Server said 504", and "when it says claude is planning the graphics, make a little
+ui showing anything ... its boring and idk if its working".
+- The 504: Supabase cuts a request off at 150 s, and Claude took longer (the server's log: 150 112 ms, 04:28). Now
+  `motion-plan` answers at once with a job and Claude works in the background; the phone asks `motion-result` every
+  3 s until the plan is there (`posting.motionPlan`), through dropped connections too. Claude also plans at low
+  effort now - picking and filling parts from the words is quick work - so it fits well inside the server's limit.
+  A job still going after 7 minutes is said to have been stopped; the phone gives up after 8 and says so.
+- While it plans (`motion/Planning.tsx`): a clock counting the seconds, your words with a light moving through
+  them, the numbers you say popping up one by one ("10K", "25 dollars", "10 000 views" - what graphics are made of),
+  and the style of the graphics playing over your own video. Changing the plan in the chat shows the seconds too.
+  Nothing on it pretends to know how far Claude has got.
+
 ## Motion graphics: drop in a talking video, Claude puts graphics around what you say
 Needs deploying: run ./deploy-server.sh (./deploy.sh runs it by itself).
 **What he said (2026-11-07):** "I just drop in the videos, and it does it automatically", like his friend's reel,

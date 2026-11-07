@@ -62,9 +62,11 @@
 //                  words, their look and place from one still, and rewords them a word or two (trial.ts); only a
 //                  login allowed Trial reels (the owner's, or one he turned it on for in People)
 //                  (headlineIdeas.ts); insights also carries `trouble`, accounts whose views fell away (deadAccounts.ts)
-//   motion-plan    { profile, words, times?, ask?, storyboard?, chat? } -> { storyboard, reply, costCents }
+//   motion-plan    { profile, job, words, times?, ask?, storyboard?, chat? } -> { job, status: 'working' }
 //                  Motion graphics: Claude's storyboard for a talking video from its words, or the storyboard
-//                  changed as he asks in the chat (motion.ts). Only the words go, never the video.
+//                  changed as he asks in the chat (motion.ts), written in the background (longer than a request
+//                  may last). Only the words go, never the video.
+//   motion-result  { profile, job } -> { status: working | done (storyboard, reply, costCents) | failed (error) }
 //   tick           { secret }                   (the scheduler; no token)
 //   channels       { cutterCampaignId }         (the planner's server; no token - see bridgeAllowed)
 //                  -> { profiles: [{ id, inUse, accounts }] }  which Postiz channels a campaign holds
@@ -102,7 +104,7 @@ import { LOOK_BACK_DAYS as HOOKS_LOOK_BACK_DAYS, hookInsights } from './hookInsi
 import { TELL_AGAIN_DAYS, USUAL_TO, deadAccounts, deadNote, type DeadAccount } from './deadAccounts.ts'
 import { IDEAS_SCHEMA, IDEAS_SYSTEM, cleanIdeas, ideasMessage } from './headlineIdeas.ts'
 import { NOTE_SCHEMA, NOTE_SYSTEM, cleanNote, noteMessage } from './handNote.ts'
-import { MOTION_SCHEMA, MOTION_SYSTEM, cleanReply, cleanStoryboard, fakeStoryboard, motionMessage, numberedWords, type ChatTurn } from './motion.ts'
+import { MOTION_SCHEMA, MOTION_SYSTEM, cleanReply, cleanStoryboard, fakeStoryboard, motionMessage, numberedWords, type ChatTurn, type Storyboard } from './motion.ts'
 import { VIDEO_HEADLINE_SCHEMA, VIDEO_HEADLINE_SYSTEM, cleanVideoHeadline, pastHeadlines, videoHeadlineMessage } from './videoHeadline.ts'
 import { countBefore, type DayRow } from './dayRoom.ts'
 import { cleanPlace, instagramPlace, type Place } from './place.ts'
@@ -1039,7 +1041,12 @@ async function readNote(profile: Profile, body: Record<string, unknown>): Promis
 
 /** Motion graphics: the storyboard for a talking video, written by Claude
  *  from its words - or, with `storyboard` and `chat`, changed as he asks in
- *  his last message (motion.ts). Only his words come here, never the video. */
+ *  his last message (motion.ts). Only his words come here, never the video.
+ *
+ *  Answered at once with a job: Claude takes longer than the 150 s Supabase
+ *  gives one request (a 504 on his first try, 2026-11-07), so it works in the
+ *  background and the phone asks `motion-result` every few seconds. The
+ *  phone names the job, so asking twice starts one. */
 async function motionPlan(profile: Profile, body: Record<string, unknown>): Promise<Response> {
   const words = (Array.isArray(body.words) ? body.words : [])
     .slice(0, 3000)
@@ -1054,13 +1061,95 @@ async function motionPlan(profile: Profile, body: Record<string, unknown>): Prom
     .map((t): ChatTurn => ({ from: t.from === 'claude' ? 'claude' : 'him', text: t.text.slice(0, 600) }))
   const keys = await keysFor(profile.id)
   if (!keys.anthropic) throw new Problem('Your Anthropic key is missing - paste it in Settings, Posting.')
-  if (keys.anthropic === FAKE_CLAUDE) return reply({ storyboard: fakeStoryboard(words.length), reply: current ? 'A fake change.' : '', costCents: 0 })
-  const client = new Anthropic({ apiKey: keys.anthropic, maxRetries: 2, timeout: 3 * MINUTE })
+  const job = typeof body.job === 'string' && /^[\w-]{6,80}$/.test(body.job) ? body.job : crypto.randomUUID()
+  const key = motionKey(profile, job)
+  const had = await readMotionJob(key)
+  if (had) return reply(motionView(job, had))
+  if (keys.anthropic === FAKE_CLAUDE) {
+    await writeMotionJob(key, { status: 'done', at: Date.now(), storyboard: fakeStoryboard(words.length), reply: current ? 'A fake change.' : '', costCents: 0 })
+    return reply({ job, status: 'working' })
+  }
+  await writeMotionJob(key, { status: 'working', at: Date.now() })
+  later(
+    planWithClaude(keys.anthropic, words, times, ask, current, chat)
+      .then((done) => writeMotionJob(key, { status: 'done', at: Date.now(), ...done }))
+      .catch((error) =>
+        writeMotionJob(key, {
+          status: 'failed',
+          at: Date.now(),
+          error: error instanceof Problem ? error.message : `Claude could not plan it (${error instanceof Error ? error.message : String(error)}).`,
+        }),
+      ),
+  )
+  return reply({ job, status: 'working' })
+}
+
+/** Where a motion graphics job keeps its answer until the phone reads it. */
+const motionKey = (profile: Profile, job: string) => `motion:${profile.id}:${job}`
+
+/** Past this, a job still "working" was stopped by the server's own time
+ *  limit: said so rather than waited on for ever. */
+const MOTION_GIVE_UP_MS = 7 * MINUTE
+
+interface MotionJob {
+  status: 'working' | 'done' | 'failed'
+  at: number
+  storyboard?: Storyboard
+  reply?: string
+  costCents?: number
+  error?: string
+}
+
+async function readMotionJob(key: string): Promise<MotionJob | null> {
+  const { data } = await db.from('cutter_config').select('value').eq('key', key).maybeSingle()
+  try {
+    return data ? (JSON.parse((data as { value: string }).value) as MotionJob) : null
+  } catch {
+    return null
+  }
+}
+
+async function writeMotionJob(key: string, job: MotionJob): Promise<void> {
+  await db.from('cutter_config').upsert({ key, value: JSON.stringify(job) }, { onConflict: 'key' })
+}
+
+function motionView(job: string, row: MotionJob): Record<string, unknown> {
+  if (row.status === 'working' && Date.now() - row.at > MOTION_GIVE_UP_MS) {
+    return { job, status: 'failed', error: 'Claude took too long and the server stopped it. Try again - a shorter line of what you want can help.' }
+  }
+  return { job, ...row }
+}
+
+/** How a motion graphics job is getting on: working, or its storyboard, or
+ *  why it failed. Read once done: the row is let go. */
+async function motionResult(profile: Profile, body: Record<string, unknown>): Promise<Response> {
+  const job = typeof body.job === 'string' && /^[\w-]{6,80}$/.test(body.job) ? body.job : ''
+  if (!job) throw new Problem('Which plan? Try again.')
+  const key = motionKey(profile, job)
+  const row = await readMotionJob(key)
+  if (!row) return reply({ job, status: 'failed', error: 'That plan is gone from the server. Try again.' })
+  const view = motionView(job, row)
+  if (view.status !== 'working') await db.from('cutter_config').delete().eq('key', key)
+  return reply(view)
+}
+
+/** Claude writes (or changes) the storyboard. Low effort: picking and
+ *  filling parts from the words is quick work, and it has to fit well inside
+ *  the server's time limit. */
+async function planWithClaude(
+  apiKey: string,
+  words: string[],
+  times: number[],
+  ask: string,
+  current: Storyboard | null,
+  chat: ChatTurn[],
+): Promise<{ storyboard: Storyboard; reply: string; costCents: number }> {
+  const client = new Anthropic({ apiKey, maxRetries: 1, timeout: 4 * MINUTE })
   const request = {
     model: MODEL,
-    max_tokens: 16000,
+    max_tokens: 12000,
     system: [{ type: 'text', text: MOTION_SYSTEM, cache_control: { type: 'ephemeral' } }],
-    output_config: { effort: 'medium', format: { type: 'json_schema', schema: MOTION_SCHEMA } },
+    output_config: { effort: 'low', format: { type: 'json_schema', schema: MOTION_SCHEMA } },
     messages: [{ role: 'user', content: motionMessage(numberedWords(words, times), ask, current, chat) }],
   }
   let response
@@ -1087,7 +1176,7 @@ async function motionPlan(profile: Profile, body: Record<string, unknown>): Prom
   if (storyboard.scenes.length === 0 && !storyboard.hook) {
     throw new Problem(current ? "Claude's change didn't come back usable - try saying it another way." : "Claude couldn't plan graphics for this video - try again.")
   }
-  return reply({ storyboard, reply: cleanReply(parsed), costCents: cost })
+  return { storyboard, reply: cleanReply(parsed), costCents: cost }
 }
 
 /** A talking video's headline from all he says in it, in the style of his
@@ -4610,6 +4699,8 @@ Deno.serve(async (req) => {
         return await videoHeadline(profile, body)
       case 'motion-plan':
         return await motionPlan(profile, body)
+      case 'motion-result':
+        return await motionResult(profile, body)
       case 'trial-read':
         return await trialRead(profile, body)
       case 'trial-reword':

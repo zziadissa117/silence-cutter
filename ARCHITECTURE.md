@@ -367,7 +367,9 @@ check it before it is made, chat to fix). For a few videos a day on his own bran
 ```
 pick      one recording + an optional line (MotionView)
 hear      motion/make.ts hear: pipeline.listen with his Videos settings (pacing, "um"s), words aligned
-plan      postiz motion-plan { words, times, ask } -> Claude (MOTION_SYSTEM, MOTION_SCHEMA, effort medium)
+plan      postiz motion-plan { job, words, times, ask } -> answers at once; Claude (MOTION_SYSTEM, MOTION_SCHEMA,
+          effort low) in the background, its answer in cutter_config `motion:<profile>:<job>`; the phone asks
+          motion-result every 3 s (requests are cut at 150 s); meanwhile motion/Planning.tsx
           -> cleanStoryboard: hook card, scenes (word numbers from/to, parts), end banner
 see       PlanScreen: a still at any moment (motion/frames.ts FrameReader + the render's own drawing),
           a line + still per scene; chat -> motion-plan { storyboard, chat } -> the whole storyboard back + a reply
