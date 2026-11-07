@@ -3,6 +3,15 @@
 Newest first. Every change says what it does, how to use it, and how it works
 underneath. Kept up to date with each commit.
 
+## Motion graphics with Claude - research only, nothing built
+Nothing to deploy.
+**What he said (2026-11-07):** use Claude to put motion graphics around a video, with a chat to fix them, in its own
+section, maybe with "Maloy Studio".
+- `docs/MOTION_GRAPHICS_RESEARCH.md`: how templates work (.mogrt, Lottie, Remotion, cloud APIs), "Maloy Studio" =
+  Malloy Studio (malloy.sg - transparent video exports, no API found), how Claude would pick and fill our own
+  templates from the words and fix them by chat, what runs on the phone vs the Cutter server, cost per video, and
+  questions for him. No app code changed.
+
 ## Trial reels: "Make again" - every copy not out yet taken out and made again
 App only: run ./deploy.sh.
 **What he said (2026-11-06):** "it does the same exact thing for me ... Is there a button to do that, to fix the videos
