@@ -36,6 +36,7 @@ import { NOT_ALLOWED, trialAngle, trialFileName, withAccounts } from './trialLoo
 import { AnalyticsView, addHeadline, answerSuggestion, saveTarget, useCampaignRows } from './AnalyticsView'
 import { FormatsView, type FormatClips } from './FormatsView'
 import { TrialView } from './TrialView'
+import { MotionView } from './MotionView'
 import { afterMixing, daysLine, mixesOf, spreadOver } from './formats'
 import type { ViewsByAccount } from './analytics'
 import { bareName, filesOf, stepTitle, styleFor, stylesOf, type BankFile, type BatchBank } from './batch'
@@ -4487,6 +4488,8 @@ export function CampaignApp() {
       )
     ) : tab === 'more' ? (
       <MoreView campaigns={ownCampaigns.length} onOpen={setTab} workToLose={workToLose} trialReels={posting?.profile.trialReels === true} />
+    ) : tab === 'motion' ? (
+      <MotionView onBack={() => setTab('more')} />
     ) : tab === 'trial' ? (
       <TrialView
         campaigns={campaigns}

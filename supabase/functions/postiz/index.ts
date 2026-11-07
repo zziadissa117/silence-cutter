@@ -62,6 +62,9 @@
 //                  words, their look and place from one still, and rewords them a word or two (trial.ts); only a
 //                  login allowed Trial reels (the owner's, or one he turned it on for in People)
 //                  (headlineIdeas.ts); insights also carries `trouble`, accounts whose views fell away (deadAccounts.ts)
+//   motion-plan    { profile, words, times?, ask?, storyboard?, chat? } -> { storyboard, reply, costCents }
+//                  Motion graphics: Claude's storyboard for a talking video from its words, or the storyboard
+//                  changed as he asks in the chat (motion.ts). Only the words go, never the video.
 //   tick           { secret }                   (the scheduler; no token)
 //   channels       { cutterCampaignId }         (the planner's server; no token - see bridgeAllowed)
 //                  -> { profiles: [{ id, inUse, accounts }] }  which Postiz channels a campaign holds
@@ -99,6 +102,7 @@ import { LOOK_BACK_DAYS as HOOKS_LOOK_BACK_DAYS, hookInsights } from './hookInsi
 import { TELL_AGAIN_DAYS, USUAL_TO, deadAccounts, deadNote, type DeadAccount } from './deadAccounts.ts'
 import { IDEAS_SCHEMA, IDEAS_SYSTEM, cleanIdeas, ideasMessage } from './headlineIdeas.ts'
 import { NOTE_SCHEMA, NOTE_SYSTEM, cleanNote, noteMessage } from './handNote.ts'
+import { MOTION_SCHEMA, MOTION_SYSTEM, cleanReply, cleanStoryboard, fakeStoryboard, motionMessage, numberedWords, type ChatTurn } from './motion.ts'
 import { VIDEO_HEADLINE_SCHEMA, VIDEO_HEADLINE_SYSTEM, cleanVideoHeadline, pastHeadlines, videoHeadlineMessage } from './videoHeadline.ts'
 import { countBefore, type DayRow } from './dayRoom.ts'
 import { cleanPlace, instagramPlace, type Place } from './place.ts'
@@ -1031,6 +1035,59 @@ async function readNote(profile: Profile, body: Record<string, unknown>): Promis
     parsed = null
   }
   return reply(cleanNote(parsed, note, today))
+}
+
+/** Motion graphics: the storyboard for a talking video, written by Claude
+ *  from its words - or, with `storyboard` and `chat`, changed as he asks in
+ *  his last message (motion.ts). Only his words come here, never the video. */
+async function motionPlan(profile: Profile, body: Record<string, unknown>): Promise<Response> {
+  const words = (Array.isArray(body.words) ? body.words : [])
+    .slice(0, 3000)
+    .map((w) => (typeof w === 'string' ? w.slice(0, 40) : ''))
+  if (words.filter((w) => w.trim()).length < 3) throw new Problem('There are too few words in this video to put graphics on.')
+  const times = (Array.isArray(body.times) ? body.times : []).slice(0, 3000).map((t) => (typeof t === 'number' && Number.isFinite(t) ? t : NaN))
+  const ask = typeof body.ask === 'string' ? body.ask.slice(0, 600) : ''
+  const current = body.storyboard ? cleanStoryboard(body.storyboard, words.length) : null
+  const chat: ChatTurn[] = (Array.isArray(body.chat) ? body.chat : [])
+    .filter((t): t is { from: string; text: string } => Boolean(t) && typeof t === 'object' && typeof (t as { text?: unknown }).text === 'string')
+    .slice(-12)
+    .map((t) => ({ from: t.from === 'claude' ? 'claude' : 'him', text: t.text.slice(0, 600) }))
+  const keys = await keysFor(profile.id)
+  if (!keys.anthropic) throw new Problem('Your Anthropic key is missing - paste it in Settings, Posting.')
+  if (keys.anthropic === FAKE_CLAUDE) return reply({ storyboard: fakeStoryboard(words.length), reply: current ? 'A fake change.' : '', costCents: 0 })
+  const client = new Anthropic({ apiKey: keys.anthropic, maxRetries: 2, timeout: 3 * MINUTE })
+  const request = {
+    model: MODEL,
+    max_tokens: 16000,
+    system: [{ type: 'text', text: MOTION_SYSTEM, cache_control: { type: 'ephemeral' } }],
+    output_config: { effort: 'medium', format: { type: 'json_schema', schema: MOTION_SCHEMA } },
+    messages: [{ role: 'user', content: motionMessage(numberedWords(words, times), ask, current, chat) }],
+  }
+  let response
+  try {
+    response = await client.beta.messages.create({ ...request, betas: ['server-side-fallback-2026-07-01'], fallbacks: 'default' } as never)
+  } catch (error) {
+    if (error instanceof Anthropic.BadRequestError && /fallback/i.test(error.message)) {
+      response = await client.beta.messages.create(request as never).catch(anthropicProblem)
+    } else anthropicProblem(error)
+  }
+  const message = response as { content: { type: string; text?: string }[]; usage?: { input_tokens?: number; output_tokens?: number } }
+  const said = message.content
+    .filter((b) => b.type === 'text')
+    .map((b) => b.text ?? '')
+    .join('')
+  let parsed: unknown = null
+  try {
+    parsed = JSON.parse(said)
+  } catch {
+    parsed = null
+  }
+  const storyboard = cleanStoryboard(parsed, words.length)
+  const cost = costCents(message.usage?.input_tokens ?? 0, message.usage?.output_tokens ?? 0)
+  if (storyboard.scenes.length === 0 && !storyboard.hook) {
+    throw new Problem(current ? "Claude's change didn't come back usable - try saying it another way." : "Claude couldn't plan graphics for this video - try again.")
+  }
+  return reply({ storyboard, reply: cleanReply(parsed), costCents: cost })
 }
 
 /** A talking video's headline from all he says in it, in the style of his
@@ -4551,6 +4608,8 @@ Deno.serve(async (req) => {
         return await readNote(profile, body)
       case 'video-headline':
         return await videoHeadline(profile, body)
+      case 'motion-plan':
+        return await motionPlan(profile, body)
       case 'trial-read':
         return await trialRead(profile, body)
       case 'trial-reword':

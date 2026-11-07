@@ -4,7 +4,7 @@
 
 import type { ReactNode } from 'react'
 
-import { BatchIcon, CampaignsIcon, ChevronLeft, ChevronRight, FormatsIcon, PicturesIcon, SettingsIcon, VideosIcon } from './icons'
+import { BatchIcon, CampaignsIcon, ChevronLeft, ChevronRight, FormatsIcon, MotionIcon, PicturesIcon, SettingsIcon, VideosIcon } from './icons'
 import type { Tab } from './TabBar'
 
 interface Row {
@@ -31,6 +31,7 @@ export function MoreView({
   const rows: Row[] = [
     { tab: 'campaigns', icon: <CampaignsIcon />, name: 'Campaigns', line: `${campaigns} campaign${campaigns === 1 ? '' : 's'} - brand, logo, angles, accounts and posting times` },
     { tab: 'formats', icon: <FormatsIcon />, name: 'Formats', line: 'A script you film again and again, mixed into many videos' },
+    { tab: 'motion', icon: <MotionIcon />, name: 'Motion graphics', line: 'Drop in a talking video - Claude plans graphics around what you say' },
     ...(trialReels
       ? [{ tab: 'trial' as const, icon: <BatchIcon />, name: 'Trial reels', line: 'A viral reel made again and again, posted as Instagram Trial Reels' }]
       : []),

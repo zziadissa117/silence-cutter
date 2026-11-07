@@ -359,6 +359,32 @@ pick the logos and `formulaLine(…, amount)`, a headline pick its `headlineStyl
 picked now, and `withHeadlineStyle` swaps it into the angle. The bottom of the Batch tab shows
 the number of variations and `variationParts` (what multiplies into it).
 
+## Motion graphics (`MotionView.tsx`, `motion/*`, server `postiz/motion.ts`)
+
+More -> Motion graphics (his ask, 2026-11-07: drop in a talking video, Claude puts graphics around what he says,
+check it before it is made, chat to fix). For a few videos a day on his own brand, apart from the campaigns.
+
+```
+pick      one recording + an optional line (MotionView)
+hear      motion/make.ts hear: pipeline.listen with his Videos settings (pacing, "um"s), words aligned
+plan      postiz motion-plan { words, times, ask } -> Claude (MOTION_SYSTEM, MOTION_SCHEMA, effort medium)
+          -> cleanStoryboard: hook card, scenes (word numbers from/to, parts), end banner
+see       PlanScreen: a still at any moment (motion/frames.ts FrameReader + the render's own drawing),
+          a line + still per scene; chat -> motion-plan { storyboard, chat } -> the whole storyboard back + a reply
+make      motion/make.ts makeMotionVideo -> render.ts renderCampaignCut with `motion` (plain look, his captions
+          and voice settings); done: watch, Save / share (shareFile.ts)
+```
+- The storyboard's times are WORD NUMBERS into the captions' words (`storyWords`), so a graphic lands on its word
+  whatever was cut: in the render `motion/track.ts MotionTrack` (a MomentPlacer over every word's start and end),
+  before it, `cutTiming` (captions.cutTime). Parts: title, note, cards (badge + lines with check/cross), list,
+  tiles (grid filling, locks, app window, counter), phones (view counts, "=" and prices), math (lines + a result
+  counting up), number. Limits in `MOTION_LIMITS`.
+- Look (`motion/draw.ts`): his friend's reel - while a scene is up a light board covers the top 55% and his face is
+  drawn `FACE_DROP` (38% of the height) lower, faded into it; scenes closer than 1.2 s keep the board up. Drawn over
+  the pictures, under his own texts, headline, logo and captions.
+- Kept on the phone at every step in its own IndexedDB database `cutter-motion` (`motion/session.ts`): the
+  recording, what was heard, the storyboard, the chat, the made video. Only the words go to Claude.
+
 ## Trial reels (`trialLoop.ts`, `viralReel.ts`, `TrialView.tsx`, server `postiz/trial.ts`)
 
 A reel of his that went viral, made again and again and posted as Instagram Trial Reels - shown to non-followers

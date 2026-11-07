@@ -1173,3 +1173,29 @@ input[type='color']::-webkit-color-swatch { border: 0.5px solid var(--edge); bor
 .recorder-steady-word { font-size: 9px; font-weight: 600; margin-top: 2px; }
 .recorder-steady.on { background: rgb(255 255 255 / 0.9); color: #000; }
 .trial-only-pick { display: flex; align-items: center; gap: 8px; margin-top: 6px; }
+
+/* Motion graphics (More -> Motion graphics, MotionView.tsx): the plan before
+   it is made - a big still to slide through, a line and a still per scene,
+   the chat with Claude. */
+.motion { display: flex; flex-direction: column; gap: 14px; }
+.motion-drop { min-height: 140px; }
+.motion-working { display: flex; flex-direction: column; gap: 8px; padding: 6px 0; }
+.motion-working .row-name { margin: 0; }
+.motion-bar { height: 6px; border-radius: 3px; background: var(--edge); overflow: hidden; }
+.motion-bar > div { height: 100%; background: var(--accent, #5b50e8); transition: width 0.2s; }
+.motion-plan, .motion-done { display: flex; flex-direction: column; gap: 14px; }
+.motion-stage { display: flex; flex-direction: column; align-items: center; gap: 8px; }
+.motion-still { width: min(100%, 300px); aspect-ratio: 9 / 16; height: auto; border-radius: 14px; background: #000; }
+.motion-stage input[type=range] { width: min(100%, 360px); }
+.motion-scene { gap: 12px; }
+.motion-thumb { flex: none; width: 54px; aspect-ratio: 9 / 16; border-radius: 6px; background: var(--edge); object-fit: cover; }
+.motion-chat { display: flex; flex-direction: column; gap: 8px; }
+.motion-turns { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+.motion-turns li { max-width: 85%; padding: 8px 12px; border-radius: 14px; font-size: 15px; line-height: 1.35; }
+.motion-turns li.him { align-self: flex-end; background: var(--accent, #5b50e8); color: #fff; }
+.motion-turns li.claude { align-self: flex-start; background: var(--surface); border: 1px solid var(--edge); }
+.motion-say { display: flex; gap: 8px; align-items: flex-end; grid-template-columns: none; }
+.motion-say textarea { flex: 1; min-width: 0; }
+.motion-actions { display: flex; flex-direction: column; gap: 10px; align-items: stretch; }
+.motion-actions .linkbtn { align-self: center; }
+.motion-video { width: min(100%, 320px); align-self: center; border-radius: 14px; background: #000; }

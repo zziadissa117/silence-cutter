@@ -3,6 +3,27 @@
 Newest first. Every change says what it does, how to use it, and how it works
 underneath. Kept up to date with each commit.
 
+## Motion graphics: drop in a talking video, Claude puts graphics around what you say
+Needs deploying: run ./deploy-server.sh (./deploy.sh runs it by itself).
+**What he said (2026-11-07):** "I just drop in the videos, and it does it automatically", like his friend's reel,
+and "is there a way to check before if it's good ... an explanation of how it would look like before?"
+- More -> Motion graphics. Pick a video (and, if you like, a line of what you want). It is cut and heard like on
+  Videos, then Claude writes a storyboard from your words: a counter over your face at the start, scenes where a
+  light board slides over the top and your face moves down under it - titles, cards with ticks and crosses, lists,
+  grids of squares filling up, phones with view counts, sums that count up - each coming up on the word you say it,
+  and a follow banner near the end.
+- Before anything is made you see the plan: one line and a picture per scene, a big picture you can slide through
+  to any moment, drawn by the same code that makes the video. Type what to change ("make the sum come in later",
+  "drop the phones") and Claude changes it and says what it did. Then Make; Save / share when done. "Change the
+  graphics and make it again" goes back to the plan.
+- Every step is kept on the phone: closing the app never loses the video or the plan. Only your words go to
+  Claude (server action `motion-plan`, your Anthropic key, about 3-10 cents a video), never the video.
+- Underneath: `motion/draw.ts` draws the board and parts on each frame; times are word numbers, placed like the
+  captions (`motion/track.ts`); render.ts draws it when given `motion`, nothing changes for any other video.
+- Tested here: the storyboard rules, the drawing of every part, the plan screen and chat (vitest), and a real
+  render of a 62 s video in Chrome for Testing (made in 18 s, graphics on the right words). Not tested: an iPhone,
+  and Claude's own storyboards (the key is on the server).
+
 ## People: a sign-in link for Trial reels and nothing else
 Needs deploying: run ./deploy-server.sh (./deploy.sh runs it by itself).
 **What he said (2026-11-07):** "make a new account for SAMTPNQ ... we want a magic link ... Only access to one feature:

@@ -114,6 +114,16 @@ export const PicturesIcon = () => (
   </Icon>
 )
 
+/** A frame with a card and a sparkle: motion graphics. */
+export const MotionIcon = () => (
+  <Icon>
+    <rect x="3.75" y="4.75" width="16.5" height="14.5" rx="2.5" />
+    <rect x="6.75" y="8" width="6.5" height="4.5" rx="1" />
+    <path d="M6.75 15.5h10.5" />
+    <path d="M16.5 7.5v3M15 9h3" />
+  </Icon>
+)
+
 /** Sliders: settings. */
 export const SettingsIcon = () => (
   <Icon>

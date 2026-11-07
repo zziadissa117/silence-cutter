@@ -8,6 +8,7 @@
 // it posts at are each person's own, kept in their profile on the server.
 // The phone keeps only which profile is its own, and whether it sends.
 
+import type { ChatTurn, Storyboard } from '../../supabase/functions/postiz/motion.ts'
 import type { ViewsByAccount } from './analytics'
 import { DEFAULT_WINDOW, LEAST_GAP_MINUTES, cleanWindow, evenTimes, windowTimes, type PostingWindow } from '../../supabase/functions/postiz/window.ts'
 import { cleanPlace, type Place } from '../../supabase/functions/postiz/place.ts'
@@ -619,6 +620,19 @@ export async function videoHeadline(words: string, campaignName: string): Promis
   } catch {
     return ''
   }
+}
+
+/** Motion graphics: Claude's storyboard for a talking video from its words
+ *  (times: when each is said in the cut video), or the storyboard changed as
+ *  he asks in the chat (postiz/motion.ts). Only the words go. */
+export async function motionPlan(ask: {
+  words: string[]
+  times: number[]
+  ask: string
+  storyboard?: Storyboard
+  chat?: ChatTurn[]
+}): Promise<{ storyboard: Storyboard; reply: string; costCents: number }> {
+  return call<{ storyboard: Storyboard; reply: string; costCents: number }>('motion-plan', { profile: profileId(), ...ask })
 }
 
 /** New headlines in the style of a campaign's best, for him to pick from
