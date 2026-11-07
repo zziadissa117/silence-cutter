@@ -6,6 +6,7 @@
 
 import type { ChatTurn, Storyboard } from '../../../supabase/functions/postiz/motion.ts'
 import type { CampaignPlan } from '../plan'
+import type { CaptionChoice } from './make'
 
 export interface MotionSession {
   id: string
@@ -16,6 +17,8 @@ export interface MotionSession {
   plan?: CampaignPlan
   storyboard?: Storyboard
   chat: ChatTurn[]
+  /** What he changed on the captions of this video (make.ts CaptionChoice). */
+  captions?: CaptionChoice
   /** The finished video, once made, and the storyboard it was made from. */
   made?: Blob
   madeFrom?: Storyboard

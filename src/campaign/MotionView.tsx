@@ -17,6 +17,8 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react'
 
+import type { CaptionWord } from './captions'
+
 import type { ChatTurn, Storyboard } from '../../supabase/functions/postiz/motion.ts'
 import { forgetCut } from '../media/outputSink'
 import { VideoPicker } from '../VideoPicker'
@@ -25,7 +27,8 @@ import { BackToMore } from './MoreView'
 import { drawMotion, faceDropAt, fillBehindFace, type Timing } from './motion/draw'
 import { FrameReader } from './motion/frames'
 import { Planning, useElapsed } from './motion/Planning'
-import { drawCaptionAt, forClaude, hear, makeMotionVideo, storyWords } from './motion/make'
+import { captionLook, captionsToEdit, drawCaptionAt, forClaude, hear, makeMotionVideo, shownCaptions, storyWords, type CaptionChoice } from './motion/make'
+import { CaptionReview } from './CaptionReview'
 import { clearSession, loadSession, saveSession, type MotionSession } from './motion/session'
 import { cutLength, cutTiming, rawTimeAt } from './motion/track'
 import { motionPlan, postingHere } from './posting'
@@ -39,6 +42,7 @@ type Step =
   | { kind: 'plan' }
   | { kind: 'making'; fraction: number }
   | { kind: 'done' }
+  | { kind: 'captions' }
 
 const STILL = { width: 360, height: 640 }
 
@@ -134,7 +138,7 @@ export function MotionView({ onBack }: { onBack: () => void }) {
     setProblem(null)
     setStep({ kind: 'making', fraction: 0 })
     try {
-      const made = await makeMotionVideo(session.file, session.plan, session.storyboard, session.id, (fraction) => setStep({ kind: 'making', fraction }))
+      const made = await makeMotionVideo(session.file, session.plan, session.storyboard, session.id, (fraction) => setStep({ kind: 'making', fraction }), session.captions)
       // Kept with the session, copied out of the render's own storage.
       const copy = new Blob([await made.blob.arrayBuffer()], { type: 'video/mp4' })
       if (made.storedAs) void forgetCut(made.storedAs)
@@ -160,10 +164,14 @@ export function MotionView({ onBack }: { onBack: () => void }) {
 
   return (
     <section className="screen motion">
-      <BackToMore onBack={onBack} />
-      <div className="screen-head">
-        <h1>Motion graphics</h1>
-      </div>
+      {step.kind === 'captions' ? null : (
+        <>
+          <BackToMore onBack={onBack} />
+          <div className="screen-head">
+            <h1>Motion graphics</h1>
+          </div>
+        </>
+      )}
       {problem ? <p className="hint warn-text">{problem}</p> : null}
       {step.kind === 'loading' ? <p className="hint">One moment…</p> : null}
       {step.kind === 'pick' ? (
@@ -193,7 +201,24 @@ export function MotionView({ onBack }: { onBack: () => void }) {
       {step.kind === 'planning' && session ? <Planning words={step.words} file={session.file} raw={step.raw} ask={session.ask} /> : null}
       {step.kind === 'making' ? <Working what="Making the video" fraction={step.fraction} note="Keep the app open - it is made on this phone." /> : null}
       {(step.kind === 'plan' || step.kind === 'making') && session?.plan && session.storyboard ? (
-        <PlanScreen session={session} onChange={keep} onMake={() => void make()} onStartOver={() => void startOver()} making={step.kind === 'making'} />
+        <PlanScreen
+          session={session}
+          onChange={keep}
+          onMake={() => void make()}
+          onStartOver={() => void startOver()}
+          onCaptions={() => setStep({ kind: 'captions' })}
+          making={step.kind === 'making'}
+        />
+      ) : null}
+      {step.kind === 'captions' && session?.plan ? (
+        <EditCaptions
+          session={session}
+          onDone={(captions) => {
+            if (captions) keep({ ...session, captions })
+            setStep({ kind: 'plan' })
+            window.scrollTo({ top: 0 })
+          }}
+        />
       ) : null}
       {step.kind === 'done' && session?.made ? (
         <Done
@@ -206,6 +231,39 @@ export function MotionView({ onBack }: { onBack: () => void }) {
         />
       ) : null}
     </section>
+  )
+}
+
+/** The Cutter's own caption screen (CaptionReview) on this video: fix the
+ *  words, where they sit, how big, which style - or make it without them.
+ *  The graphics keep their moments whatever he types. Done with nothing
+ *  given back means he left without changing anything. */
+function EditCaptions({ session, onDone }: { session: MotionSession; onDone: (captions: CaptionChoice | null) => void }) {
+  const plan = session.plan!
+  const [choice, setChoice] = useState<CaptionChoice>(() => ({ ...session.captions }))
+  const [initial] = useState(() => captionsToEdit(plan, session.captions))
+  const look = captionLook(choice)
+  const sameWords = (words: CaptionWord[]) => words.map((w) => w.text.trim()).join(' ') === initial.map((w) => w.text.trim()).join(' ')
+  // Words he didn't change stay "as heard", so the plan doesn't say they were.
+  const save = (words: CaptionWord[], off: boolean) =>
+    onDone({ ...choice, edited: session.captions?.edited || !sameWords(words) ? words : undefined, off })
+  return (
+    <CaptionReview
+      name={session.fileName}
+      file={session.file}
+      initial={initial}
+      approveLabel="Done"
+      position={look.position}
+      onPosition={(position) => setChoice((c) => ({ ...c, position }))}
+      size={look.size}
+      onSize={(size) => setChoice((c) => ({ ...c, size }))}
+      captionStyle={look.style}
+      onCaptionStyle={(style) => setChoice((c) => ({ ...c, style }))}
+      onChange={() => {}}
+      onApprove={(words) => save(words, false)}
+      onSkip={(words) => save(words, true)}
+      onClose={(words) => (sameWords(words) && JSON.stringify(choice) === JSON.stringify({ ...session.captions }) ? onDone(null) : save(words, choice.off === true))}
+    />
   )
 }
 
@@ -233,15 +291,19 @@ function PlanScreen({
   onChange,
   onMake,
   onStartOver,
+  onCaptions,
   making,
 }: {
   session: MotionSession
   onChange: (next: MotionSession) => void
   onMake: () => void
   onStartOver: () => void
+  onCaptions: () => void
   making: boolean
 }) {
   const plan = session.plan!
+  const choice = session.captions
+  const shown = useMemo(() => shownCaptions(plan, choice), [plan, choice])
   const board = session.storyboard!
   const words = useMemo(() => storyWords(plan), [plan])
   const timing = useMemo(() => cutTiming(words, plan.keep), [words, plan])
@@ -264,13 +326,13 @@ function PlanScreen({
     let alive = true
     const canvas = big.current
     if (!canvas || !reader.current) return
-    void drawStill(reader.current, canvas, board, timing, words, plan.keep, at).then(() => {
+    void drawStill(reader.current, canvas, board, timing, shown, plan.keep, at, choice).then(() => {
       if (!alive) return
     })
     return () => {
       alive = false
     }
-  }, [at, board, timing, words, plan.keep])
+  }, [at, board, timing, shown, plan.keep, choice])
 
   // A small still of each scene, in its middle once its parts are up.
   useEffect(() => {
@@ -283,7 +345,7 @@ function PlanScreen({
         const canvas = document.createElement('canvas')
         canvas.width = STILL.width
         canvas.height = STILL.height
-        await drawStill(reader.current, canvas, board, timing, words, plan.keep, t)
+        await drawStill(reader.current, canvas, board, timing, shown, plan.keep, t, choice)
         if (!alive) return
         const url = canvas.toDataURL('image/jpeg', 0.7)
         setStills((s) => ({ ...s, [i]: url }))
@@ -292,7 +354,7 @@ function PlanScreen({
     return () => {
       alive = false
     }
-  }, [board, timing, words, plan.keep])
+  }, [board, timing, shown, plan.keep, choice])
 
   return (
     <div className="motion-plan">
@@ -342,6 +404,9 @@ function PlanScreen({
           </li>
         ) : null}
       </ul>
+      <button type="button" className="btn wide" disabled={making} onClick={onCaptions}>
+        {choice?.off ? 'Captions off - turn on or edit' : choice?.edited ? 'Edit captions (changed)' : 'Edit captions'}
+      </button>
       <Chat session={session} onChange={onChange} disabled={making} />
       <div className="motion-actions">
         <button type="button" className="btn primary wide" disabled={making} onClick={onMake}>
@@ -376,9 +441,10 @@ async function drawStill(
   canvas: HTMLCanvasElement,
   board: Storyboard,
   timing: Timing,
-  words: ReturnType<typeof storyWords>,
+  shown: ReturnType<typeof storyWords>,
   keep: { start: number; end: number }[],
   t: number,
+  choice?: CaptionChoice,
 ): Promise<void> {
   const frame = await reader.frameAt(rawTimeAt(t, keep))
   const ctx = canvas.getContext('2d')
@@ -390,7 +456,7 @@ async function drawStill(
   fillBehindFace(ctx, width, drop)
   if (frame) ctx.drawImage(frame as CanvasImageSource, 0, drop, width, height)
   drawMotion(ctx, width, height, board, timing, t)
-  drawCaptionAt(ctx, width, height, words, keep, t)
+  drawCaptionAt(ctx, width, height, shown, keep, t, choice)
 }
 
 /** The chat with Claude about the plan: each message changes the storyboard. */

@@ -3,6 +3,15 @@
 Newest first. Every change says what it does, how to use it, and how it works
 underneath. Kept up to date with each commit.
 
+## Motion graphics: captions you can fix, like on Videos
+App only: run ./deploy.sh.
+**What he said (2026-11-08):** "make it a little editable just like the cutter. meaning captions i can edit them".
+- The plan screen has Edit captions: the Cutter's own caption screen on this video - type into any phrase, move
+  them (Top / Middle / Usual / Bottom), size, one word or Highlight - or make it without captions. Done goes back to
+  the plan; the stills and the made video show the captions as you left them. The graphics keep their moments
+  whatever you type (their word numbers stay on the words as heard).
+- Kept with the video on the phone (`MotionSession.captions`, `motion/make.ts` `CaptionChoice`, `shownCaptions`).
+
 ## Motion graphics: no more 504, and something to watch while Claude plans
 Needs deploying: run ./deploy-server.sh (./deploy.sh runs it by itself).
 **What he said (2026-11-07):** "Server said 504", and "when it says claude is planning the graphics, make a little

@@ -62,6 +62,8 @@ beforeEach(() => {
       },
     )) as never
   HTMLCanvasElement.prototype.toDataURL = () => 'data:image/jpeg;base64,'
+  URL.createObjectURL = () => 'blob:video'
+  URL.revokeObjectURL = () => {}
 })
 
 afterEach(() => {
@@ -112,5 +114,30 @@ describe('Motion graphics', () => {
     expect(host.textContent).toContain('Took the cards out.')
     expect(host.textContent).toContain('Just the title now.')
     expect(saved.at(-1)?.storyboard).toEqual(changed)
+  })
+})
+
+describe('Motion graphics: captions he can fix, as on Videos', () => {
+  it("opens the Cutter's caption screen, and what he types is what the video shows", async () => {
+    kept = { id: 'm1', file: new Blob(['x']), fileName: 'take.mov', ask: '', plan, storyboard: board, chat: [], costCents: 0 }
+    await act(async () => root.render(<MotionView onBack={() => {}} />))
+    await settle()
+    const edit = [...host.querySelectorAll('button')].find((b) => b.textContent === 'Edit captions')!
+    await act(async () => edit.click())
+    await settle()
+    const box = host.querySelector('textarea, input[type=text]') as HTMLTextAreaElement | HTMLInputElement
+    expect(box).not.toBeNull()
+    await act(async () => {
+      const proto = box instanceof HTMLTextAreaElement ? HTMLTextAreaElement.prototype : HTMLInputElement.prototype
+      Object.getOwnPropertyDescriptor(proto, 'value')!.set!.call(box, 'Fixed words here')
+      box.dispatchEvent(new Event('input', { bubbles: true }))
+    })
+    const done = [...host.querySelectorAll('button')].find((b) => b.textContent === 'Done')!
+    await act(async () => done.click())
+    await settle()
+    const last = saved.at(-1)!
+    expect(last.captions?.edited?.map((w) => w.text.trim()).join(' ')).toContain('Fixed words here')
+    expect(last.storyboard).toEqual(board)
+    expect(host.textContent).toContain('Edit captions (changed)')
   })
 })
