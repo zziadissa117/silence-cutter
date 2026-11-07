@@ -22,6 +22,7 @@ import { useCallback, useEffect, useRef, useState, type TouchEvent as ReactTouch
 
 import { report } from '../report'
 import { describeClip } from './clipCheck'
+import { stabilize } from './stabilize'
 
 type Facing = 'user' | 'environment'
 
@@ -118,6 +119,24 @@ export function ringFraction(totalMs: number): number {
   return totalMs <= 0 ? 0 : (totalMs % 60_000) / 60_000 || 1
 }
 
+const STEADY_KEY = 'recorder.steady'
+
+function readSteady(): boolean {
+  try {
+    return localStorage.getItem(STEADY_KEY) !== 'off'
+  } catch {
+    return true
+  }
+}
+
+function keepSteady(on: boolean): void {
+  try {
+    localStorage.setItem(STEADY_KEY, on ? 'on' : 'off')
+  } catch {
+    // Just not remembered.
+  }
+}
+
 /** How far the camera can be zoomed by pinching: the camera's own zoom when
  *  it has one, else the picture itself, up to 4 times. */
 const MAX_DIGITAL_ZOOM = 4
@@ -146,6 +165,11 @@ export function Recorder({ onDone, onCancel }: { onDone: (files: File[], clipSta
   const lengths = useRef<number[]>([])
   const [takeCount, setTakeCount] = useState(0)
   const [light, setLight] = useState(false)
+  /** Steadying each take when he taps Done (stabilize.ts): on unless he
+   *  turned it off, remembered. */
+  const [steady, setSteady] = useState(() => readSteady())
+  const [steadying, setSteadying] = useState<{ take: number; of: number; progress: number } | null>(null)
+  const skipSteady = useRef(false)
   const [torch, setTorch] = useState(false)
   const [quality, setQuality] = useState<string | null>(null)
   /** Where each new clip starts, in ms of the finished recording. */
@@ -480,8 +504,30 @@ export function Recorder({ onDone, onCancel }: { onDone: (files: File[], clipSta
     if (recording) await stop()
     stopAll()
     const total = lengths.current.reduce((a, b) => a + b, 0)
-    if (takes.current.length > 0) onDone([...takes.current], clipStarts(marks.current, total))
-    else onCancel()
+    if (takes.current.length === 0) {
+      onCancel()
+      return
+    }
+    // Each take steadied (stabilize.ts) - the iPhone gives a web page its
+    // camera without the Camera app's steadying (his ask, 2026-11-07).
+    const files = [...takes.current]
+    if (steady) {
+      skipSteady.current = false
+      for (const [i, take] of files.entries()) {
+        if (skipSteady.current) break
+        setSteadying({ take: i + 1, of: files.length, progress: 0 })
+        try {
+          const done = await stabilize(take, (progress) => setSteadying({ take: i + 1, of: files.length, progress }))
+          if (!skipSteady.current) files[i] = done.file
+          report({ kind: 'check', phase: 'steady', message: `${take.name}: ${done.changed ? `steadied, zoom ${done.zoom?.toFixed(2)}` : 'kept as it was'} - ${done.why ?? ''}` })
+        } catch (error) {
+          // As it was, rather than not at all.
+          report({ kind: 'fallback', phase: 'steady', message: `${take.name}: ${error instanceof Error ? error.message : String(error)}` })
+        }
+      }
+      setSteadying(null)
+    }
+    onDone(files, clipStarts(marks.current, total))
   }
 
   /** The last part recorded taken off - a stutter - and nothing else, so it
@@ -592,6 +638,20 @@ export function Recorder({ onDone, onCancel }: { onDone: (files: File[], clipSta
         <button type="button" className="recorder-round" aria-label="Flip camera" onClick={flip}>
           ⟲
         </button>
+        <button
+          type="button"
+          className={`recorder-round recorder-steady${steady ? ' on' : ''}`}
+          aria-label={steady ? 'Steadying on' : 'Steadying off'}
+          aria-pressed={steady}
+          onClick={() => {
+            const next = !steady
+            setSteady(next)
+            keepSteady(next)
+          }}
+        >
+          <span aria-hidden>✋</span>
+          <span className="recorder-steady-word">{steady ? 'Steady' : 'Off'}</span>
+        </button>
       </div>
 
       <div className="recorder-bottom">
@@ -630,6 +690,21 @@ export function Recorder({ onDone, onCancel }: { onDone: (files: File[], clipSta
           ✓
         </button>
       </div>
+      {steadying ? (
+        <div className="recorder-ask" role="dialog" aria-label="Steadying the picture">
+          <p>
+            Steadying the picture{steadying.of > 1 ? ` · clip ${steadying.take} of ${steadying.of}` : ''} · {Math.round(steadying.progress * 100)}%
+          </p>
+          <div className="bar">
+            <div style={{ width: `${Math.round(steadying.progress * 100)}%` }} />
+          </div>
+          <div className="recorder-ask-buttons">
+            <button type="button" className="btn" onClick={() => (skipSteady.current = true)}>
+              Skip
+            </button>
+          </div>
+        </div>
+      ) : null}
       {askDelete ? (
         <div className="recorder-ask" role="dialog" aria-label="Delete the last clip?">
           <p>Delete the last clip?</p>

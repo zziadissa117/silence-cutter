@@ -3,6 +3,25 @@
 Newest first. Every change says what it does, how to use it, and how it works
 underneath. Kept up to date with each commit.
 
+## Recorder: every take steadied, as the Camera app does
+App only: run ./deploy.sh.
+**What he said (2026-11-07):** "when I pick up my phone and I film with the back camera, or even ... the front camera
+too, it's so shaky ... Can you add a stabilizer".
+- Why: the iPhone's Camera app steadies its videos; a web page gets the camera without that (Safari has no setting for
+  it), so every take carried all of his hand's shake.
+- Now (`stabilize.ts`), when he taps Done each take is steadied: every frame measured against the one before, small
+  and grey, on the left and right edges - not the middle, where he moves - each counted only in the directions it has
+  detail in (a plain wall tells nothing), the two edges moving apart read as the phone tilting; the camera's path
+  smoothed over 0.8 s (a slow pan stays, the jitter goes); each frame moved and turned back onto it, zoomed only as
+  much as that needs (at most 15%). The sound is copied as it is; colours go through the usual re-tagging. A steady
+  take is left alone, and a steadied one is kept only when it measures at least a quarter steadier - otherwise the
+  original stays.
+- In the recorder: a "Steady" button under the flip button (on, remembered when turned off); "Steadying the picture
+  · 40%" with Skip after Done. Each take's result goes in his report (`check` / `steady`).
+- Checked here in Chrome for Testing on a made-up shaky 8 s 1080p take: shake 8.9 -> 0.8 px a frame, zoom 1.04, 14 s;
+  on a test pattern with its own moving shapes, the original was kept. Not checked on an iPhone.
+- Tests: `stabilize.test.ts`.
+
 ## Trial reels: "Make again" - every copy not out yet taken out and made again
 App only: run ./deploy.sh.
 **What he said (2026-11-06):** "it does the same exact thing for me ... Is there a button to do that, to fix the videos

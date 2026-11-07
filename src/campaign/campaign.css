@@ -1167,3 +1167,8 @@ input[type='color']::-webkit-color-swatch { border: 0.5px solid var(--edge); bor
 .format-kinds { display: flex; flex-direction: column; gap: 8px; }
 .format-kind { all: unset; box-sizing: border-box; display: flex; flex-direction: column; gap: 2px; padding: 12px; border-radius: 12px; border: 1px solid var(--edge); background: var(--surface-raised); cursor: pointer; }
 .format-kind:active { border-color: var(--accent); }
+
+/* The recorder's steadying switch (stabilize.ts): on by default. */
+.recorder-steady { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 0; font-size: 16px; line-height: 1; }
+.recorder-steady-word { font-size: 9px; font-weight: 600; margin-top: 2px; }
+.recorder-steady.on { background: rgb(255 255 255 / 0.9); color: #000; }
