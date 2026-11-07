@@ -4633,6 +4633,56 @@ export function CampaignApp() {
     asking !== null || Boolean(cutsJob && cutting) || Boolean(reviewJob && reviewing)
   inFlowRef.current = inFlow
 
+  // A login for Trial reels and nothing else (People, "Only Trial reels"):
+  // Trial reels, the keys it posts with, and signing out - no other screen.
+  // The server refuses everything else from it anyway (postiz trialOnly).
+  if (session?.only === 'trial' || posting?.profile.trialOnly === true) {
+    return (
+      <main className="tabbed trial-only">
+        <UpdateBanner safeToReload={false} handled />
+        {settingUpPosting || !posting ? (
+          <PostingSetup
+            again={posting !== null}
+            onDone={() => {
+              setPosting(postingHere())
+              setSettingUpPosting(false)
+            }}
+            onCancel={() => setSettingUpPosting(false)}
+          />
+        ) : campaigns === null ? null : (
+          <TrialView
+            campaigns={campaigns}
+            posting={posting}
+            jobs={batchJobs}
+            onCreate={createTrialCampaign}
+            onRun={() => runBatchesRef.current()}
+            removeJob={removeJob}
+            onRetry={startHeld}
+          />
+        )}
+        <p className="footnote">
+          {posting && !settingUpPosting ? (
+            <button type="button" className="linkbtn" onClick={() => setSettingUpPosting(true)}>
+              Postiz and Claude keys
+            </button>
+          ) : null}{' '}
+          <button
+            type="button"
+            className="linkbtn"
+            onClick={() => {
+              if (!window.confirm('Sign out?')) return
+              signOut()
+              setSession(null)
+              setSyncState({ kind: 'signed-out' })
+            }}
+          >
+            Sign out{session ? ` (${session.name})` : ''}
+          </button>
+        </p>
+      </main>
+    )
+  }
+
   return (
     <>
       <main className={inFlow ? 'flow' : 'tabbed'}>

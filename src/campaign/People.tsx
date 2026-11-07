@@ -25,8 +25,10 @@ export function People() {
   const [name, setName] = useState('')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const [made, setMade] = useState<{ name: string; link: string; until: string } | null>(null)
+  const [made, setMade] = useState<{ name: string; link: string; until: string; only?: boolean } | null>(null)
   const [copied, setCopied] = useState(false)
+  /** The new login gets Trial reels and nothing else. */
+  const [trialOnly, setTrialOnly] = useState(false)
 
   useEffect(() => {
     void listPeople().then(setPeople)
@@ -41,8 +43,9 @@ export function People() {
     setCopied(false)
     try {
       const login = name.trim().toLowerCase()
-      const { code, until } = await makeInvite(login)
-      setMade({ name: login, link: inviteLink(code), until })
+      const { code, until } = await makeInvite(login, trialOnly ? 'trial' : undefined)
+      setMade({ name: login, link: inviteLink(code), until, only: trialOnly })
+      setTrialOnly(false)
       setName('')
       setPeople(await listPeople())
     } catch (err) {
@@ -89,7 +92,7 @@ export function People() {
                       : 'Link expired - make a new one with the same name'
                     : p.status === 'paused'
                       ? 'Paused - every phone refused until you let it go'
-                      : `Their own campaigns and videos · on ${p.devices?.length ?? 0} phone${p.devices?.length === 1 ? '' : 's'}`}
+                      : `${p.only === 'trial' ? 'Trial reels only' : 'Their own campaigns and videos'} · on ${p.devices?.length ?? 0} phone${p.devices?.length === 1 ? '' : 's'}`}
                 </span>
               </div>
               {p.status === 'invited' ? null : (
@@ -107,7 +110,7 @@ export function People() {
                 </button>
               )}
             </div>
-            {p.status === 'active' ? (
+            {p.status === 'active' && p.only !== 'trial' ? (
               <div className="setting">
                 <div className="setting-text">
                   <span className="row-line">Trial reels</span>
@@ -157,6 +160,9 @@ export function People() {
               aria-label="Login name"
               onChange={(e) => setName(e.target.value)}
             />
+            <label className="row-line trial-only-pick">
+              <input type="checkbox" checked={trialOnly} onChange={(e) => setTrialOnly(e.target.checked)} /> Only Trial reels - nothing else in the Cutter
+            </label>
             {error ? <span className="row-line warn-text">{error}</span> : null}
           </div>
           <button type="button" className="btn small primary" disabled={busy || name.trim().length < 3} onClick={() => void make()}>
@@ -166,7 +172,10 @@ export function People() {
         {made ? (
           <div className="setting">
             <div className="setting-text">
-              <span className="row-name">Link for {made.name}</span>
+              <span className="row-name">
+                Link for {made.name}
+                {made.only ? ' · Trial reels only' : ''}
+              </span>
               <span className="row-line wrap">Works once, until {untilLabel(made.until)}. Send it only to them.</span>
               <span className="row-line wrap" style={{ userSelect: 'all', wordBreak: 'break-all' }}>
                 {made.link}

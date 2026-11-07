@@ -104,6 +104,8 @@ import { countBefore, type DayRow } from './dayRoom.ts'
 import { cleanPlace, instagramPlace, type Place } from './place.ts'
 import {
   TRIAL_CONFIG,
+  TRIAL_ONLY_CONFIG,
+  trialOnly,
   TRIAL_READ_SCHEMA,
   TRIAL_READ_SYSTEM,
   REWORD_CHECK,
@@ -254,6 +256,13 @@ async function spaceFor(token: unknown): Promise<string | null> {
   } catch {
     return null
   }
+}
+
+/** Whether a login may use Trial reels and nothing else (trial.ts). */
+async function trialOnlyFor(spaceId: string): Promise<boolean> {
+  ownerSpaceId ??= (await db.from('cutter_spaces').select('id').order('created_at').limit(1).maybeSingle()).data?.id ?? null
+  const { data } = await db.from('cutter_config').select('value').eq('key', TRIAL_ONLY_CONFIG).maybeSingle()
+  return trialOnly(spaceId, ownerSpaceId, trialSpaces(data?.value))
 }
 
 /** Whether a login may post Trial reels (trial.ts): the owner's, or one he
@@ -657,6 +666,8 @@ async function profileView(profile: Profile) {
     vapidPublic: vapid?.value ?? null,
     // Trial reels: on for the owner's login and the ones he turned it on for.
     trialReels: await trialAllowedFor(profile.space_id),
+    // Trial reels and nothing else (invited that way in People).
+    trialOnly: await trialOnlyFor(profile.space_id),
     // Buffer, the backup: its channels and the accounts it backs up - never the keys.
     backup: profile.settings.backup
       ? {
@@ -1851,6 +1862,8 @@ async function start(profile: Profile, body: Record<string, unknown>): Promise<R
   // A Trial reel only from a login allowed them: never a copy posted as a
   // normal Reel to someone's followers instead.
   if (batch?.trial && !(await trialAllowedFor(profile.space_id))) throw new Problem('Trial reels are not turned on for this login.')
+  // A login for Trial reels only posts nothing else - not by hand, not a batch.
+  if (!batch?.trial && (await trialOnlyFor(profile.space_id))) throw new Problem('This login can only post Trial reels.', false, 403)
   const carry = carryOver(meta.carry, (c) => finishCaption(c, rules.caption === 'paste' ? [] : rules.hashtags))
   // Music added with "Add music & approve": the new version goes out without
   // asking again - never past a brand's own say.

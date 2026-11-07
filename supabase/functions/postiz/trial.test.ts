@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 
 import { batchInfo } from './batch.ts'
-import { REWORDINGS, REWORD_CHECK_SYSTEM, TRIAL_READ_SYSTEM, checkedRewordings, cleanRead, rewordCheckRequest, learnedLimit, readFromHook, trialAllowed, trialProblem, trialSpaces, withAllowed, withLimit, withNotAllowed } from './trial.ts'
+import { REWORDINGS, TRIAL_ONLY_CONFIG, trialOnly, REWORD_CHECK_SYSTEM, TRIAL_READ_SYSTEM, checkedRewordings, cleanRead, rewordCheckRequest, learnedLimit, readFromHook, trialAllowed, trialProblem, trialSpaces, withAllowed, withLimit, withNotAllowed } from './trial.ts'
 
 describe('who may post Trial reels', () => {
   it('is the owner, and the logins he turned it on for', () => {
@@ -106,5 +106,14 @@ describe("the rewordings' check", () => {
     const out = checkedRewordings(hook, rewordings, { keep: [1], more: ["I promise you this is the\nhungriest I've ever felt", hook, "I swear this is the\nhungriest I've ever been"] })
     expect(out).toEqual(["I swear this is the\nhungriest I've ever been", "I promise you this is the\nhungriest I've ever felt"])
     expect(checkedRewordings(hook, rewordings, null)).toEqual([])
+  })
+})
+
+describe('a login for Trial reels and nothing else', () => {
+  it('is never the owner, and only the ones marked', () => {
+    expect(trialOnly('sam', 'owner', ['sam'])).toBe(true)
+    expect(trialOnly('jake', 'owner', ['sam'])).toBe(false)
+    expect(trialOnly('owner', 'owner', ['owner'])).toBe(false)
+    expect(TRIAL_ONLY_CONFIG).toBe('trial-only')
   })
 })

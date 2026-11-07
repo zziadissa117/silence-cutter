@@ -83,7 +83,8 @@ only, no Supabase); `./deploy-server.sh` ships the `postiz` and `cutter` functio
 - Trial reels (admins: the owner's login and the ones he turns on in People): `trialLoop.ts` (a batch of layout
   `trial` - the viral reels, how each copy differs), `viralReel.ts` (where the reel starts, its sound, a still),
   `TrialView.tsx` (More -> Trial reels); server `postiz/trial.ts` (`trialAllowed`, `trial-read`, Instagram's trial
-  limit learned), `settingsFor` (`is_trial_reel`), cutter `trial`; research in `docs/TRIAL_REELS_AND_ORIGINALITY.md`
+  limit learned), `settingsFor` (`is_trial_reel`), cutter `trial`; research in `docs/TRIAL_REELS_AND_ORIGINALITY.md`;
+  a login for Trial reels only: People tick -> cutter `invite only:'trial'`, cutter_config `trial-only`, postiz `trialOnly` refuses other posts, phone shell in `CampaignApp`
 - Batch mixing: `batch.ts` (`pickBatch`, `combos`; hooks in shares `looks`/`looksToMix` - headline looks and Claude + X; product steps `BatchStep` set in `StepOrder.tsx` - names and order only), made by `montageRender.ts` (reaction zoom; each step clip plays its moment, found by `stepPiece.ts` from frame sizes)
 - Wide clips -> 9:16: `framing916.ts` (Settings: Fill/Fit/Off)
 - Edit again: `store.ts` (markMade/reopenJob/expireMade, 2 h window), `PostsView.EditAgain`, `CampaignApp.editAgain/retireOld` (see ARCHITECTURE.md)

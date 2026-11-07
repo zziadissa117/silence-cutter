@@ -3,6 +3,21 @@
 Newest first. Every change says what it does, how to use it, and how it works
 underneath. Kept up to date with each commit.
 
+## People: a sign-in link for Trial reels and nothing else
+Needs deploying: run ./deploy-server.sh (./deploy.sh runs it by itself).
+**What he said (2026-11-07):** "make a new account for SAMTPNQ ... we want a magic link ... Only access to one feature:
+TRIAL REEL REPURPOSING. NOTHING ELSE".
+- Settings -> People, "A sign-in link for someone new": a new tick, **Only Trial reels - nothing else in the Cutter**.
+  The link is made as always (once, 48 h, they pick their password, their own empty space - nothing of his) and the
+  login is marked Trial-reels-only before it can be opened: Trial reels on, and cutter_config `trial-only` (a list of
+  space ids, as `trial-reels` - no table change). People shows it as "Trial reels only", with no switch to turn them off.
+- The lock is the server's: the posting function refuses any video from such a login that isn't a Trial reel copy
+  ("This login can only post Trial reels.", `postiz/trial.ts trialOnly`, in the send); its profile says `trialOnly`.
+  Sign-in and the link answer `only: 'trial'` (cutter `login`, `accept-invite`, `whoami`), kept with the session.
+- On their phone the Cutter is Trial reels alone: setting up their Postiz and Claude keys first, then the Trial reels
+  screen, and Sign out - no tabs, no other screen (`CampaignApp`, `TrialView` without Back).
+- Tests: `people.test.tsx`, `postiz/trial.test.ts`.
+
 ## Never a frozen face: a decoder that stops handing frames over is caught and picked up again
 App only: run ./deploy.sh.
 **What he said (2026-11-07):** a VAZA video "at exactly 2.5 seconds ... simply froze. The rest of the video kept going

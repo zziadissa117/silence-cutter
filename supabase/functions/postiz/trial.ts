@@ -17,6 +17,16 @@ export function trialAllowed(spaceId: string, ownerId: string | null, allowed: r
   return spaceId === ownerId || allowed.includes(spaceId)
 }
 
+/** The logins that may use Trial reels and nothing else (his ask,
+ *  2026-11-07, for SAMTPNQ: "Only access to one feature: TRIAL REEL
+ *  REPURPOSING. NOTHING ELSE") - cutter_config `trial-only`, the same shape,
+ *  written by the cutter function's `invite` (owner only). Never the owner. */
+export const TRIAL_ONLY_CONFIG = 'trial-only'
+
+export function trialOnly(spaceId: string, ownerId: string | null, only: readonly string[]): boolean {
+  return spaceId !== ownerId && only.includes(spaceId)
+}
+
 /** The list kept in cutter_config, whatever was stored. */
 export function trialSpaces(value: string | null | undefined): string[] {
   if (!value) return []

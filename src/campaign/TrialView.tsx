@@ -228,7 +228,8 @@ export function TrialView({
   campaigns: Campaign[]
   posting: LocalPosting | null
   jobs: Job[]
-  onBack: () => void
+  /** Back to More; none for a Trial-reels-only login, which has nothing else. */
+  onBack?: () => void
   /** Makes the Trial reels campaign, posting to this Instagram account. */
   onCreate: (accountId: string) => Promise<Campaign>
   /** Runs the loops now: tops up or trims to the number a day. */
@@ -624,7 +625,7 @@ export function TrialView({
   if (!profile) {
     return (
       <section className="screen trial">
-        <BackToMore onBack={onBack} />
+        {onBack ? <BackToMore onBack={onBack} /> : null}
         <div className="screen-head">
           <h1>Trial reels</h1>
         </div>
@@ -639,7 +640,7 @@ export function TrialView({
 
   return (
     <section className="screen trial">
-      <BackToMore onBack={onBack} />
+      {onBack ? <BackToMore onBack={onBack} /> : null}
       <div className="screen-head">
         <h1>Trial reels</h1>
       </div>

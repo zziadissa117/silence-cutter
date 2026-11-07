@@ -80,6 +80,8 @@ export interface Profile {
   /** Trial reels are on for this login: the owner's, or one he turned them
    *  on for in People (trialLoop.ts). Absent from an older server: off. */
   trialReels?: boolean
+  /** A login for Trial reels and nothing else (People): the app shows only them. */
+  trialOnly?: boolean
   vapidPublic: string | null
   /** Buffer as a backup for Postiz (postiz/buffer.ts); null until a key is pasted. */
   backup?: BackupView | null

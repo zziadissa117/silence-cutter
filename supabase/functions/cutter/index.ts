@@ -29,7 +29,8 @@
 //
 // Actions, all POST with a JSON body:
 //   login          { name, password }           -> { token, name }
-//   invite         { token, name }              -> { code, until }  owner only: a one-time link's code
+//   invite         { token, name, only? }       -> { code, until }  owner only: a one-time link's code;
+//                  only: 'trial' makes a login for Trial reels and nothing else (cutter_config `trial-only`)
 //   accept-invite  { code, password }           -> { token, name }  the link opened: once, within 48 h
 //   people         { token }                    -> { people }       owner only: the logins he made, with their phones
 //   pause          { token, name, paused }      -> { people }       owner only: a login stopped, or let go again
@@ -175,6 +176,22 @@ const ADMIN_NAME = 'admin'
 /** Trial reels: the logins he turned them on for, as space ids - read by the
  *  posting function too (postiz/trial.ts, same key and shape). */
 const TRIAL_CONFIG = 'trial-reels'
+/** Logins for Trial reels and nothing else - postiz/trial.ts TRIAL_ONLY_CONFIG. */
+const TRIAL_ONLY_CONFIG = 'trial-only'
+
+/** Whether a space is a Trial-reels-only login. */
+async function onlyTrial(spaceId: string): Promise<boolean> {
+  if (spaceId === (await ownerSpace())) return false
+  return trialSpaces((await configValues([TRIAL_ONLY_CONFIG]))[TRIAL_ONLY_CONFIG]).includes(spaceId)
+}
+
+/** A login made for Trial reels only: Trial reels on, and marked so. */
+async function makeTrialOnly(spaceId: string): Promise<void> {
+  const values = await configValues([TRIAL_CONFIG, TRIAL_ONLY_CONFIG])
+  const add = (key: string) => JSON.stringify([...trialSpaces(values[key]).filter((id) => id !== spaceId), spaceId])
+  await setConfig(TRIAL_CONFIG, add(TRIAL_CONFIG))
+  await setConfig(TRIAL_ONLY_CONFIG, add(TRIAL_ONLY_CONFIG))
+}
 
 function trialSpaces(value: string | null | undefined): string[] {
   if (!value) return []
@@ -255,7 +272,7 @@ async function login(body: Record<string, unknown>): Promise<Response> {
     if (!device) return reply({ error: 'Close the Cutter and open it again to update it, then sign in.' }, 400)
     const refused = await onDevice(space, device)
     if (refused) return reply({ error: refused }, 403)
-    return reply({ token: await makeToken(space.id, space.pass_hash, device.id), name })
+    return reply({ token: await makeToken(space.id, space.pass_hash, device.id), name, ...((await onlyTrial(space.id)) ? { only: 'trial' } : {}) })
   }
 
   const admin = await adminLogin(name, password)
@@ -296,18 +313,25 @@ async function invite(spaceId: string, body: Record<string, unknown>): Promise<R
     if (taken.status !== 'invited') return reply({ error: 'That login name is taken - pick another.' }, 409)
     const { error } = await db.from('cutter_spaces').update(link).eq('id', taken.id).eq('status', 'invited')
     if (error) return reply({ error: 'The server could not make the link. Try again.' }, 500)
+    if (body.only === 'trial') await makeTrialOnly(taken.id)
     return reply({ code, until })
   }
   // No password yet: an unguessable one that nobody knows, until the link.
   const salt = b64url(crypto.getRandomValues(new Uint8Array(16)))
-  const { error } = await db.from('cutter_spaces').insert({
-    name,
-    pass_salt: salt,
-    pass_hash: await hashPassword(b64url(crypto.getRandomValues(new Uint8Array(32))), salt),
-    status: 'invited',
-    ...link,
-  })
-  if (error) return reply({ error: 'The server could not make the link. Try again.' }, 500)
+  const { data: made, error } = await db
+    .from('cutter_spaces')
+    .insert({
+      name,
+      pass_salt: salt,
+      pass_hash: await hashPassword(b64url(crypto.getRandomValues(new Uint8Array(32))), salt),
+      status: 'invited',
+      ...link,
+    })
+    .select('id')
+    .single()
+  if (error || !made) return reply({ error: 'The server could not make the link. Try again.' }, 500)
+  // For Trial reels and nothing else: marked before the link can be opened.
+  if (body.only === 'trial') await makeTrialOnly(made.id)
   return reply({ code, until })
 }
 
@@ -336,7 +360,7 @@ async function acceptInvite(body: Record<string, unknown>): Promise<Response> {
   if (error) return reply({ error: 'The server could not check the link. Try again.' }, 500)
   if (!data) return reply(LINK_DEAD, 410)
   await onDevice({ id: data.id, name: data.name }, device, 'opened their sign-in link')
-  return reply({ token: await makeToken(data.id, data.pass_hash, device.id), name: data.name })
+  return reply({ token: await makeToken(data.id, data.pass_hash, device.id), name: data.name, ...((await onlyTrial(data.id)) ? { only: 'trial' } : {}) })
 }
 
 /** A phone signing in to a login made with a link: let in if it is one of
@@ -401,12 +425,15 @@ async function people(spaceId: string): Promise<Response> {
   const { data: devices } = rows.length > 0
     ? await db.from('cutter_devices').select('*').in('space_id', rows.map((r) => r.id)).is('removed_at', null).order('first_seen')
     : { data: [] }
-  const trial = trialSpaces((await configValues([TRIAL_CONFIG]))[TRIAL_CONFIG])
+  const values = await configValues([TRIAL_CONFIG, TRIAL_ONLY_CONFIG])
+  const trial = trialSpaces(values[TRIAL_CONFIG])
+  const only = trialSpaces(values[TRIAL_ONLY_CONFIG])
   return reply({
     people: rows.map((row) => ({
       name: row.name,
       status: row.status ?? 'active',
       trial: trial.includes(row.id),
+      ...(only.includes(row.id) ? { only: 'trial' } : {}),
       until: row.status === 'invited' ? row.invite_until : null,
       since: row.created_at,
       devices: ((devices ?? []) as { space_id: string; device_id: string; name: string; first_seen: string; last_seen: string }[])
@@ -719,7 +746,7 @@ Deno.serve(async (req) => {
     case 'whoami':
       // The engine (engine/) checks a phone's login with this: a valid token
       // gets its space's id back, nothing more.
-      return reply({ space: spaceId })
+      return reply({ space: spaceId, ...((await onlyTrial(spaceId)) ? { only: 'trial' } : {}) })
     case 'invite':
       return invite(spaceId, body)
     case 'people':

@@ -47,6 +47,9 @@ const LAST_PULL = 'lastPull'
 export interface Session {
   name: string
   token: string
+  /** A login for Trial reels and nothing else (made that way in People):
+   *  the app shows only them. The server refuses the rest anyway. */
+  only?: 'trial'
 }
 
 export function currentSession(): Session | null {
@@ -114,8 +117,8 @@ export async function askShared<T>(action: string, body: Record<string, unknown>
  *  The first sign-in on a phone also sends everything already on it, so
  *  nothing set up before signing in is left behind. */
 export async function signIn(name: string, password: string): Promise<Session> {
-  const { token, name: signedAs } = await call<{ token: string; name: string }>('login', { name, password, device: thisDevice() })
-  const session = { name: signedAs, token }
+  const { token, name: signedAs, only } = await call<{ token: string; name: string; only?: string }>('login', { name, password, device: thisDevice() })
+  const session: Session = { name: signedAs, token, ...(only === 'trial' ? { only: 'trial' as const } : {}) }
   keepSession(session)
   await setMeta(LAST_PULL, null)
   await enqueueEverything()
@@ -127,8 +130,8 @@ export async function signIn(name: string, password: string): Promise<Session> {
  *  sent up: a link opened on a phone that already holds someone's setups
  *  must not hand them to the new login. */
 export async function acceptInvite(code: string, password: string): Promise<Session> {
-  const { token, name } = await call<{ token: string; name: string }>('accept-invite', { code, password, device: thisDevice() })
-  const session = { name, token }
+  const { token, name, only } = await call<{ token: string; name: string; only?: string }>('accept-invite', { code, password, device: thisDevice() })
+  const session: Session = { name, token, ...(only === 'trial' ? { only: 'trial' as const } : {}) }
   keepSession(session)
   await setMeta(LAST_PULL, null)
   return session
@@ -174,6 +177,8 @@ export interface Person {
   devices?: { id: string; name: string; firstSeen: string; lastSeen: string }[]
   /** Trial reels are on for this login (his own always has them). */
   trial?: boolean
+  /** Made for Trial reels and nothing else. */
+  only?: 'trial'
 }
 
 /** Trial reels on or off for a login he made (the main login only). */
@@ -192,8 +197,8 @@ export async function removeDevice(name: string, device: string): Promise<Person
 }
 
 /** Makes a one-time sign-in link for a new login (the main login only). */
-export async function makeInvite(name: string): Promise<{ code: string; until: string }> {
-  const out = await askShared<{ code: string; until: string }>('invite', { name })
+export async function makeInvite(name: string, only?: 'trial'): Promise<{ code: string; until: string }> {
+  const out = await askShared<{ code: string; until: string }>('invite', { name, ...(only ? { only } : {}) })
   if (!out) throw new CloudError('Sign in first.')
   return out
 }
