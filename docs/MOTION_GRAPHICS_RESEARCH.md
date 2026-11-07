@@ -209,3 +209,34 @@ render service.
 
 Not verified here (needs a real iPhone or his account): Safari decoding of transparent WebM/MOV through WebCodecs,
 dotlottie-web speed and size on an iPhone, Malloy's current prices, terms and API.
+
+## The look he wants: his friend's reel (DfV1WNxs17W, 62 s, French, UGC tips) - added 2026-11-07
+
+He sent the file; frames looked at every 0.5 s. **This is not a set of fixed templates: the graphics explain
+exactly what is being said, built from a small kit of parts, appearing on the word.**
+
+- **Layout**: starts full screen on the face. From ~4 s the frame splits: top ~60% a light grey board with the
+  graphics, bottom the face (cropped on the face), a soft fade between them; captions sit on the seam. The last
+  ~6 s go back to full face.
+- **Captions**: white bold with a dark outline, 1-2 lines, the key word in green ("10K", "contrat", "CPM",
+  "maximum", "50 $").
+- **Hook counter**: a small white pill at the top, tiny label "PAR MOIS · UGC", "+7 937 $" counting up to
+  "+10 000 $" in green.
+- **Parts on the board** (each pops / slides in when its word is said, fades out when the idea ends):
+  title ("2 types de contrats"); white rounded cards with soft shadow and a coloured badge (BASE PAY purple,
+  CPM green); lines added inside a card with an icon or a check / cross ("par vidéo", "garanti", "très limité");
+  two phone thumbnails with view counts (50 vs 10 000), an "=" and price tags that change 25 $ -> 30 $ -> 50 $ as
+  spoken; a grid of tiles - 2 filled purple, the rest locked - then filling green with "∞ aucune limite par jour";
+  a dark monospace label ("max 1 ou 2 vidéos = max 50 $ / jour"); an app-window mock-up ("Générer des vidéos",
+  a button, tiles filling, counter "50 vidéos", timer "15 min"); a grid of thumbnails where some turn green
+  ("100k", "200k", "500k"); a calculation card (50 vidéos × 1 500 vues = 75 000 vues × 4 $/1000 = 300 $/jour,
+  the result counting up); a recap of both cards with ✓ / ✗.
+- **End card**: purple pill "+ Abonne-toi pour plus de tips UGC" at the top.
+- **Style**: flat, light grey, white cards, purple + green accents, small monospace labels, short pop / slide /
+  count-up moves. The app window says "codée avec Claude Code" - his friend most likely made these with Claude.
+
+**What it means for the build**: Claude writes a storyboard per video (scenes; in each, which parts, their words
+and numbers, the word each appears on), drawn by our own canvas renderer from a kit: split layout + face crop
+(`@mediapipe/tasks-vision` is already in the app), card, badge, check/cross line, tile grid, thumbnail with
+views, price / number counter, equation, code label, app-window mock-up, pill, title. All flat shapes and text:
+cheap to draw on the phone, no new dependency, nothing uploaded.
