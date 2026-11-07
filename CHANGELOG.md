@@ -3,6 +3,23 @@
 Newest first. Every change says what it does, how to use it, and how it works
 underneath. Kept up to date with each commit.
 
+## Never a frozen face: a decoder that stops handing frames over is caught and picked up again
+App only: run ./deploy.sh.
+**What he said (2026-11-07):** a VAZA video "at exactly 2.5 seconds ... simply froze. The rest of the video kept going
+... captions ... images ... my voice kept going, but my face just was stuck in time. Never let this happen again."
+- Why: the frame reader (`media/rangeReader.ts`) treats "the decoder has no more frames" as "this part is over". When
+  the phone's decoder stops handing frames over partway - with no error, which is what Safari sometimes does - the
+  render held the last frame to the end of the part while the sound, captions and pictures went on. A decoder that
+  threw an error was already picked up again; one that went quiet never was.
+- Now, after every part, the frames read are checked against where the part (or the video's own frames) ends: more
+  than half a second short is the decoder having stopped (`media/recovery.ts` `StoppedEarly`, `stoppedEarly`), and a
+  fresh decoder picks up after the last frame written, as for one that gives up - in the talking-video render
+  (`render.ts`) and every clip written whole (`clipParts.writeWhole`: joined recordings, batches, green screen,
+  clips before/after). If it keeps stopping at the same moment, the video isn't made and he is told where and why
+  (`stalledProblem`) - never sent out frozen. The plain cutter (`media/silenceCut.ts`) is unchanged.
+- Checked here: a real join of three clips in Chrome for Testing - 600 even frames, nothing wrongly taken for a stop.
+  Tests: `media/stall.test.ts`.
+
 ## Recorder: every take steadied, as the Camera app does
 App only: run ./deploy.sh.
 **What he said (2026-11-07):** "when I pick up my phone and I film with the back camera, or even ... the front camera

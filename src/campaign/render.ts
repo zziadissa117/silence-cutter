@@ -54,6 +54,7 @@ import { totalDuration, type Range } from '../media/silenceMath'
 import type { VideoLook } from './look'
 import { CAPTION_LEAD, captionAt, drawStyledCaption, captionRanges, type CaptionPosition, type CaptionSize, type CaptionStyle, type CaptionWord, PHRASE_HOLD_SEC } from './captions'
 import { decoderGaveUp, eachSound, firstShown, openClip, pause, visibleAgain, wholeOf, writeWhole, type Clip } from './clipParts'
+import { StoppedEarly, stalledProblem, stoppedEarly } from '../media/recovery'
 import { traceRead, traceStart, traceStep, traceWritten } from './renderTrace'
 import type { ClipPlace } from './clips'
 import { framingAt, logoPop, placeFrame, planMotion } from './effects'
@@ -566,6 +567,9 @@ export async function renderCampaignCut(
     // after the last frame written, and nothing already made is lost.
     let lastWritten = -Infinity
     let recovered = 0
+    // Where the video's own frames end: frames stopping before it are the
+    // decoder having stopped (StoppedEarly), not the video.
+    const videoLength = await videoTrack.computeDuration()
 
     const total = allSec
     let doneSoFar = 0
@@ -683,7 +687,9 @@ export async function renderCampaignCut(
           let decodeFrom = videoFrom
           for (;;) {
             try {
+              let seen = -Infinity
               for await (const sample of videoFrames!.range(from, end, decodeFrom)) {
+                seen = Math.max(seen, sample.timestamp)
                 // Written before the decoder gave up.
                 if (sample.timestamp <= lastWritten) {
                   sample.close()
@@ -821,6 +827,9 @@ export async function renderCampaignCut(
                 frame.close()
                 lastWritten = sample.timestamp
               }
+              // The frames ran out before the part's end, with no error: the
+              // decoder stopped. Never held frozen - picked up again.
+              if (stoppedEarly(seen, from, end, videoLength)) throw new StoppedEarly(Math.max(seen, from))
               return
             } catch (error) {
               if (!decoderGaveUp(error)) throw error
@@ -830,7 +839,7 @@ export async function renderCampaignCut(
                 // and not counted. It carries on from here when he is back.
                 await visibleAgain()
               } else {
-                if (recovered >= MAX_RECOVERIES) throw error
+                if (recovered >= MAX_RECOVERIES) throw error instanceof StoppedEarly ? stalledProblem(error.at) : error
                 recovered++
                 // A breath for the phone, then a fresh decoder from where
                 // this one stopped.

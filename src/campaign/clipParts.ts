@@ -22,7 +22,7 @@ import type { Range } from '../media/silenceMath'
 import { Resampler, fitChannels } from './reaction'
 
 export { decoderGaveUp, pause, visibleAgain } from '../media/recovery'
-import { decoderGaveUp, pause, visibleAgain } from '../media/recovery'
+import { StoppedEarly, decoderGaveUp, pause, stalledProblem, stoppedEarly, visibleAgain } from '../media/recovery'
 
 export interface Clip {
   input: Input
@@ -301,6 +301,8 @@ export async function writeWhole(
   const all = wholeOf(clip)
   const whole = window ? { start: Math.max(all.start, window.start), end: Math.min(all.end, window.end) } : all
   const packets = new EncodedPacketSink(clip.video)
+  // Where the clip's own picture ends - its sound may run on past it.
+  const pictureEnd = clip.video.computeDuration().catch(() => Infinity)
   const keyAt = async (t: number) => (await packets.getKeyPacket(t, { verifyKeyPackets: true }))?.timestamp ?? -Infinity
   let videoEnd = at
   let audioEnd = at
@@ -318,7 +320,9 @@ export async function writeWhole(
       try {
         for (;;) {
           try {
+            let seen = -Infinity
             for await (const sample of frames.range(from, whole.end, await keyAt(from))) {
+              seen = Math.max(seen, sample.timestamp)
               if (sample.timestamp <= done) {
                 sample.close()
                 continue
@@ -333,13 +337,16 @@ export async function writeWhole(
                 sample.close()
               }
             }
+            // The frames ran out before the clip's end, with no error: the
+            // decoder stopped - never held frozen, picked up again.
+            if (stoppedEarly(seen, from, whole.end, await pictureEnd)) throw new StoppedEarly(Math.max(seen, from))
             return
           } catch (error) {
             if (!decoderGaveUp(error)) throw error
             await frames.dispose().catch(() => {})
             if (document.visibilityState !== 'visible') await visibleAgain()
             else {
-              if (recoveries >= maxRecoveries) throw error
+              if (recoveries >= maxRecoveries) throw error instanceof StoppedEarly ? stalledProblem(error.at) : error
               recoveries++
               await pause(500)
             }

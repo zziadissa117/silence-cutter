@@ -9,6 +9,40 @@ export function decoderGaveUp(error: unknown): boolean {
   return !(error instanceof SilenceCutError) && (error instanceof DOMException || /decod/i.test(String(error)))
 }
 
+/** The decoder stopped handing frames over before the part's end - with no
+ *  error at all. The render held the last frame and went on: his face froze
+ *  while his voice, the captions and the pictures carried on (VAZA,
+ *  2026-11-06, "at exactly 2.5 seconds, the video simply froze"). Treated as
+ *  the decoder giving up: a fresh one picks up from the last frame. */
+export class StoppedEarly extends Error {
+  readonly at: number
+  constructor(at: number) {
+    super(`The video decoder stopped handing frames over at ${at.toFixed(2)} s`)
+    this.at = at
+  }
+}
+
+/** Frames missing for longer than this, where the video has them, is the
+ *  decoder having stopped - a recording's frames are never this far apart. */
+export const STALL_SEC = 0.5
+
+/** Whether frames stopped coming before the part's end: the last one read is
+ *  more than STALL_SEC before the end of the part - or of the video's own
+ *  frames, whichever comes first. */
+export function stoppedEarly(lastFrame: number, partStart: number, partEnd: number, videoEnd: number): boolean {
+  const until = Math.min(partEnd, videoEnd)
+  return until - partStart > STALL_SEC && Math.max(lastFrame, partStart) < until - STALL_SEC
+}
+
+/** What he is told when the decoder keeps stopping at the same moment: the
+ *  video is not made rather than made frozen. */
+export function stalledProblem(at: number): SilenceCutError {
+  const time = `${Math.floor(at / 60)}:${String(Math.floor(at % 60)).padStart(2, '0')}`
+  return new SilenceCutError(
+    `The phone kept stopping reading this video at ${time} - it wasn't made, rather than made with the picture frozen from there. Tap Try again; if it stops at the same moment again, that part of the recording is damaged - record it again or cut it out.`,
+  )
+}
+
 export const pause = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
 
 /** Resolves once the page is in front again. iOS takes the decoder away
