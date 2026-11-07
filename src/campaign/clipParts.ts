@@ -302,7 +302,9 @@ export async function writeWhole(
   const whole = window ? { start: Math.max(all.start, window.start), end: Math.min(all.end, window.end) } : all
   const packets = new EncodedPacketSink(clip.video)
   // Where the clip's own picture ends - its sound may run on past it.
-  const pictureEnd = clip.video.computeDuration().catch(() => Infinity)
+  const pictureEnd = Promise.resolve()
+    .then(() => clip.video.computeDuration())
+    .catch(() => Infinity)
   const keyAt = async (t: number) => (await packets.getKeyPacket(t, { verifyKeyPackets: true }))?.timestamp ?? -Infinity
   let videoEnd = at
   let audioEnd = at
