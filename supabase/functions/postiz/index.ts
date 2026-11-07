@@ -1051,7 +1051,7 @@ async function motionPlan(profile: Profile, body: Record<string, unknown>): Prom
   const chat: ChatTurn[] = (Array.isArray(body.chat) ? body.chat : [])
     .filter((t): t is { from: string; text: string } => Boolean(t) && typeof t === 'object' && typeof (t as { text?: unknown }).text === 'string')
     .slice(-12)
-    .map((t) => ({ from: t.from === 'claude' ? 'claude' : 'him', text: t.text.slice(0, 600) }))
+    .map((t): ChatTurn => ({ from: t.from === 'claude' ? 'claude' : 'him', text: t.text.slice(0, 600) }))
   const keys = await keysFor(profile.id)
   if (!keys.anthropic) throw new Problem('Your Anthropic key is missing - paste it in Settings, Posting.')
   if (keys.anthropic === FAKE_CLAUDE) return reply({ storyboard: fakeStoryboard(words.length), reply: current ? 'A fake change.' : '', costCents: 0 })
