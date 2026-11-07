@@ -8,7 +8,7 @@
 // it posts at are each person's own, kept in their profile on the server.
 // The phone keeps only which profile is its own, and whether it sends.
 
-import type { ChatTurn, Storyboard } from '../../supabase/functions/postiz/motion.ts'
+import type { ChatTurn, FormatAsk, Storyboard } from '../../supabase/functions/postiz/motion.ts'
 import type { ViewsByAccount } from './analytics'
 import { DEFAULT_WINDOW, LEAST_GAP_MINUTES, cleanWindow, evenTimes, windowTimes, type PostingWindow } from '../../supabase/functions/postiz/window.ts'
 import { cleanPlace, type Place } from '../../supabase/functions/postiz/place.ts'
@@ -632,7 +632,7 @@ export async function videoHeadline(words: string, campaignName: string): Promis
  *  the same job is the same job. A dropped connection while waiting is just
  *  asked again. */
 export async function motionPlan(
-  ask: { job: string; words: string[]; times: number[]; ask: string; storyboard?: Storyboard; chat?: ChatTurn[] },
+  ask: { job: string; words: string[]; times: number[]; ask: string; format?: FormatAsk; storyboard?: Storyboard; chat?: ChatTurn[] },
   { everyMs = 3000, wait = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms)) }: { everyMs?: number; wait?: (ms: number) => Promise<void> } = {},
 ): Promise<{ storyboard: Storyboard; reply: string; costCents: number }> {
   type Answer = { status?: 'working' | 'done' | 'failed'; storyboard?: Storyboard; reply?: string; costCents?: number; error?: string }

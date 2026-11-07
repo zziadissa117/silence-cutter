@@ -10,9 +10,10 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react'
 
-import { cleanStoryboard } from '../../../supabase/functions/postiz/motion.ts'
+import { cleanStoryboard, type FormatAsk } from '../../../supabase/functions/postiz/motion.ts'
 import { drawMotion, faceDropAt, fillBehindFace, type Timing } from './draw'
 import { FrameReader } from './frames'
+import { MiniPhone } from './FormatPicker'
 
 /** Seconds since `active` became true, ticking once a second; 0 while off. */
 export function useElapsed(active: boolean): number {
@@ -160,7 +161,7 @@ function Reading({ words }: { words: readonly string[] }) {
 }
 
 /** The planning screen: alive, honest, and something to look at. */
-export function Planning({ words, file, raw, ask }: { words: readonly string[]; file: Blob; raw: number; ask: string }) {
+export function Planning({ words, file, raw, ask, format = 'board' }: { words: readonly string[]; file: Blob; raw: number; ask: string; format?: FormatAsk }) {
   const seconds = useElapsed(true)
   const numbers = useMemo(() => numbersSaid(words), [words])
   // The numbers come in one after another, not all at once.
@@ -194,8 +195,8 @@ export function Planning({ words, file, raw, ask }: { words: readonly string[]; 
           </div>
         </div>
       ) : null}
-      <DemoBoard file={file} raw={raw} />
-      <p className="hint motion-demo-note">The style, over your video. Your own graphics come from your words.</p>
+      {format === 'words' ? <MiniPhone format="words" /> : <DemoBoard file={file} raw={raw} />}
+      <p className="hint motion-demo-note">The style you get. Your own graphics come from your words.</p>
     </div>
   )
 }

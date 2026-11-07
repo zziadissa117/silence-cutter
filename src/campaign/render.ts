@@ -73,7 +73,8 @@ import { Voice, measureLoudness, type WalkAudio } from './voice'
 import { frameRateOf, makeSize, videoQuality } from './quality'
 import { PopFrames, drawPop, occurrencesOf, popAt, popLayout, type PopLayout, type PopPosition } from './popVideo'
 import { report as reportProblem } from '../report'
-import type { Storyboard } from '../../supabase/functions/postiz/motion.ts'
+import type { EmphasisStyle, Storyboard } from '../../supabase/functions/postiz/motion.ts'
+import type { Kinetic } from './motion/words'
 import { drawMotion, faceDropAt, fillBehindFace } from './motion/draw'
 import { MotionTrack } from './motion/track'
 
@@ -184,7 +185,13 @@ export interface CampaignRenderInput {
   /** Motion graphics (More -> Motion graphics): the storyboard, and the
    *  words its numbers point at, on the raw video's timeline. While a scene
    *  is up his face moves down under the board (motion/draw.ts). */
-  motion?: { board: Storyboard; words: { start: number; end: number }[] }
+  motion?: {
+    board: Storyboard
+    words: { start: number; end: number }[]
+    /** The words look: his words as they build up under his face - in place
+     *  of the captions (motion/words.ts). */
+    kinetic?: { words: { text: string; start: number; end: number }[]; phrases: [number, number][]; styles: (EmphasisStyle | null)[] }
+  }
 }
 
 export interface CampaignRenderResult {
@@ -537,7 +544,14 @@ export async function renderCampaignCut(
       keep,
     )
     const brandPlacer = new MomentPlacer(brandMoments, keep)
-    const motionTrack = graphics && graphics.board.scenes.length + (graphics.board.hook ? 1 : 0) + (graphics.board.end ? 1 : 0) > 0 ? new MotionTrack(graphics.words, keep) : null
+    const motionTrack =
+      graphics && (graphics.board.scenes.length + (graphics.board.hook ? 1 : 0) + (graphics.board.end ? 1 : 0) > 0 || graphics.kinetic) ? new MotionTrack(graphics.words, keep) : null
+    // The words look's block: his shown words placed like the captions.
+    const kineticTrack = graphics?.kinetic ? new MotionTrack(graphics.kinetic.words, keep) : null
+    const kinetic: Kinetic | undefined =
+      graphics?.kinetic && kineticTrack
+        ? { words: graphics.kinetic.words, phrases: graphics.kinetic.phrases, timing: kineticTrack.timing, styleOf: (i) => graphics.kinetic!.styles[i] ?? null }
+        : undefined
     const motion = planMotion(
       gentle ? { ...look.effects, cutPunch: 'off', hookPush: 'off', brandHit: 'off' } : look.effects,
       keep.map((r) => r.end - r.start),
@@ -717,6 +731,7 @@ export async function renderCampaignCut(
                   for (const t of texts) t.placer.enterRange(index, videoShift)
                   for (const o of overlayClips) o.placer.enterRange(index, videoShift)
                   motionTrack?.enterRange(index, videoShift)
+                  kineticTrack?.enterRange(index, videoShift)
                 }
                 const timestamp = videoClock(sample.timestamp + videoShift)
                 const duration = sample.duration
@@ -821,7 +836,7 @@ export async function renderCampaignCut(
                 }
                 // The motion graphics over everything but the words: his own
                 // texts, the headline, logo and captions still read on top.
-                if (motionTrack && graphics) drawMotion(ctx, width, height, graphics.board, motionTrack.timing, timestamp)
+                if (motionTrack && graphics) drawMotion(ctx, width, height, graphics.board, motionTrack.timing, timestamp, kinetic)
                 for (const t of texts) if (inWindow(timestamp, t.placer.times, t.seconds)) drawHeadline(ctx, t.layout)
                 if (headline && timestamp - talkStart < look.headline.seconds) drawHeadline(ctx, headline)
                 if (logo && logoImage && inWindow(timestamp, logoPlacer.times, look.logo.seconds)) {

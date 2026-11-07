@@ -10,6 +10,25 @@
 // imports. Times are WORD INDEXES into the words Claude was given, so the
 // graphics land on the frame the word is said, whatever was cut.
 
+/** The two looks (his examples, 2026-11-07/08): "board" - his friend's reel,
+ *  a light board over the top with cards, grids and sums, his face below;
+ *  "words" - his face full screen, the words building up under it in mixed
+ *  sizes (one key word big, sometimes gold), numbered diamonds for lists,
+ *  white flashes and dimmed moments, a cinematic edge. */
+export type Format = 'board' | 'words'
+export const FORMATS: readonly Format[] = ['board', 'words']
+/** What he asks for: one of them, or Claude picks from what he says. */
+export type FormatAsk = Format | 'auto'
+
+/** In the words look: how a word stands out in its block. */
+export type EmphasisStyle = 'big' | 'gold' | 'serif'
+export interface Emphasis {
+  at: number
+  style: EmphasisStyle
+}
+
+export type Grade = 'warm' | 'teal' | 'none'
+
 export type Tone = 'purple' | 'green' | 'red' | 'dark'
 export const TONES: readonly Tone[] = ['purple', 'green', 'red', 'dark']
 
@@ -53,8 +72,17 @@ export type Part =
   | { kind: 'phones'; at: number; items: Phone[]; sign: '=' | 'vs' | null; prices: { text: string; at: number }[] }
   | { kind: 'math'; at: number; lines: { text: string; at: number }[]; result: { text: string; at: number } }
   | { kind: 'number'; at: number; label: string; text: string }
+  // The words look:
+  | { kind: 'diamonds'; at: number; items: { at: number }[] }
+  | { kind: 'point'; at: number; number: number; text: string }
+  | { kind: 'flash'; at: number; to: number }
+  | { kind: 'dim'; at: number; to: number; text: string }
 
 export type PartKind = Part['kind']
+
+/** Which parts belong to which look. */
+export const BOARD_PARTS: readonly PartKind[] = ['title', 'note', 'cards', 'list', 'tiles', 'phones', 'math', 'number']
+export const WORDS_PARTS: readonly PartKind[] = ['diamonds', 'point', 'flash', 'dim']
 
 export interface Scene {
   /** First and last word it is up for. */
@@ -66,6 +94,12 @@ export interface Scene {
 }
 
 export interface Storyboard {
+  /** The look. Missing on a plan from before there were two: the board. */
+  format?: Format
+  /** The words look: which words stand out in their block. */
+  emphasis?: Emphasis[]
+  /** The words look: the colour over the picture. */
+  grade?: Grade
   /** Over his face at the start: a small card with a number counting up. */
   hook: { at: number; to: number; label: string; text: string } | null
   scenes: Scene[]
@@ -73,7 +107,10 @@ export interface Storyboard {
   end: { at: number; text: string } | null
 }
 
-export const EMPTY_STORYBOARD: Storyboard = { hook: null, scenes: [], end: null }
+export const EMPTY_STORYBOARD: Storyboard = { format: 'board', emphasis: [], grade: 'none', hook: null, scenes: [], end: null }
+
+/** A plan's look; one from before there were two is the board. */
+export const formatOf = (board: Pick<Storyboard, 'format'>): Format => (board.format === 'words' ? 'words' : 'board')
 
 /** The most of each thing, so a frame never overflows. */
 export const MOTION_LIMITS = {
@@ -88,15 +125,19 @@ export const MOTION_LIMITS = {
   mathLines: 4,
   chars: 48,
   says: 160,
+  emphasis: 60,
+  diamonds: 5,
+  /** A white flash or a dimmed moment lasts at most this many words. */
+  flashWords: 8,
 } as const
 
-export const MOTION_SYSTEM = `You are the motion designer of a short vertical talking video (TikTok, Instagram Reels). The creator talks to the camera; you add clean, flat motion graphics that EXPLAIN what he says, appearing on the exact word he says it.
-
-How it looks (fixed, you only fill it): while a scene is up, the top 55% of the frame is a light grey board with the graphics and his face moves to the bottom. Between scenes he is full screen. Captions are already burned in - never repeat his sentences on the board; show the idea (a number, a comparison, a list, a sum).
+export const MOTION_SYSTEM = `You are the motion designer of a short vertical talking video (TikTok, Instagram Reels). The creator talks to the camera; you add motion graphics around what he says, each appearing on the exact word he says it.
 
 You get his words, numbered: [12]word. Every "at", "from", "to" is a word number. A part appears on its "at" word and stays until its scene ends.
 
-Building blocks (a scene has 1 to 4 parts, stacked top to bottom in the order you give):
+There are two looks ("format"). He may have picked one; if he says "you pick", choose the one that fits the video best: "board" for explaining with numbers, money, comparisons, steps; "words" for stories, opinions, tips, hot takes.
+
+FORMAT "board": while a scene is up, the top 55% of the frame is a light grey board with flat graphics and his face moves to the bottom; between scenes he is full screen. Captions are burned in already - never repeat his sentences on the board; show the idea. Parts (1 to 4 per scene, stacked top to bottom in your order):
 - title: a short heading, e.g. "2 types of contracts".
 - note: a small dark label in code font, e.g. "max 2 videos = max $50 / day".
 - cards: 1 to 3 white cards side by side, each with a coloured badge ("BASE PAY") and up to 4 short lines, each line appearing on its own word, optionally with a check or a cross.
@@ -105,18 +146,23 @@ Building blocks (a scene has 1 to 4 parts, stacked top to bottom in the order yo
 - phones: up to 10 phone thumbnails each with its views label ("1,2k"), "lit" for one that went viral; with 2 phones, "sign" "=" or "vs" between them and optional "prices" shown under both, each replacing the last on its word.
 - math: a sum built line by line ("50 videos", "× 1,500 views", "× $4 / 1000") and a big result ("= $300 / day") that counts up.
 - number: one big number that counts up, with a small label.
-Tones: purple, green, red, dark.
+Tones: purple, green, red, dark. Optional "hook": a small card over his face at the very start with a label and a number counting up (only for a striking number in his first sentence). 3 to 8 scenes for a 30-90 s video.
 
-Also, optional: "hook" - a small card over his face at the very start with a label and a number counting up (only if he says a striking number or result in his first sentence); "end" - a short banner near the end when he asks to follow/subscribe/comment.
+FORMAT "words": his face stays full screen with a dark cinematic edge. His words build up word by word in a block under his face (that IS the caption). You choose "emphasis": the words that stand out in their block - "big" (huge white, the key word of a phrase), "gold" (huge yellow capitals, for the strongest words: results, money, VIRAL, the hook), "serif" (a small fancy italic, for a little word before a big one, like "the" in "the Three"). About one emphasised word every 4-8 words; never two in a row. "grade": "warm" or "teal" colour over the picture, or "none". Parts (scenes here are just moments, the face never moves):
+- diamonds: numbered diamonds 1, 2, 3... in a row, each lighting up on its word - when he announces a list ("here are the three mistakes"). Up to 5.
+- point: one numbered diamond with a short UPPERCASE label at the side, while he talks about that point ("number": 1, "text": "NOT SETTING GOALS"). One scene per point.
+- flash: a quick cut to a plain white screen where his words show one at a time in black, from "at" to "to" (2 to 8 words) - for a punchy line. Use once or twice at most.
+- dim: the picture goes dark with a short text over it from "at" to "to" (a reaction like "Bruh....", a question). Use rarely.
+Optional "end": in "board" a banner at the top; in "words" big gold words like "DM 'EDIT'" - only when he asks to follow/subscribe/comment/DM.
 
 Rules:
 - Only what he actually says. Never invent numbers, names, prices or claims.
-- Short words on the board: at most 6 words per line, 48 characters.
-- Write the board in the language he speaks.
-- 3 to 8 scenes for a 30-90 s video; leave the hook and quick asides on his face. Scenes never overlap and go in order.
-- Each scene starts on the word that introduces its idea; parts come up as he says each piece.
+- Short words: at most 6 words per line, 48 characters.
+- Write everything in the language he speaks.
+- Scenes never overlap and go in order. Each starts on the word that introduces its idea.
 - "says": one plain sentence for him describing what shows in that scene.
-- If he asked for something, do it. When he asks to change the storyboard, change only what he asked and keep the rest the same; "reply" says in one short sentence what you changed (or answers his question).`
+- Only use the parts of the format you chose.
+- If he asked for something, do it. When he asks to change the storyboard, change only what he asked and keep the rest the same (switching format if he asks); "reply" says in one short sentence what you changed (or answers his question).`
 
 const TONE = { type: 'string', enum: TONES }
 const AT = { type: 'integer' }
@@ -134,7 +180,9 @@ const TIMED_TEXT = { type: 'object', properties: { text: TEXT, at: AT }, require
 const PART = {
   type: 'object',
   properties: {
-    kind: { type: 'string', enum: ['title', 'note', 'cards', 'list', 'tiles', 'phones', 'math', 'number'] },
+    kind: { type: 'string', enum: [...BOARD_PARTS, ...WORDS_PARTS] },
+    to: AT,
+    number: { type: 'integer' },
     at: AT,
     text: TEXT,
     label: TEXT,
@@ -149,7 +197,7 @@ const PART = {
     },
     items: {
       type: 'array',
-      items: { type: 'object', properties: { text: TEXT, at: AT, lit: { type: 'boolean' } }, required: ['text', 'at'], additionalProperties: false },
+      items: { type: 'object', properties: { text: TEXT, at: AT, lit: { type: 'boolean' } }, required: ['at'], additionalProperties: false },
     },
     count: { type: 'integer' },
     steps: {
@@ -176,6 +224,12 @@ export const MOTION_SCHEMA = {
   type: 'object',
   properties: {
     reply: TEXT,
+    format: { type: 'string', enum: FORMATS },
+    grade: { type: 'string', enum: ['warm', 'teal', 'none'] },
+    emphasis: {
+      type: 'array',
+      items: { type: 'object', properties: { at: AT, style: { type: 'string', enum: ['big', 'gold', 'serif'] } }, required: ['at', 'style'], additionalProperties: false },
+    },
     // Left out when there is none (optional fields, not a union: simpler for
     // the model, and cleanStoryboard reads a missing one as none).
     hook: { type: 'object', properties: { at: AT, to: AT, label: TEXT, text: TEXT }, required: ['at', 'to', 'label', 'text'], additionalProperties: false },
@@ -190,7 +244,7 @@ export const MOTION_SCHEMA = {
     },
     end: { type: 'object', properties: { at: AT, text: TEXT }, required: ['at', 'text'], additionalProperties: false },
   },
-  required: ['reply', 'scenes'],
+  required: ['reply', 'format', 'scenes'],
   additionalProperties: false,
 }
 
@@ -220,11 +274,12 @@ export interface ChatTurn {
 
 /** What Claude is told: the words, what he asked, and - when fixing - the
  *  storyboard as it is now and the chat so far. */
-export function motionMessage(words: string, ask: string, current: Storyboard | null, chat: readonly ChatTurn[]): string {
+export function motionMessage(words: string, ask: string, current: Storyboard | null, chat: readonly ChatTurn[], format: FormatAsk = 'auto'): string {
   return [
     'His words:',
     words,
     '',
+    format === 'auto' ? 'Format: you pick ("board" or "words").' : `Format: he picked "${format}".`,
     ask.trim() ? `What he asked for this video: ${ask.trim().slice(0, 600)}` : 'He asked for nothing in particular: you decide.',
     ...(current
       ? [
@@ -333,6 +388,29 @@ function cleanPart(raw: Record<string, unknown>, from: number, to: number, words
       const text = str(raw.text, 24)
       return text ? { kind: 'number', at, label: str(raw.label), text } : null
     }
+    case 'diamonds': {
+      const items = list(raw.items)
+        .slice(0, L.diamonds)
+        .map((item) => ({ at: inside(item.at, at) }))
+      // A count with no words given: they light up one word apart.
+      const count = typeof raw.count === 'number' && Number.isFinite(raw.count) ? Math.max(1, Math.min(L.diamonds, Math.round(raw.count))) : 0
+      while (items.length < count) items.push({ at: Math.min(to, (items[items.length - 1]?.at ?? at) + 1) })
+      if (items.length === 0) return null
+      items.sort((a, b) => a.at - b.at)
+      return { kind: 'diamonds', at: Math.min(at, items[0].at), items }
+    }
+    case 'point': {
+      const text = str(raw.text) || str(raw.label)
+      const number = typeof raw.number === 'number' && Number.isFinite(raw.number) ? Math.max(1, Math.min(99, Math.round(raw.number))) : 1
+      return text ? { kind: 'point', at, number, text: text.toUpperCase() } : null
+    }
+    case 'flash':
+    case 'dim': {
+      const end = Math.min(to, at + L.flashWords - 1, Math.max(at, inside(raw.to, at + 2)))
+      if (raw.kind === 'flash') return { kind: 'flash', at, to: end }
+      const text = str(raw.text, 24)
+      return text ? { kind: 'dim', at, to: end, text } : null
+    }
     default:
       return null
   }
@@ -344,6 +422,8 @@ function cleanPart(raw: Record<string, unknown>, from: number, to: number, words
 export function cleanStoryboard(value: unknown, words: number): Storyboard {
   if (!value || typeof value !== 'object' || words <= 0) return EMPTY_STORYBOARD
   const raw = value as Record<string, unknown>
+  const format: Format = raw.format === 'words' ? 'words' : 'board'
+  const allowed = format === 'words' ? WORDS_PARTS : BOARD_PARTS
   const scenes: Scene[] = []
   const rawScenes = list(raw.scenes)
     .map((s) => ({ s, from: wordAt(s.from, words, 0) }))
@@ -357,6 +437,7 @@ export function cleanStoryboard(value: unknown, words: number): Storyboard {
     const to = Math.max(from, wordAt(s.to, words, from))
     const parts = list(s.parts)
       .slice(0, MOTION_LIMITS.parts)
+      .filter((p) => allowed.includes(p.kind as PartKind))
       .flatMap((p) => cleanPart(p, from, to, words) ?? [])
     if (parts.length === 0) continue
     scenes.push({ from, to, says: str(s.says, MOTION_LIMITS.says), parts })
@@ -373,7 +454,26 @@ export function cleanStoryboard(value: unknown, words: number): Storyboard {
   }
   const endRaw = raw.end && typeof raw.end === 'object' ? (raw.end as Record<string, unknown>) : null
   const end = endRaw && str(endRaw.text) ? { at: wordAt(endRaw.at, words, words - 1), text: str(endRaw.text) } : null
-  return { hook, scenes, end }
+  // Each word once, in order; never two in a row.
+  const emphasis: Emphasis[] = []
+  if (format === 'words') {
+    const byWord = new Map<number, EmphasisStyle>()
+    for (const e of list(raw.emphasis)) {
+      if (e.style !== 'big' && e.style !== 'gold' && e.style !== 'serif') continue
+      byWord.set(wordAt(e.at, words, 0), e.style)
+    }
+    for (const [at, style] of [...byWord].sort((a, b) => a[0] - b[0])) {
+      if (emphasis.length >= MOTION_LIMITS.emphasis) break
+      const last = emphasis[emphasis.length - 1]
+      // A serif word leads into the big one after it ("the Three"); two big
+      // ones side by side read as shouting.
+      if (last && at === last.at + 1 && last.style !== 'serif' && style !== 'serif') continue
+      emphasis.push({ at, style })
+    }
+  }
+  const grade: Grade = format === 'words' && (raw.grade === 'warm' || raw.grade === 'teal') ? raw.grade : 'none'
+  // The hook card is the board's; in the words look the first block is it.
+  return { format, emphasis, grade, hook: format === 'board' ? hook : null, scenes, end }
 }
 
 function clampPart(part: Part, from: number, to: number): void {
@@ -400,6 +500,13 @@ function clampPart(part: Part, from: number, to: number): void {
       for (const line of part.lines) line.at = clamp(line.at)
       part.result.at = clamp(part.result.at)
       break
+    case 'diamonds':
+      for (const item of part.items) item.at = clamp(item.at)
+      break
+    case 'flash':
+    case 'dim':
+      part.to = Math.max(part.at, clamp(part.to))
+      break
     default:
       break
   }
@@ -411,8 +518,19 @@ export function cleanReply(value: unknown): string {
 }
 
 /** A storyboard for testing without Claude (the FAKE_CLAUDE key). */
-export function fakeStoryboard(words: number): Storyboard {
+export function fakeStoryboard(words: number, format: FormatAsk = 'board'): Storyboard {
   if (words < 6) return EMPTY_STORYBOARD
+  if (format === 'words') {
+    return cleanStoryboard(
+      {
+        format: 'words',
+        grade: 'warm',
+        emphasis: [{ at: 2, style: 'gold' }],
+        scenes: [{ from: 3, to: 5, says: 'Three diamonds light up.', parts: [{ kind: 'diamonds', at: 3, items: [{ at: 3 }, { at: 4 }, { at: 5 }] }] }],
+      },
+      words,
+    )
+  }
   const mid = Math.floor(words / 2)
   return cleanStoryboard(
     {

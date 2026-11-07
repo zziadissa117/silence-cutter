@@ -4,7 +4,7 @@
 // Its own small database, apart from the queue's (store.ts), so nothing of
 // the main Cutter can collide with it.
 
-import type { ChatTurn, Storyboard } from '../../../supabase/functions/postiz/motion.ts'
+import type { ChatTurn, FormatAsk, Storyboard } from '../../../supabase/functions/postiz/motion.ts'
 import type { CampaignPlan } from '../plan'
 import type { CaptionChoice } from './make'
 
@@ -14,6 +14,8 @@ export interface MotionSession {
   fileName: string
   /** What he typed for this video, if anything. */
   ask: string
+  /** The look he picked for it, or Claude picks. */
+  format?: FormatAsk
   plan?: CampaignPlan
   storyboard?: Storyboard
   chat: ChatTurn[]

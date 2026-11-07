@@ -11,7 +11,9 @@ import { blankAngle, blankCampaign, videoLook } from '../look'
 import { listen, type CampaignCallbacks } from '../pipeline'
 import type { CampaignPlan } from '../plan'
 import { renderCampaignCut } from '../render'
-import type { Storyboard } from '../../../supabase/functions/postiz/motion.ts'
+import { formatOf, type EmphasisStyle, type Storyboard } from '../../../supabase/functions/postiz/motion.ts'
+import type { Timing } from './draw'
+import { kineticPhrases, type Kinetic } from './words'
 
 /** A setting of the Videos tab, as it keeps it on this phone (CampaignApp
  *  usePref), so a motion video is cut and captioned the way his others are. */
@@ -82,6 +84,33 @@ export function captionLook(choice: CaptionChoice = {}): { position: CaptionPosi
   return { position: choice.position ?? 'usual', size: choice.size ?? defaultCaptionSize(), style: choice.style ?? defaultCaptionStyle() }
 }
 
+/** The words look's block: the captions as they will show (his fixes in),
+ *  split into blocks, and the words Claude picked to stand out - matched from
+ *  the words as heard by when they are said, so his retyping never moves
+ *  them. Empty with captions off. */
+export function kineticFor(
+  plan: CampaignPlan,
+  choice: CaptionChoice | undefined,
+  board: Storyboard,
+): { words: CaptionWord[]; phrases: [number, number][]; styles: (EmphasisStyle | null)[] } {
+  const words = shownCaptions(plan, choice)
+  const heard = storyWords(plan)
+  const styles: (EmphasisStyle | null)[] = words.map(() => null)
+  for (const e of board.emphasis ?? []) {
+    const at = heard[e.at]?.start
+    if (at === undefined) continue
+    let best = -1
+    for (let i = 0; i < words.length; i++) if (best < 0 || Math.abs(words[i].start - at) < Math.abs(words[best].start - at)) best = i
+    if (best >= 0 && Math.abs(words[best].start - at) < 0.35) styles[best] = e.style
+  }
+  return { words, phrases: kineticPhrases(words), styles }
+}
+
+/** The block as draw.ts takes it, for a still before it is made. */
+export function kineticStill(made: ReturnType<typeof kineticFor>, timing: Timing): Kinetic {
+  return { words: made.words, phrases: made.phrases, timing, styleOf: (i) => made.styles[i] ?? null }
+}
+
 /** The finished video. The storyboard's word numbers stay on the words as
  *  heard (storyWords), whatever he types into the captions. */
 export async function makeMotionVideo(
@@ -95,6 +124,7 @@ export async function makeMotionVideo(
   const settings = videoSettings()
   const words = storyWords(plan)
   const caption = captionLook(choice)
+  const wordsLook = formatOf(board) === 'words'
   const look = { ...videoLook(blankCampaign('motion'), blankAngle('motion', 'Motion graphics')), effects: { ...NO_EFFECTS } }
   const rendered = await renderCampaignCut(
     file,
@@ -108,12 +138,13 @@ export async function makeMotionVideo(
       pictureMoments: [],
       bankCues: [],
       seed,
-      captions: shownCaptions(plan, choice),
+      // In the words look the block under his face is the caption.
+      captions: wordsLook ? [] : shownCaptions(plan, choice),
       captionPosition: caption.position,
       captionSize: caption.size,
       captionStyle: caption.style,
       voice: settings.voice,
-      motion: { board, words },
+      motion: { board, words, ...(wordsLook ? { kinetic: kineticFor(plan, choice, board) } : {}) },
     },
     onProgress,
   )

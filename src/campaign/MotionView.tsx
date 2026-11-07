@@ -18,6 +18,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 
 import type { CaptionWord } from './captions'
+import type { Kinetic } from './motion/words'
 
 import type { ChatTurn, Storyboard } from '../../supabase/functions/postiz/motion.ts'
 import { forgetCut } from '../media/outputSink'
@@ -27,7 +28,9 @@ import { BackToMore } from './MoreView'
 import { drawMotion, faceDropAt, fillBehindFace, type Timing } from './motion/draw'
 import { FrameReader } from './motion/frames'
 import { Planning, useElapsed } from './motion/Planning'
-import { captionLook, captionsToEdit, drawCaptionAt, forClaude, hear, makeMotionVideo, shownCaptions, storyWords, type CaptionChoice } from './motion/make'
+import { AskExamples, FORMAT_INFO, FormatPicker, saveFormat, savedFormat } from './motion/FormatPicker'
+import { formatOf, type FormatAsk } from '../../supabase/functions/postiz/motion.ts'
+import { captionLook, captionsToEdit, drawCaptionAt, forClaude, hear, kineticFor, kineticStill, makeMotionVideo, shownCaptions, storyWords, type CaptionChoice } from './motion/make'
 import { CaptionReview } from './CaptionReview'
 import { clearSession, loadSession, saveSession, type MotionSession } from './motion/session'
 import { cutLength, cutTiming, rawTimeAt } from './motion/track'
@@ -70,6 +73,11 @@ export function MotionView({ onBack }: { onBack: () => void }) {
   const [step, setStep] = useState<Step>({ kind: 'loading' })
   const [problem, setProblem] = useState<string | null>(null)
   const [ask, setAsk] = useState('')
+  const [format, setFormat] = useState<FormatAsk>(savedFormat)
+  const chooseFormat = (next: FormatAsk) => {
+    setFormat(next)
+    saveFormat(next)
+  }
   const busy = useRef(false)
 
   // Back to where he was.
@@ -111,7 +119,7 @@ export function MotionView({ onBack }: { onBack: () => void }) {
       if (words.length < 3) throw new Error("No words were heard in this video, so there's nothing to put graphics on.")
       const sent = forClaude(words, current.plan!)
       setStep({ kind: 'planning', words: sent.words, raw: (current.plan!.keep[0]?.start ?? 0) + 1 })
-      const answer = await withinMinutes(motionPlan({ job: `${current.id}-${Date.now().toString(36)}`, ...sent, ask: current.ask }), PLAN_MINUTES)
+      const answer = await withinMinutes(motionPlan({ job: `${current.id}-${Date.now().toString(36)}`, ...sent, ask: current.ask, format: current.format ?? 'auto' }), PLAN_MINUTES)
       current = { ...current, storyboard: answer.storyboard, chat: [], costCents: current.costCents + answer.costCents }
       keep(current)
       setStep({ kind: 'plan' })
@@ -127,7 +135,7 @@ export function MotionView({ onBack }: { onBack: () => void }) {
   const pick = (files: File[]) => {
     const file = files[0]
     if (!file) return
-    const next: MotionSession = { id: `motion-${Date.now().toString(36)}`, file, fileName: file.name, ask: ask.trim(), chat: [], costCents: 0 }
+    const next: MotionSession = { id: `motion-${Date.now().toString(36)}`, file, fileName: file.name, ask: ask.trim(), format, chat: [], costCents: 0 }
     keep(next)
     void plan(next)
   }
@@ -177,15 +185,18 @@ export function MotionView({ onBack }: { onBack: () => void }) {
       {step.kind === 'pick' ? (
         <>
           <p className="lede">Drop in a talking video. It is cut like on Videos, Claude listens and plans graphics around what you say - you see the plan and fix it before anything is made.</p>
+          <div className="list-title">Which look</div>
+          <FormatPicker value={format} onChange={chooseFormat} />
           <label className="field">
             <span className="label">What you want (optional)</span>
             <textarea
               rows={2}
               value={ask}
-              placeholder="e.g. show the 3 tips as a list, make the money part big"
+              placeholder="Tap an example below, type your own, or leave it to Claude"
               onChange={(e) => setAsk(e.target.value)}
             />
           </label>
+          <AskExamples format={format} ask={ask} onPick={setAsk} />
           <VideoPicker className="drop motion-drop" label="Pick a talking video" onFiles={pick}>
             <span className="big">Pick a talking video</span>
             <span className="hint">One at a time · only your words go to Claude, never the video</span>
@@ -198,7 +209,7 @@ export function MotionView({ onBack }: { onBack: () => void }) {
         </>
       ) : null}
       {step.kind === 'hearing' ? <Working what={step.what} fraction={step.fraction} /> : null}
-      {step.kind === 'planning' && session ? <Planning words={step.words} file={session.file} raw={step.raw} ask={session.ask} /> : null}
+      {step.kind === 'planning' && session ? <Planning words={step.words} file={session.file} raw={step.raw} ask={session.ask} format={session.format === 'words' ? 'words' : 'board'} /> : null}
       {step.kind === 'making' ? <Working what="Making the video" fraction={step.fraction} note="Keep the app open - it is made on this phone." /> : null}
       {(step.kind === 'plan' || step.kind === 'making') && session?.plan && session.storyboard ? (
         <PlanScreen
@@ -207,6 +218,11 @@ export function MotionView({ onBack }: { onBack: () => void }) {
           onMake={() => void make()}
           onStartOver={() => void startOver()}
           onCaptions={() => setStep({ kind: 'captions' })}
+          onFormat={(next) => {
+            const again = { ...session, format: next, storyboard: undefined, chat: [] }
+            keep(again)
+            void plan(again)
+          }}
           making={step.kind === 'making'}
         />
       ) : null}
@@ -292,6 +308,7 @@ function PlanScreen({
   onMake,
   onStartOver,
   onCaptions,
+  onFormat,
   making,
 }: {
   session: MotionSession
@@ -299,11 +316,19 @@ function PlanScreen({
   onMake: () => void
   onStartOver: () => void
   onCaptions: () => void
+  onFormat: (format: FormatAsk) => void
   making: boolean
 }) {
   const plan = session.plan!
   const choice = session.captions
   const shown = useMemo(() => shownCaptions(plan, choice), [plan, choice])
+  const look = formatOf(session.storyboard!)
+  // The words look: his words building up under his face, as they will.
+  const kinetic = useMemo(() => {
+    if (look !== 'words') return undefined
+    const made = kineticFor(plan, choice, session.storyboard!)
+    return kineticStill(made, cutTiming(made.words, plan.keep))
+  }, [look, plan, choice, session.storyboard])
   const board = session.storyboard!
   const words = useMemo(() => storyWords(plan), [plan])
   const timing = useMemo(() => cutTiming(words, plan.keep), [words, plan])
@@ -326,13 +351,13 @@ function PlanScreen({
     let alive = true
     const canvas = big.current
     if (!canvas || !reader.current) return
-    void drawStill(reader.current, canvas, board, timing, shown, plan.keep, at, choice).then(() => {
+    void drawStill(reader.current, canvas, board, timing, shown, plan.keep, at, choice, kinetic).then(() => {
       if (!alive) return
     })
     return () => {
       alive = false
     }
-  }, [at, board, timing, shown, plan.keep, choice])
+  }, [at, board, timing, shown, plan.keep, choice, kinetic])
 
   // A small still of each scene, in its middle once its parts are up.
   useEffect(() => {
@@ -345,7 +370,7 @@ function PlanScreen({
         const canvas = document.createElement('canvas')
         canvas.width = STILL.width
         canvas.height = STILL.height
-        await drawStill(reader.current, canvas, board, timing, shown, plan.keep, t, choice)
+        await drawStill(reader.current, canvas, board, timing, shown, plan.keep, t, choice, kinetic)
         if (!alive) return
         const url = canvas.toDataURL('image/jpeg', 0.7)
         setStills((s) => ({ ...s, [i]: url }))
@@ -354,7 +379,7 @@ function PlanScreen({
     return () => {
       alive = false
     }
-  }, [board, timing, shown, plan.keep, choice])
+  }, [board, timing, shown, plan.keep, choice, kinetic])
 
   return (
     <div className="motion-plan">
@@ -404,6 +429,15 @@ function PlanScreen({
           </li>
         ) : null}
       </ul>
+      <div className="motion-look">
+        <span className="hint">
+          Look: <strong>{FORMAT_INFO[look].name}</strong>
+          {session.format === 'auto' || !session.format ? ' (Claude picked it)' : ''}
+        </span>
+        <button type="button" className="linkbtn" disabled={making} onClick={() => window.confirm(`Plan it again as ${FORMAT_INFO[look === 'board' ? 'words' : 'board'].name}? This plan is replaced.`) && onFormat(look === 'board' ? 'words' : 'board')}>
+          Switch to {look === 'board' ? 'Format 2 · Words' : 'Format 1 · Board'}
+        </button>
+      </div>
       <button type="button" className="btn wide" disabled={making} onClick={onCaptions}>
         {choice?.off ? 'Captions off - turn on or edit' : choice?.edited ? 'Edit captions (changed)' : 'Edit captions'}
       </button>
@@ -445,6 +479,7 @@ async function drawStill(
   keep: { start: number; end: number }[],
   t: number,
   choice?: CaptionChoice,
+  kinetic?: Kinetic,
 ): Promise<void> {
   const frame = await reader.frameAt(rawTimeAt(t, keep))
   const ctx = canvas.getContext('2d')
@@ -455,8 +490,9 @@ async function drawStill(
   const drop = faceDropAt(board, timing, t, height)
   fillBehindFace(ctx, width, drop)
   if (frame) ctx.drawImage(frame as CanvasImageSource, 0, drop, width, height)
-  drawMotion(ctx, width, height, board, timing, t)
-  drawCaptionAt(ctx, width, height, shown, keep, t, choice)
+  drawMotion(ctx, width, height, board, timing, t, kinetic)
+  // In the words look the block is the caption.
+  if (!kinetic) drawCaptionAt(ctx, width, height, shown, keep, t, choice)
 }
 
 /** The chat with Claude about the plan: each message changes the storyboard. */

@@ -381,6 +381,11 @@ make      motion/make.ts makeMotionVideo -> render.ts renderCampaignCut with `mo
   before it, `cutTiming` (captions.cutTime). Parts: title, note, cards (badge + lines with check/cross), list,
   tiles (grid filling, locks, app window, counter), phones (view counts, "=" and prices), math (lines + a result
   counting up), number. Limits in `MOTION_LIMITS`.
+- Two looks (`Storyboard.format`, picked before dropping in `motion/FormatPicker.tsx`, remembered in localStorage
+  `motion.format`, or 'auto' - Claude picks): "board" (below) and "words" (`motion/words.ts`): face full screen,
+  vignette + `grade`, his shown captions built up in blocks (`kineticPhrases`, `layoutBlock`) with Claude's
+  `emphasis` (big / gold / serif, matched to his fixed captions by time, `make.kineticFor`) in place of the
+  captions; parts diamonds, point, flash, dim; `end` as big gold words. render.ts gets `motion.kinetic`.
 - Look (`motion/draw.ts`): his friend's reel - while a scene is up a light board covers the top 55% and his face is
   drawn `FACE_DROP` (38% of the height) lower, faded into it; scenes closer than 1.2 s keep the board up. Drawn over
   the pictures, under his own texts, headline, logo and captions.

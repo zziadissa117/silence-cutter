@@ -10,8 +10,9 @@
 // labels, quick pop / slide / count-up moves. Everything is flat shapes and
 // text: cheap enough for an iPhone at 1080x1920, nothing to load.
 
-import type { Card, Part, Scene, Storyboard, Tone } from '../../../supabase/functions/postiz/motion.ts'
+import { formatOf, type Card, type Part, type Scene, type Storyboard, type Tone } from '../../../supabase/functions/postiz/motion.ts'
 import { HEADLINE_FAMILY } from '../headlineFont'
+import { drawWordsLook, type Kinetic } from './words'
 
 type Ctx = CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D
 
@@ -86,6 +87,8 @@ export function sceneWindows(board: Storyboard, time: Timing): { start: number; 
 /** How far the board is up at `t`: 0 his face full screen, 1 the board up
  *  and his face below it. Scenes close together keep it up between them. */
 export function splitAt(board: Storyboard, time: Timing, t: number): number {
+  // The words look never moves his face.
+  if (formatOf(board) === 'words') return 0
   const merged: { start: number; end: number }[] = []
   for (const w of sceneWindows(board, time)) {
     if (!Number.isFinite(w.start)) break
@@ -317,6 +320,9 @@ function partHeight(part: Part, u: number, innerW: number): number {
     }
     case 'math':
       return 3.4 * u + part.lines.length * 6.4 * u + (part.result.text ? 11 * u : 0) + 3 * u
+    default:
+      // The words look's parts are never on the board.
+      return 0
   }
 }
 
@@ -692,7 +698,11 @@ function drawEnd(ctx: Ctx, end: NonNullable<Storyboard['end']>, width: number, h
 /** Everything of the storyboard at `t` on the finished video: the board and
  *  the scene on it, the hook card, the end banner. His face is drawn first
  *  by the caller, moved down by faceDropAt. */
-export function drawMotion(ctx: Ctx, width: number, height: number, board: Storyboard, time: Timing, t: number): void {
+export function drawMotion(ctx: Ctx, width: number, height: number, board: Storyboard, time: Timing, t: number, kinetic?: Kinetic): void {
+  if (formatOf(board) === 'words') {
+    drawWordsLook(ctx, width, height, board, time, t, kinetic)
+    return
+  }
   const up = splitAt(board, time, t)
   drawBoardBackground(ctx, width, height, up)
   const u = width / 100

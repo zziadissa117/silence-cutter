@@ -62,7 +62,7 @@
 //                  words, their look and place from one still, and rewords them a word or two (trial.ts); only a
 //                  login allowed Trial reels (the owner's, or one he turned it on for in People)
 //                  (headlineIdeas.ts); insights also carries `trouble`, accounts whose views fell away (deadAccounts.ts)
-//   motion-plan    { profile, job, words, times?, ask?, storyboard?, chat? } -> { job, status: 'working' }
+//   motion-plan    { profile, job, words, times?, ask?, format?, storyboard?, chat? } -> { job, status: 'working' }
 //                  Motion graphics: Claude's storyboard for a talking video from its words, or the storyboard
 //                  changed as he asks in the chat (motion.ts), written in the background (longer than a request
 //                  may last). Only the words go, never the video.
@@ -104,7 +104,7 @@ import { LOOK_BACK_DAYS as HOOKS_LOOK_BACK_DAYS, hookInsights } from './hookInsi
 import { TELL_AGAIN_DAYS, USUAL_TO, deadAccounts, deadNote, type DeadAccount } from './deadAccounts.ts'
 import { IDEAS_SCHEMA, IDEAS_SYSTEM, cleanIdeas, ideasMessage } from './headlineIdeas.ts'
 import { NOTE_SCHEMA, NOTE_SYSTEM, cleanNote, noteMessage } from './handNote.ts'
-import { MOTION_SCHEMA, MOTION_SYSTEM, cleanReply, cleanStoryboard, fakeStoryboard, motionMessage, numberedWords, type ChatTurn, type Storyboard } from './motion.ts'
+import { MOTION_SCHEMA, MOTION_SYSTEM, cleanReply, cleanStoryboard, fakeStoryboard, motionMessage, numberedWords, type ChatTurn, type FormatAsk, type Storyboard } from './motion.ts'
 import { VIDEO_HEADLINE_SCHEMA, VIDEO_HEADLINE_SYSTEM, cleanVideoHeadline, pastHeadlines, videoHeadlineMessage } from './videoHeadline.ts'
 import { countBefore, type DayRow } from './dayRoom.ts'
 import { cleanPlace, instagramPlace, type Place } from './place.ts'
@@ -1054,6 +1054,7 @@ async function motionPlan(profile: Profile, body: Record<string, unknown>): Prom
   if (words.filter((w) => w.trim()).length < 3) throw new Problem('There are too few words in this video to put graphics on.')
   const times = (Array.isArray(body.times) ? body.times : []).slice(0, 3000).map((t) => (typeof t === 'number' && Number.isFinite(t) ? t : NaN))
   const ask = typeof body.ask === 'string' ? body.ask.slice(0, 600) : ''
+  const format: FormatAsk = body.format === 'board' || body.format === 'words' ? body.format : 'auto'
   const current = body.storyboard ? cleanStoryboard(body.storyboard, words.length) : null
   const chat: ChatTurn[] = (Array.isArray(body.chat) ? body.chat : [])
     .filter((t): t is { from: string; text: string } => Boolean(t) && typeof t === 'object' && typeof (t as { text?: unknown }).text === 'string')
@@ -1066,12 +1067,12 @@ async function motionPlan(profile: Profile, body: Record<string, unknown>): Prom
   const had = await readMotionJob(key)
   if (had) return reply(motionView(job, had))
   if (keys.anthropic === FAKE_CLAUDE) {
-    await writeMotionJob(key, { status: 'done', at: Date.now(), storyboard: fakeStoryboard(words.length), reply: current ? 'A fake change.' : '', costCents: 0 })
+    await writeMotionJob(key, { status: 'done', at: Date.now(), storyboard: fakeStoryboard(words.length, format), reply: current ? 'A fake change.' : '', costCents: 0 })
     return reply({ job, status: 'working' })
   }
   await writeMotionJob(key, { status: 'working', at: Date.now() })
   later(
-    planWithClaude(keys.anthropic, words, times, ask, current, chat)
+    planWithClaude(keys.anthropic, words, times, ask, current, chat, format)
       .then((done) => writeMotionJob(key, { status: 'done', at: Date.now(), ...done }))
       .catch((error) =>
         writeMotionJob(key, {
@@ -1143,6 +1144,7 @@ async function planWithClaude(
   ask: string,
   current: Storyboard | null,
   chat: ChatTurn[],
+  format: FormatAsk,
 ): Promise<{ storyboard: Storyboard; reply: string; costCents: number }> {
   const client = new Anthropic({ apiKey, maxRetries: 1, timeout: 4 * MINUTE })
   const request = {
@@ -1150,7 +1152,7 @@ async function planWithClaude(
     max_tokens: 12000,
     system: [{ type: 'text', text: MOTION_SYSTEM, cache_control: { type: 'ephemeral' } }],
     output_config: { effort: 'low', format: { type: 'json_schema', schema: MOTION_SCHEMA } },
-    messages: [{ role: 'user', content: motionMessage(numberedWords(words, times), ask, current, chat) }],
+    messages: [{ role: 'user', content: motionMessage(numberedWords(words, times), ask, current, chat, format) }],
   }
   let response
   try {
@@ -1173,7 +1175,7 @@ async function planWithClaude(
   }
   const storyboard = cleanStoryboard(parsed, words.length)
   const cost = costCents(message.usage?.input_tokens ?? 0, message.usage?.output_tokens ?? 0)
-  if (storyboard.scenes.length === 0 && !storyboard.hook) {
+  if (storyboard.scenes.length === 0 && !storyboard.hook && (storyboard.emphasis ?? []).length === 0) {
     throw new Problem(current ? "Claude's change didn't come back usable - try saying it another way." : "Claude couldn't plan graphics for this video - try again.")
   }
   return { storyboard, reply: cleanReply(parsed), costCents: cost }

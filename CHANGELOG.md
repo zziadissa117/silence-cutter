@@ -3,6 +3,26 @@
 Newest first. Every change says what it does, how to use it, and how it works
 underneath. Kept up to date with each commit.
 
+## Motion graphics: Format 2 (words), a look picker, and examples to tap
+Needs deploying: run ./deploy-server.sh (./deploy.sh runs it by itself).
+**What he said (2026-11-08):** "can we make like different type of formats? ... This is Format #2", "go built format
+2 and when choosing give description and little ui", "in the what you want (optional) give me some examples".
+- Before dropping a video: Which look - Claude picks / Format 1 · Board / Format 2 · Words - each a little phone
+  playing that look, with a line saying what it is for. The pick is remembered.
+- Format 2 · Words (his example reel): your face stays full screen under a dark cinematic edge (warm or teal); your
+  words build up word by word in a block under your face - small words, the key one huge (white, or gold capitals),
+  a fancy italic word before a big one ("the Three"). Numbered cyan diamonds light up when you announce a list, a
+  diamond with an UPPERCASE label for each point, a white flash with your words in black, a dimmed moment with a
+  word over it ("Bruh...."), big gold words at the end ("DM 'EDIT'"). The block is the caption: fix its words on
+  Edit captions as before, and the words Claude made big stay on them.
+- "What you want" has examples for the look you picked: tap to add, tap again to take out.
+- On the plan: which look it is (and that Claude picked it), and Switch to the other look - planned again.
+- Claude is told the look (or to pick: the board for numbers and money, the words for stories and tips).
+- Underneath: `motion.ts` `format`, `emphasis`, `grade`, parts `diamonds`/`point`/`flash`/`dim`; `motion/words.ts`
+  draws it; `motion/FormatPicker.tsx`; render.ts `motion.kinetic`. Plans made before keep the board look.
+- Tested here: rules, layout and drawing (vitest), the picker in a browser, and a real 20 s render in Chrome for
+  Testing with every part of the look. Not tested: an iPhone, a real plan from Claude.
+
 ## Motion graphics: captions you can fix, like on Videos
 App only: run ./deploy.sh.
 **What he said (2026-11-08):** "make it a little editable just like the cutter. meaning captions i can edit them".
