@@ -30,13 +30,18 @@ export function BufferBackup({ profile, onChanged }: { profile: Profile; onChang
   }
 
   const keys = backup?.keys ?? 0
+  // A login posting through Buffer only: Buffer is not a backup, it is the
+  // way out - a key can be added (its channels become accounts), never taken
+  // out, and there is no Postiz to be down.
+  const only = profile.settings.via === 'buffer'
   const matched = Object.entries(backup?.matched ?? {}).map(([id, channel]) => ({ id, channel, account: profile.accounts.find((a) => a.id === id) }))
   const named = (m: (typeof matched)[number]) => (m.account ? (m.account.platform === 'youtube' ? m.account.name : `@${handleOf(m.account) || m.account.name}`) : m.channel)
   const backedUp = matched.filter((m) => m.account?.platform !== 'youtube').map(named)
   const youtube = matched.filter((m) => m.account?.platform === 'youtube').map(named)
   const instagram = (backup?.channels ?? []).filter((c) => c.service === 'instagram').map((c) => c.name)
-  const line =
-    keys === 0
+  const line = only
+    ? `Every video goes out through Buffer, to ${profile.accounts.length} channel${profile.accounts.length === 1 ? '' : 's'}: ${profile.accounts.map((a) => a.name).join(', ')}. Another Buffer key adds its channels.`
+    : keys === 0
       ? 'Not set up. Paste a Buffer API key (in Buffer: Settings, API) - the accounts it backs up are found by themselves.'
       : backedUp.length > 0 || youtube.length > 0
         ? [
@@ -54,8 +59,8 @@ export function BufferBackup({ profile, onChanged }: { profile: Profile; onChang
     <>
       <div className="setting buffer-backup">
         <div className="setting-text">
-          <span className="row-name">Backup · Buffer{keys > 1 ? ` · ${keys} keys` : ''}</span>
-          <span className={`row-line wrap${keys > 0 && backedUp.length === 0 ? ' warn-text' : ''}`}>{line}</span>
+          <span className="row-name">{only ? 'Posting · Buffer' : 'Backup · Buffer'}{keys > 1 ? ` · ${keys} keys` : ''}</span>
+          <span className={`row-line wrap${!only && keys > 0 && backedUp.length === 0 ? ' warn-text' : ''}`}>{line}</span>
           {backup?.problem ? <span className="row-line wrap warn-text">{backup.problem}</span> : null}
         </div>
       </div>
@@ -73,7 +78,7 @@ export function BufferBackup({ profile, onChanged }: { profile: Profile; onChang
           {busy ? 'Checking…' : 'Add'}
         </button>
       </div>
-      {keys > 0 ? (
+      {keys > 0 && !only ? (
         <label className="toggle">
           <input type="checkbox" checked={Boolean(backup?.active)} disabled={busy} onChange={(e) => void run({ active: e.target.checked })} />
           <span>
@@ -86,7 +91,7 @@ export function BufferBackup({ profile, onChanged }: { profile: Profile; onChang
         </label>
       ) : null}
       {said ? <p className="hint warn-text">{said}</p> : null}
-      {keys > 0 ? (
+      {keys > 0 && !only ? (
         <button
           type="button"
           className="linkbtn"

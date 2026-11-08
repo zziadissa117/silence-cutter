@@ -138,6 +138,7 @@ import { VIEWS_WINDOW_DAYS, dueAt, fillPerVideo, notRead, parseCache, readViews,
 import { POST_VIEW_AGES_H, POST_VIEW_MAX_DAYS, accountNameFor, postViewCount, postViewsDue } from './postViews.ts'
 import {
   BUFFER_QUEUE,
+  channelAccount,
   HAND_AHEAD_MS,
   MISSED_MS,
   createPost as createBufferPost,
@@ -407,6 +408,8 @@ async function postizAllowance(key: string, need: PostizNeed): Promise<{ id: str
 }
 
 async function postiz<T>(key: string, method: string, path: string, body?: unknown, need: PostizNeed = 'post'): Promise<T> {
+  // A login that posts through Buffer has no Postiz key: never asked.
+  if (!key) throw new PostizProblem('This login posts through Buffer - Postiz is not connected.', false, 400)
   if (isFakePostiz(key)) {
     try {
       return (await fakePostiz(db, key, method, path, body)) as T
@@ -551,6 +554,11 @@ interface Profile {
     /** Buffer as a backup (buffer.ts): its channels as last read - never the
      *  keys, which are sealed with the Postiz key. */
     backup?: BackupSettings
+    /** 'buffer': this login posts through Buffer only, no Postiz (his ask,
+     *  2026-11-08: a login set up with a Buffer key instead). Its accounts are
+     *  its Buffer channels (`backup.channels`, same ids); every post goes
+     *  through Buffer at its time (scheduleViaBuffer). */
+    via?: 'buffer'
     /** Trial reels (trial.ts): each Instagram account's daily trial limit
      *  as Instagram showed it, and the accounts it won't take trials on. */
     trial?: TrialAccounts
@@ -1321,7 +1329,9 @@ async function connect(spaceId: string, body: Record<string, unknown>): Promise<
   const anthropicKey = typeof body.anthropicKey === 'string' ? body.anthropicKey.trim() : ''
   const timezone =
     typeof body.timezone === 'string' && body.timezone.length < 64 && isTimezone(body.timezone) ? body.timezone : 'America/Toronto'
-  if (!postizKey) throw new Problem('Paste your Postiz API key.')
+  const bufferKey = typeof body.bufferKey === 'string' ? body.bufferKey.trim() : ''
+  if (!postizKey && bufferKey) return await connectBuffer(spaceId, bufferKey, anthropicKey, timezone)
+  if (!postizKey) throw new Problem('Paste your Postiz or your Buffer API key.')
   let accounts: Account[]
   try {
     accounts = await listAccounts(postizKey)
@@ -1369,6 +1379,57 @@ async function connect(spaceId: string, body: Record<string, unknown>): Promise<
   return reply(await profileView(profile))
 }
 
+/** A login posting through Buffer only: set up with a Buffer key in place of
+ *  Postiz's. Its accounts are the key's channels; the key is sealed like a
+ *  backup key, and no Postiz key is kept (an empty one, never sent). Pasting
+ *  the same key again refreshes its channels. */
+async function connectBuffer(spaceId: string, bufferKey: string, anthropicKey: string, timezone: string): Promise<Response> {
+  if (bufferKey.length > 500 || /\s/.test(bufferKey)) throw new Problem("That doesn't look like a Buffer key - copy it again from Buffer: Settings, API.")
+  let channels: BufferChannel[]
+  try {
+    channels = await listChannels(bufferKey, 0)
+  } catch (error) {
+    throw new Problem(error instanceof Error ? error.message : String(error))
+  }
+  if (channels.length === 0) throw new Problem('That Buffer key has no channels yet - connect your accounts in Buffer first, then paste it again.')
+  if (anthropicKey) await checkAnthropicKey(anthropicKey)
+  const accounts = channels.map(channelAccount)
+  const keyHash = await sha256(`buffer:${bufferKey}`)
+  const now = new Date().toISOString()
+  const { data: existing } = await db.from('cutter_profiles').select('*').eq('space_id', spaceId).eq('key_hash', keyHash).maybeSingle()
+  let profile = existing as Profile | null
+  const backup: BackupSettings = { keys: 1, channels, active: false, checkedAt: now, problem: null }
+  if (profile) {
+    const { data } = await db
+      .from('cutter_profiles')
+      .update({ accounts, accounts_at: now, timezone, settings: { ...profile.settings, via: 'buffer', backup }, updated_at: now })
+      .eq('id', profile.id)
+      .select('*')
+      .single()
+    profile = data as Profile
+  } else {
+    if (!anthropicKey) throw new Problem('Paste your Anthropic API key too - Claude writes the captions with it.')
+    const { data, error } = await db
+      .from('cutter_profiles')
+      .insert({ space_id: spaceId, key_hash: keyHash, accounts, accounts_at: now, timezone, settings: { via: 'buffer', backup } })
+      .select('*')
+      .single()
+    if (error || !data) throw new Problem('Your posting could not be set up. Try again.', true, 500)
+    profile = data as Profile
+  }
+  const { data: secret } = await db.from('cutter_profile_secrets').select('anthropic_key').eq('profile_id', profile.id).maybeSingle()
+  if (!anthropicKey && !secret?.anthropic_key) throw new Problem('Paste your Anthropic API key too - Claude writes the captions with it.')
+  const { error } = await db.from('cutter_profile_secrets').upsert({
+    profile_id: profile.id,
+    postiz_key: await seal(''),
+    buffer_keys: await seal(JSON.stringify([bufferKey])),
+    anthropic_key: anthropicKey ? await seal(anthropicKey) : secret!.anthropic_key,
+    updated_at: now,
+  })
+  if (error) throw new Problem('Your keys could not be saved. Try again.', true, 500)
+  return reply(await profileView(profile))
+}
+
 function isTimezone(tz: string): boolean {
   try {
     new Intl.DateTimeFormat('en-US', { timeZone: tz })
@@ -1395,6 +1456,27 @@ async function checkAnthropicKey(apiKey: string): Promise<void> {
 }
 
 async function refreshAccounts(profile: Profile): Promise<Profile> {
+  if (profile.settings.via === 'buffer') {
+    // Its accounts are its Buffer channels, read again.
+    const keys = await bufferKeysFor(profile.id)
+    const channels: BufferChannel[] = []
+    for (const [i, key] of keys.entries()) {
+      try {
+        channels.push(...(await listChannels(key, i)))
+      } catch (error) {
+        throw new Problem(error instanceof Error ? error.message : String(error))
+      }
+    }
+    const now = new Date().toISOString()
+    const backup: BackupSettings = { ...(profile.settings.backup ?? { active: false, problem: null }), keys: keys.length, channels, checkedAt: now }
+    const { data } = await db
+      .from('cutter_profiles')
+      .update({ accounts: channels.map(channelAccount), accounts_at: now, settings: { ...profile.settings, backup } })
+      .eq('id', profile.id)
+      .select('*')
+      .single()
+    return data as Profile
+  }
   const { postiz: key } = await keysFor(profile.id)
   const accounts = await listAccounts(key)
   const { data } = await db
@@ -1834,6 +1916,11 @@ async function bufferKeysFor(profileId: string): Promise<string[]> {
 
 /** Postiz account id -> the Buffer channel that backs it up. */
 function backupFor(profile: Pick<Profile, 'accounts' | 'settings'>): Record<string, BufferChannel> {
+  // Posting through Buffer only: each account is its channel, every platform.
+  if (profile.settings.via === 'buffer') {
+    const byId = new Map((profile.settings.backup?.channels ?? []).map((c) => [c.id, c]))
+    return Object.fromEntries(profile.accounts.flatMap((a) => (byId.has(a.id) ? [[a.id, byId.get(a.id)!]] : [])))
+  }
   return matchChannels(profile.accounts, profile.settings.backup?.channels ?? [])
 }
 
@@ -1947,7 +2034,11 @@ async function saveBackup(profile: Profile, body: Record<string, unknown>): Prom
       keys = [...keys, pasted]
     }
   }
-  if (body.removeKeys === true) keys = []
+  if (body.removeKeys === true) {
+    // A login posting through Buffer only would have nothing to post with.
+    if (profile.settings.via === 'buffer') throw new Problem('This login posts through Buffer - its key stays. Paste a new one to add it.')
+    keys = []
+  }
   const channels: BufferChannel[] = []
   const problems: string[] = []
   for (const [i, key] of keys.entries()) {
@@ -1972,7 +2063,8 @@ async function saveBackup(profile: Profile, body: Record<string, unknown>): Prom
       problem: problems.join(' ') || null,
     },
   }))
-  return reply(await profileView(saved))
+  // Posting through Buffer only: a key added brings its channels in as accounts.
+  return reply(await profileView(saved.settings.via === 'buffer' ? await refreshAccounts(saved) : saved))
 }
 
 // --- A video arriving -----------------------------------------------------------
@@ -2253,7 +2345,7 @@ async function prepare(start: Post): Promise<Post> {
   }
 
   // A batch video's goes in with it, half a day before its time (schedule).
-  if (!post.media && !post.batch) {
+  if (!post.media && !post.batch && profile.settings.via !== 'buffer') {
     const backedUp = accounts.some((a) => backupFor(profile)[a.id])
     try {
       post = await mediaInPostiz(keys.postiz, post, backedUp)
@@ -2764,6 +2856,8 @@ async function schedule(start: Post): Promise<Post> {
     if (made.length > 0 && current.status !== 'scheduled') await deleteScheduled(keys.postiz, { ...current, postiz_ids: made }).catch(() => {})
     return current
   }
+  if (profile.settings.via === 'buffer') return scheduleViaBuffer(profile, post, send, now ? null : new Date(date).getTime(), scheduled)
+
   // YouTube's daily limit (Postiz's) is used up from the afternoon in
   // California. A YouTube copy due then goes through Buffer at its own time
   // when Buffer has that channel (its own limit); if not, or if Buffer turns
@@ -2881,6 +2975,41 @@ async function schedule(start: Post): Promise<Post> {
     }
     throw new PostizProblem(note, error.later, error.status)
   }
+}
+
+/** A login posting through Buffer only: every account of the post goes
+ *  through Buffer at its time (null: now). Buffer's free plan holds 10 posts
+ *  a channel, so one goes in only HAND_AHEAD_MS (6 h) before its time; a
+ *  channel that is full, or a refusal, is tried again in 10 minutes. */
+async function scheduleViaBuffer(
+  profile: Profile,
+  start: Post,
+  send: PostAccount[],
+  dueAt: number | null,
+  scheduled: (fields: Partial<Post>) => Promise<Post>,
+): Promise<Post> {
+  let post = start
+  // A Trial reel through Buffer would go to his followers as a normal Reel.
+  if (post.batch?.trial) throw new Problem("Trial reels need Postiz - Buffer would post them as normal Reels to your followers.")
+  const left = send.filter((a) => !post.buffer_ids?.[a.id])
+  if (left.length === 0) return scheduled({})
+  if (dueAt !== null && dueAt - Date.now() > HAND_AHEAD_MS) {
+    return update(post.id, { retry_at: new Date(dueAt - HAND_AHEAD_MS).toISOString(), error: null, attempts: 0, creating_at: null })
+  }
+  const handed = await toBuffer(profile, post, left, dueAt, await bufferRoom(profile))
+  post = handed.post
+  if (send.every((a) => post.buffer_ids?.[a.id])) return scheduled({})
+  const missing = send.filter((a) => !backupFor(profile)[a.id]).map((a) => a.name)
+  const note = [
+    missing.length > 0 ? `${missing.join(', ')} ${missing.length === 1 ? 'is' : 'are'} not in Buffer any more - reconnect in Buffer, then Refresh accounts.` : '',
+    handed.full.length > 0 ? `Buffer holds ${BUFFER_QUEUE} at a time for ${handed.full.join(', ')} - it goes in as soon as one is out.` : '',
+    ...handed.problems,
+  ]
+    .filter(Boolean)
+    .join(' ')
+  const attempts = handed.problems.length > 0 || missing.length > 0 ? post.attempts + 1 : post.attempts
+  if (attempts < MAX_ATTEMPTS) return update(post.id, { error: note, retry_at: new Date(Date.now() + 10 * MINUTE).toISOString(), attempts, creating_at: null })
+  throw new Problem(note || "Buffer didn't take it.", true)
 }
 
 interface PostizPost {
@@ -4154,6 +4283,8 @@ async function refreshViews(now: number): Promise<void> {
   const caches = new Map((saved ?? []).map((row: { key: string; value: string }) => [row.key, parseCache(row.value)]))
   let pick: { profileId: string; account: Account; cache: ViewsCache; due: number } | null = null
   for (const row of (profiles ?? []) as Pick<Profile, 'id' | 'accounts' | 'settings'>[]) {
+    // Views come from Postiz: a login posting through Buffer has none to read.
+    if (row.settings?.via === 'buffer') continue
     const inUse = new Set(Object.values(row.settings?.campaigns ?? {}).flatMap((c) => c.accounts ?? []))
     const cache = caches.get(viewsKey(row.id)) ?? { accounts: {} }
     for (const account of row.accounts ?? []) {

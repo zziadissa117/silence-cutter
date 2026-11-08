@@ -1,12 +1,13 @@
-// Setting posting up on this phone: this person's own Postiz key, and the
-// Anthropic key Claude writes the captions with. Both go straight to the
-// server and are kept there, encrypted - never on the phone. Pasting the
-// same Postiz key again, on a new phone or after a reinstall, finds the
-// same accounts and times.
+// Setting posting up on this phone: this person's own Postiz key - or a
+// Buffer key instead (his ask, 2026-11-08: "it can be a buffer api key too
+// that works better, make it so he can put either one") - and the Anthropic
+// key Claude writes the captions with. They go straight to the server and are
+// kept there, encrypted - never on the phone. Pasting the same key again, on
+// a new phone or after a reinstall, finds the same accounts and times.
 
 import { useState } from 'react'
 
-import { PostingError, connect, type Profile } from './posting'
+import { PostingError, connect, postingHere, type PostingService, type Profile } from './posting'
 
 export function PostingSetup({
   again,
@@ -18,6 +19,8 @@ export function PostingSetup({
   onDone: (profile: Profile) => void
   onCancel: () => void
 }) {
+  // Buffer unless this login already posts through Postiz.
+  const [service, setService] = useState<PostingService>(() => (again && postingHere()?.profile.settings.via !== 'buffer' ? 'postiz' : 'buffer'))
   const [postizKey, setPostizKey] = useState('')
   const [anthropicKey, setAnthropicKey] = useState('')
   const [busy, setBusy] = useState(false)
@@ -27,7 +30,7 @@ export function PostingSetup({
     setBusy(true)
     setError(null)
     try {
-      onDone(await connect(postizKey, anthropicKey))
+      onDone(await connect(postizKey, anthropicKey, service))
     } catch (err) {
       setError(err instanceof PostingError ? err.message : String(err))
     } finally {
@@ -46,8 +49,8 @@ export function PostingSetup({
         </button>
       </div>
       <div className="hint tip">
-        Finished videos go to your own Postiz, with a caption Claude writes from what you say. Your keys are kept on the
-        server, never on the phone - your friend uses his own.
+        Finished videos go out through your own Buffer or Postiz, with a caption Claude writes from what you say. Your keys
+        are kept on the server, never on the phone - use your own, not a friend's: it posts to that key's accounts.
       </div>
       <form
         className="editor"
@@ -56,8 +59,28 @@ export function PostingSetup({
           if (ready) void go()
         }}
       >
+        <div className="field">
+          <span className="label">Post through</span>
+          <div className="seg full" role="radiogroup" aria-label="Post through">
+            {(['buffer', 'postiz'] as const).map((s) => (
+              <button
+                key={s}
+                type="button"
+                role="radio"
+                aria-checked={service === s}
+                className={service === s ? 'active' : ''}
+                onClick={() => {
+                  setService(s)
+                  setError(null)
+                }}
+              >
+                {s === 'buffer' ? 'Buffer' : 'Postiz'}
+              </button>
+            ))}
+          </div>
+        </div>
         <label className="field">
-          <span className="label">Postiz API key</span>
+          <span className="label">{service === 'buffer' ? 'Buffer API key' : 'Postiz API key'}</span>
           <input
             type="password"
             value={postizKey}
@@ -67,7 +90,11 @@ export function PostingSetup({
             spellCheck={false}
             onChange={(e) => setPostizKey(e.target.value)}
           />
-          <span className="hint">In Postiz: Settings, then Public API. Copy the key.</span>
+          <span className="hint">
+            {service === 'buffer'
+              ? 'In Buffer: Settings, then API. Make a key and copy it. Your accounts are the channels connected in Buffer.'
+              : 'In Postiz: Settings, then Public API. Copy the key.'}
+          </span>
         </label>
         <label className="field">
           <span className="label">Anthropic API key</span>

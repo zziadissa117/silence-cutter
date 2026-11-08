@@ -269,3 +269,18 @@ export function roomLeft(
 export function isFull(message: string): boolean {
   return /limit|queue is full|upgrade|maximum|too many (scheduled )?posts/i.test(message)
 }
+
+/** A Buffer channel as one of his accounts, for a login posting through
+ *  Buffer only: its id is the channel's, its platform named as Postiz names
+ *  it, so the phone shows it the same way. */
+export function channelAccount(channel: BufferChannel): { id: string; name: string; platform: string; profile: string; picture: string; disabled: boolean } {
+  const platform: Record<string, string> = { twitter: 'x', googlebusiness: 'gmb' }
+  return {
+    id: channel.id,
+    name: channel.displayName || channel.name,
+    platform: platform[channel.service] ?? channel.service,
+    profile: channel.name,
+    picture: '',
+    disabled: false,
+  }
+}

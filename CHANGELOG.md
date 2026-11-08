@@ -3,6 +3,24 @@
 Newest first. Every change says what it does, how to use it, and how it works
 underneath. Kept up to date with each commit.
 
+## Posting: set up with a Buffer key or a Postiz key
+Needs deploying: run ./deploy-server.sh (./deploy.sh runs it by itself).
+**What he said (2026-11-08):** "for samtpnq account why are you forcing him to put a postiz api key, it can be a
+buffer api key too that works better, make it so he can put either one" - samtpnq had been given a friend's Postiz
+key, so its posts would have gone to that friend's accounts and shared his Postiz hour.
+- Settings, Posting setup: Post through Buffer / Postiz (Buffer first), then that key and the Anthropic key. A
+  Buffer key makes a login that posts through Buffer only: its accounts are the key's Buffer channels (Instagram,
+  TikTok, YouTube, Facebook...), picked per campaign as before.
+- Each video goes into Buffer 6 hours before its time (Buffer's free plan holds 10 a channel), at its time; a full
+  channel or a refusal is tried again every 10 minutes and then shown. Posted / failed and links come back from
+  Buffer as for the backup. Trial reels need Postiz (Buffer would post them to followers) and say so. Views
+  (Analytics) come from Postiz, so a Buffer login has none yet.
+- Settings shows "Posting · Buffer" with its channels; another key adds its channels; no "Postiz is down" switch
+  and no taking the key out.
+- Underneath: profile `settings.via = 'buffer'`, `connectBuffer`, `scheduleViaBuffer`, `backupFor` (each account is
+  its channel), `refreshAccounts` reads Buffer; `postiz()` never sends a request without a key (a Buffer login keeps
+  an empty sealed Postiz key - the column can't be empty - so no table change). `buffer.ts channelAccount`.
+
 ## Motion graphics: Format 2 (words), a look picker, and examples to tap
 Needs deploying: run ./deploy-server.sh (./deploy.sh runs it by itself).
 **What he said (2026-11-08):** "can we make like different type of formats? ... This is Format #2", "go built format

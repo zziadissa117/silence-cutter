@@ -455,6 +455,14 @@ copy (the outbox parts) until its post is posted, errored or rejected, for Buffe
 the signed `videoUrl`; without it (posts Postiz took before this), Postiz's own `media.path`. Reject,
 unschedule and stop also delete it in Buffer (`dropFromBuffer`).
 
+**A login posting through Buffer only** (2026-11-08, set up with a Buffer key in place of Postiz's: `connect`
+{ bufferKey } -> `connectBuffer`): profile `settings.via = 'buffer'`, its accounts its Buffer channels
+(`channelAccount`, id = channel id), the key in `buffer_keys`, an empty sealed `postiz_key` (NOT NULL column;
+`postiz()` refuses an empty key with a PostizProblem, so nothing ever asks Postiz for it). `backupFor` maps every
+account to its own channel; `prepare` keeps the server's copy (no Postiz media); `schedule` -> `scheduleViaBuffer`:
+in Buffer `HAND_AHEAD_MS` before its time via `toBuffer`, full / refused tried again in 10 min; `checkBuffer` marks
+it posted. `refreshAccounts` re-reads the channels; views are not read (`refreshViews` skips it). Trial reels refused.
+
 ## Formats (`formats.ts`, `FormatsView.tsx`)
 
 A format is an angle with `isFormat`: its look and the clips joined onto every video (clips.ts,

@@ -75,6 +75,9 @@ export interface Profile {
     /** Trial reels (postiz/trial.ts): each Instagram account's daily trial
      *  limit as Instagram showed it, and the accounts it won't take them on. */
     trial?: TrialAccounts
+    /** 'buffer': this login posts through Buffer only, no Postiz - its
+     *  accounts are its Buffer channels. */
+    via?: 'buffer'
   }
   timezone: string
   hasAnthropic: boolean
@@ -243,11 +246,15 @@ function remember(profile: Profile): Profile {
   return profile
 }
 
-/** Sets posting up on this phone with this person's keys - or finds their
- *  profile again, if the Postiz key has been used before. */
-export async function connect(postizKey: string, anthropicKey: string): Promise<Profile> {
+/** Where a login's videos are posted from: its own Postiz, or Buffer only. */
+export type PostingService = 'postiz' | 'buffer'
+
+/** Sets posting up on this phone with this person's keys - a Postiz key or a
+ *  Buffer key - or finds their profile again, if that key has been used
+ *  before. */
+export async function connect(key: string, anthropicKey: string, service: PostingService = 'postiz'): Promise<Profile> {
   const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone
-  return remember(await call<Profile>('connect', { postizKey, anthropicKey, timezone }))
+  return remember(await call<Profile>('connect', { ...(service === 'buffer' ? { bufferKey: key } : { postizKey: key }), anthropicKey, timezone }))
 }
 
 const askProfile = shared(async () => remember(await call<Profile>('profile', { profile: profileId() })), 2000)

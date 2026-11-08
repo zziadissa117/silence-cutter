@@ -4480,7 +4480,7 @@ export function CampaignApp() {
           <div className="screen-head">
             <h1>Posts</h1>
           </div>
-          <p className="lede">Connect Postiz once and every finished video can post to your accounts from here.</p>
+          <p className="lede">Connect Buffer or Postiz once and every finished video can post to your accounts from here.</p>
           <button type="button" className="btn primary" onClick={() => setSettingUpPosting(true)}>
             Set up posting
           </button>
