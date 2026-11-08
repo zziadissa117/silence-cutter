@@ -11,16 +11,22 @@ import { PostingError, connect, postingHere, type PostingService, type Profile }
 
 export function PostingSetup({
   again,
+  trialOnly = false,
   onDone,
   onCancel,
 }: {
   /** Already set up: the Anthropic key can be left empty to keep it. */
   again: boolean
+  /** A login for Trial reels only: they can't go through Buffer, so it is
+   *  said before he picks it - and Postiz comes first. */
+  trialOnly?: boolean
   onDone: (profile: Profile) => void
   onCancel: () => void
 }) {
   // Buffer unless this login already posts through Postiz.
-  const [service, setService] = useState<PostingService>(() => (again && postingHere()?.profile.settings.via !== 'buffer' ? 'postiz' : 'buffer'))
+  const [service, setService] = useState<PostingService>(() =>
+    trialOnly || (again && postingHere()?.profile.settings.via !== 'buffer') ? 'postiz' : 'buffer',
+  )
   const [postizKey, setPostizKey] = useState('')
   const [anthropicKey, setAnthropicKey] = useState('')
   const [busy, setBusy] = useState(false)
@@ -79,6 +85,12 @@ export function PostingSetup({
             ))}
           </div>
         </div>
+        {trialOnly && service === 'buffer' ? (
+          <p className="hint warn-text">
+            Trial reels can't go through Buffer: it would post them as normal Reels, to your followers - so with a Buffer key
+            none of your trial reels would go out. Use your own Postiz key for Trial reels.
+          </p>
+        ) : null}
         <label className="field">
           <span className="label">{service === 'buffer' ? 'Buffer API key' : 'Postiz API key'}</span>
           <input

@@ -4646,6 +4646,7 @@ export function CampaignApp() {
         {settingUpPosting || !posting ? (
           <PostingSetup
             again={posting !== null}
+            trialOnly
             onDone={() => {
               setPosting(postingHere())
               setSettingUpPosting(false)
@@ -4666,7 +4667,7 @@ export function CampaignApp() {
         <p className="footnote">
           {posting && !settingUpPosting ? (
             <button type="button" className="linkbtn" onClick={() => setSettingUpPosting(true)}>
-              Postiz and Claude keys
+              Posting keys (Buffer or Postiz) and Claude
             </button>
           ) : null}{' '}
           <button

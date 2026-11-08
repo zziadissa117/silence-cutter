@@ -3,6 +3,15 @@
 Newest first. Every change says what it does, how to use it, and how it works
 underneath. Kept up to date with each commit.
 
+## Trial reels logins: posting keys easy to find, and a warning about Buffer
+App only: run ./deploy.sh.
+**What he said (2026-11-08):** "make Sam TPNQ log in to let him go to his settings so he can change his API key from
+Postiz to Buffer". samtpnq is a Trial-reels-only login (People): its app is Trial reels and nothing else, so it has
+no Settings tab - its keys are behind the link at the bottom of Trial reels.
+- That link now says "Posting keys (Buffer or Postiz) and Claude", and opens the setup with the Buffer / Postiz
+  choice - Postiz first for this login, and with Buffer picked it says plainly that trial reels can't go through
+  Buffer (it would post them as normal Reels to his followers), so a Buffer key would post none of them.
+
 ## Motion graphics: Claude's "Schema is too complex" fixed
 Needs deploying: run ./deploy-server.sh (./deploy.sh runs it by itself).
 **What he said (2026-11-08):** "Claude said: 400 ... Schema is too complex. When generating motion graphics".

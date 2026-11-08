@@ -75,3 +75,14 @@ describe('posting set up with either key', () => {
     expect(sent[0]).toMatchObject({ action: 'connect', postizKey: 'pz-9' })
   })
 })
+
+describe('a Trial reels login', () => {
+  it('starts on Postiz and warns that trial reels cannot go through Buffer', async () => {
+    await act(async () => root.render(<PostingSetup again trialOnly onDone={() => {}} onCancel={() => {}} />))
+    expect(host.textContent).toContain('Postiz API key')
+    expect(host.textContent).not.toContain("Trial reels can't go through Buffer")
+    const buffer = [...host.querySelectorAll('[role=radio]')].find((b) => b.textContent === 'Buffer') as HTMLButtonElement
+    await act(async () => buffer.click())
+    expect(host.textContent).toContain("Trial reels can't go through Buffer")
+  })
+})
