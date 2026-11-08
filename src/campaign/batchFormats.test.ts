@@ -108,3 +108,21 @@ describe('more of the formats whose videos do better', () => {
     expect(count('r')).toBeGreaterThan(count('t'))
   })
 })
+
+import { talksIn } from './batch'
+
+describe('his voice in a talking head format (his report, 2026-11-08: "all the reaction clips are muted")', () => {
+  it('a clip in a Talking head format talks, read from the whole bank too (a remake), whatever its own old mark', () => {
+    const bank = godari()
+    const talk = { ...bank.reactions.find((r) => r.id === 'talk0')!, talks: false }
+    const react = bank.reactions.find((r) => r.id === 'react0')!
+    expect(talksIn(bank, talk)).toBe(true)
+    expect(talksIn(bank, react)).toBe(false)
+    // A green screen only when he turned "You talk in these" on.
+    const green = bank.reactions.find((r) => r.id === 'green0')!
+    expect(talksIn(bank, green)).toBe(false)
+    expect(talksIn({ ...bank, formats: formats.map((f) => (f.id === 'g' ? { ...f, voice: true } : f)) }, green)).toBe(true)
+    // An old bank with no formats keeps its own marks.
+    expect(talksIn({ voice: true }, { id: 'x', name: 'x', type: 'video/mp4', size: 1 })).toBe(true)
+  })
+})

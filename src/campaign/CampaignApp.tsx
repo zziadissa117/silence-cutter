@@ -39,7 +39,7 @@ import { TrialView } from './TrialView'
 import { MotionView } from './MotionView'
 import { afterMixing, daysLine, mixesOf, spreadOver } from './formats'
 import type { ViewsByAccount } from './analytics'
-import { bareName, filesOf, stepTitle, styleFor, stylesOf, type BankFile, type BatchBank } from './batch'
+import { bareName, filesOf, formatOfReaction, formatTalks, stepTitle, styleFor, stylesOf, type BankFile, type BatchBank } from './batch'
 import { followFavour } from './batchFavour'
 import { playsWhole } from './stepPiece'
 import { CampaignsView } from './CampaignsView'
@@ -1918,6 +1918,11 @@ export function CampaignApp() {
         const plan = planFor(next)
         let result: CampaignResult
         const green = next.montage?.bank?.greenScreen
+        // His voice kept: the video says so, or its clip is in a format he
+        // talks in - so a video planned without the mark (a remake, one
+        // planned before the fix) is never made muted (his report, 2026-11-08).
+        const reactionFormat = batchBank && next.montage?.bank ? formatOfReaction(batchBank, next.montage.bank.reaction.id) : null
+        const keepsVoice = next.montage?.bank?.voice === true || (reactionFormat ? formatTalks(reactionFormat) : false)
         if (next.montage?.bank && green) {
           // Green screen: him cut out once per reaction, then over the background.
           const reactionId = next.montage.bank.reaction.id
@@ -1938,7 +1943,7 @@ export function CampaignApp() {
             makeGreenScreen(background, cut, jobCampaign, jobAngle, next.headlineText, green, (p) => setPhase('cutting', p), {
               reactionName: file instanceof File ? file.name : undefined,
               // A reaction he talks in keeps his voice (batch.talksIn).
-              ...(next.montage.bank.voice ? { voice: file } : {}),
+              ...(keepsVoice ? { voice: file } : {}),
             }),
           )
         } else if (next.montage) {
@@ -1947,7 +1952,7 @@ export function CampaignApp() {
           // A talking head batch: what he says, heard once per clip
           // (talkCaptions.ts), drawn over it - unless captions are off.
           let said: CaptionWord[] = []
-          const talkingClip = next.montage.bank?.voice && !trialLook ? next.montage.bank.reaction : null
+          const talkingClip = next.montage.bank && keepsVoice && !trialLook ? next.montage.bank.reaction : null
           if (talkingClip && captionsRef.current) {
             try {
               if (!keptWords(talkingClip)) setPhase('listening', 0)
@@ -2004,7 +2009,7 @@ export function CampaignApp() {
                 : {}),
               // A Trial reel keeps its clip's shape: horizontal stays horizontal.
               keepShape: Boolean(trialLook),
-              voice: next.montage.bank?.voice === true,
+              voice: keepsVoice,
               windows: stepped ? [false, ...stepped.map((s) => !playsWhole(stepOf(s)))] : undefined,
               titles,
             }),

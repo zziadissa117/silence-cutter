@@ -3,6 +3,18 @@
 Newest first. Every change says what it does, how to use it, and how it works
 underneath. Kept up to date with each commit.
 
+## Batch: a clip in a Talking head format always keeps its sound
+**What he said (2026-11-08):** "For batches with talking heads ... all the reaction clips are muted, but they have
+to have sound on every single one of them."
+- Whether a clip of him keeps its sound now comes from the format it is in (`batch.talksIn` -> `formatTalks`): a
+  Talking head format always, a green screen when "You talk in these" is on. Before, only the mark stored on each
+  planned video counted, and a video planned from the whole bank - a remake after taking out a hook - lost it
+  (`batchRun` remade them from the bank, where his clips carry no mark of their own): music only.
+- When a video is made, the phone (or the Cutter server) also looks up the clip's format itself, so a video already
+  planned without the mark is made with his voice and captions anyway (`CampaignApp` `keepsVoice`).
+- If a talking clip ever gives no sound, the render now sends a `voice` report saying whether the clip has a sound
+  track and whether it could be read - so the next muted video says why.
+- Videos already made muted stay as they are; the ones still to be made get his voice.
 ## Trial-reels-only logins get Posts too
 App only: run ./deploy.sh.
 **What he said (2026-11-08):** "For Sam, can you add a post section too, because he can't even approve or see the
