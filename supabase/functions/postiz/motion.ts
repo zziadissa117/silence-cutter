@@ -39,11 +39,24 @@ export interface Line {
   mark: 'check' | 'cross' | null
 }
 
+/** The drawings on the board (src/campaign/motion/icons.ts): simple line
+ *  icons in the board's colours, drawn from code. His ask (2026-11-08): "make
+ *  the white part on top less plain right now its just text could be nice if
+ *  we had some drawings". */
+export const ICONS = [
+  'money', 'coins', 'chart-up', 'chart-down', 'video', 'camera', 'phone', 'eye', 'heart', 'star', 'fire', 'bolt',
+  'clock', 'calendar', 'user', 'users', 'target', 'bulb', 'lock', 'gift', 'cart', 'megaphone', 'trophy', 'warning',
+  'question', 'chat', 'play', 'globe', 'home', 'rocket', 'check', 'cross', 'arrow', 'hashtag', 'brain', 'tools',
+] as const
+export type Icon = (typeof ICONS)[number]
+
 export interface Card {
   badge: string
   tone: Tone
   at: number
   lines: Line[]
+  /** A drawing in its corner. */
+  icon?: Icon
 }
 
 export interface TileStep {
@@ -64,14 +77,16 @@ export interface Phone {
 }
 
 export type Part =
-  | { kind: 'title'; at: number; text: string }
+  | { kind: 'title'; at: number; text: string; icon?: Icon }
   | { kind: 'note'; at: number; text: string }
   | { kind: 'cards'; at: number; cards: Card[] }
-  | { kind: 'list'; at: number; items: { text: string; at: number }[] }
+  | { kind: 'list'; at: number; items: { text: string; at: number; icon?: Icon }[] }
+  /** 2 to 4 big drawings in a row, a word under each - the key ideas. */
+  | { kind: 'icons'; at: number; items: { icon: Icon; text: string; at: number; tone: Tone }[] }
   | { kind: 'tiles'; at: number; count: number; steps: TileStep[]; window: string; unit: string }
   | { kind: 'phones'; at: number; items: Phone[]; sign: '=' | 'vs' | null; prices: { text: string; at: number }[] }
   | { kind: 'math'; at: number; lines: { text: string; at: number }[]; result: { text: string; at: number } }
-  | { kind: 'number'; at: number; label: string; text: string }
+  | { kind: 'number'; at: number; label: string; text: string; icon?: Icon }
   // The words look:
   | { kind: 'diamonds'; at: number; items: { at: number }[] }
   | { kind: 'point'; at: number; number: number; text: string }
@@ -81,7 +96,7 @@ export type Part =
 export type PartKind = Part['kind']
 
 /** Which parts belong to which look. */
-export const BOARD_PARTS: readonly PartKind[] = ['title', 'note', 'cards', 'list', 'tiles', 'phones', 'math', 'number']
+export const BOARD_PARTS: readonly PartKind[] = ['title', 'note', 'cards', 'list', 'icons', 'tiles', 'phones', 'math', 'number']
 export const WORDS_PARTS: readonly PartKind[] = ['diamonds', 'point', 'flash', 'dim']
 
 export interface Scene {
@@ -146,7 +161,9 @@ FORMAT "board": while a scene is up, the top 55% of the frame is a light grey bo
 - phones: up to 10 phone thumbnails each with its views label ("1,2k"), "lit" for one that went viral; with 2 phones, "sign" "=" or "vs" between them and optional "prices" shown under both, each replacing the last on its word.
 - math: a sum built line by line ("50 videos", "× 1,500 views", "× $4 / 1000") and a big result ("= $300 / day") that counts up.
 - number: one big number that counts up, with a small label.
-Tones: purple, green, red, dark. Optional "hook": a small card over his face at the very start with a label and a number counting up (only for a striking number in his first sentence). 3 to 8 scenes for a 30-90 s video.
+- icons: 2 to 4 big drawings in a row, one short word under each, each on its word - for the key ideas, e.g. "video" "Film", "chart-up" "Grow", "money" "Earn".
+Tones: purple, green, red, dark.
+Drawings ("icon"): give most titles, cards, list rows and numbers an "icon" that fits, so the board is never just text, and use an "icons" part in some scenes. Only these: ${ICONS.join(', ')}. Optional "hook": a small card over his face at the very start with a label and a number counting up (only for a striking number in his first sentence). 3 to 8 scenes for a 30-90 s video.
 
 FORMAT "words": his face stays full screen with a dark cinematic edge. His words build up word by word in a block under his face (that IS the caption). You choose "emphasis": the words that stand out in their block - "big" (huge white, the key word of a phrase), "gold" (huge yellow capitals, for the strongest words: results, money, VIRAL, the hook), "serif" (a small fancy italic, for a little word before a big one, like "the" in "the Three"). About one emphasised word every 4-8 words; never two in a row. "grade": "warm" or "teal" colour over the picture, or "none". Parts (scenes here are just moments, the face never moves):
 - diamonds: numbered diamonds 1, 2, 3... in a row, each lighting up on its word - when he announces a list ("here are the three mistakes"). Up to 5.
@@ -181,14 +198,15 @@ export const MOTION_ANSWER = `Answer with ONE JSON object and nothing else - no 
   "end": {"at": 120, "text": "+ Follow for more"}           (optional)
 }
 Parts - "kind" and its fields:
-  {"kind": "title", "at": 14, "text": "..."}
+  {"kind": "title", "at": 14, "text": "...", "icon": "chart-up"}
   {"kind": "note", "at": 15, "text": "..."}
-  {"kind": "cards", "at": 15, "cards": [{"badge": "BASE PAY", "tone": "purple", "at": 15, "lines": [{"text": "...", "at": 18, "mark": "check" | "cross" | "none"}]}]}
-  {"kind": "list", "at": 15, "items": [{"text": "...", "at": 16}]}
+  {"kind": "icons", "at": 15, "items": [{"icon": "video", "text": "Film", "at": 15, "tone": "purple"}]}
+  {"kind": "cards", "at": 15, "cards": [{"badge": "BASE PAY", "tone": "purple", "at": 15, "icon": "money", "lines": [{"text": "...", "at": 18, "mark": "check" | "cross" | "none"}]}]}
+  {"kind": "list", "at": 15, "items": [{"text": "...", "at": 16, "icon": "clock"}]}
   {"kind": "tiles", "at": 15, "count": 10, "window": "", "unit": "videos", "steps": [{"at": 16, "filled": 2, "tone": "purple", "locked": true}]}
   {"kind": "phones", "at": 15, "items": [{"text": "1,2k", "at": 15, "lit": false}], "sign": "=" | "vs" | "none", "prices": [{"text": "25 $", "at": 20}]}
   {"kind": "math", "at": 15, "lines": [{"text": "50 videos", "at": 15}], "result": {"text": "= 300 $ / day", "at": 22}}
-  {"kind": "number", "at": 15, "label": "a day", "text": "300 $"}
+  {"kind": "number", "at": 15, "label": "a day", "text": "300 $", "icon": "money"}
   {"kind": "diamonds", "at": 15, "items": [{"at": 16}, {"at": 18}, {"at": 20}]}
   {"kind": "point", "at": 15, "number": 1, "text": "NOT SETTING GOALS"}
   {"kind": "flash", "at": 15, "to": 19}
@@ -261,6 +279,13 @@ const str = (value: unknown, max: number = MOTION_LIMITS.chars): string =>
 
 const toneOf = (value: unknown, fallback: Tone): Tone => (TONES.includes(value as Tone) ? (value as Tone) : fallback)
 
+/** A drawing it knows, or none. */
+const iconOf = (value: unknown): Icon | undefined => (ICONS.includes(value as Icon) ? (value as Icon) : undefined)
+const withIcon = (value: unknown) => {
+  const icon = iconOf(value)
+  return icon ? { icon } : {}
+}
+
 const list = (value: unknown): Record<string, unknown>[] =>
   Array.isArray(value) ? value.filter((v): v is Record<string, unknown> => Boolean(v) && typeof v === 'object') : []
 
@@ -277,10 +302,22 @@ function cleanPart(raw: Record<string, unknown>, from: number, to: number, words
   const at = inside(raw.at, from)
   const L = MOTION_LIMITS
   switch (raw.kind) {
-    case 'title':
+    case 'title': {
+      const text = str(raw.text) || str(raw.label)
+      return text ? { kind: 'title', at, text, ...withIcon(raw.icon) } : null
+    }
     case 'note': {
       const text = str(raw.text) || str(raw.label)
-      return text ? { kind: raw.kind, at, text } : null
+      return text ? { kind: 'note', at, text } : null
+    }
+    case 'icons': {
+      const items = list(raw.items)
+        .slice(0, 4)
+        .flatMap((item, i) => {
+          const icon = iconOf(item.icon)
+          return icon ? [{ icon, text: str(item.text, 20), at: inside(item.at, at), tone: toneOf(item.tone, i % 2 === 0 ? 'purple' : 'green') }] : []
+        })
+      return items.length > 0 ? { kind: 'icons', at: Math.min(at, ...items.map((i) => i.at)), items } : null
     }
     case 'cards': {
       const cards = list(raw.cards)
@@ -289,6 +326,7 @@ function cleanPart(raw: Record<string, unknown>, from: number, to: number, words
           badge: str(card.badge, 20).toUpperCase(),
           tone: toneOf(card.tone, i === 0 ? 'purple' : 'green'),
           at: inside(card.at, at),
+          ...withIcon(card.icon),
           lines: list(card.lines)
             .slice(0, L.lines)
             .flatMap((line) => {
@@ -303,7 +341,7 @@ function cleanPart(raw: Record<string, unknown>, from: number, to: number, words
     case 'list': {
       const items = list(raw.items)
         .slice(0, L.items)
-        .flatMap((item) => (str(item.text) ? [{ text: str(item.text), at: inside(item.at, at) }] : []))
+        .flatMap((item) => (str(item.text) ? [{ text: str(item.text), at: inside(item.at, at), ...withIcon(item.icon) }] : []))
       return items.length > 0 ? { kind: 'list', at: Math.min(at, ...items.map((i) => i.at)), items } : null
     }
     case 'tiles': {
@@ -346,7 +384,7 @@ function cleanPart(raw: Record<string, unknown>, from: number, to: number, words
     }
     case 'number': {
       const text = str(raw.text, 24)
-      return text ? { kind: 'number', at, label: str(raw.label), text } : null
+      return text ? { kind: 'number', at, label: str(raw.label), text, ...withIcon(raw.icon) } : null
     }
     case 'diamonds': {
       const items = list(raw.items)
@@ -461,6 +499,7 @@ function clampPart(part: Part, from: number, to: number): void {
       part.result.at = clamp(part.result.at)
       break
     case 'diamonds':
+    case 'icons':
       for (const item of part.items) item.at = clamp(item.at)
       break
     case 'flash':

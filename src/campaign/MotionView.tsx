@@ -607,7 +607,7 @@ function lastPartAt(scene: Storyboard['scenes'][number], timing: Timing): number
   for (const part of scene.parts) {
     ats.push(part.at)
     if (part.kind === 'cards') for (const c of part.cards) ats.push(c.at, ...c.lines.map((l) => l.at))
-    if (part.kind === 'list') ats.push(...part.items.map((i) => i.at))
+    if (part.kind === 'list' || part.kind === 'icons') ats.push(...part.items.map((i) => i.at))
     if (part.kind === 'tiles') ats.push(...part.steps.map((s) => s.at))
     if (part.kind === 'phones') ats.push(...part.items.map((i) => i.at), ...part.prices.map((p) => p.at))
     if (part.kind === 'math') ats.push(...part.lines.map((l) => l.at), part.result.at)

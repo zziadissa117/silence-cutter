@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { MOTION_ANSWER, cleanReply, cleanStoryboard, fakeStoryboard, motionMessage, numberedWords, parseMotionAnswer } from './motion.ts'
+import { MOTION_ANSWER, MOTION_SYSTEM, cleanReply, cleanStoryboard, fakeStoryboard, motionMessage, numberedWords, parseMotionAnswer } from './motion.ts'
 
 describe('the motion graphics storyboard Claude writes, made safe', () => {
   it('keeps every word number inside the words and scenes apart, in order', () => {
@@ -104,5 +104,35 @@ describe("Claude's answer as plain JSON (the strict schema was too complex for t
     expect(board.scenes[0].parts[0]).toMatchObject({ kind: 'diamonds' })
     expect(cleanReply(answer)).toBe('Planned it.')
     expect(MOTION_ANSWER).toContain('"kind": "diamonds"')
+  })
+})
+
+describe('drawings on the board (his ask: "less plain ... some drawings")', () => {
+  it('keeps the icons it knows on titles, cards, list rows, numbers and the icons row; drops the rest', () => {
+    const board = cleanStoryboard(
+      {
+        format: 'board',
+        scenes: [
+          {
+            from: 0,
+            to: 9,
+            says: '',
+            parts: [
+              { kind: 'title', at: 0, text: 'Grow', icon: 'chart-up' },
+              { kind: 'cards', at: 1, cards: [{ badge: 'a', tone: 'purple', at: 1, icon: 'unicorn', lines: [] }] },
+              { kind: 'icons', at: 2, items: [{ icon: 'video', text: 'Film', at: 2 }, { icon: 'nope', text: 'x', at: 3 }, { icon: 'money', text: 'Earn', at: 4, tone: 'green' }] },
+              { kind: 'number', at: 5, text: '300 $', icon: 'money' },
+            ],
+          },
+        ],
+      },
+      10,
+    )
+    const [title, cards, icons, number] = board.scenes[0].parts
+    expect(title).toMatchObject({ kind: 'title', icon: 'chart-up' })
+    expect(cards.kind === 'cards' && cards.cards[0].icon).toBeUndefined()
+    expect(icons.kind === 'icons' && icons.items.map((i) => i.icon)).toEqual(['video', 'money'])
+    expect(number).toMatchObject({ icon: 'money' })
+    expect(MOTION_SYSTEM).toContain('chart-up')
   })
 })

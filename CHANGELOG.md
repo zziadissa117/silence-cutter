@@ -3,6 +3,20 @@
 Newest first. Every change says what it does, how to use it, and how it works
 underneath. Kept up to date with each commit.
 
+## Motion graphics, Format 1: drawings on the board
+Needs deploying: run ./deploy-server.sh (./deploy.sh runs it by itself).
+**What he said (2026-11-08):** "make the white part on top less plain right now its just text could be nice if we
+had some drawings".
+- 36 drawings made for the app (money, coins, charts up and down, video, camera, phone, eye, heart, star, fire, bolt,
+  clock, calendar, people, target, bulb, lock, gift, cart, megaphone, trophy, warning, question, chat, play, globe,
+  home, rocket, check, cross, arrow, hashtag, brain, tools) - simple line icons on a soft disc in the board's
+  colours, drawn from code: nothing to load, sharp at any size, the same on the phone and the server
+  (`motion/icons.ts`).
+- Claude now gives most titles, cards, list rows and big numbers a drawing that fits, and a new part: a row of 2-4
+  big drawings with a word under each, for the key ideas (Film · Automate · Grow). Each pops in on its word, with a
+  pop sound.
+- The board itself is no longer plain grey: a faint dot grid and two soft glows of purple and green.
+
 ## Motion graphics: Claude checks the captions, as on Videos
 App only: run ./deploy.sh.
 **What he said (2026-11-08):** "add the claude inside the captions that verifies if they are good".

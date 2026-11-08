@@ -130,6 +130,9 @@ function partCues(part: Part, cues: SoundCue[]): void {
     case 'list':
       for (const item of part.items) cues.push({ sound: 'pop', at: item.at })
       return
+    case 'icons':
+      for (const item of part.items) cues.push({ sound: 'pop', at: item.at })
+      return
     case 'tiles':
       cues.push({ sound: 'pop', at: part.at })
       for (const step of part.steps) cues.push({ sound: 'tick', at: step.at })

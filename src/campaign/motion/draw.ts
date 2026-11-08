@@ -13,6 +13,7 @@
 import { formatOf, type Card, type Part, type Scene, type Storyboard, type Tone } from '../../../supabase/functions/postiz/motion.ts'
 import { HEADLINE_FAMILY } from '../headlineFont'
 import { drawWordsLook, type Kinetic } from './words'
+import { drawIconBadge } from './icons'
 import type { CaptionPosition } from '../captions'
 
 type Ctx = CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D
@@ -303,6 +304,9 @@ function partHeight(part: Part, u: number, innerW: number): number {
   switch (part.kind) {
     case 'title':
       return 8 * u
+    case 'icons':
+      // A big drawing on its disc, a word under it.
+      return 24 * u
     case 'note':
       return 6 * u
     case 'number':
@@ -393,8 +397,11 @@ function drawCard(ctx: Ctx, card: Card, box: Box, u: number, t: number, time: Ti
       ctx.fill()
     })
     const pad = 3 * u
+    // Its drawing in the top corner; the badge keeps clear of it.
+    const iconRoom = card.icon ? 7.5 * u : 0
+    if (card.icon) drawIconBadge(ctx, card.icon, box.x + box.w - pad - 3.2 * u, box.y + pad + 2.6 * u, 6.4 * u, toneColour(card.tone))
     if (card.badge) {
-      const fitted = fitText(ctx, card.badge, box.w - 2 * pad - 1.4 * u, 2.5 * u, 800, MONO)
+      const fitted = fitText(ctx, card.badge, box.w - 2 * pad - 1.4 * u - iconRoom, 2.5 * u, 800, MONO)
       pill(ctx, fitted.text, box.x + pad, box.y + pad + 2.2 * u, fitted.px, toneColour(card.tone), '#fff')
     }
     card.lines.forEach((line, i) => {
@@ -433,11 +440,15 @@ function drawList(ctx: Ctx, part: Extract<Part, { kind: 'list' }>, box: Box, u: 
         roundRect(ctx, box.x, y, box.w, 8.6 * u, 2.2 * u)
         ctx.fill()
       })
-      ctx.fillStyle = i % 2 === 0 ? COLOURS.purple : COLOURS.green
-      ctx.beginPath()
-      ctx.arc(box.x + 5 * u, y + 4.3 * u, 2.6 * u, 0, Math.PI * 2)
-      ctx.fill()
-      drawText(ctx, String(i + 1), box.x + 5 * u, y + 4.4 * u, 4 * u, 2.8 * u, '#fff', { weight: 800, align: 'center' })
+      const tone = i % 2 === 0 ? COLOURS.purple : COLOURS.green
+      if (item.icon) drawIconBadge(ctx, item.icon, box.x + 5 * u, y + 4.3 * u, 6.4 * u, tone)
+      else {
+        ctx.fillStyle = tone
+        ctx.beginPath()
+        ctx.arc(box.x + 5 * u, y + 4.3 * u, 2.6 * u, 0, Math.PI * 2)
+        ctx.fill()
+        drawText(ctx, String(i + 1), box.x + 5 * u, y + 4.4 * u, 4 * u, 2.8 * u, '#fff', { weight: 800, align: 'center' })
+      }
       drawText(ctx, item.text, box.x + 9.6 * u, y + 4.4 * u, box.w - 12 * u, 3.6 * u, COLOURS.ink, { weight: 600 })
     }, 2 * u)
   })
@@ -598,9 +609,41 @@ function drawPart(ctx: Ctx, part: Part, box: Box, u: number, t: number, time: Ti
   switch (part.kind) {
     case 'title': {
       const p = appear(t, time.start(part.at))
-      popIn(ctx, p, box.x + box.w / 2, box.y + box.h / 2, () =>
-        drawText(ctx, part.text, box.x + box.w / 2, box.y + box.h / 2, box.w, 5.4 * u, COLOURS.ink, { weight: 800, align: 'center' }),
-      )
+      popIn(ctx, p, box.x + box.w / 2, box.y + box.h / 2, () => {
+        if (!part.icon) {
+          drawText(ctx, part.text, box.x + box.w / 2, box.y + box.h / 2, box.w, 5.4 * u, COLOURS.ink, { weight: 800, align: 'center' })
+          return
+        }
+        // The drawing just before the words, the two centred together.
+        const badge = 7.6 * u
+        const fitted = fitText(ctx, part.text, box.w - badge - 2 * u, 5.4 * u, 800)
+        ctx.font = font(fitted.px, 800)
+        const textW = ctx.measureText(fitted.text).width
+        const left = box.x + (box.w - (badge + 1.6 * u + textW)) / 2
+        drawIconBadge(ctx, part.icon, left + badge / 2, box.y + box.h / 2, badge, COLOURS.purple)
+        drawText(ctx, fitted.text, left + badge + 1.6 * u, box.y + box.h / 2, textW + 1, fitted.px, COLOURS.ink, { weight: 800 })
+      })
+      return
+    }
+    case 'icons': {
+      const n = part.items.length
+      const gap = 3 * u
+      const w = (box.w - gap * (n - 1)) / n
+      const disc = Math.min(15 * u, w * 0.8)
+      part.items.forEach((item, i) => {
+        const cx = box.x + i * (w + gap) + w / 2
+        const p = appear(t, time.start(item.at))
+        popIn(ctx, p, cx, box.y + disc / 2, () => {
+          shadowed(ctx, u * 0.8, () => {
+            ctx.fillStyle = COLOURS.card
+            ctx.beginPath()
+            ctx.arc(cx, box.y + disc / 2 + 0.5 * u, disc / 2, 0, Math.PI * 2)
+            ctx.fill()
+          })
+          drawIconBadge(ctx, item.icon, cx, box.y + disc / 2 + 0.5 * u, disc, toneColour(item.tone))
+          if (item.text) drawText(ctx, item.text, cx, box.y + disc + 5 * u, w, 3.6 * u, COLOURS.ink, { weight: 700, align: 'center' })
+        }, 2 * u)
+      })
       return
     }
     case 'note': {
@@ -618,7 +661,20 @@ function drawPart(ctx: Ctx, part: Part, box: Box, u: number, t: number, time: Ti
       const p = appear(t, at)
       popIn(ctx, p, box.x + box.w / 2, box.y + box.h / 2, () => {
         if (part.label) drawText(ctx, part.label.toUpperCase(), box.x + box.w / 2, box.y + 2.4 * u, box.w, 2.6 * u, COLOURS.grey, { weight: 700, family: MONO, align: 'center' })
-        drawText(ctx, countText(part.text, clamp01((t - at + PART_LEAD) / COUNT_SEC)), box.x + box.w / 2, box.y + (part.label ? 5 : 0) * u + 6.5 * u, box.w, 11 * u, COLOURS.green, { weight: 800, align: 'center' })
+        const valueY = box.y + (part.label ? 5 : 0) * u + 6.5 * u
+        const value = countText(part.text, clamp01((t - at + PART_LEAD) / COUNT_SEC))
+        if (!part.icon) {
+          drawText(ctx, value, box.x + box.w / 2, valueY, box.w, 11 * u, COLOURS.green, { weight: 800, align: 'center' })
+          return
+        }
+        // Laid out on the number as it ends, so it doesn't slide while counting.
+        const badge = 11 * u
+        const fitted = fitText(ctx, part.text, box.w - badge - 3 * u, 11 * u, 800)
+        ctx.font = font(fitted.px, 800)
+        const textW = ctx.measureText(fitted.text).width
+        const left = box.x + (box.w - (badge + 2 * u + textW)) / 2
+        drawIconBadge(ctx, part.icon, left + badge / 2, valueY, badge, COLOURS.green)
+        drawText(ctx, value, left + badge + 2 * u, valueY, textW + 4 * u, fitted.px, COLOURS.green, { weight: 800 })
       })
       return
     }
@@ -648,6 +704,23 @@ function drawBoardBackground(ctx: Ctx, width: number, height: number, alpha: num
   grad.addColorStop(1, COLOURS.boardLow)
   ctx.fillStyle = grad
   ctx.fillRect(0, 0, width, bottom)
+  // Never a plain grey: two soft glows of the board's colours and a faint
+  // dot grid, like a designer's canvas.
+  const u = width / 100
+  for (const [x, y, r, colour] of [
+    [0.12, 0.25, 0.55, 'rgba(91, 80, 232, 0.09)'],
+    [0.92, 0.75, 0.5, 'rgba(31, 177, 90, 0.08)'],
+  ] as const) {
+    const glow = ctx.createRadialGradient(width * x, bottom * y, 0, width * x, bottom * y, width * r)
+    glow.addColorStop(0, colour)
+    glow.addColorStop(1, 'rgba(255, 255, 255, 0)')
+    ctx.fillStyle = glow
+    ctx.fillRect(0, 0, width, bottom)
+  }
+  ctx.fillStyle = 'rgba(30, 30, 50, 0.07)'
+  const step = 4 * u
+  const dot = Math.max(1, 0.32 * u)
+  for (let y = step / 2; y < bottom; y += step) for (let x = step / 2; x < width; x += step) ctx.fillRect(x - dot / 2, y - dot / 2, dot, dot)
   // The soft edge into his face.
   const fade = ctx.createLinearGradient(0, bottom, 0, bottom + BOARD_FADE * height)
   fade.addColorStop(0, COLOURS.boardLow)

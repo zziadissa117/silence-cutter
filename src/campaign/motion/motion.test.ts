@@ -36,7 +36,8 @@ const board: Storyboard = cleanStoryboard(
         says: 'a sum',
         parts: [
           { kind: 'math', at: 30, lines: [{ text: '50 videos', at: 30 }, { text: '× 1 500 views', at: 31 }], result: { text: '= 300 $ / day', at: 33 } },
-          { kind: 'list', at: 34, items: [{ text: 'garanti', at: 34 }, { text: 'more money', at: 35 }] },
+          { kind: 'list', at: 34, items: [{ text: 'garanti', at: 34, icon: 'check' }, { text: 'more money', at: 35 }] },
+          { kind: 'icons', at: 36, items: [{ icon: 'video', text: 'Film', at: 36 }, { icon: 'rocket', text: 'Go', at: 37 }] },
           { kind: 'number', at: 36, label: 'a day', text: '300 $' },
           { kind: 'note', at: 37, text: 'max 1 or 2 videos' },
         ],
@@ -107,7 +108,7 @@ describe('motion graphics: drawn', () => {
       {
         get: (_target, key) => {
           if (key === 'measureText') return (s: string) => ({ width: s.length * 20 })
-          if (key === 'createLinearGradient') return () => gradient
+          if (key === 'createLinearGradient' || key === 'createRadialGradient') return () => gradient
           return (...args: unknown[]) => {
             calls.push(String(key))
             return args
