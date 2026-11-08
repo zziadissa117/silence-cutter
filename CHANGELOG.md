@@ -3,6 +3,16 @@
 Newest first. Every change says what it does, how to use it, and how it works
 underneath. Kept up to date with each commit.
 
+## Trial-reels-only logins get Posts too
+App only: run ./deploy.sh.
+**What he said (2026-11-08):** "For Sam, can you add a post section too, because he can't even approve or see the
+posts that are being scheduled?" - a Trial-reels-only login (samtpnq) had Trial reels and nothing else.
+- At the top of that login's app: **Trial reels | Posts** (with how many wait for approval). Posts is the same Posts
+  screen as everyone's: to approve, scheduled, posted, failed, with Approve, Take back and Stop - its own posts only
+  (the server lists each login's own). No "+ New post" there: that login can post Trial reels only, so the server
+  would refuse it.
+- `CampaignApp` (trial-only layout, `tab` 'posts'), `PostsView` `newPost`.
+
 ## Motion graphics: Format 2 is now the glass look (the old Format 2 is gone); always a call to action
 Needs deploying: run ./deploy-server.sh (./deploy.sh runs it by itself).
 **What he said (2026-11-08):** sent a reel - "I want the formats to look a little more like this. I want claude to

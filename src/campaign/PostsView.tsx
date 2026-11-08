@@ -713,8 +713,12 @@ export function PostsView({
   editable,
   onEditAgain,
   remaking = [],
+  newPost = true,
 }: {
   campaigns: Campaign[]
+  /** "+ New post" offered: not to a Trial-reels-only login, which can post
+   *  nothing else (the server refuses it). */
+  newPost?: boolean
   /** Back where it was opened from; none as a tab of its own. */
   onBack?: () => void
   editable: Record<string, number>
@@ -926,7 +930,7 @@ export function PostsView({
               Select
             </button>
           ) : null}
-          {profile && !making && !stopping ? (
+          {profile && newPost && !making && !stopping ? (
             <button type="button" className="btn small" onClick={() => setMaking(true)}>
               + New post
             </button>

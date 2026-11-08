@@ -4654,15 +4654,31 @@ export function CampaignApp() {
             onCancel={() => setSettingUpPosting(false)}
           />
         ) : campaigns === null ? null : (
-          <TrialView
-            campaigns={campaigns}
-            posting={posting}
-            jobs={batchJobs}
-            onCreate={createTrialCampaign}
-            onRun={() => runBatchesRef.current()}
-            removeJob={removeJob}
-            onRetry={startHeld}
-          />
+          <>
+            {/* Its own posts too - what is scheduled, to approve, posted (2026-11-08:
+                "he can't even approve or see the posts that are being scheduled"). */}
+            <div className="seg full trial-only-tabs" role="tablist" aria-label="Trial reels or Posts">
+              <button type="button" role="tab" aria-selected={tab !== 'posts'} className={tab !== 'posts' ? 'active' : ''} onClick={() => setTab('trial')}>
+                Trial reels
+              </button>
+              <button type="button" role="tab" aria-selected={tab === 'posts'} className={tab === 'posts' ? 'active' : ''} onClick={() => setTab('posts')}>
+                Posts{toApprove > 0 ? ` · ${toApprove} to approve` : ''}
+              </button>
+            </div>
+            {tab === 'posts' ? (
+              <PostsView campaigns={campaigns} editable={editable} onEditAgain={(key) => void editAgain(key)} remaking={remaking} newPost={false} />
+            ) : (
+              <TrialView
+                campaigns={campaigns}
+                posting={posting}
+                jobs={batchJobs}
+                onCreate={createTrialCampaign}
+                onRun={() => runBatchesRef.current()}
+                removeJob={removeJob}
+                onRetry={startHeld}
+              />
+            )}
+          </>
         )}
         <p className="footnote">
           {posting && !settingUpPosting ? (
