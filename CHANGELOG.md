@@ -3,6 +3,15 @@
 Newest first. Every change says what it does, how to use it, and how it works
 underneath. Kept up to date with each commit.
 
+## Motion graphics: Claude checks the captions, as on Videos
+App only: run ./deploy.sh.
+**What he said (2026-11-08):** "add the claude inside the captions that verifies if they are good".
+- Edit captions on a motion video now has Claude's caption check, the same as on Videos: it runs by itself the first
+  time the captions are opened (and again on a tap) - the words it thinks were heard wrong come back fixed, each
+  marked to keep or undo, the ones it isn't sure of flagged. Claude is told what the video is about: what you asked
+  for and the words on its graphics (names, numbers). The plan's button says "Edit captions · Claude checks them".
+- What Claude fixes is what the video shows - in Format 1's captions and in Format 2's words.
+
 ## Motion graphics, Format 1: a smaller board, more of your face
 App only: run ./deploy.sh.
 **What he said (2026-11-08):** "format one the white screen part takes too much of the screen make it take less".

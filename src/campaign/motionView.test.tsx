@@ -38,7 +38,13 @@ vi.mock('./motion/frames', () => ({
   },
 }))
 const motionPlan = vi.fn()
-vi.mock('./posting', async (original) => ({ ...(await original<Record<string, unknown>>()), motionPlan: (...a: unknown[]) => motionPlan(...a), postingHere: () => ({ profile: { id: 'p' }, sendHere: true }) }))
+const recheck = vi.fn(async (phrases: string[]) => ({ phrases, changed: [] as number[], costCents: 0 }))
+vi.mock('./posting', async (original) => ({
+  ...(await original<Record<string, unknown>>()),
+  motionPlan: (...a: unknown[]) => motionPlan(...a),
+  recheckCaptions: (phrases: string[]) => recheck(phrases),
+  postingHere: () => ({ profile: { id: 'p' }, sendHere: true }),
+}))
 
 import { MotionView } from './MotionView'
 
@@ -123,7 +129,7 @@ describe('Motion graphics: captions he can fix, as on Videos', () => {
     kept = { id: 'm1', file: new Blob(['x']), fileName: 'take.mov', ask: '', plan, storyboard: board, chat: [], costCents: 0 }
     await act(async () => root.render(<MotionView onBack={() => {}} />))
     await settle()
-    const edit = [...host.querySelectorAll('button')].find((b) => b.textContent === 'Edit captions')!
+    const edit = [...host.querySelectorAll('button')].find((b) => b.textContent?.startsWith('Edit captions'))!
     await act(async () => edit.click())
     await settle()
     const box = host.querySelector('textarea, input[type=text]') as HTMLTextAreaElement | HTMLInputElement
@@ -162,5 +168,21 @@ describe('Motion graphics: Format 2 words he can style', () => {
     await act(async () => chip('word2').click())
     await settle()
     expect(saved.at(-1)?.storyboard?.emphasis?.[0]).toEqual({ at: 2, style: 'gold' })
+  })
+})
+
+describe("Motion graphics: Claude checks the captions, as on Videos", () => {
+  it('checks them by itself the first time they are opened, and its fix is what is kept', async () => {
+    localStorage.clear()
+    recheck.mockImplementation(async (phrases: string[]) => ({ phrases: ['Claude fixed this', ...phrases.slice(1)], changed: [0], costCents: 1 }))
+    kept = { id: 'm3', file: new Blob(['x']), fileName: 'take.mov', ask: 'about money', plan, storyboard: board, chat: [], costCents: 0 }
+    await act(async () => root.render(<MotionView onBack={() => {}} />))
+    await settle()
+    const edit = [...host.querySelectorAll('button')].find((b) => b.textContent?.startsWith('Edit captions'))!
+    expect(edit.textContent).toContain('Claude checks them')
+    await act(async () => edit.click())
+    await settle()
+    expect(recheck).toHaveBeenCalled()
+    expect(host.textContent).toContain('Claude fixed this')
   })
 })

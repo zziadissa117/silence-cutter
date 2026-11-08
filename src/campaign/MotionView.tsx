@@ -35,7 +35,8 @@ import { SOUND_DB, makeSound, type MotionSound } from './motion/sfx'
 import { CaptionReview } from './CaptionReview'
 import { clearSession, freshFile, loadSession, saveSession, type MotionSession } from './motion/session'
 import { cutLength, cutTiming, rawTimeAt } from './motion/track'
-import { motionPlan, postingHere } from './posting'
+import { motionPlan, postingHere, recheckCaptions } from './posting'
+import type { RecheckContext } from '../../supabase/functions/postiz/recheck.ts'
 import { hasShareSheet, shareVideo, useSharable } from './shareFile'
 
 type Step =
@@ -370,6 +371,23 @@ async function hearSounds(names: MotionSound[]): Promise<void> {
   setTimeout(() => void context.close().catch(() => {}), (at - context.currentTime + 0.5) * 1000)
 }
 
+/** What Claude is told about a motion video when it checks its captions:
+ *  what he asked for, and the plan's own words on screen - the names and
+ *  numbers it should expect to hear. */
+function recheckContext(session: MotionSession): RecheckContext {
+  const board = session.storyboard
+  const onScreen = (board?.scenes ?? []).flatMap((scene) =>
+    scene.parts.flatMap((part) => ('text' in part && typeof part.text === 'string' ? [part.text] : part.kind === 'cards' ? part.cards.map((c) => c.badge) : [])),
+  )
+  return {
+    campaign: 'Motion graphics - his own talking video',
+    brand: [],
+    about: [session.ask, ...onScreen].filter(Boolean).join(' · ').slice(0, 1000),
+    angle: '',
+    headline: '',
+  }
+}
+
 /** The Cutter's own caption screen (CaptionReview) on this video: fix the
  *  words, where they sit, how big, which style - or make it without them.
  *  The graphics keep their moments whatever he types. Done with nothing
@@ -395,6 +413,11 @@ function EditCaptions({ session, onDone }: { session: MotionSession; onDone: (ca
       size={look.size}
       onSize={(size) => setChoice((c) => ({ ...c, size }))}
       captionStyle={look.style}
+      // Claude's look at the captions, as on Videos: by itself the first time
+      // they are opened (recheckKey), and again on a tap - the words it
+      // thinks were heard wrong, fixed, each one shown to keep or undo.
+      onRecheck={postingHere() ? (phrases) => recheckCaptions(phrases, [], undefined, recheckContext(session)) : undefined}
+      recheckKey={`motion:${session.id}`}
       // The words look draws its own blocks: one word / highlight does nothing there.
       onCaptionStyle={wordsLook ? undefined : (style) => setChoice((c) => ({ ...c, style }))}
       onChange={() => {}}
@@ -563,7 +586,7 @@ function PlanScreen({
         </button>
       </div>
       <button type="button" className="btn wide" disabled={making} onClick={onCaptions}>
-        {choice?.off ? 'Captions off - turn on or edit' : choice?.edited ? 'Edit captions (changed)' : 'Edit captions'}
+        {choice?.off ? 'Captions off - turn on or edit' : choice?.edited ? 'Edit captions (changed)' : 'Edit captions · Claude checks them'}
       </button>
       <Chat session={session} onChange={onChange} disabled={making} />
       <div className="motion-actions">
