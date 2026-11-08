@@ -3,6 +3,16 @@
 Newest first. Every change says what it does, how to use it, and how it works
 underneath. Kept up to date with each commit.
 
+## Motion graphics: Format 2's words - tap any word to make it big, gold or fancy
+App only: run ./deploy.sh.
+**What he said (2026-11-08):** "captions on this formats are not really customizable, since theyre custom and
+outside the cutters actual captions, i cant actually edit them".
+- On the plan of a Format 2 video, Your words: every block of words as chips, Claude's picks lit (big dark, gold,
+  fancy italic). Tap a word to go big -> gold -> fancy -> normal; the big picture jumps to that moment to show it.
+  Kept with the plan; the chat with Claude keeps your choices unless you ask it to change them.
+- Edit captions still fixes the words themselves, where they sit and how big - all of it shows in Format 2's words
+  (since the last update). Its "one word / highlight" choice is hidden in Format 2, where it did nothing.
+
 ## Motion graphics: the words follow the caption settings, and never cover the graphics
 App only: run ./deploy.sh.
 **What he said (2026-11-08):** "I put them at the bottom, but the VFX captions are independent ... it's going to stay

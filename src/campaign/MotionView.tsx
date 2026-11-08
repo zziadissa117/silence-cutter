@@ -18,7 +18,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 
 import type { CaptionWord } from './captions'
-import type { Kinetic } from './motion/words'
+import { blockText, type Kinetic } from './motion/words'
 
 import type { ChatTurn, Storyboard } from '../../supabase/functions/postiz/motion.ts'
 import { forgetCut } from '../media/outputSink'
@@ -29,7 +29,7 @@ import { drawMotion, faceDropAt, fillBehindFace, type Timing } from './motion/dr
 import { FrameReader } from './motion/frames'
 import { Planning, useElapsed } from './motion/Planning'
 import { AskExamples, FORMAT_INFO, FormatPicker, saveFormat, savedFormat } from './motion/FormatPicker'
-import { formatOf, type FormatAsk } from '../../supabase/functions/postiz/motion.ts'
+import { formatOf, type EmphasisStyle, type FormatAsk } from '../../supabase/functions/postiz/motion.ts'
 import { captionLook, captionsToEdit, drawCaptionAt, forClaude, hear, kineticFor, kineticStill, makeMotionVideo, shownCaptions, soundsFor, storyWords, type CaptionChoice } from './motion/make'
 import { SOUND_DB, makeSound, type MotionSound } from './motion/sfx'
 import { CaptionReview } from './CaptionReview'
@@ -253,6 +253,64 @@ export function MotionView({ onBack }: { onBack: () => void }) {
   )
 }
 
+/** The words look's words, block by block, each a chip to tap: normal ->
+ *  big -> gold -> fancy -> normal. His ask (2026-11-08): "captions on this
+ *  formats are not really customizable ... i cant actually edit them". Claude
+ *  picks them first; a tap changes the storyboard's `emphasis`, on the word as
+ *  heard nearest in time (so his retyped captions keep working), and shows that
+ *  moment on the big still. */
+function WordStyles({
+  session,
+  kinetic,
+  onChange,
+  onSee,
+  disabled,
+}: {
+  session: MotionSession
+  kinetic: Kinetic
+  onChange: (next: MotionSession) => void
+  onSee: (t: number) => void
+  disabled: boolean
+}) {
+  const heard = useMemo(() => storyWords(session.plan!), [session.plan])
+  const shown = kinetic.words as { text: string; start: number }[]
+  const next: Record<string, EmphasisStyle | null> = { none: 'big', big: 'gold', gold: 'serif', serif: null }
+  const tap = (i: number) => {
+    const at = shown[i]?.start
+    if (at === undefined) return
+    let k = -1
+    for (let j = 0; j < heard.length; j++) if (k < 0 || Math.abs(heard[j].start - at) < Math.abs(heard[k].start - at)) k = j
+    if (k < 0) return
+    const style = next[kinetic.styleOf(i) ?? 'none']
+    const board = session.storyboard!
+    const emphasis = (board.emphasis ?? []).filter((e) => e.at !== k)
+    if (style) emphasis.push({ at: k, style })
+    emphasis.sort((a, b) => a.at - b.at)
+    onChange({ ...session, storyboard: { ...board, emphasis } })
+    onSee(kinetic.timing.start(i))
+  }
+  return (
+    <div className="motion-words">
+      <div className="list-title">Your words</div>
+      <p className="hint">Tap a word: big, then gold, then fancy, then normal. The words themselves and where they sit are in Edit captions.</p>
+      {kinetic.phrases.map(([first, end]) => (
+        <div key={first} className="motion-block">
+          {Array.from({ length: end - first }, (_, k) => first + k).map((i) => {
+            const style = kinetic.styleOf(i)
+            const text = blockText(kinetic.words[i]?.text ?? '', style)
+            if (!text) return null
+            return (
+              <button key={i} type="button" disabled={disabled} className={`motion-word${style ? ` ${style}` : ''}`} onClick={() => tap(i)}>
+                {text}
+              </button>
+            )
+          })}
+        </div>
+      ))}
+    </div>
+  )
+}
+
 /** Sound effects on this video: on by themselves, with what they are and how
  *  many, a button to hear them, and a switch to make it without. */
 function SoundEffects({ session, onChange, disabled }: { session: MotionSession; onChange: (next: MotionSession) => void; disabled: boolean }) {
@@ -318,6 +376,7 @@ async function hearSounds(names: MotionSound[]): Promise<void> {
  *  given back means he left without changing anything. */
 function EditCaptions({ session, onDone }: { session: MotionSession; onDone: (captions: CaptionChoice | null) => void }) {
   const plan = session.plan!
+  const wordsLook = session.storyboard ? formatOf(session.storyboard) === 'words' : false
   const [choice, setChoice] = useState<CaptionChoice>(() => ({ ...session.captions }))
   const [initial] = useState(() => captionsToEdit(plan, session.captions))
   const look = captionLook(choice)
@@ -336,7 +395,8 @@ function EditCaptions({ session, onDone }: { session: MotionSession; onDone: (ca
       size={look.size}
       onSize={(size) => setChoice((c) => ({ ...c, size }))}
       captionStyle={look.style}
-      onCaptionStyle={(style) => setChoice((c) => ({ ...c, style }))}
+      // The words look draws its own blocks: one word / highlight does nothing there.
+      onCaptionStyle={wordsLook ? undefined : (style) => setChoice((c) => ({ ...c, style }))}
       onChange={() => {}}
       onApprove={(words) => save(words, false)}
       onSkip={(words) => save(words, true)}
@@ -491,6 +551,7 @@ function PlanScreen({
           </li>
         ) : null}
       </ul>
+      {kinetic ? <WordStyles session={session} kinetic={kinetic} onChange={onChange} onSee={(t) => setAt(Math.min(length, t + 0.35))} disabled={making} /> : null}
       <SoundEffects session={session} onChange={onChange} disabled={making} />
       <div className="motion-look">
         <span className="hint">

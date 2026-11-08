@@ -58,7 +58,7 @@ beforeEach(() => {
     new Proxy(
       {},
       {
-        get: (_t, key) => (key === 'measureText' ? () => ({ width: 10 }) : key === 'createLinearGradient' ? () => ({ addColorStop() {} }) : () => {}),
+        get: (_t, key) => (key === 'measureText' ? () => ({ width: 10 }) : key === 'createLinearGradient' || key === 'createRadialGradient' ? () => ({ addColorStop() {} }) : () => {}),
         set: () => true,
       },
     )) as never
@@ -140,5 +140,27 @@ describe('Motion graphics: captions he can fix, as on Videos', () => {
     expect(last.captions?.edited?.map((w) => w.text.trim()).join(' ')).toContain('Fixed words here')
     expect(last.storyboard).toEqual(board)
     expect(host.textContent).toContain('Edit captions (changed)')
+  })
+})
+
+describe('Motion graphics: Format 2 words he can style', () => {
+  it('taps a word through big, gold, fancy and back, saved on the storyboard', async () => {
+    const wordsBoard = cleanStoryboard({ format: 'words', emphasis: [{ at: 4, style: 'gold' }], scenes: [] }, words.length)
+    kept = { id: 'm2', file: new Blob(['x']), fileName: 'take.mov', ask: '', plan, storyboard: wordsBoard, chat: [], costCents: 0 }
+    await act(async () => root.render(<MotionView onBack={() => {}} />))
+    await settle()
+    expect(host.textContent).toContain('Your words')
+    const chip = (text: string) => [...host.querySelectorAll('.motion-word')].find((b) => b.textContent === text) as HTMLButtonElement
+    // Claude's gold word shows gold, in capitals.
+    expect(chip('WORD4').className).toContain('gold')
+    await act(async () => chip('word2').click())
+    await settle()
+    expect(saved.at(-1)?.storyboard?.emphasis).toEqual([
+      { at: 2, style: 'big' },
+      { at: 4, style: 'gold' },
+    ])
+    await act(async () => chip('word2').click())
+    await settle()
+    expect(saved.at(-1)?.storyboard?.emphasis?.[0]).toEqual({ at: 2, style: 'gold' })
   })
 })

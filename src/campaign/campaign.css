@@ -1234,3 +1234,11 @@ input[type='color']::-webkit-color-swatch { border: 0.5px solid var(--edge); bor
 .motion-look { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 6px; }
 .motion-planning .motion-mini { width: min(60%, 200px); align-self: center; border-radius: 12px; }
 .motion-sfx { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; }
+
+/* The words look's words, to tap (MotionView WordStyles). */
+.motion-words { display: flex; flex-direction: column; gap: 8px; }
+.motion-block { display: flex; flex-wrap: wrap; gap: 5px; padding-bottom: 8px; border-bottom: 1px solid var(--edge); }
+.motion-word { padding: 5px 9px; border: 1px solid var(--edge); border-radius: 8px; background: var(--surface); color: var(--text); font: inherit; font-size: 15px; cursor: pointer; }
+.motion-word.big { font-weight: 800; font-size: 18px; background: #1d1d24; color: #fff; border-color: #1d1d24; }
+.motion-word.gold { font-weight: 900; font-size: 18px; background: #f6c445; color: #3a2a00; border-color: #e2a514; }
+.motion-word.serif { font-family: Georgia, "Times New Roman", serif; font-style: italic; font-size: 16px; }
