@@ -5,15 +5,15 @@
 // Nothing of a campaign: no headline, logo, music or effects.
 
 import { PRESETS, type PresetName } from '../../media/silenceMath'
-import { captionAt, captionRanges, captionWords, cutTime, defaultCaptionSize, defaultCaptionStyle, drawStyledCaption, drawnWords, CAPTION_LEAD, PHRASE_HOLD_SEC, type CaptionPosition, type CaptionSize, type CaptionStyle, type CaptionWord } from '../captions'
+import { captionAt, captionRanges, captionScale, captionWords, cutTime, defaultCaptionSize, defaultCaptionStyle, drawStyledCaption, drawnWords, CAPTION_LEAD, PHRASE_HOLD_SEC, type CaptionPosition, type CaptionSize, type CaptionStyle, type CaptionWord } from '../captions'
 import { NO_EFFECTS } from '../effects'
 import { blankAngle, blankCampaign, videoLook } from '../look'
 import { listen, type CampaignCallbacks } from '../pipeline'
 import type { CampaignPlan } from '../plan'
 import { renderCampaignCut } from '../render'
 import { formatOf, type EmphasisStyle, type Storyboard } from '../../../supabase/functions/postiz/motion.ts'
-import type { Timing } from './draw'
-import { kineticPhrases, type Kinetic } from './words'
+import { captionPositionAt, type Timing } from './draw'
+import { BLOCK_CENTER, kineticPhrases, type Kinetic } from './words'
 import { motionSounds, soundsByName } from './sfx'
 
 /** A setting of the Videos tab, as it keeps it on this phone (CampaignApp
@@ -101,7 +101,7 @@ export function kineticFor(
   plan: CampaignPlan,
   choice: CaptionChoice | undefined,
   board: Storyboard,
-): { words: CaptionWord[]; phrases: [number, number][]; styles: (EmphasisStyle | null)[] } {
+): { words: CaptionWord[]; phrases: [number, number][]; styles: (EmphasisStyle | null)[]; centerY: number; scale: number } {
   const words = shownCaptions(plan, choice)
   const heard = storyWords(plan)
   const styles: (EmphasisStyle | null)[] = words.map(() => null)
@@ -112,12 +112,14 @@ export function kineticFor(
     for (let i = 0; i < words.length; i++) if (best < 0 || Math.abs(words[i].start - at) < Math.abs(words[best].start - at)) best = i
     if (best >= 0 && Math.abs(words[best].start - at) < 0.35) styles[best] = e.style
   }
-  return { words, phrases: kineticPhrases(words), styles }
+  // Where and how big he put the captions on the caption screen.
+  const look = captionLook(choice)
+  return { words, phrases: kineticPhrases(words), styles, centerY: BLOCK_CENTER[look.position], scale: captionScale(look.size) }
 }
 
 /** The block as draw.ts takes it, for a still before it is made. */
 export function kineticStill(made: ReturnType<typeof kineticFor>, timing: Timing): Kinetic {
-  return { words: made.words, phrases: made.phrases, timing, styleOf: (i) => made.styles[i] ?? null }
+  return { words: made.words, phrases: made.phrases, timing, styleOf: (i) => made.styles[i] ?? null, centerY: made.centerY, scale: made.scale }
 }
 
 /** The finished video. The storyboard's word numbers stay on the words as
@@ -172,9 +174,13 @@ export function drawCaptionAt(
   keep: CampaignPlan['keep'],
   t: number,
   choice: CaptionChoice = {},
+  /** The graphics, so a caption set high drops under the board while it is up. */
+  board?: { storyboard: Storyboard; timing: Timing },
 ): void {
   if (shown.length === 0) return
-  const { position, size, style } = captionLook(choice)
+  const look = captionLook(choice)
+  const { size, style } = look
+  const position = board ? captionPositionAt(board.storyboard, board.timing, t, look.position) : look.position
   const starts = shown.map((w) => cutTime(w.start, keep))
   const index = captionAt(starts, shown, t, style === 'word' ? undefined : PHRASE_HOLD_SEC)
   if (index < 0) return

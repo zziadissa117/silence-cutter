@@ -13,6 +13,7 @@
 import { formatOf, type Card, type Part, type Scene, type Storyboard, type Tone } from '../../../supabase/functions/postiz/motion.ts'
 import { HEADLINE_FAMILY } from '../headlineFont'
 import { drawWordsLook, type Kinetic } from './words'
+import type { CaptionPosition } from '../captions'
 
 type Ctx = CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D
 
@@ -724,6 +725,14 @@ export function drawMotion(ctx: Ctx, width: number, height: number, board: Story
   })
   if (board.hook) drawHook(ctx, board.hook, width, height, t, time)
   if (board.end) drawEnd(ctx, board.end, width, height, t, time)
+}
+
+/** Where the captions sit at `t`: where he put them - except a caption set
+ *  up on the board's part of the frame (Top, Middle) while the board is up,
+ *  which drops under it with his face, so it never covers the graphics. */
+export function captionPositionAt(board: Storyboard, time: Timing, t: number, position: CaptionPosition): CaptionPosition {
+  if (position !== 'top' && position !== 'middle') return position
+  return splitAt(board, time, t) > 0.5 ? 'usual' : position
 }
 
 /** Fills the strip his face leaves at the top as it moves down, so nothing

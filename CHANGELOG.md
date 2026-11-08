@@ -3,6 +3,20 @@
 Newest first. Every change says what it does, how to use it, and how it works
 underneath. Kept up to date with each commit.
 
+## Motion graphics: the words follow the caption settings, and never cover the graphics
+App only: run ./deploy.sh.
+**What he said (2026-11-08):** "I put them at the bottom, but the VFX captions are independent ... it's going to stay
+the same", and "let's say there's a list, 1 through 3. The captions get in the way of that list" (Format 2).
+- Format 2: the words under your face now sit where you put the captions on Edit captions - Top, Middle, Usual or
+  Bottom - and are as big as the size you picked there (`Kinetic.centerY`, `scale`, `words.BLOCK_CENTER`).
+- The numbered diamonds and the point labels place themselves clear of the words: just under every block said while
+  they are up, or just over them when the words are low (Bottom) - worked out once per moment, so they never jump
+  (`bandBetween`, `clearOf`). The dimmed word and the gold end words sit where the words do.
+- Format 1: captions set to Top or Middle drop under the board while it is up (they would cover the cards), and go
+  back when it slides away; Usual and Bottom stay where they are (`draw.captionPositionAt`, in the render and the
+  plan's stills).
+- The little preview phone of Format 2 no longer blanks between its blocks.
+
 ## Motion graphics: sound effects, by themselves
 App only: run ./deploy.sh.
 **What he said (2026-11-08):** "can we also add some sound effects".

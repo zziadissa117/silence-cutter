@@ -101,7 +101,7 @@ const BOARD_DEMO: Storyboard = cleanStoryboard(
   22,
 )
 
-const WORDS_TEXT = 'here are the three big mistakes . it might actually be worth it , DM EDIT'.split(' ')
+const WORDS_TEXT = 'here are the three big mistakes. it might actually be worth it, DM EDIT'.split(' ')
 const WORDS_DEMO: Storyboard = cleanStoryboard(
   {
     format: 'words',
@@ -109,23 +109,16 @@ const WORDS_DEMO: Storyboard = cleanStoryboard(
     emphasis: [
       { at: 2, style: 'serif' },
       { at: 3, style: 'big' },
-      { at: 9, style: 'gold' },
+      { at: 8, style: 'gold' },
     ],
-    scenes: [{ from: 4, to: 7, says: '', parts: [{ kind: 'diamonds', at: 4, items: [{ at: 5 }, { at: 6 }, { at: 7 }] }] }],
+    scenes: [{ from: 3, to: 5, says: '', parts: [{ kind: 'diamonds', at: 3, items: [{ at: 3 }, { at: 4 }, { at: 5 }] }] }],
   },
   WORDS_TEXT.length,
 )
 const wordsKinetic: Kinetic = (() => {
   const words = WORDS_TEXT.map((text, i) => ({ text, start: at(i), end: at(i) + 0.25 }))
-  // The "." and "," only end blocks; they never show.
-  const shown = words.map((w) => (w.text === '.' || w.text === ',' ? { ...w, text: '' } : w))
   const styles = new Map((WORDS_DEMO.emphasis ?? []).map((e) => [e.at, e.style]))
-  return {
-    words: shown,
-    timing: demoTiming,
-    phrases: kineticPhrases(words.map((w, i) => ({ ...w, text: words[i + 1]?.text === '.' || words[i + 1]?.text === ',' ? `${w.text}.` : w.text }))),
-    styleOf: (i) => styles.get(i) ?? null,
-  }
+  return { words, timing: demoTiming, phrases: kineticPhrases(words), styleOf: (i) => styles.get(i) ?? null }
 })()
 
 const LOOP = at(WORDS_TEXT.length) + 1

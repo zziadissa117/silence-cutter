@@ -1,9 +1,9 @@
 import { describe, expect, it } from 'vitest'
 
 import { cleanStoryboard, fakeStoryboard, motionMessage } from '../../../supabase/functions/postiz/motion.ts'
-import { drawMotion, splitAt, type Timing } from './draw'
+import { captionPositionAt, drawMotion, splitAt, type Timing } from './draw'
 import { kineticFor } from './make'
-import { blockAt, blockText, kineticPhrases, layoutBlock, type Kinetic } from './words'
+import { BLOCK_CENTER, bandBetween, blockAt, blockText, clearOf, kineticPhrases, layoutBlock, type Kinetic } from './words'
 
 const said = (texts: string[], step = 0.4) => texts.map((text, i) => ({ text, start: i * step, end: i * step + step * 0.8 }))
 const timing = (words: { start: number; end: number }[]): Timing => ({ start: (i) => words[i]?.start ?? Infinity, end: (i) => words[i]?.end ?? Infinity })
@@ -139,5 +139,42 @@ describe('Format 2 (words): the words Claude picked, on the captions he fixed', 
     const made = kineticFor(plan, { edited }, board)
     expect(made.words.map((w) => w.text.trim())).toEqual(['I', 'make', '10K', 'a', 'month'])
     expect(made.styles).toEqual([null, null, 'gold', null, null])
+  })
+})
+
+
+describe('Format 2: the words follow his caption settings and never cover the graphics', () => {
+  const words = said(['here', 'are', 'the', 'three', 'big', 'mistakes'])
+  const at = (centerY: number, scale = 1): Kinetic => ({ words, timing: timing(words), phrases: [[0, 6]], styleOf: (i) => (i === 3 ? 'big' : null), centerY, scale })
+
+  it('sits where he put the captions, as big as he set them', () => {
+    const ctx = fakeCtx()
+    const usual = layoutBlock(ctx, at(BLOCK_CENTER.usual), [0, 6], 1080, 1920)
+    const bottom = layoutBlock(ctx, at(BLOCK_CENTER.bottom), [0, 6], 1080, 1920)
+    const top = layoutBlock(ctx, at(BLOCK_CENTER.top), [0, 6], 1080, 1920)
+    expect(bottom[0].y).toBeGreaterThan(usual[0].y)
+    expect(top[0].y).toBeLessThan(usual[0].y)
+    const huge = layoutBlock(ctx, at(BLOCK_CENTER.usual, 1.55), [0, 6], 1080, 1920)
+    expect(huge[0].px).toBeGreaterThan(usual[0].px)
+  })
+
+  it('puts a list under the words when there is room, over them when the words are low', () => {
+    expect(clearOf({ top: 1100, bottom: 1300 }, 160, 1920, 30)).toBeGreaterThan(1300)
+    const low = clearOf({ top: 1300, bottom: 1560 }, 160, 1920, 30)
+    expect(low + 80).toBeLessThanOrEqual(1300)
+  })
+
+  it('keeps clear of every block said while the list is up', () => {
+    const band = bandBetween(fakeCtx(), at(BLOCK_CENTER.usual), 0, 3, 1080, 1920)
+    expect(band.top).toBeLessThan(BLOCK_CENTER.usual * 1920)
+    expect(band.bottom).toBeGreaterThan(BLOCK_CENTER.usual * 1920)
+  })
+
+  it('Format 1: a caption set high drops under the board while it is up; Bottom stays', () => {
+    const board = cleanStoryboard({ scenes: [{ from: 2, to: 8, says: '', parts: [{ kind: 'title', at: 2, text: 'x' }] }] }, 10)
+    const t = { start: (i: number) => i * 0.5, end: (i: number) => i * 0.5 + 0.4 }
+    expect(captionPositionAt(board, t, 2, 'top')).toBe('usual')
+    expect(captionPositionAt(board, t, 2, 'bottom')).toBe('bottom')
+    expect(captionPositionAt(board, t, 9, 'top')).toBe('top')
   })
 })

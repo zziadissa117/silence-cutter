@@ -76,7 +76,7 @@ import { report as reportProblem } from '../report'
 import type { EmphasisStyle, Storyboard } from '../../supabase/functions/postiz/motion.ts'
 import type { Kinetic } from './motion/words'
 import { makeSound, type MotionSound } from './motion/sfx'
-import { drawMotion, faceDropAt, fillBehindFace } from './motion/draw'
+import { captionPositionAt, drawMotion, faceDropAt, fillBehindFace } from './motion/draw'
 import { MotionTrack } from './motion/track'
 
 /** A pop-up clip's frames from its own start, timed from 0. */
@@ -191,7 +191,7 @@ export interface CampaignRenderInput {
     words: { start: number; end: number }[]
     /** The words look: his words as they build up under his face - in place
      *  of the captions (motion/words.ts). */
-    kinetic?: { words: { text: string; start: number; end: number }[]; phrases: [number, number][]; styles: (EmphasisStyle | null)[] }
+    kinetic?: { words: { text: string; start: number; end: number }[]; phrases: [number, number][]; styles: (EmphasisStyle | null)[]; centerY?: number; scale?: number }
     /** Its sound effects (motion/sfx.ts): each sound, when it plays on the
      *  raw video's timeline, and how loud. */
     sounds?: { name: MotionSound; moments: number[]; volumeDb: number }[]
@@ -554,7 +554,14 @@ export async function renderCampaignCut(
     const kineticTrack = graphics?.kinetic ? new MotionTrack(graphics.kinetic.words, keep) : null
     const kinetic: Kinetic | undefined =
       graphics?.kinetic && kineticTrack
-        ? { words: graphics.kinetic.words, phrases: graphics.kinetic.phrases, timing: kineticTrack.timing, styleOf: (i) => graphics.kinetic!.styles[i] ?? null }
+        ? {
+            words: graphics.kinetic.words,
+            phrases: graphics.kinetic.phrases,
+            timing: kineticTrack.timing,
+            styleOf: (i) => graphics.kinetic!.styles[i] ?? null,
+            centerY: graphics.kinetic.centerY,
+            scale: graphics.kinetic.scale,
+          }
         : undefined
     const motion = planMotion(
       gentle ? { ...look.effects, cutPunch: 'off', hookPush: 'off', brandHit: 'off' } : look.effects,
@@ -864,7 +871,20 @@ export async function renderCampaignCut(
                 const word = captionAt(captionPlacer.times, captions, timestamp, captionStyle === 'word' ? undefined : PHRASE_HOLD_SEC)
                 if (word >= 0) {
                   const since = timestamp + CAPTION_LEAD - captionPlacer.times[word]
-                  drawStyledCaption(ctx, width, height, captions, captionPhrases, word, since, false, captionPosition, captionSize, captionStyle)
+                  drawStyledCaption(
+                    ctx,
+                    width,
+                    height,
+                    captions,
+                    captionPhrases,
+                    word,
+                    since,
+                    false,
+                    // Under the motion graphics' board while it is up (motion/draw.ts).
+                    motionTrack && graphics ? captionPositionAt(graphics.board, motionTrack.timing, timestamp, captionPosition) : captionPosition,
+                    captionSize,
+                    captionStyle,
+                  )
                 }
                 // The new sample copies the canvas, so one canvas does every frame.
                 const frame = new VideoSample(canvas, { timestamp, duration })

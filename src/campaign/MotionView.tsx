@@ -555,7 +555,7 @@ async function drawStill(
   if (frame) ctx.drawImage(frame as CanvasImageSource, 0, drop, width, height)
   drawMotion(ctx, width, height, board, timing, t, kinetic)
   // In the words look the block is the caption.
-  if (!kinetic) drawCaptionAt(ctx, width, height, shown, keep, t, choice)
+  if (!kinetic) drawCaptionAt(ctx, width, height, shown, keep, t, choice, { storyboard: board, timing })
 }
 
 /** The chat with Claude about the plan: each message changes the storyboard. */

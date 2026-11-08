@@ -24,7 +24,19 @@ export interface Kinetic {
   /** [first, end) of each block, in order. */
   phrases: readonly (readonly [number, number])[]
   styleOf: (i: number) => EmphasisStyle | null
+  /** Where the block's middle sits, as a share of the frame's height - from
+   *  where he put the captions (blockCenter). 0.62 when not given. */
+  centerY?: number
+  /** His caption size, 1 for normal. */
+  scale?: number
 }
+
+/** Where the block sits for each caption position he can pick on the caption
+ *  screen - the same Top / Middle / Usual / Bottom as every other video, kept
+ *  clear of TikTok's top bar and bottom buttons with room for a few lines.
+ *  His report (2026-11-08): "I put them at the bottom ... it's going to stay
+ *  the same". */
+export const BLOCK_CENTER: Record<'top' | 'middle' | 'usual' | 'bottom', number> = { top: 0.27, middle: 0.5, usual: 0.62, bottom: 0.73 }
 
 const SANS = HEADLINE_FAMILY
 const SERIF = '"Playfair Display", "Didot", "Bodoni 72", Georgia, "Times New Roman", serif'
@@ -101,7 +113,7 @@ function fontFor(style: EmphasisStyle | null, px: number): string {
  *  joins its line), all centred under his face. Laid out once for the whole
  *  block, so nothing moves as the words come in. */
 export function layoutBlock(ctx: Ctx, kinetic: Kinetic, [first, end]: readonly [number, number], width: number, height: number): Placed[] {
-  const u = width / 100
+  const u = (width / 100) * (kinetic.scale ?? 1)
   const small = 4.8 * u
   const sizeOf = (style: EmphasisStyle | null) => (style === 'big' ? 12.5 * u : style === 'gold' ? 13 * u : style === 'serif' ? 7.2 * u : small)
   const maxW = width * 0.84
@@ -145,7 +157,7 @@ export function layoutBlock(ctx: Ctx, kinetic: Kinetic, [first, end]: readonly [
   // Stacked tight, like the example: big lines overlap the small ones a little.
   const heights = lines.map((l) => Math.max(...l.map((w) => w.px)) * (l.some((w) => w.style === 'big' || w.style === 'gold') ? 0.92 : 1.08))
   const total = heights.reduce((a, b) => a + b, 0)
-  let y = height * 0.62 - total / 2
+  let y = height * (kinetic.centerY ?? 0.62) - total / 2
   const placed: Placed[] = []
   lines.forEach((l, k) => {
     y += heights[k]
@@ -169,6 +181,40 @@ function cachedLayout(ctx: Ctx, kinetic: Kinetic, phrase: readonly [number, numb
   let placed = byPhrase.get(key)
   if (!placed) byPhrase.set(key, (placed = layoutBlock(ctx, kinetic, phrase, width, height)))
   return placed
+}
+
+/** How far up and down block `phrase` reaches, in pixels. */
+export function blockBand(ctx: Ctx, kinetic: Kinetic, phrase: readonly [number, number], width: number, height: number): { top: number; bottom: number } | null {
+  const placed = cachedLayout(ctx, kinetic, phrase, width, height)
+  if (placed.length === 0) return null
+  return { top: Math.min(...placed.map((p) => p.y - p.px * 0.85)), bottom: Math.max(...placed.map((p) => p.y + p.px * 0.22)) }
+}
+
+/** Everything the blocks reach between `from` and `to` (seconds): what a
+ *  graphic up then must keep clear of. */
+export function bandBetween(ctx: Ctx, kinetic: Kinetic | undefined, from: number, to: number, width: number, height: number): { top: number; bottom: number } {
+  const middle = height * (kinetic?.centerY ?? 0.62)
+  let band = { top: middle - height * 0.05, bottom: middle + height * 0.05 }
+  if (!kinetic) return band
+  let any = false
+  for (const phrase of kinetic.phrases) {
+    const at = kinetic.timing.start(phrase[0])
+    const end = kinetic.timing.end(phrase[1] - 1) + HOLD_SEC
+    if (end < from || at > to) continue
+    const reach = blockBand(ctx, kinetic, phrase, width, height)
+    if (!reach) continue
+    band = any ? { top: Math.min(band.top, reach.top), bottom: Math.max(band.bottom, reach.bottom) } : reach
+    any = true
+  }
+  return band
+}
+
+/** Where a row `rowHeight` tall goes so it never covers the words: just
+ *  under them when there is room above TikTok's buttons, else just over. */
+export function clearOf(band: { top: number; bottom: number }, rowHeight: number, height: number, gap: number): number {
+  const below = band.bottom + gap + rowHeight / 2
+  if (below + rowHeight / 2 <= height * 0.84) return below
+  return Math.max(height * 0.12 + rowHeight / 2, band.top - gap - rowHeight / 2)
 }
 
 /** The block up at `t`, if any: the newest one started, until the next starts
@@ -275,7 +321,7 @@ function pop(t: number, at: number): number {
   return clamp01((t - (at - LEAD)) / 0.25)
 }
 
-function drawPartWords(ctx: Ctx, part: Part, width: number, height: number, t: number, time: Timing, fade: number): void {
+function drawPartWords(ctx: Ctx, part: Part, width: number, height: number, t: number, time: Timing, fade: number, band: { top: number; bottom: number }): void {
   const u = width / 100
   switch (part.kind) {
     case 'diamonds': {
@@ -283,7 +329,8 @@ function drawPartWords(ctx: Ctx, part: Part, width: number, height: number, t: n
       const gap = 5 * u
       const n = part.items.length
       const rowW = n * size + (n - 1) * gap
-      const y = height * 0.76
+      // A diamond stands on its point: about 1.5 times its side, top to bottom.
+      const y = clearOf(band, size * 1.5, height, 2.5 * u)
       const shown = pop(t, time.start(part.at))
       part.items.forEach((item, i) => {
         const lit = pop(t, time.start(item.at))
@@ -303,7 +350,7 @@ function drawPartWords(ctx: Ctx, part: Part, width: number, height: number, t: n
       if (p <= 0) return
       const size = 7 * u
       const x = 9 * u
-      const y = height * 0.56
+      const y = clearOf(band, size * 1.5, height, 2.5 * u)
       ctx.save()
       ctx.globalAlpha = fade * clamp01(p * 1.5)
       ctx.translate((1 - easeOut(p)) * -4 * u, 0)
@@ -382,7 +429,7 @@ export function drawWordsLook(ctx: Ctx, width: number, height: number, board: St
     ctx.fillStyle = '#ffffff'
     ctx.textAlign = 'center'
     ctx.textBaseline = 'middle'
-    shadowText(ctx, () => ctx.fillText(moment.text, width / 2, height * 0.6, width * 0.9), 9 * u)
+    shadowText(ctx, () => ctx.fillText(moment.text, width / 2, height * (kinetic?.centerY ?? 0.6), width * 0.9), 9 * u)
     ctx.restore()
     return
   }
@@ -392,7 +439,10 @@ export function drawWordsLook(ctx: Ctx, width: number, height: number, board: St
     const end = time.end(scene.to) + 0.35
     if (t < start || t >= end) continue
     const fade = clamp01((end - t) / 0.2)
-    for (const part of scene.parts) drawPartWords(ctx, part, width, height, t, time, fade)
+    // Kept clear of every block of words said while the scene is up, so the
+    // list never jumps between blocks and the words never cover it.
+    const band = bandBetween(ctx, kinetic, start, end, width, height)
+    for (const part of scene.parts) drawPartWords(ctx, part, width, height, t, time, fade, band)
   }
   // The end: big gold words, for a couple of seconds, in place of the block.
   if (board.end) {
@@ -407,13 +457,14 @@ export function drawWordsLook(ctx: Ctx, width: number, height: number, board: St
       const text = board.end.text.toUpperCase()
       const scale = Math.min(1, (width * 0.86) / Math.max(1, ctx.measureText(text).width))
       ctx.font = `900 ${Math.round(px * scale)}px ${SANS}`
-      const grad = ctx.createLinearGradient(0, height * 0.6 - px, 0, height * 0.6)
+      const endY = height * (kinetic?.centerY ?? 0.62)
+      const grad = ctx.createLinearGradient(0, endY - px, 0, endY)
       grad.addColorStop(0, WORDS_COLOURS.gold)
       grad.addColorStop(1, WORDS_COLOURS.goldDeep)
       ctx.fillStyle = grad
       ctx.textAlign = 'center'
       ctx.textBaseline = 'middle'
-      shadowText(ctx, () => ctx.fillText(text, width / 2, height * 0.62), px)
+      shadowText(ctx, () => ctx.fillText(text, width / 2, endY), px)
       ctx.restore()
       return
     }
