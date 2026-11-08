@@ -382,10 +382,14 @@ make      motion/make.ts makeMotionVideo -> render.ts renderCampaignCut with `mo
   tiles (grid filling, locks, app window, counter), phones (view counts, "=" and prices), math (lines + a result
   counting up), number. Limits in `MOTION_LIMITS`.
 - Two looks (`Storyboard.format`, picked before dropping in `motion/FormatPicker.tsx`, remembered in localStorage
-  `motion.format`, or 'auto' - Claude picks): "board" (below) and "words" (`motion/words.ts`): face full screen,
-  vignette + `grade`, his shown captions built up in blocks (`kineticPhrases`, `layoutBlock`) with Claude's
-  `emphasis` (big / gold / serif, matched to his fixed captions by time, `make.kineticFor`) in place of the
-  captions; parts diamonds, point, flash, dim; `end` as big gold words. render.ts gets `motion.kinetic`.
+  `motion.format`, or 'auto' - Claude picks): "board" (below) and "glass" (Format 2, `motion/glass.ts`, his
+  example reel of 2026-11-08; it replaced the old "words" look, whose sessions `session.fromOldFormat2` sends back
+  to the caption check): face full screen, one frosted card a scene - tag, blocks, stat, picture - each with a
+  `place` (low / side / behind); behind ones get him cut out live in the render (`motion/liveCutout.ts`, the
+  green screen's segmenter, only while `glass.behindAt`) and drawn over the card; `steps` = a light screen with his
+  video in a box (`stageAt`); `title` over his head at the start; its own caption bar from his checked captions
+  (`kineticPhrases`, Claude's `emphasis` accent / pill, `make.kineticFor`) in place of the captions, render.ts gets
+  `motion.kinetic`; cut punch-ins on. `end` (the call to action) is always set: his, or `DEFAULT_CTA`.
 - Look (`motion/draw.ts`): his friend's reel - while a scene is up a light board covers the top 55% and his face is
   drawn `FACE_DROP` (38% of the height) lower, faded into it; scenes closer than 1.2 s keep the board up. Drawn over
   the pictures, under his own texts, headline, logo and captions.
