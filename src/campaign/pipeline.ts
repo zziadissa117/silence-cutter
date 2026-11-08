@@ -450,6 +450,8 @@ export async function makeMontage(
     reactionFirst?: boolean
     /** A talking batch: the reaction keeps his voice (montageRender). */
     voice?: boolean
+    /** A talking head batch: every clip keeps its sound (montageRender). */
+    voiceAll?: boolean
     /** Per clip: words over it in the headline's look (a step's name). */
     titles?: (string | null)[]
     /** A Trial loop's video: a touch brighter (above 0) or darker, its
@@ -472,6 +474,7 @@ export async function makeMontage(
       windows: extra.windows,
       reactionFirst: extra.reactionFirst,
       voice: extra.voice,
+      voiceAll: extra.voiceAll,
       titles: extra.titles,
       brightness: extra.brightness,
       keepLines: extra.keepLines,

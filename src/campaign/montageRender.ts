@@ -152,6 +152,11 @@ export interface MontageRenderInput {
    *  the music goes under it, dipping while he talks (his ask, 2026-11-03:
    *  "some talking batches and some reaction-only"). Absent: music alone. */
   voice?: boolean
+  /** A talking head batch: every clip keeps its own sound, not only the
+   *  first - his product steps come edited, with him saying what to do over
+   *  them ("Step one: go to this website", his ask 2026-11-08). The music
+   *  goes under all of it, dipping while he talks. */
+  voiceAll?: boolean
   /** Per clip, in order: words over all of it in the headline's look - a
    *  batch's product step, its name (batch.stepTitle); null or absent for
    *  none. */
@@ -265,7 +270,7 @@ export function liftMusic(channels: Float32Array[], gain: number, sampleRate: nu
 }
 
 export async function renderMontage(
-  { clips: files, look, headlineText, music, seed = '', formula = null, windows = [], reactionFirst = false, titles = [], voice = false, brightness = 0, keepLines = false, keepShape = false, captions = null }: MontageRenderInput,
+  { clips: files, look, headlineText, music, seed = '', formula = null, windows = [], reactionFirst = false, titles = [], voice = false, voiceAll = false, brightness = 0, keepLines = false, keepShape = false, captions = null }: MontageRenderInput,
   onProgress?: (fraction: number) => void,
 ): Promise<MontageRenderResult> {
   if (files.length === 0) throw new SilenceCutError('Add at least one clip.')
@@ -309,8 +314,10 @@ export async function renderMontage(
         const { channels } = await prepareMusic(music.audio, music.name, total, RATE)
         const loudness = trackLoudness(channels, RATE)
         if (voice) {
-          // Under his voice, as in a talking video, dipping while he talks.
-          const gain = musicGain(loudness, VOICE_LUFS, 'normal')
+          // Under his voice, as in a talking video, dipping while he talks -
+          // quieter than in a talking video of his: he says what to do, and
+          // every word has to be heard (his ask, 2026-11-08).
+          const gain = musicGain(loudness, VOICE_LUFS, 'low')
           if (gain > 0) bed = new MusicBed(channels, RATE, Math.round(total * RATE), gain, VOICE_LUFS)
           else musicFailed = 'the track is silent'
         } else {
@@ -457,7 +464,7 @@ export async function renderMontage(
           videoClock,
           audioClock: contiguousAudio(),
           maxRecoveries: MAX_RECOVERIES,
-          ...(voicePlanes && i === 0
+          ...(voicePlanes && (i === 0 || voiceAll)
             ? {
                 onSound: async (planes: Float32Array[], timestamp: number) => {
                   const from = Math.round(timestamp * RATE)

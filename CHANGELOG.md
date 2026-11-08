@@ -3,6 +3,22 @@
 Newest first. Every change says what it does, how to use it, and how it works
 underneath. Kept up to date with each commit.
 
+## Talking head formats: the product steps keep his voice, played whole, the music low under it
+App only: run ./deploy.sh.
+**What he said (2026-11-08, "number one priority"):** in a talking head video "it's going to be very awkward if I talk at
+the start ... and then it's just showing the product and not saying anything, with music". His talking clip is the hook;
+then product steps ("Step one: go to this website") that "come pre-cropped, pre-edited" with him talking over them -
+"leave the sound ... the music has to be a little quieter because we need to hear our voice".
+- In a talking head format (and a green-screen one he talks in), every clip keeps its own sound now, not only the hook:
+  each product step (or showcase) plays whole - it comes edited - with his voice-over, its step name written over it as
+  in reactions (`montageRender` `voiceAll`, `CampaignApp`: no picked moment for a talking video). The music goes under
+  the whole video at the quieter level ('low', 14 LU under the voice instead of 9) and still dips while he talks.
+- Reaction formats are unchanged: the step plays its moment, muted, under the music.
+- The talking head card says so: "You talking - the hook", and each step "played whole with its own sound - your voice
+  saying what to do - the music low under it".
+- Checked here in Chrome for Testing: a 3 s hook + a 4 s step with its own sound -> 7 s, the step's sound as loud as the
+  hook's (before: silent).
+
 ## Accounts: a two-letter platform mark after the username
 App only: run ./deploy.sh.
 - Every account label is "@username · TT" / "· IG" / "· YT" / "· FB" (`posting.platformMark`), so a TikTok and an

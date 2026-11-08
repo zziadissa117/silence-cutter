@@ -2010,7 +2010,12 @@ export function CampaignApp() {
               // A Trial reel keeps its clip's shape: horizontal stays horizontal.
               keepShape: Boolean(trialLook),
               voice: keepsVoice,
-              windows: stepped ? [false, ...stepped.map((s) => !playsWhole(stepOf(s)))] : undefined,
+              // A talking head: his product steps come edited, with him
+              // talking over them - each plays whole, with its sound, its
+              // step's name over it (his ask, 2026-11-08). Otherwise each
+              // step plays its moment, muted under the music.
+              voiceAll: keepsVoice,
+              windows: stepped && !keepsVoice ? [false, ...stepped.map((s) => !playsWhole(stepOf(s)))] : undefined,
               titles,
             }),
           )

@@ -1099,7 +1099,7 @@ export function BatchView({
 
   /** One step of the product showcase: its clips, one of which - the moment
    *  something happens in it - goes in each video. */
-  const stepList = (step: BatchStep, index: number) => (
+  const stepList = (step: BatchStep, index: number, talking = false) => (
     <div className="group" key={step.id}>
       <div className="bank-head">
         <span className="group-title">
@@ -1110,8 +1110,9 @@ export function BatchView({
         </VideoPicker>
       </div>
       <p className="hint bank-hint">
-        One of these in every video: the moment something happens in it, or all of it when it&rsquo;s short
-        {stepTitle(step.name) ? `, with "${stepTitle(step.name)}" written over it` : ''}.
+        {talking
+          ? `One of these in every video, played whole with its own sound - your voice saying what to do - the music low under it${stepTitle(step.name) ? `, "${stepTitle(step.name)}" written over it` : ''}. Edit them before: cut to length, you talking over them.`
+          : `One of these in every video: the moment something happens in it, or all of it when it's short${stepTitle(step.name) ? `, with "${stepTitle(step.name)}" written over it` : ''}.`}
       </p>
       {step.files.length > 0 ? (
         <ul className="bank-list">
@@ -1185,9 +1186,9 @@ export function BatchView({
             <p className="hint">{kind.hint}</p>
             {list(
               'reactions',
-              f.kind === 'talking' ? 'You talking' : 'You',
+              f.kind === 'talking' ? 'You talking - the hook' : 'You',
               f.kind === 'talking'
-                ? 'Each plays whole with your voice, the headline and captions of what you say over it, then the product. Each clip is listened to once, the first time it is used.'
+                ? 'Your hook: each plays whole with your voice, the headline and captions of what you say over it. Then the product steps, with your voice too. Each clip is listened to once, the first time it is used.'
                 : green
                   ? 'You, cut out of your background and put in the corner. Talking: the video lasts as long as you do.'
                   : 'They go first, with the headline over them - slowly zooming in. No sound but the music.',
@@ -1203,8 +1204,17 @@ export function BatchView({
               </div>
             ) : null}
             {steps.length > 0
-              ? steps.map((st, i) => stepList(st, i))
-              : list('products', green ? 'Videos behind you' : 'Product showcases', green ? 'Each plays full screen with its own sound.' : 'Shown after you.', f.id)}
+              ? steps.map((st, i) => stepList(st, i, f.kind === 'talking'))
+              : list(
+                  'products',
+                  green ? 'Videos behind you' : 'Product showcases',
+                  green
+                    ? 'Each plays full screen with its own sound.'
+                    : f.kind === 'talking'
+                      ? 'Shown after your hook, whole, with its own sound. To show the steps in order ("Step 1: go to this website"), tap Product steps.'
+                      : 'Shown after you.',
+                  f.id,
+                )}
             <div className="format-actions">
               <button type="button" className="btn small" aria-expanded={ordering === f.id} onClick={() => setOrdering(ordering === f.id ? null : f.id)}>
                 {steps.length > 0 ? `Product steps · ${steps.length}` : 'Product steps'}
