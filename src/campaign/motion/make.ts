@@ -14,6 +14,7 @@ import { renderCampaignCut } from '../render'
 import { formatOf, type EmphasisStyle, type Storyboard } from '../../../supabase/functions/postiz/motion.ts'
 import type { Timing } from './draw'
 import { kineticPhrases, type Kinetic } from './words'
+import { motionSounds, soundsByName } from './sfx'
 
 /** A setting of the Videos tab, as it keeps it on this phone (CampaignApp
  *  usePref), so a motion video is cut and captioned the way his others are. */
@@ -63,6 +64,14 @@ export interface CaptionChoice {
   position?: CaptionPosition
   size?: CaptionSize
   style?: CaptionStyle
+}
+
+/** The storyboard's sound effects as render.ts takes them: none when he
+ *  turned them off for this video. */
+export function soundsFor(plan: CampaignPlan, board: Storyboard, on = true): ReturnType<typeof soundsByName> {
+  if (!on) return []
+  const heard = storyWords(plan)
+  return soundsByName(motionSounds(board, (i) => heard[i]?.start ?? Infinity))
 }
 
 /** The captions as they will be burned in: his fixed words fitted to the cut,
@@ -120,6 +129,8 @@ export async function makeMotionVideo(
   seed: string,
   onProgress?: (fraction: number) => void,
   choice: CaptionChoice = {},
+  /** Sound effects on (the default) or off for this video. */
+  sounds = true,
 ): Promise<{ blob: Blob; storedAs: string | null }> {
   const settings = videoSettings()
   const words = storyWords(plan)
@@ -144,7 +155,7 @@ export async function makeMotionVideo(
       captionSize: caption.size,
       captionStyle: caption.style,
       voice: settings.voice,
-      motion: { board, words, ...(wordsLook ? { kinetic: kineticFor(plan, choice, board) } : {}) },
+      motion: { board, words, sounds: soundsFor(plan, board, sounds), ...(wordsLook ? { kinetic: kineticFor(plan, choice, board) } : {}) },
     },
     onProgress,
   )

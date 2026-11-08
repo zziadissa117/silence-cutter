@@ -75,6 +75,7 @@ import { PopFrames, drawPop, occurrencesOf, popAt, popLayout, type PopLayout, ty
 import { report as reportProblem } from '../report'
 import type { EmphasisStyle, Storyboard } from '../../supabase/functions/postiz/motion.ts'
 import type { Kinetic } from './motion/words'
+import { makeSound, type MotionSound } from './motion/sfx'
 import { drawMotion, faceDropAt, fillBehindFace } from './motion/draw'
 import { MotionTrack } from './motion/track'
 
@@ -191,6 +192,9 @@ export interface CampaignRenderInput {
     /** The words look: his words as they build up under his face - in place
      *  of the captions (motion/words.ts). */
     kinetic?: { words: { text: string; start: number; end: number }[]; phrases: [number, number][]; styles: (EmphasisStyle | null)[] }
+    /** Its sound effects (motion/sfx.ts): each sound, when it plays on the
+     *  raw video's timeline, and how loud. */
+    sounds?: { name: MotionSound; moments: number[]; volumeDb: number }[]
   }
 }
 
@@ -568,7 +572,18 @@ export async function renderCampaignCut(
       look.sounds.forEach((sound, i) => {
         if (sound.trigger.kind === 'start') placed.push({ ...prepared[i], startFrame: Math.round(at * sampleRate), gain: dbToGain(sound.volumeDb) })
       })
+    // Motion graphics' own sounds, placed with each part like the look's.
+    const motionSounds = (graphics?.sounds ?? []).map((sound) => ({
+      prepared: { channels: [makeSound(sound.name, sampleRate)] },
+      placer: new MomentPlacer(sound.moments, keep),
+      gain: dbToGain(sound.volumeDb),
+    }))
     const placeSounds = (index: number, shift: number) => {
+      for (const sound of motionSounds) {
+        const before = sound.placer.times.length
+        sound.placer.enterRange(index, shift)
+        for (const t of sound.placer.times.slice(before)) placed.push({ ...sound.prepared, startFrame: Math.round(t * sampleRate), gain: sound.gain })
+      }
       soundPlacers.forEach((placer, i) => {
         if (!placer) return
         const before = placer.times.length

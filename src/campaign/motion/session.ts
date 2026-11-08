@@ -21,6 +21,8 @@ export interface MotionSession {
   chat: ChatTurn[]
   /** What he changed on the captions of this video (make.ts CaptionChoice). */
   captions?: CaptionChoice
+  /** Sound effects off for this video; on when not set. */
+  noSounds?: boolean
   /** The finished video, once made, and the storyboard it was made from. */
   made?: Blob
   madeFrom?: Storyboard

@@ -389,6 +389,9 @@ make      motion/make.ts makeMotionVideo -> render.ts renderCampaignCut with `mo
 - Look (`motion/draw.ts`): his friend's reel - while a scene is up a light board covers the top 55% and his face is
   drawn `FACE_DROP` (38% of the height) lower, faded into it; scenes closer than 1.2 s keep the board up. Drawn over
   the pictures, under his own texts, headline, logo and captions.
+- Sound effects (`motion/sfx.ts`): from the storyboard by themselves (whoosh, pop, tick, ding, hit, swish, shutter,
+  made from maths), at least `MIN_GAP` apart, passed as render.ts `motion.sounds` and placed with MomentPlacer like
+  the look's sounds; off per video (`noSounds`).
 - Kept on the phone at every step in its own IndexedDB database `cutter-motion` (`motion/session.ts`): the
   recording, what was heard, the storyboard, the chat, the made video. Only the words go to Claude.
 

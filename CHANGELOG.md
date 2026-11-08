@@ -3,6 +3,20 @@
 Newest first. Every change says what it does, how to use it, and how it works
 underneath. Kept up to date with each commit.
 
+## Motion graphics: sound effects, by themselves
+App only: run ./deploy.sh.
+**What he said (2026-11-08):** "can we also add some sound effects".
+- Every motion video gets sound effects on its graphics, worked out from the storyboard - nothing to pick: a whoosh
+  as the board comes up, a pop as a card or part comes in, a tick for each line, square, price and diamond, a ding
+  as a sum's result or a big number counts up, a deep hit on a gold word and on a dimmed moment, a swish on a big
+  word or a point, a camera flash on a white flash. Never two closer than 0.18 s (the stronger one stays), all
+  under the voice.
+- On the plan: "Sound effects" says how many and which, with Hear them (plays each once) and a switch to make that
+  video without.
+- Underneath: `motion/sfx.ts` (the sounds made from maths like the look's own - nothing to load, the same on the
+  phone and the server; `motionSounds`, `soundsByName`), render.ts `motion.sounds` placed like the look's sounds,
+  `make.soundsFor`, `MotionSession.noSounds`. Checked on a real render: each sound at its planned moment.
+
 ## Motion graphics: "The object can not be found here" when making
 App only: run ./deploy.sh.
 **What he said (2026-11-08):** "the motion graphics say it couldnt be made: The object can not be found here"

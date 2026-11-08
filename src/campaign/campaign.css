@@ -1233,3 +1233,4 @@ input[type='color']::-webkit-color-swatch { border: 0.5px solid var(--edge); bor
 .motion-example.on { background: #5b50e8; border-color: #5b50e8; color: #fff; }
 .motion-look { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 6px; }
 .motion-planning .motion-mini { width: min(60%, 200px); align-self: center; border-radius: 12px; }
+.motion-sfx { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; }

@@ -30,7 +30,8 @@ import { FrameReader } from './motion/frames'
 import { Planning, useElapsed } from './motion/Planning'
 import { AskExamples, FORMAT_INFO, FormatPicker, saveFormat, savedFormat } from './motion/FormatPicker'
 import { formatOf, type FormatAsk } from '../../supabase/functions/postiz/motion.ts'
-import { captionLook, captionsToEdit, drawCaptionAt, forClaude, hear, kineticFor, kineticStill, makeMotionVideo, shownCaptions, storyWords, type CaptionChoice } from './motion/make'
+import { captionLook, captionsToEdit, drawCaptionAt, forClaude, hear, kineticFor, kineticStill, makeMotionVideo, shownCaptions, soundsFor, storyWords, type CaptionChoice } from './motion/make'
+import { SOUND_DB, makeSound, type MotionSound } from './motion/sfx'
 import { CaptionReview } from './CaptionReview'
 import { clearSession, freshFile, loadSession, saveSession, type MotionSession } from './motion/session'
 import { cutLength, cutTiming, rawTimeAt } from './motion/track'
@@ -148,7 +149,7 @@ export function MotionView({ onBack }: { onBack: () => void }) {
     try {
       // Read again from the phone's storage, so it is never a Blob Safari has let go.
       const file = await freshFile(session.id, session.file)
-      const made = await makeMotionVideo(file, session.plan, session.storyboard, session.id, (fraction) => setStep({ kind: 'making', fraction }), session.captions)
+      const made = await makeMotionVideo(file, session.plan, session.storyboard, session.id, (fraction) => setStep({ kind: 'making', fraction }), session.captions, !session.noSounds)
       // Kept with the session, copied out of the render's own storage.
       const copy = new Blob([await made.blob.arrayBuffer()], { type: 'video/mp4' })
       if (made.storedAs) void forgetCut(made.storedAs)
@@ -250,6 +251,65 @@ export function MotionView({ onBack }: { onBack: () => void }) {
       ) : null}
     </section>
   )
+}
+
+/** Sound effects on this video: on by themselves, with what they are and how
+ *  many, a button to hear them, and a switch to make it without. */
+function SoundEffects({ session, onChange, disabled }: { session: MotionSession; onChange: (next: MotionSession) => void; disabled: boolean }) {
+  const sounds = useMemo(() => soundsFor(session.plan!, session.storyboard!), [session.plan, session.storyboard])
+  const count = sounds.reduce((sum, s) => sum + s.moments.length, 0)
+  const on = !session.noSounds
+  return (
+    <div className="setting motion-sfx">
+      <label className="toggle">
+        <input type="checkbox" checked={on} disabled={disabled} onChange={(e) => onChange({ ...session, noSounds: !e.target.checked })} />
+        <span>
+          <span className="label">Sound effects</span>
+          <span className="hint" style={{ display: 'block' }}>
+            {on
+              ? `${count} on the graphics: ${sounds.map((s) => SOUND_NAMES[s.name]).join(', ')} - under your voice.`
+              : 'Off for this video.'}
+          </span>
+        </span>
+      </label>
+      {on && sounds.length > 0 ? (
+        <button type="button" className="linkbtn" onClick={() => void hearSounds(sounds.map((s) => s.name))}>
+          Hear them
+        </button>
+      ) : null}
+    </div>
+  )
+}
+
+const SOUND_NAMES: Record<MotionSound, string> = {
+  whoosh: 'whoosh',
+  pop: 'pops',
+  ding: 'ding',
+  tick: 'ticks',
+  hit: 'deep hit',
+  shutter: 'camera flash',
+  swish: 'swish',
+}
+
+/** Plays each sound once, one after the other, through the phone's speaker. */
+async function hearSounds(names: MotionSound[]): Promise<void> {
+  const Context = window.AudioContext ?? (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext
+  if (!Context) return
+  const context = new Context()
+  let at = context.currentTime + 0.05
+  for (const name of names) {
+    const samples = makeSound(name, context.sampleRate)
+    const buffer = context.createBuffer(1, samples.length, context.sampleRate)
+    buffer.copyToChannel(samples as Float32Array<ArrayBuffer>, 0)
+    const source = context.createBufferSource()
+    source.buffer = buffer
+    const gain = context.createGain()
+    gain.gain.value = Math.pow(10, (SOUND_DB[name] + 9) / 20)
+    source.connect(gain).connect(context.destination)
+    source.start(at)
+    at += Math.max(0.45, samples.length / context.sampleRate + 0.15)
+  }
+  setTimeout(() => void context.close().catch(() => {}), (at - context.currentTime + 0.5) * 1000)
 }
 
 /** The Cutter's own caption screen (CaptionReview) on this video: fix the
@@ -431,6 +491,7 @@ function PlanScreen({
           </li>
         ) : null}
       </ul>
+      <SoundEffects session={session} onChange={onChange} disabled={making} />
       <div className="motion-look">
         <span className="hint">
           Look: <strong>{FORMAT_INFO[look].name}</strong>
