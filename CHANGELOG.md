@@ -7,6 +7,83 @@ underneath. Kept up to date with each commit.
 App only: run ./deploy.sh.
 - Every account label is "@username · TT" / "· IG" / "· YT" / "· FB" (`posting.platformMark`), so a TikTok and an
   Instagram with the same username can be told apart (his ask, 2026-11-08). Test: `accountLabel.test.ts`.
+## Batch: a clip in a Talking head format always keeps its sound
+**What he said (2026-11-08):** "For batches with talking heads ... all the reaction clips are muted, but they have
+to have sound on every single one of them."
+- Whether a clip of him keeps its sound now comes from the format it is in (`batch.talksIn` -> `formatTalks`): a
+  Talking head format always, a green screen when "You talk in these" is on. Before, only the mark stored on each
+  planned video counted, and a video planned from the whole bank - a remake after taking out a hook - lost it
+  (`batchRun` remade them from the bank, where his clips carry no mark of their own): music only.
+- When a video is made, the phone (or the Cutter server) also looks up the clip's format itself, so a video already
+  planned without the mark is made with his voice and captions anyway (`CampaignApp` `keepsVoice`).
+- If a talking clip ever gives no sound, the render now sends a `voice` report saying whether the clip has a sound
+  track and whether it could be read - so the next muted video says why.
+- Videos already made muted stay as they are; the ones still to be made get his voice.
+## Trial-reels-only logins get Posts too
+App only: run ./deploy.sh.
+**What he said (2026-11-08):** "For Sam, can you add a post section too, because he can't even approve or see the
+posts that are being scheduled?" - a Trial-reels-only login (samtpnq) had Trial reels and nothing else.
+- At the top of that login's app: **Trial reels | Posts** (with how many wait for approval). Posts is the same Posts
+  screen as everyone's: to approve, scheduled, posted, failed, with Approve, Take back and Stop - its own posts only
+  (the server lists each login's own). No "+ New post" there: that login can post Trial reels only, so the server
+  would refuse it.
+- `CampaignApp` (trial-only layout, `tab` 'posts'), `PostsView` `newPost`.
+
+## Motion graphics: Format 2 is now the glass look (the old Format 2 is gone); always a call to action
+Needs deploying: run ./deploy-server.sh (./deploy.sh runs it by itself).
+**What he said (2026-11-08):** sent a reel - "I want the formats to look a little more like this. I want claude to
+be able to edit just like this" - then "Keep format 1, remove format 2, and put this as format 2 ... Claude can just
+write the title on top of my head at the start ... there's my face, and then there's the glass behind me ... always
+have a call to action at the end ... most of the time the call to action is going to end with UGC."
+- Format 2 · Glass (`motion/glass.ts`): his face full screen; every few seconds a frosted glass card slides up and
+  goes - a small label and a bold line with one word in an orange pill, a row of blocks whose red ones close up
+  ("cuts the dead space" -> "tight. no filler."), a number counting up over growing bars (with confetti), a picture
+  card with a big emoji. Claude puts each one under his face, at his side, or BEHIND him: then he is cut out of the
+  frame as it is made (the green screen's cut-out tool, `motion/liveCutout.ts`, only on those frames) and drawn back
+  over the card, his head in front of the glass. If the tool can't run, the card goes over him and the video is
+  still made.
+- For a list of steps the whole screen turns light blue, his video shrinks into a rounded box under the list, the
+  numbered rows slide in on their words, and it grows back.
+- A title over his head at the start (Claude writes it), captions in a dark bar word by word with an orange word
+  now and then and key phrases in a white pill with a green tick, and the shot moves a little closer or back out at
+  the cuts.
+- Every video, both formats, ends on a call to action: his own words when he says one, else 'Comment "UGC"'. The
+  glass look shows it as a glass pill with a chat drawing and a pulsing ring; Format 1 as its banner.
+- The old Format 2 (words) is removed. A video still on the phone planned in it goes back to its caption check and
+  is planned again as glass. Its tap-to-style chips now cycle orange -> pill -> normal.
+- The glass cards are frosted by shrinking and growing a copy of the frame (Safari has no canvas blur).
+- Checked: a real render in Chrome (12 s, made in 18 s) with the cut-out running, and stills of every card. Not
+  checked on the iPhone.
+
+## Motion graphics, Format 1: the board less often, pop cards over his face, animations
+Needs deploying: run ./deploy-server.sh (./deploy.sh runs it by itself).
+**What he said (2026-11-08):** "Format 1, I don't want the white screen to always be there ... The drawings ... look
+pretty mid ... What I meant is probably some animations."
+- The board is now for the 2-4 big moments only (a comparison, a sum, a grid, steps), 3-7 seconds each, with his
+  face between. Claude is told so, and a board scene longer than 22 words is cut short (`MOTION_LIMITS.boardWords`).
+- New: pop cards. The rest of the time a small white card with a drawing and 1-4 words ("Goes viral", "Only 2
+  hours") springs up over his face, tilted, floats while he talks and shrinks away - the board stays down. A
+  swish as it comes in. A caption set at the top steps down while one is up. The plan screen says which scenes
+  are "Board" and which are "Card over your face".
+- Animations: every drawing now draws itself on, line by line, then keeps moving its own way - the rocket shakes
+  and lifts, the heart beats, money and gifts float, the clock and megaphone wiggle, fire and bolts flicker, charts
+  bob up (or down). Discs pop out a touch past their size. Confetti bursts when a big number or a sum's result
+  finishes counting.
+- Plans made before this still play as they were (no pop cards in them).
+
+## Motion graphics: the caption check before the plan, and the words of Format 2 can be changed
+**What he said (2026-11-08):** "With format number 2, I click on them ... I can make them italic, bold, and
+yellow, but I cannot even edit them ... Claude checks the captions, and then I review or approve, say they're
+good, or fix them? That's exactly the format that I want."
+- Right after the video is heard, before Claude plans the graphics, the same caption check as on Videos opens by
+  itself: Claude reads the captions, only what it changed or isn't sure of comes up one at a time - Good, Undo or
+  Fix - then "Approve - plan the graphics". "All captions" opens every phrase; "Make it without captions" turns
+  them off. His video plays above it.
+- Claude plans the graphics from the words as he approved them, so names and numbers on the board are spelled the
+  way he fixed them (`make.claudeWords`; the storyboard's word numbers still point at the words as heard).
+- Format 2's "Your words": tapping a word still changes its look; a "Change the wording" button opens the same
+  caption screen to change what it says.
+- A video heard but not checked yet comes back to the check (`session.checked`).
 
 ## Accounts shown by their username, everywhere
 Needs deploying: run ./deploy-server.sh (./deploy.sh runs it by itself).

@@ -195,7 +195,7 @@ export function Planning({ words, file, raw, ask, format = 'board' }: { words: r
           </div>
         </div>
       ) : null}
-      {format === 'words' ? <MiniPhone format="words" /> : <DemoBoard file={file} raw={raw} />}
+      {format === 'glass' ? <MiniPhone format="glass" /> : <DemoBoard file={file} raw={raw} />}
       <p className="hint motion-demo-note">The style you get. Your own graphics come from your words.</p>
     </div>
   )

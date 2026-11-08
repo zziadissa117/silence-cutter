@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { MOTION_ANSWER, MOTION_SYSTEM, cleanReply, cleanStoryboard, fakeStoryboard, motionMessage, numberedWords, parseMotionAnswer } from './motion.ts'
+import { DEFAULT_CTA, MOTION_ANSWER, MOTION_SYSTEM, cleanReply, cleanStoryboard, fakeStoryboard, motionMessage, numberedWords, parseMotionAnswer } from './motion.ts'
 
 describe('the motion graphics storyboard Claude writes, made safe', () => {
   it('keeps every word number inside the words and scenes apart, in order', () => {
@@ -96,14 +96,16 @@ describe("Claude's answer as plain JSON (the strict schema was too complex for t
 
   it('a full answer in the shape Claude is shown comes through cleaned', () => {
     const answer = parseMotionAnswer(`\`\`\`
-{"reply":"Planned it.","format":"words","grade":"teal","emphasis":[{"at":2,"style":"gold"}],
- "scenes":[{"from":3,"to":6,"says":"Three diamonds.","parts":[{"kind":"diamonds","at":3,"items":[{"at":4},{"at":5},{"at":6}]}]}]}
+{"reply":"Planned it.","format":"glass","title":{"text":"I Automated My Editing","to":5},"emphasis":[{"at":2,"style":"pill"},{"at":3,"style":"big"}],
+ "scenes":[{"from":3,"to":6,"says":"A card behind him.","parts":[{"kind":"tag","at":3,"to":6,"place":"behind","label":"100% edited by Claude","text":"edited end-to-end","mark":"end-to-end"}]}]}
 \`\`\``)
     const board = cleanStoryboard(answer, 10)
-    expect(board.format).toBe('words')
-    expect(board.scenes[0].parts[0]).toMatchObject({ kind: 'diamonds' })
+    expect(board.format).toBe('glass')
+    expect(board.title).toEqual({ text: 'I Automated My Editing', to: 5 })
+    expect(board.emphasis).toEqual([{ at: 2, style: 'pill' }])
+    expect(board.scenes[0].parts[0]).toMatchObject({ kind: 'tag', place: 'behind', label: '100% EDITED BY CLAUDE', mark: 'end-to-end' })
     expect(cleanReply(answer)).toBe('Planned it.')
-    expect(MOTION_ANSWER).toContain('"kind": "diamonds"')
+    expect(MOTION_ANSWER).toContain('"kind": "steps"')
   })
 })
 
@@ -134,5 +136,89 @@ describe('drawings on the board (his ask: "less plain ... some drawings")', () =
     expect(icons.kind === 'icons' && icons.items.map((i) => i.icon)).toEqual(['video', 'money'])
     expect(number).toMatchObject({ icon: 'money' })
     expect(MOTION_SYSTEM).toContain('chart-up')
+  })
+})
+
+describe('Format 1: the board for a few moments, pop cards over his face the rest (his ask, 2026-11-08)', () => {
+  it('keeps a pop card alone in its scene, short, with a known drawing', () => {
+    const board = cleanStoryboard(
+      { format: 'board', scenes: [{ from: 2, to: 30, says: '', parts: [{ kind: 'pop', at: 2, to: 40, icon: 'fire', text: 'Goes viral', tone: 'red' }] }] },
+      60,
+    )
+    const [scene] = board.scenes
+    expect(scene.parts[0]).toMatchObject({ kind: 'pop', at: 2, icon: 'fire', text: 'Goes viral', tone: 'red' })
+    const pop = scene.parts[0] as { to: number }
+    expect(pop.to).toBeLessThanOrEqual(12)
+    expect(scene.to).toBe(pop.to)
+  })
+
+  it('a pop card with board parts is left out; the board parts stay', () => {
+    const board = cleanStoryboard(
+      { format: 'board', scenes: [{ from: 0, to: 9, says: '', parts: [{ kind: 'title', at: 0, text: 'Hi' }, { kind: 'pop', at: 1, to: 4, text: 'x' }] }] },
+      20,
+    )
+    expect(board.scenes[0].parts.map((p) => p.kind)).toEqual(['title'])
+  })
+
+  it('cuts a long board scene short and leaves out what came after its end', () => {
+    const board = cleanStoryboard(
+      { format: 'board', scenes: [{ from: 0, to: 80, says: '', parts: [{ kind: 'title', at: 0, text: 'A' }, { kind: 'note', at: 60, text: 'late' }] }] },
+      100,
+    )
+    expect(board.scenes[0].to).toBe(22)
+    expect(board.scenes[0].parts.map((p) => p.kind)).toEqual(['title'])
+  })
+
+  it('tells Claude the board is for a few moments, and about pop cards', () => {
+    expect(MOTION_SYSTEM).toContain('NOT the default')
+    expect(MOTION_ANSWER).toContain('"kind": "pop"')
+  })
+
+  it('pop cards are not a part of the glass look', () => {
+    const board = cleanStoryboard({ format: 'glass', scenes: [{ from: 0, to: 5, says: '', parts: [{ kind: 'pop', at: 0, to: 4, text: 'x' }] }] }, 10)
+    expect(board.scenes).toEqual([])
+  })
+})
+
+
+describe('Format 2, the glass look (his example reel, 2026-11-08)', () => {
+  it('keeps one card a scene, short, with a place it knows; a mark only if it is in the line', () => {
+    const board = cleanStoryboard(
+      {
+        format: 'glass',
+        scenes: [
+          { from: 2, to: 50, says: '', parts: [{ kind: 'stat', at: 2, to: 50, text: '94%', tag: 'graphics', place: 'nowhere' }, { kind: 'tag', at: 3, text: 'x' }] },
+          { from: 60, to: 70, says: '', parts: [{ kind: 'tag', at: 60, to: 66, text: 'edited fast', mark: 'slow', place: 'side' }] },
+        ],
+      },
+      100,
+    )
+    expect(board.scenes[0].parts).toHaveLength(1)
+    expect(board.scenes[0].parts[0]).toMatchObject({ kind: 'stat', place: 'side', tag: 'GRAPHICS' })
+    expect(board.scenes[0].to).toBeLessThanOrEqual(18)
+    expect(board.scenes[1].parts[0]).toMatchObject({ mark: '', place: 'side' })
+  })
+
+  it('a list of steps needs two rows, in capitals, in order', () => {
+    const board = cleanStoryboard(
+      { format: 'glass', scenes: [{ from: 0, to: 30, says: '', parts: [{ kind: 'steps', at: 0, to: 30, tag: 'the pipeline', items: [{ text: 'rough cut', at: 6, icon: 'tools' }, { text: 'intake', note: 'copy raw in', at: 2, icon: 'nope' }] }] }] },
+      40,
+    )
+    const steps = board.scenes[0].parts[0]
+    expect(steps.kind === 'steps' && steps.items.map((i) => i.text)).toEqual(['INTAKE', 'ROUGH CUT'])
+    expect(steps.kind === 'steps' && steps.items[0].icon).toBeUndefined()
+    expect(cleanStoryboard({ format: 'glass', scenes: [{ from: 0, to: 9, says: '', parts: [{ kind: 'steps', at: 0, items: [{ text: 'one', at: 1 }] }] }] }, 10).scenes).toEqual([])
+  })
+
+  it('always ends on a call to action: his own, or Comment "UGC"', () => {
+    expect(cleanStoryboard({ format: 'glass', scenes: [] }, 30).end).toEqual({ at: 24, text: DEFAULT_CTA })
+    expect(cleanStoryboard({ format: 'board', scenes: [], end: { at: 27, text: 'Comment UGC for the guide' } }, 30).end).toEqual({ at: 27, text: 'Comment UGC for the guide' })
+    expect(DEFAULT_CTA).toBe('Comment "UGC"')
+    expect(MOTION_SYSTEM).toContain('ALWAYS')
+  })
+
+  it('the old Format 2 is gone: a plan saying "words" is drawn as the board', () => {
+    expect(cleanStoryboard({ format: 'words', scenes: [{ from: 0, to: 4, says: '', parts: [{ kind: 'title', at: 0, text: 'Hi' }] }] }, 10).format).toBe('board')
+    expect(MOTION_SYSTEM).not.toContain('"words"')
   })
 })

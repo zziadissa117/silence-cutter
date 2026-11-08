@@ -18,7 +18,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 
 import type { CaptionWord } from './captions'
-import { blockText, type Kinetic } from './motion/words'
+import { barText, type Kinetic } from './motion/glass'
 
 import type { ChatTurn, Storyboard } from '../../supabase/functions/postiz/motion.ts'
 import { forgetCut } from '../media/outputSink'
@@ -29,10 +29,10 @@ import { drawMotion, faceDropAt, fillBehindFace, type Timing } from './motion/dr
 import { FrameReader } from './motion/frames'
 import { Planning, useElapsed } from './motion/Planning'
 import { AskExamples, FORMAT_INFO, FormatPicker, saveFormat, savedFormat } from './motion/FormatPicker'
-import { formatOf, type EmphasisStyle, type FormatAsk } from '../../supabase/functions/postiz/motion.ts'
-import { captionLook, captionsToEdit, drawCaptionAt, forClaude, hear, kineticFor, kineticStill, makeMotionVideo, shownCaptions, soundsFor, storyWords, type CaptionChoice } from './motion/make'
+import { formatOf, popScene, type EmphasisStyle, type FormatAsk } from '../../supabase/functions/postiz/motion.ts'
+import { captionLook, captionsToEdit, claudeWords, drawCaptionAt, forClaude, hear, kineticFor, kineticStill, makeMotionVideo, shownCaptions, soundsFor, storyWords, type CaptionChoice } from './motion/make'
 import { SOUND_DB, makeSound, type MotionSound } from './motion/sfx'
-import { CaptionReview } from './CaptionReview'
+import { CaptionReview, type EmbeddedVideo } from './CaptionReview'
 import { clearSession, freshFile, loadSession, saveSession, type MotionSession } from './motion/session'
 import { cutLength, cutTiming, rawTimeAt } from './motion/track'
 import { motionPlan, postingHere, recheckCaptions } from './posting'
@@ -48,6 +48,7 @@ type Step =
   | { kind: 'making'; fraction: number }
   | { kind: 'done' }
   | { kind: 'captions' }
+  | { kind: 'check' }
 
 const STILL = { width: 360, height: 640 }
 
@@ -89,6 +90,8 @@ export function MotionView({ onBack }: { onBack: () => void }) {
       if (!kept) setStep({ kind: 'pick' })
       else if (kept.made) setStep({ kind: 'done' })
       else if (kept.storyboard) setStep({ kind: 'plan' })
+      // Heard, not checked yet: the caption check is where he left off.
+      else if (kept.plan && !kept.checked) setStep({ kind: 'check' })
       else setStep({ kind: 'pick' })
       if (kept && !kept.storyboard) setAsk(kept.ask)
     })
@@ -119,7 +122,14 @@ export function MotionView({ onBack }: { onBack: () => void }) {
       }
       const words = storyWords(current.plan!)
       if (words.length < 3) throw new Error("No words were heard in this video, so there's nothing to put graphics on.")
-      const sent = forClaude(words, current.plan!)
+      // The captions first, as on Videos: Claude checks them, he looks over
+      // its fixes and approves - then the plan is made from the words as he
+      // approved them (onChecked carries on from here).
+      if (!current.checked) {
+        setStep({ kind: 'check' })
+        return
+      }
+      const sent = claudeWords(current.plan!, current.captions)
       setStep({ kind: 'planning', words: sent.words, raw: (current.plan!.keep[0]?.start ?? 0) + 1 })
       const answer = await withinMinutes(motionPlan({ job: `${current.id}-${Date.now().toString(36)}`, ...sent, ask: current.ask, format: current.format ?? 'auto' }), PLAN_MINUTES)
       current = { ...current, storyboard: answer.storyboard, chat: [], costCents: current.costCents + answer.costCents }
@@ -176,7 +186,7 @@ export function MotionView({ onBack }: { onBack: () => void }) {
 
   return (
     <section className="screen motion">
-      {step.kind === 'captions' ? null : (
+      {step.kind === 'captions' || step.kind === 'check' ? null : (
         <>
           <BackToMore onBack={onBack} />
           <div className="screen-head">
@@ -213,7 +223,7 @@ export function MotionView({ onBack }: { onBack: () => void }) {
         </>
       ) : null}
       {step.kind === 'hearing' ? <Working what={step.what} fraction={step.fraction} /> : null}
-      {step.kind === 'planning' && session ? <Planning words={step.words} file={session.file} raw={step.raw} ask={session.ask} format={session.format === 'words' ? 'words' : 'board'} /> : null}
+      {step.kind === 'planning' && session ? <Planning words={step.words} file={session.file} raw={step.raw} ask={session.ask} format={session.format === 'glass' ? 'glass' : 'board'} /> : null}
       {step.kind === 'making' ? <Working what="Making the video" fraction={step.fraction} note="Keep the app open - it is made on this phone." /> : null}
       {(step.kind === 'plan' || step.kind === 'making') && session?.plan && session.storyboard ? (
         <PlanScreen
@@ -228,6 +238,17 @@ export function MotionView({ onBack }: { onBack: () => void }) {
             void plan(again)
           }}
           making={step.kind === 'making'}
+        />
+      ) : null}
+      {step.kind === 'check' && session?.plan ? (
+        <CaptionCheck
+          session={session}
+          onDone={(captions) => {
+            const next = { ...session, checked: true, ...(captions ? { captions } : {}) }
+            keep(next)
+            window.scrollTo({ top: 0 })
+            void plan(next)
+          }}
         />
       ) : null}
       {step.kind === 'captions' && session?.plan ? (
@@ -265,17 +286,20 @@ function WordStyles({
   kinetic,
   onChange,
   onSee,
+  onWording,
   disabled,
 }: {
   session: MotionSession
   kinetic: Kinetic
   onChange: (next: MotionSession) => void
   onSee: (t: number) => void
+  /** Opens the Cutter's caption screen, to change what a word says. */
+  onWording: () => void
   disabled: boolean
 }) {
   const heard = useMemo(() => storyWords(session.plan!), [session.plan])
   const shown = kinetic.words as { text: string; start: number }[]
-  const next: Record<string, EmphasisStyle | null> = { none: 'big', big: 'gold', gold: 'serif', serif: null }
+  const next: Record<string, EmphasisStyle | null> = { none: 'accent', accent: 'pill', pill: null }
   const tap = (i: number) => {
     const at = shown[i]?.start
     if (at === undefined) return
@@ -293,12 +317,15 @@ function WordStyles({
   return (
     <div className="motion-words">
       <div className="list-title">Your words</div>
-      <p className="hint">Tap a word: big, then gold, then fancy, then normal. The words themselves and where they sit are in Edit captions.</p>
+      <p className="hint">Tap a word: orange, then its phrase in a white pill with a tick, then normal.</p>
+      <button type="button" className="btn wide" disabled={disabled} onClick={onWording}>
+        Change the wording · Claude checks it
+      </button>
       {kinetic.phrases.map(([first, end]) => (
         <div key={first} className="motion-block">
           {Array.from({ length: end - first }, (_, k) => first + k).map((i) => {
             const style = kinetic.styleOf(i)
-            const text = blockText(kinetic.words[i]?.text ?? '', style)
+            const text = barText(kinetic.words[i]?.text ?? '')
             if (!text) return null
             return (
               <button key={i} type="button" disabled={disabled} className={`motion-word${style ? ` ${style}` : ''}`} onClick={() => tap(i)}>
@@ -371,6 +398,82 @@ async function hearSounds(names: MotionSound[]): Promise<void> {
   setTimeout(() => void context.close().catch(() => {}), (at - context.currentTime + 0.5) * 1000)
 }
 
+/** The caption check before the plan - the same as on Videos: Claude reads
+ *  the captions by itself, and only what it changed or isn't sure of comes up,
+ *  one at a time, to keep (Good), undo or fix; then Approve. "All captions"
+ *  opens every phrase. His ask (2026-11-08): "You know how we usually just
+ *  check the captions, like Claude checks the captions, and then I review or
+ *  approve ... That's exactly the format that I want." */
+function CaptionCheck({ session, onDone }: { session: MotionSession; onDone: (captions: CaptionChoice | null) => void }) {
+  const plan = session.plan!
+  const [quick, setQuick] = useState(true)
+  const [initial] = useState(() => captionsToEdit(plan, session.captions))
+  const player = useRef<HTMLVideoElement>(null)
+  const url = useMemo(() => URL.createObjectURL(session.file), [session.file])
+  useEffect(() => () => URL.revokeObjectURL(url), [url])
+  const embedded = useMemo<EmbeddedVideo>(
+    () => ({
+      seek: (t) => {
+        if (player.current) player.current.currentTime = Math.max(0, t)
+      },
+      playFrom: (t) => {
+        const v = player.current
+        if (!v) return
+        v.currentTime = Math.max(0, t)
+        void v.play().catch(() => {})
+      },
+      subscribe: (listener) => {
+        const v = player.current
+        if (!v) return () => {}
+        const tell = () => listener(v.currentTime, !v.paused)
+        const events = ['timeupdate', 'play', 'pause', 'seeked'] as const
+        for (const e of events) v.addEventListener(e, tell)
+        return () => {
+          for (const e of events) v.removeEventListener(e, tell)
+        }
+      },
+      onTyping: () => {},
+    }),
+    [],
+  )
+  const sameWords = (words: CaptionWord[]) => words.map((w) => w.text.trim()).join(' ') === initial.map((w) => w.text.trim()).join(' ')
+  const finish = (words: CaptionWord[], off: boolean) =>
+    onDone(off || !sameWords(words) || session.captions ? { ...session.captions, edited: sameWords(words) ? session.captions?.edited : words, off } : null)
+  return (
+    <section className="screen motion motion-check">
+      <div className="screen-head">
+        <h1>Check the captions</h1>
+      </div>
+      <p className="lede">Claude reads them first - look over what it fixed, then Approve. The graphics are planned from the words you approve.</p>
+      <video ref={player} className="motion-check-video" src={url} playsInline controls preload="metadata" />
+      <CaptionReview
+        name={session.fileName}
+        file={null}
+        initial={initial}
+        embedded={embedded}
+        quick={quick}
+        onTimeline={() => setQuick(false)}
+        approveLabel="Approve - plan the graphics"
+        onRecheck={postingHere() ? (phrases) => recheckCaptions(phrases, [], undefined, recheckContext(session)) : undefined}
+        recheckKey={`motion:${session.id}`}
+        onChange={() => {}}
+        onApprove={(words) => finish(words, false)}
+        onSkip={(words) => finish(words, true)}
+        onClose={(words) => finish(words, false)}
+      />
+    </section>
+  )
+}
+
+/** What a glass scene is, for its row on the plan screen. */
+function glassLabel(scene: Storyboard['scenes'][number]): string {
+  const part = scene.parts[0]
+  if (!part) return ''
+  if (part.kind === 'steps') return 'Light screen with your steps'
+  const where = 'place' in part ? (part.place === 'behind' ? 'behind you' : part.place === 'side' ? 'at your side' : 'under your face') : ''
+  return `Glass card ${where}`
+}
+
 /** What Claude is told about a motion video when it checks its captions:
  *  what he asked for, and the plan's own words on screen - the names and
  *  numbers it should expect to hear. */
@@ -394,7 +497,7 @@ function recheckContext(session: MotionSession): RecheckContext {
  *  given back means he left without changing anything. */
 function EditCaptions({ session, onDone }: { session: MotionSession; onDone: (captions: CaptionChoice | null) => void }) {
   const plan = session.plan!
-  const wordsLook = session.storyboard ? formatOf(session.storyboard) === 'words' : false
+  const wordsLook = session.storyboard ? formatOf(session.storyboard) === 'glass' : false
   const [choice, setChoice] = useState<CaptionChoice>(() => ({ ...session.captions }))
   const [initial] = useState(() => captionsToEdit(plan, session.captions))
   const look = captionLook(choice)
@@ -468,9 +571,9 @@ function PlanScreen({
   const choice = session.captions
   const shown = useMemo(() => shownCaptions(plan, choice), [plan, choice])
   const look = formatOf(session.storyboard!)
-  // The words look: his words building up under his face, as they will.
+  // The glass look: his words in its caption bar, as they will show.
   const kinetic = useMemo(() => {
-    if (look !== 'words') return undefined
+    if (look !== 'glass') return undefined
     const made = kineticFor(plan, choice, session.storyboard!)
     return kineticStill(made, cutTiming(made.words, plan.keep))
   }, [look, plan, choice, session.storyboard])
@@ -537,6 +640,16 @@ function PlanScreen({
         </div>
       </div>
       <ul className="rows group motion-scenes">
+        {board.title ? (
+          <li>
+            <button type="button" className="row-link" onClick={() => setAt(1.2)}>
+              <span className="row-text">
+                <span className="row-name">0:00 · Title over your head</span>
+                <span className="row-line">{board.title.text}</span>
+              </span>
+            </button>
+          </li>
+        ) : null}
         {board.hook ? (
           <li>
             <button type="button" className="row-link" onClick={() => setAt(timing.start(board.hook!.at) + 0.9)}>
@@ -557,6 +670,7 @@ function PlanScreen({
               <span className="row-text">
                 <span className="row-name">
                   {clock(timing.start(scene.from))}–{clock(timing.end(scene.to))}
+                  {look === 'board' ? (popScene(scene) ? ' · Card over your face' : ' · Board') : ` · ${glassLabel(scene)}`}
                 </span>
                 <span className="row-line">{scene.says || scene.parts.map((p) => p.kind).join(', ')}</span>
               </span>
@@ -567,22 +681,22 @@ function PlanScreen({
           <li>
             <button type="button" className="row-link" onClick={() => setAt(timing.start(board.end!.at) + 0.5)}>
               <span className="row-text">
-                <span className="row-name">{clock(timing.start(board.end.at))} · Banner at the top</span>
+                <span className="row-name">{clock(timing.start(board.end.at))} · Call to action</span>
                 <span className="row-line">{board.end.text}</span>
               </span>
             </button>
           </li>
         ) : null}
       </ul>
-      {kinetic ? <WordStyles session={session} kinetic={kinetic} onChange={onChange} onSee={(t) => setAt(Math.min(length, t + 0.35))} disabled={making} /> : null}
+      {kinetic ? <WordStyles session={session} kinetic={kinetic} onChange={onChange} onSee={(t) => setAt(Math.min(length, t + 0.35))} onWording={onCaptions} disabled={making} /> : null}
       <SoundEffects session={session} onChange={onChange} disabled={making} />
       <div className="motion-look">
         <span className="hint">
           Look: <strong>{FORMAT_INFO[look].name}</strong>
           {session.format === 'auto' || !session.format ? ' (Claude picked it)' : ''}
         </span>
-        <button type="button" className="linkbtn" disabled={making} onClick={() => window.confirm(`Plan it again as ${FORMAT_INFO[look === 'board' ? 'words' : 'board'].name}? This plan is replaced.`) && onFormat(look === 'board' ? 'words' : 'board')}>
-          Switch to {look === 'board' ? 'Format 2 · Words' : 'Format 1 · Board'}
+        <button type="button" className="linkbtn" disabled={making} onClick={() => window.confirm(`Plan it again as ${FORMAT_INFO[look === 'board' ? 'glass' : 'board'].name}? This plan is replaced.`) && onFormat(look === 'board' ? 'glass' : 'board')}>
+          Switch to {look === 'board' ? 'Format 2 · Glass' : 'Format 1 · Board'}
         </button>
       </div>
       <button type="button" className="btn wide" disabled={making} onClick={onCaptions}>

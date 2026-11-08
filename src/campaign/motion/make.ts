@@ -13,7 +13,7 @@ import type { CampaignPlan } from '../plan'
 import { renderCampaignCut } from '../render'
 import { formatOf, type EmphasisStyle, type Storyboard } from '../../../supabase/functions/postiz/motion.ts'
 import { captionPositionAt, type Timing } from './draw'
-import { BLOCK_CENTER, kineticPhrases, type Kinetic } from './words'
+import { CAPTION_CENTER, kineticPhrases, type Kinetic } from './glass'
 import { motionSounds, soundsByName } from './sfx'
 
 /** A setting of the Videos tab, as it keeps it on this phone (CampaignApp
@@ -52,6 +52,24 @@ export function storyWords(plan: CampaignPlan): CaptionWord[] {
 /** What Claude is sent: the words and when each is said in the cut video. */
 export function forClaude(words: readonly CaptionWord[], plan: CampaignPlan): { words: string[]; times: number[] } {
   return { words: words.map((w) => w.text.trim()), times: words.map((w) => Math.round(cutTime(w.start, plan.keep) * 10) / 10) }
+}
+
+/** What Claude is sent to plan from: the words as heard - the storyboard's
+ *  numbers point at them - each with the wording he approved on the caption
+ *  check, so the graphics spell names and numbers the way he fixed them. */
+export function claudeWords(plan: CampaignPlan, choice: CaptionChoice | undefined): { words: string[]; times: number[] } {
+  const heard = storyWords(plan)
+  const sent = forClaude(heard, plan)
+  const fixed = choice?.edited ? captionWords(choice.edited, plan.keep, { rough: !plan.aligned }) : null
+  if (!fixed || fixed.length === 0) return sent
+  return {
+    ...sent,
+    words: heard.map((w, i) => {
+      let best = 0
+      for (let j = 1; j < fixed.length; j++) if (Math.abs(fixed[j].start - w.start) < Math.abs(fixed[best].start - w.start)) best = j
+      return Math.abs(fixed[best].start - w.start) < 0.35 ? fixed[best].text.trim() : sent.words[i]
+    }),
+  }
 }
 
 /** His caption choices for this one video, made on the Cutter's own caption
@@ -93,8 +111,8 @@ export function captionLook(choice: CaptionChoice = {}): { position: CaptionPosi
   return { position: choice.position ?? 'usual', size: choice.size ?? defaultCaptionSize(), style: choice.style ?? defaultCaptionStyle() }
 }
 
-/** The words look's block: the captions as they will show (his fixes in),
- *  split into blocks, and the words Claude picked to stand out - matched from
+/** The glass look's captions: as they will show (his fixes in), split into
+ *  phrases, and the words Claude picked to stand out - matched from
  *  the words as heard by when they are said, so his retyping never moves
  *  them. Empty with captions off. */
 export function kineticFor(
@@ -114,7 +132,7 @@ export function kineticFor(
   }
   // Where and how big he put the captions on the caption screen.
   const look = captionLook(choice)
-  return { words, phrases: kineticPhrases(words), styles, centerY: BLOCK_CENTER[look.position], scale: captionScale(look.size) }
+  return { words, phrases: kineticPhrases(words), styles, centerY: CAPTION_CENTER[look.position], scale: captionScale(look.size) }
 }
 
 /** The block as draw.ts takes it, for a still before it is made. */
@@ -137,8 +155,10 @@ export async function makeMotionVideo(
   const settings = videoSettings()
   const words = storyWords(plan)
   const caption = captionLook(choice)
-  const wordsLook = formatOf(board) === 'words'
-  const look = { ...videoLook(blankCampaign('motion'), blankAngle('motion', 'Motion graphics')), effects: { ...NO_EFFECTS } }
+  // The glass look draws its own captions, in its bar; and, like his
+  // example, the shot moves a little closer or back out at the cuts.
+  const ownCaptions = formatOf(board) === 'glass'
+  const look = { ...videoLook(blankCampaign('motion'), blankAngle('motion', 'Motion graphics')), effects: { ...NO_EFFECTS, ...(ownCaptions ? { cutPunch: 'subtle' as const } : {}) } }
   const rendered = await renderCampaignCut(
     file,
     {
@@ -151,13 +171,13 @@ export async function makeMotionVideo(
       pictureMoments: [],
       bankCues: [],
       seed,
-      // In the words look the block under his face is the caption.
-      captions: wordsLook ? [] : shownCaptions(plan, choice),
+      // In the glass look the bar under his face is the caption.
+      captions: ownCaptions ? [] : shownCaptions(plan, choice),
       captionPosition: caption.position,
       captionSize: caption.size,
       captionStyle: caption.style,
       voice: settings.voice,
-      motion: { board, words, sounds: soundsFor(plan, board, sounds), ...(wordsLook ? { kinetic: kineticFor(plan, choice, board) } : {}) },
+      motion: { board, words, sounds: soundsFor(plan, board, sounds), ...(ownCaptions ? { kinetic: kineticFor(plan, choice, board) } : {}) },
     },
     onProgress,
   )

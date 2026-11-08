@@ -12,22 +12,24 @@
 
 /** The two looks (his examples, 2026-11-07/08): "board" - his friend's reel,
  *  a light board over the top with cards, grids and sums, his face below;
- *  "words" - his face full screen, the words building up under it in mixed
- *  sizes (one key word big, sometimes gold), numbered diamonds for lists,
- *  white flashes and dimmed moments, a cinematic edge. */
-export type Format = 'board' | 'words'
-export const FORMATS: readonly Format[] = ['board', 'words']
+ *  "glass" - his example of 2026-11-08 ("I want the formats to look a little
+ *  more like this"): his face full screen, frosted glass cards over him and
+ *  behind him, a light screen with the steps and his video in a box, captions
+ *  in a dark bar, a title over his head at the start. It replaced the old
+ *  Format 2 ("words"), which he had taken out. */
+export type Format = 'board' | 'glass'
+export const FORMATS: readonly Format[] = ['board', 'glass']
 /** What he asks for: one of them, or Claude picks from what he says. */
 export type FormatAsk = Format | 'auto'
 
-/** In the words look: how a word stands out in its block. */
-export type EmphasisStyle = 'big' | 'gold' | 'serif'
+/** In the glass look: how a word stands out in the captions - in orange
+ *  ("accent"), or its whole phrase in a white pill with a green tick
+ *  ("pill", for a key phrase). */
+export type EmphasisStyle = 'accent' | 'pill'
 export interface Emphasis {
   at: number
   style: EmphasisStyle
 }
-
-export type Grade = 'warm' | 'teal' | 'none'
 
 export type Tone = 'purple' | 'green' | 'red' | 'dark'
 export const TONES: readonly Tone[] = ['purple', 'green', 'red', 'dark']
@@ -87,17 +89,39 @@ export type Part =
   | { kind: 'phones'; at: number; items: Phone[]; sign: '=' | 'vs' | null; prices: { text: string; at: number }[] }
   | { kind: 'math'; at: number; lines: { text: string; at: number }[]; result: { text: string; at: number } }
   | { kind: 'number'; at: number; label: string; text: string; icon?: Icon }
-  // The words look:
-  | { kind: 'diamonds'; at: number; items: { at: number }[] }
-  | { kind: 'point'; at: number; number: number; text: string }
-  | { kind: 'flash'; at: number; to: number }
-  | { kind: 'dim'; at: number; to: number; text: string }
+  /** A small card that pops up over his face - a drawing and a few words -
+   *  with the board staying down: most moments get one of these instead of
+   *  the board ("I don't want the white screen to always be there", his ask
+   *  2026-11-08). Alone in its scene; from "at" to "to". */
+  | { kind: 'pop'; at: number; to: number; text: string; icon?: Icon; tone: Tone }
+  // The glass look - each card from "at" to "to", where Claude puts it
+  // ("place"): low over his chest, at the side, or behind him (his head and
+  // body in front of it).
+  /** A small label and a bold line, one word of it in an orange pill. */
+  | { kind: 'tag'; at: number; to: number; label: string; text: string; mark: string; place: Place }
+  /** A row of blocks, some red - the bits cut out - with a title; on "after"
+   *  the red ones go and the title changes ("tight. no filler."). */
+  | { kind: 'blocks'; at: number; to: number; title: string; tag: string; after: { at: number; text: string } | null; place: Place }
+  /** A big number counting up with bars growing under it. */
+  | { kind: 'stat'; at: number; to: number; tag: string; text: string; sub: string; place: Place }
+  /** A picture: a big emoji (or a drawing) with a small label. */
+  | { kind: 'picture'; at: number; to: number; tag: string; emoji: string; icon?: Icon; place: Place }
+  /** The full light screen: numbered steps, each on its word, his video
+   *  shrunk into a box under them. */
+  | { kind: 'steps'; at: number; to: number; tag: string; items: { text: string; note: string; at: number; icon?: Icon; pill: string }[] }
 
 export type PartKind = Part['kind']
 
 /** Which parts belong to which look. */
-export const BOARD_PARTS: readonly PartKind[] = ['title', 'note', 'cards', 'list', 'icons', 'tiles', 'phones', 'math', 'number']
-export const WORDS_PARTS: readonly PartKind[] = ['diamonds', 'point', 'flash', 'dim']
+export const BOARD_PARTS: readonly PartKind[] = ['title', 'note', 'cards', 'list', 'icons', 'tiles', 'phones', 'math', 'number', 'pop']
+
+/** A scene of pop cards only: over his face, the board stays down. */
+export const popScene = (scene: Pick<Scene, 'parts'>): boolean => scene.parts.length > 0 && scene.parts.every((p) => p.kind === 'pop')
+export const GLASS_PARTS: readonly PartKind[] = ['tag', 'blocks', 'stat', 'picture', 'steps']
+
+/** Where a glass card sits. */
+export type Place = 'low' | 'side' | 'behind'
+const PLACES: readonly Place[] = ['low', 'side', 'behind']
 
 export interface Scene {
   /** First and last word it is up for. */
@@ -111,21 +135,25 @@ export interface Scene {
 export interface Storyboard {
   /** The look. Missing on a plan from before there were two: the board. */
   format?: Format
-  /** The words look: which words stand out in their block. */
+  /** The glass look: which words stand out in the captions. */
   emphasis?: Emphasis[]
-  /** The words look: the colour over the picture. */
-  grade?: Grade
+  /** The glass look: the title over his head at the start, until word "to". */
+  title?: { text: string; to: number } | null
   /** Over his face at the start: a small card with a number counting up. */
   hook: { at: number; to: number; label: string; text: string } | null
   scenes: Scene[]
-  /** A banner at the top near the end, e.g. "+ Follow for more tips". */
+  /** The call to action at the end - always one (his ask, 2026-11-08):
+   *  what he says, most often "Comment UGC"; DEFAULT_CTA when he says none. */
   end: { at: number; text: string } | null
 }
 
-export const EMPTY_STORYBOARD: Storyboard = { format: 'board', emphasis: [], grade: 'none', hook: null, scenes: [], end: null }
+export const EMPTY_STORYBOARD: Storyboard = { format: 'board', emphasis: [], title: null, hook: null, scenes: [], end: null }
+
+/** The call to action when he says none: his own most common one. */
+export const DEFAULT_CTA = 'Comment "UGC"'
 
 /** A plan's look; one from before there were two is the board. */
-export const formatOf = (board: Pick<Storyboard, 'format'>): Format => (board.format === 'words' ? 'words' : 'board')
+export const formatOf = (board: Pick<Storyboard, 'format'>): Format => (board.format === 'glass' ? 'glass' : 'board')
 
 /** The most of each thing, so a frame never overflows. */
 export const MOTION_LIMITS = {
@@ -141,18 +169,23 @@ export const MOTION_LIMITS = {
   chars: 48,
   says: 160,
   emphasis: 60,
-  diamonds: 5,
-  /** A white flash or a dimmed moment lasts at most this many words. */
-  flashWords: 8,
+  /** Rows on the glass look's light screen. */
+  stepItems: 6,
+  /** A glass card is up for at most this many words. */
+  cardWords: 16,
+  /** The board is up for at most this many words at a time (about 7 s). */
+  boardWords: 22,
+  /** A pop card over his face, at most this many words. */
+  popWords: 10,
 } as const
 
 export const MOTION_SYSTEM = `You are the motion designer of a short vertical talking video (TikTok, Instagram Reels). The creator talks to the camera; you add motion graphics around what he says, each appearing on the exact word he says it.
 
 You get his words, numbered: [12]word. Every "at", "from", "to" is a word number. A part appears on its "at" word and stays until its scene ends.
 
-There are two looks ("format"). He may have picked one; if he says "you pick", choose the one that fits the video best: "board" for explaining with numbers, money, comparisons, steps; "words" for stories, opinions, tips, hot takes.
+There are two looks ("format"). He may have picked one; if he says "you pick", choose the one that fits the video best: "board" for explaining with numbers, money, comparisons, sums; "glass" for everything else - tips, stories, how he does things, tools, opinions.
 
-FORMAT "board": while a scene is up, the top 55% of the frame is a light grey board with flat graphics and his face moves to the bottom; between scenes he is full screen. Captions are burned in already - never repeat his sentences on the board; show the idea. Parts (1 to 4 per scene, stacked top to bottom in your order):
+FORMAT "board": while a board scene is up, the top 45% of the frame is a light grey board with flat graphics and his face moves to the bottom; between scenes he is full screen. The board is the big moment, NOT the default: use it only for the 2 to 4 moments that need a picture (a comparison, a sum, a grid, a list of steps), each 3 to 7 seconds (at most 20 words), with at least as long of his face between two boards - his face is on screen most of the video. Everywhere else he makes a point worth seeing, use a "pop" scene instead: a small card with a drawing and 1 to 4 words popping up over his face, the board staying down (aim for 3 to 6 of them). Captions are burned in already - never repeat his sentences on the board; show the idea. Parts (1 to 4 per scene, stacked top to bottom in your order):
 - title: a short heading, e.g. "2 types of contracts".
 - note: a small dark label in code font, e.g. "max 2 videos = max $50 / day".
 - cards: 1 to 3 white cards side by side, each with a coloured badge ("BASE PAY") and up to 4 short lines, each line appearing on its own word, optionally with a check or a cross.
@@ -162,15 +195,22 @@ FORMAT "board": while a scene is up, the top 55% of the frame is a light grey bo
 - math: a sum built line by line ("50 videos", "× 1,500 views", "× $4 / 1000") and a big result ("= $300 / day") that counts up.
 - number: one big number that counts up, with a small label.
 - icons: 2 to 4 big drawings in a row, one short word under each, each on its word - for the key ideas, e.g. "video" "Film", "chart-up" "Grow", "money" "Earn".
+- pop: ALONE in its scene, no board: a card over his face with an "icon" and 1 to 4 words ("text"), from "at" to "to" (3 to 10 words), e.g. "fire" "Goes viral", "clock" "Only 2 hours". Tone for its colour.
 Tones: purple, green, red, dark.
 Drawings ("icon"): give most titles, cards, list rows and numbers an "icon" that fits, so the board is never just text, and use an "icons" part in some scenes. Only these: ${ICONS.join(', ')}. Optional "hook": a small card over his face at the very start with a label and a number counting up (only for a striking number in his first sentence). 3 to 8 scenes for a 30-90 s video.
 
-FORMAT "words": his face stays full screen with a dark cinematic edge. His words build up word by word in a block under his face (that IS the caption). You choose "emphasis": the words that stand out in their block - "big" (huge white, the key word of a phrase), "gold" (huge yellow capitals, for the strongest words: results, money, VIRAL, the hook), "serif" (a small fancy italic, for a little word before a big one, like "the" in "the Three"). About one emphasised word every 4-8 words; never two in a row. "grade": "warm" or "teal" colour over the picture, or "none". Parts (scenes here are just moments, the face never moves):
-- diamonds: numbered diamonds 1, 2, 3... in a row, each lighting up on its word - when he announces a list ("here are the three mistakes"). Up to 5.
-- point: one numbered diamond with a short UPPERCASE label at the side, while he talks about that point ("number": 1, "text": "NOT SETTING GOALS"). One scene per point.
-- flash: a quick cut to a plain white screen where his words show one at a time in black, from "at" to "to" (2 to 8 words) - for a punchy line. Use once or twice at most.
-- dim: the picture goes dark with a short text over it from "at" to "to" (a reaction like "Bruh....", a question). Use rarely.
-Optional "end": in "board" a banner at the top; in "words" big gold words like "DM 'EDIT'" - only when he asks to follow/subscribe/comment/DM.
+FORMAT "glass": like a polished YouTube-style edit. His face stays full screen; frosted glass cards come and go over him - something new every 3 to 6 seconds, each card up 2 to 5 seconds (at most 15 words), one card at a time, never covering his face. Each scene holds ONE part. Cards have a "place": "low" (over his chest, under his face), "side" (to the right of his head), or "behind" (big, high up, BEHIND him - his head and shoulders in front of it, for a strong moment; use it 1 to 3 times). Parts:
+- tag: a small UPPERCASE "label" ("100% EDITED BY CLAUDE · ZERO HUMAN EDITS") and a bold short "text" ("edited end-to-end") with one word or two of it in an orange pill ("mark": "end-to-end"). For the main claim of a moment.
+- blocks: a row of blue blocks with some red ones (the waste), a "title" ("cuts the dead space") and a small "tag" ("AUTO-EDITED"); optional "after": on its word the red ones disappear and the title becomes its "text" ("tight. no filler."). For before/after, removing waste, saving time.
+- stat: a big number counting up ("94%", "$3,000", "2x") with a small "tag" ("MOTION GRAPHICS") and "sub" ("auto-built, on beat"), bars growing under it. Only numbers he says.
+- picture: a card with a big "emoji" (one emoji that shows the thing: 🤖 🎬 💰 📈 🔥 ⏱️ 🧠 ✂️ 📱) and a small "tag" naming it ("DYNAMIC VISUALS").
+- steps: the whole screen turns light blue with his video in a box under a numbered list; "tag" over it ("THE PIPELINE · RAW → FINISHED") and up to 6 "items", each on its word: "text" one or two words, shown in capitals ("INTAKE"), "note" a few small words ("copy raw in"), an "icon", optional "pill" (a small coloured label at the right, "BY FORMAT"). Only when he lists steps or several things - once or twice a video, 4 to 10 seconds.
+Also in "glass":
+- "title": the title of the video, written over his head at the very start, 2 to 7 words, the promise of the video ("I Fully Automated My Video Editing"), until word "to" (about 3 seconds).
+- "emphasis": the captions are a dark bar under his face; mark a few words: "accent" (that word in orange - a key word, about one every 10 words) and "pill" (that word's whole phrase shown in a white pill with a green tick - for 1 to 3 key phrases: "super duper simple").
+- 6 to 12 scenes for a 30-90 s video, the first within his first two sentences.
+
+Call to action ("end"), in both looks, ALWAYS: at his last sentence. If he says one ("comment UGC", "follow for more"), put his words, short ('Comment "UGC"'). If he says none, put 'Comment "UGC"'.
 
 Rules:
 - Only what he actually says. Never invent numbers, names, prices or claims.
@@ -178,7 +218,7 @@ Rules:
 - Write everything in the language he speaks.
 - Scenes never overlap and go in order. Each starts on the word that introduces its idea.
 - "says": one plain sentence for him describing what shows in that scene.
-- Only use the parts of the format you chose.
+- Only use the parts of the format you chose. Every icon only from the list.
 - If he asked for something, do it. When he asks to change the storyboard, change only what he asked and keep the rest the same (switching format if he asks); "reply" says in one short sentence what you changed (or answers his question).`
 
 /** How Claude answers: plain JSON, shaped like this. Not a strict output
@@ -189,13 +229,13 @@ export const MOTION_ANSWER = `Answer with ONE JSON object and nothing else - no 
 {
   "reply": "one short sentence for him",
   "format": "board" or "words",
-  "grade": "warm" | "teal" | "none",                       (words only)
-  "emphasis": [{"at": 12, "style": "big" | "gold" | "serif"}],   (words only)
+  "title": {"text": "I Automated My Editing", "to": 8},    (glass only)
+  "emphasis": [{"at": 12, "style": "accent" | "pill"}],   (glass only)
   "hook": {"at": 0, "to": 6, "label": "PER MONTH", "text": "+10 000 $"},   (board only, optional)
   "scenes": [
     {"from": 14, "to": 40, "says": "what shows, for him", "parts": [ ...parts... ]}
   ],
-  "end": {"at": 120, "text": "+ Follow for more"}           (optional)
+  "end": {"at": 120, "text": "Comment \"UGC\""}             (always)
 }
 Parts - "kind" and its fields:
   {"kind": "title", "at": 14, "text": "...", "icon": "chart-up"}
@@ -207,10 +247,12 @@ Parts - "kind" and its fields:
   {"kind": "phones", "at": 15, "items": [{"text": "1,2k", "at": 15, "lit": false}], "sign": "=" | "vs" | "none", "prices": [{"text": "25 $", "at": 20}]}
   {"kind": "math", "at": 15, "lines": [{"text": "50 videos", "at": 15}], "result": {"text": "= 300 $ / day", "at": 22}}
   {"kind": "number", "at": 15, "label": "a day", "text": "300 $", "icon": "money"}
-  {"kind": "diamonds", "at": 15, "items": [{"at": 16}, {"at": 18}, {"at": 20}]}
-  {"kind": "point", "at": 15, "number": 1, "text": "NOT SETTING GOALS"}
-  {"kind": "flash", "at": 15, "to": 19}
-  {"kind": "dim", "at": 15, "to": 18, "text": "Bruh...."}
+  {"kind": "pop", "at": 15, "to": 21, "icon": "fire", "text": "Goes viral", "tone": "red"}
+  {"kind": "tag", "at": 15, "to": 24, "place": "low" | "side" | "behind", "label": "100% EDITED BY CLAUDE", "text": "edited end-to-end", "mark": "end-to-end"}
+  {"kind": "blocks", "at": 15, "to": 26, "place": "low", "title": "cuts the dead space", "tag": "AUTO-EDITED", "after": {"at": 22, "text": "tight. no filler."}}
+  {"kind": "stat", "at": 15, "to": 22, "place": "side", "tag": "MOTION GRAPHICS", "text": "94%", "sub": "auto-built, on beat"}
+  {"kind": "picture", "at": 15, "to": 21, "place": "side", "tag": "DYNAMIC VISUALS", "emoji": "🤖"}
+  {"kind": "steps", "at": 15, "to": 40, "tag": "THE PIPELINE · RAW → FINISHED", "items": [{"text": "Intake", "note": "copy raw in", "at": 16, "icon": "video", "pill": ""}]}
 Every "at", "from", "to" is a word number.`
 
 /** Claude's answer as an object: the JSON in it, even with a code fence or a
@@ -257,7 +299,7 @@ export function motionMessage(words: string, ask: string, current: Storyboard | 
     'His words:',
     words,
     '',
-    format === 'auto' ? 'Format: you pick ("board" or "words").' : `Format: he picked "${format}".`,
+    format === 'auto' ? 'Format: you pick ("board" or "glass").' : `Format: he picked "${format}".`,
     ask.trim() ? `What he asked for this video: ${ask.trim().slice(0, 600)}` : 'He asked for nothing in particular: you decide.',
     ...(current
       ? [
@@ -286,6 +328,8 @@ const withIcon = (value: unknown) => {
   return icon ? { icon } : {}
 }
 
+const placeOf = (value: unknown, fallback: Place): Place => (PLACES.includes(value as Place) ? (value as Place) : fallback)
+
 const list = (value: unknown): Record<string, unknown>[] =>
   Array.isArray(value) ? value.filter((v): v is Record<string, unknown> => Boolean(v) && typeof v === 'object') : []
 
@@ -301,6 +345,8 @@ function cleanPart(raw: Record<string, unknown>, from: number, to: number, words
   const inside = (value: unknown, fallback: number) => Math.max(from, Math.min(to, wordAt(value, words, fallback)))
   const at = inside(raw.at, from)
   const L = MOTION_LIMITS
+  /** A glass card's last word: its "to", at most cardWords after it comes up. */
+  const cardEnd = (value: unknown) => Math.min(to, at + L.cardWords, Math.max(at + 2, inside(value, at + 8)))
   switch (raw.kind) {
     case 'title': {
       const text = str(raw.text) || str(raw.label)
@@ -386,28 +432,48 @@ function cleanPart(raw: Record<string, unknown>, from: number, to: number, words
       const text = str(raw.text, 24)
       return text ? { kind: 'number', at, label: str(raw.label), text, ...withIcon(raw.icon) } : null
     }
-    case 'diamonds': {
+    case 'pop': {
+      const text = str(raw.text, 32) || str(raw.label, 32)
+      if (!text) return null
+      const end = Math.min(to, at + L.popWords, Math.max(at + 2, inside(raw.to, at + 5)))
+      return { kind: 'pop', at, to: end, text, ...withIcon(raw.icon), tone: toneOf(raw.tone, 'purple') }
+    }
+    case 'tag': {
+      const text = str(raw.text, 40)
+      if (!text) return null
+      const mark = str(raw.mark, 40)
+      return { kind: 'tag', at, to: cardEnd(raw.to), label: str(raw.label, 48).toUpperCase(), text, mark: mark && text.toLowerCase().includes(mark.toLowerCase()) ? mark : '', place: placeOf(raw.place, 'low') }
+    }
+    case 'blocks': {
+      const title = str(raw.title, 32) || str(raw.text, 32)
+      if (!title) return null
+      const end = cardEnd(raw.to)
+      const afterRaw = raw.after && typeof raw.after === 'object' ? (raw.after as Record<string, unknown>) : null
+      const afterText = afterRaw ? str(afterRaw.text, 32) : ''
+      const afterAt = afterRaw ? Math.max(at + 1, Math.min(end, inside(afterRaw.at, end))) : end
+      return { kind: 'blocks', at, to: end, title, tag: str(raw.tag, 20).toUpperCase(), after: afterText && afterAt > at ? { at: afterAt, text: afterText } : null, place: placeOf(raw.place, 'low') }
+    }
+    case 'stat': {
+      const text = str(raw.text, 12)
+      return text ? { kind: 'stat', at, to: cardEnd(raw.to), tag: str(raw.tag, 24).toUpperCase(), text, sub: str(raw.sub, 32), place: placeOf(raw.place, 'side') } : null
+    }
+    case 'picture': {
+      const emoji = typeof raw.emoji === 'string' ? [...raw.emoji.trim()].slice(0, 4).join('') : ''
+      const icon = iconOf(raw.icon)
+      if (!emoji && !icon) return null
+      return { kind: 'picture', at, to: cardEnd(raw.to), tag: str(raw.tag, 24).toUpperCase(), emoji, ...(icon ? { icon } : {}), place: placeOf(raw.place, 'side') }
+    }
+    case 'steps': {
       const items = list(raw.items)
-        .slice(0, L.diamonds)
-        .map((item) => ({ at: inside(item.at, at) }))
-      // A count with no words given: they light up one word apart.
-      const count = typeof raw.count === 'number' && Number.isFinite(raw.count) ? Math.max(1, Math.min(L.diamonds, Math.round(raw.count))) : 0
-      while (items.length < count) items.push({ at: Math.min(to, (items[items.length - 1]?.at ?? at) + 1) })
-      if (items.length === 0) return null
-      items.sort((a, b) => a.at - b.at)
-      return { kind: 'diamonds', at: Math.min(at, items[0].at), items }
-    }
-    case 'point': {
-      const text = str(raw.text) || str(raw.label)
-      const number = typeof raw.number === 'number' && Number.isFinite(raw.number) ? Math.max(1, Math.min(99, Math.round(raw.number))) : 1
-      return text ? { kind: 'point', at, number, text: text.toUpperCase() } : null
-    }
-    case 'flash':
-    case 'dim': {
-      const end = Math.min(to, at + L.flashWords - 1, Math.max(at, inside(raw.to, at + 2)))
-      if (raw.kind === 'flash') return { kind: 'flash', at, to: end }
-      const text = str(raw.text, 24)
-      return text ? { kind: 'dim', at, to: end, text } : null
+        .slice(0, L.stepItems)
+        .flatMap((item) => {
+          const text = str(item.text, 18)
+          return text ? [{ text: text.toUpperCase(), note: str(item.note, 24), at: inside(item.at, at), ...withIcon(item.icon), pill: str(item.pill, 12).toUpperCase() }] : []
+        })
+        .sort((a, b) => a.at - b.at)
+      if (items.length < 2) return null
+      const end = Math.max(items[items.length - 1].at + 2, inside(raw.to, to))
+      return { kind: 'steps', at: Math.min(at, items[0].at), to: Math.min(to, end), tag: str(raw.tag, 40).toUpperCase(), items }
     }
     default:
       return null
@@ -420,8 +486,8 @@ function cleanPart(raw: Record<string, unknown>, from: number, to: number, words
 export function cleanStoryboard(value: unknown, words: number): Storyboard {
   if (!value || typeof value !== 'object' || words <= 0) return EMPTY_STORYBOARD
   const raw = value as Record<string, unknown>
-  const format: Format = raw.format === 'words' ? 'words' : 'board'
-  const allowed = format === 'words' ? WORDS_PARTS : BOARD_PARTS
+  const format: Format = raw.format === 'glass' ? 'glass' : 'board'
+  const allowed = format === 'glass' ? GLASS_PARTS : BOARD_PARTS
   const scenes: Scene[] = []
   const rawScenes = list(raw.scenes)
     .map((s) => ({ s, from: wordAt(s.from, words, 0) }))
@@ -432,11 +498,28 @@ export function cleanStoryboard(value: unknown, words: number): Storyboard {
     // Never on top of the one before: it ends where this one starts.
     if (last && from <= last.from) continue
     if (last && last.to >= from) last.to = from - 1
-    const to = Math.max(from, wordAt(s.to, words, from))
-    const parts = list(s.parts)
+    let to = Math.max(from, wordAt(s.to, words, from))
+    let parts = list(s.parts)
       .slice(0, MOTION_LIMITS.parts)
       .filter((p) => allowed.includes(p.kind as PartKind))
       .flatMap((p) => cleanPart(p, from, to, words) ?? [])
+    if (format === 'board') {
+      // A pop card is alone in its scene: with board parts it would sit on
+      // the board, so there the board parts win.
+      if (parts.some((p) => p.kind !== 'pop')) parts = parts.filter((p) => p.kind !== 'pop')
+      else parts = parts.slice(0, 1)
+      // The board is up for a moment, not a minute: a long scene is cut
+      // short, and what came after its end is left out.
+      if (!popScene({ parts }) && to - from > MOTION_LIMITS.boardWords) {
+        to = from + MOTION_LIMITS.boardWords
+        parts = parts.filter((p) => p.at <= to)
+      }
+      if (popScene({ parts })) to = Math.min(to, (parts[0] as { to: number }).to)
+    } else {
+      // One card at a time: the scene is its one part, as long as it is up.
+      parts = parts.slice(0, 1)
+      if (parts[0] && 'to' in parts[0]) to = Math.min(to, parts[0].to)
+    }
     if (parts.length === 0) continue
     scenes.push({ from, to, says: str(s.says, MOTION_LIMITS.says), parts })
   }
@@ -450,28 +533,28 @@ export function cleanStoryboard(value: unknown, words: number): Storyboard {
     const to = Math.min(firstScene - 1, Math.max(at, wordAt(hookRaw.to, words, at + 8)))
     if (to >= at) hook = { at, to, label: str(hookRaw.label, 32), text: str(hookRaw.text, 24) }
   }
+  // Always a call to action at the end (his ask, 2026-11-08): his own, or
+  // DEFAULT_CTA over his last words.
   const endRaw = raw.end && typeof raw.end === 'object' ? (raw.end as Record<string, unknown>) : null
-  const end = endRaw && str(endRaw.text) ? { at: wordAt(endRaw.at, words, words - 1), text: str(endRaw.text) } : null
-  // Each word once, in order; never two in a row.
+  const endText = (endRaw && str(endRaw.text, 32)) || DEFAULT_CTA
+  const end = { at: endRaw && str(endRaw.text, 32) ? wordAt(endRaw.at, words, Math.max(0, words - 6)) : Math.max(0, words - 6), text: endText }
+  // Each word once, in order.
   const emphasis: Emphasis[] = []
-  if (format === 'words') {
+  if (format === 'glass') {
     const byWord = new Map<number, EmphasisStyle>()
     for (const e of list(raw.emphasis)) {
-      if (e.style !== 'big' && e.style !== 'gold' && e.style !== 'serif') continue
+      if (e.style !== 'accent' && e.style !== 'pill') continue
       byWord.set(wordAt(e.at, words, 0), e.style)
     }
     for (const [at, style] of [...byWord].sort((a, b) => a[0] - b[0])) {
       if (emphasis.length >= MOTION_LIMITS.emphasis) break
-      const last = emphasis[emphasis.length - 1]
-      // A serif word leads into the big one after it ("the Three"); two big
-      // ones side by side read as shouting.
-      if (last && at === last.at + 1 && last.style !== 'serif' && style !== 'serif') continue
       emphasis.push({ at, style })
     }
   }
-  const grade: Grade = format === 'words' && (raw.grade === 'warm' || raw.grade === 'teal') ? raw.grade : 'none'
-  // The hook card is the board's; in the words look the first block is it.
-  return { format, emphasis, grade, hook: format === 'board' ? hook : null, scenes, end }
+  const titleRaw = raw.title && typeof raw.title === 'object' ? (raw.title as Record<string, unknown>) : null
+  const titleText = format === 'glass' && titleRaw ? str(titleRaw.text, 60) : ''
+  const title = titleText ? { text: titleText, to: Math.max(2, Math.min(words - 1, wordAt(titleRaw!.to, words, 8), 20)) } : null
+  return { format, emphasis, title, hook: format === 'board' ? hook : null, scenes, end }
 }
 
 function clampPart(part: Part, from: number, to: number): void {
@@ -498,13 +581,22 @@ function clampPart(part: Part, from: number, to: number): void {
       for (const line of part.lines) line.at = clamp(line.at)
       part.result.at = clamp(part.result.at)
       break
-    case 'diamonds':
     case 'icons':
       for (const item of part.items) item.at = clamp(item.at)
       break
-    case 'flash':
-    case 'dim':
+    case 'pop':
+    case 'tag':
+    case 'stat':
+    case 'picture':
       part.to = Math.max(part.at, clamp(part.to))
+      break
+    case 'blocks':
+      part.to = Math.max(part.at, clamp(part.to))
+      if (part.after) part.after.at = Math.max(part.at, Math.min(part.to, part.after.at))
+      break
+    case 'steps':
+      part.to = Math.max(part.at, clamp(part.to))
+      for (const item of part.items) item.at = clamp(item.at)
       break
     default:
       break
@@ -519,13 +611,13 @@ export function cleanReply(value: unknown): string {
 /** A storyboard for testing without Claude (the FAKE_CLAUDE key). */
 export function fakeStoryboard(words: number, format: FormatAsk = 'board'): Storyboard {
   if (words < 6) return EMPTY_STORYBOARD
-  if (format === 'words') {
+  if (format === 'glass') {
     return cleanStoryboard(
       {
-        format: 'words',
-        grade: 'warm',
-        emphasis: [{ at: 2, style: 'gold' }],
-        scenes: [{ from: 3, to: 5, says: 'Three diamonds light up.', parts: [{ kind: 'diamonds', at: 3, items: [{ at: 3 }, { at: 4 }, { at: 5 }] }] }],
+        format: 'glass',
+        title: { text: 'How I do it', to: 2 },
+        emphasis: [{ at: 2, style: 'accent' }],
+        scenes: [{ from: 3, to: 5, says: 'A card over your chest.', parts: [{ kind: 'tag', at: 3, to: 5, label: 'Test', text: 'edited end-to-end', mark: 'end-to-end', place: 'low' }] }],
       },
       words,
     )

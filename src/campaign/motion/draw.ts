@@ -10,9 +10,9 @@
 // labels, quick pop / slide / count-up moves. Everything is flat shapes and
 // text: cheap enough for an iPhone at 1080x1920, nothing to load.
 
-import { formatOf, type Card, type Part, type Scene, type Storyboard, type Tone } from '../../../supabase/functions/postiz/motion.ts'
+import { formatOf, popScene, type Card, type Part, type Scene, type Storyboard, type Tone } from '../../../supabase/functions/postiz/motion.ts'
 import { HEADLINE_FAMILY } from '../headlineFont'
-import { drawWordsLook, type Kinetic } from './words'
+import { drawGlassLook, type Kinetic } from './glass'
 import { drawIconBadge } from './icons'
 import type { CaptionPosition } from '../captions'
 
@@ -91,11 +91,14 @@ export function sceneWindows(board: Storyboard, time: Timing): { start: number; 
 /** How far the board is up at `t`: 0 his face full screen, 1 the board up
  *  and his face below it. Scenes close together keep it up between them. */
 export function splitAt(board: Storyboard, time: Timing, t: number): number {
-  // The words look never moves his face.
-  if (formatOf(board) === 'words') return 0
+  // The glass look never moves his face.
+  if (formatOf(board) === 'glass') return 0
   const merged: { start: number; end: number }[] = []
-  for (const w of sceneWindows(board, time)) {
+  const windows = sceneWindows(board, time)
+  for (const [i, w] of windows.entries()) {
     if (!Number.isFinite(w.start)) break
+    // A pop card over his face leaves the board down.
+    if (popScene(board.scenes[i])) continue
     const last = merged[merged.length - 1]
     if (last && w.start - last.end < GLUE_SEC) last.end = Math.max(last.end, w.end)
     else merged.push({ ...w })
@@ -399,7 +402,7 @@ function drawCard(ctx: Ctx, card: Card, box: Box, u: number, t: number, time: Ti
     const pad = 3 * u
     // Its drawing in the top corner; the badge keeps clear of it.
     const iconRoom = card.icon ? 7.5 * u : 0
-    if (card.icon) drawIconBadge(ctx, card.icon, box.x + box.w - pad - 3.2 * u, box.y + pad + 2.6 * u, 6.4 * u, toneColour(card.tone))
+    if (card.icon) drawIconBadge(ctx, card.icon, box.x + box.w - pad - 3.2 * u, box.y + pad + 2.6 * u, 6.4 * u, toneColour(card.tone), t - time.start(card.at))
     if (card.badge) {
       const fitted = fitText(ctx, card.badge, box.w - 2 * pad - 1.4 * u - iconRoom, 2.5 * u, 800, MONO)
       pill(ctx, fitted.text, box.x + pad, box.y + pad + 2.2 * u, fitted.px, toneColour(card.tone), '#fff')
@@ -441,7 +444,7 @@ function drawList(ctx: Ctx, part: Extract<Part, { kind: 'list' }>, box: Box, u: 
         ctx.fill()
       })
       const tone = i % 2 === 0 ? COLOURS.purple : COLOURS.green
-      if (item.icon) drawIconBadge(ctx, item.icon, box.x + 5 * u, y + 4.3 * u, 6.4 * u, tone)
+      if (item.icon) drawIconBadge(ctx, item.icon, box.x + 5 * u, y + 4.3 * u, 6.4 * u, tone, t - time.start(item.at))
       else {
         ctx.fillStyle = tone
         ctx.beginPath()
@@ -600,9 +603,100 @@ function drawMath(ctx: Ctx, part: Extract<Part, { kind: 'math' }>, box: Box, u: 
         const y = box.y + 3.4 * u + part.lines.length * 6.4 * u + 5.6 * u
         drawText(ctx, countText(part.result.text, clamp01((t - at + PART_LEAD) / COUNT_SEC)), box.x + 4 * u, y, box.w - 8 * u, 7.4 * u, COLOURS.green, { weight: 800 })
         ctx.restore()
+        confetti(ctx, box.x + box.w * 0.3, y, u, t - at - COUNT_SEC, part.result.at)
       }
     }
   }, 2 * u)
+}
+
+/** How long a burst of confetti lasts. */
+const CONFETTI_SEC = 1.5
+const CONFETTI_COLOURS = [COLOURS.purple, COLOURS.green, '#ffc83d', COLOURS.red, '#3aa0ff']
+
+/** A burst of confetti from (cx, cy) as a number lands - `life` seconds
+ *  after it finished counting; nothing before or once it has fallen. The
+ *  same pieces every frame and every time (`seed`). */
+export function confetti(ctx: Ctx, cx: number, cy: number, u: number, life: number, seed: number): void {
+  if (!(life > 0) || life > CONFETTI_SEC) return
+  let state = (seed * 2654435761 + 7) >>> 0
+  const rand = () => {
+    state = (state * 1664525 + 1013904223) >>> 0
+    return state / 0x100000000
+  }
+  ctx.save()
+  for (let i = 0; i < 34; i++) {
+    const angle = -Math.PI / 2 + (rand() - 0.5) * 2.6
+    const speed = (32 + 34 * rand()) * u
+    const spin = (rand() - 0.5) * 18
+    const colour = CONFETTI_COLOURS[i % CONFETTI_COLOURS.length]
+    const x = cx + Math.cos(angle) * speed * life * 0.9
+    const y = cy + Math.sin(angle) * speed * life + 0.5 * 75 * u * life * life
+    ctx.globalAlpha = clamp01((CONFETTI_SEC - life) / 0.45)
+    ctx.fillStyle = colour
+    ctx.save()
+    ctx.translate(x, y)
+    ctx.rotate(spin * life)
+    // A flat piece turning over: narrow and wide in turn.
+    ctx.scale(1, Math.cos(life * (6 + i)))
+    ctx.fillRect(-1 * u, -0.5 * u, 2 * u, 1 * u)
+    ctx.restore()
+  }
+  ctx.restore()
+}
+
+/** Where pop card `n` (the n-th of the video) sits: just under the top bar,
+ *  in turn a little to the left and a little to the right of his head. */
+function popPlace(n: number, width: number, height: number): { cx: number; cy: number } {
+  return { cx: width * (n % 2 === 0 ? 0.36 : 0.64), cy: height * 0.18 }
+}
+
+/** A pop card over his face (part "pop"): it springs in tilted, its drawing
+ *  draws itself on, it floats while he talks, and it shrinks away. */
+function drawPop(ctx: Ctx, part: Extract<Part, { kind: 'pop' }>, n: number, width: number, height: number, t: number, time: Timing): void {
+  const u = width / 100
+  const at = time.start(part.at)
+  const until = time.end(part.to) + SCENE_HOLD
+  if (!(t >= at - PART_LEAD) || t > until) return
+  const p = clamp01((t - at + PART_LEAD) / 0.42)
+  const out = clamp01((until - t) / 0.25)
+  const life = t - at
+  const badge = 11.5 * u
+  const fitted = fitText(ctx, part.text, width * 0.56, 6.4 * u, 800)
+  ctx.font = font(fitted.px, 800)
+  const textW = ctx.measureText(fitted.text).width
+  const w = badge + 2.8 * u + textW + 5.6 * u
+  const h = 16 * u
+  const place = popPlace(n, width, height)
+  const cx = Math.max(w / 2 + 3 * u, Math.min(width - w / 2 - 3 * u, place.cx))
+  const tilt = (n % 2 === 0 ? -1 : 1) * 0.045
+  const float = Math.sin(life * 2.6) * 0.8 * u * clamp01(life / 0.6)
+  ctx.save()
+  ctx.globalAlpha *= clamp01(p * 2) * out
+  ctx.translate(cx, place.cy + float + (1 - easeOut(p)) * 6 * u)
+  ctx.rotate(tilt * (2 - easeOut(p)))
+  const grow = easeBack(p) * (0.85 + 0.15 * out)
+  ctx.scale(grow, grow)
+  shadowed(ctx, 1.4 * u, () => {
+    ctx.fillStyle = COLOURS.card
+    roundRect(ctx, -w / 2, -h / 2, w, h, 3.2 * u)
+    ctx.fill()
+  })
+  const tone = toneColour(part.tone)
+  // A strip of its colour down the left edge.
+  ctx.save()
+  roundRect(ctx, -w / 2, -h / 2, w, h, 3.2 * u)
+  ctx.clip()
+  ctx.fillStyle = tone
+  ctx.fillRect(-w / 2, -h / 2, 1.2 * u, h)
+  ctx.restore()
+  const left = -w / 2 + 2.6 * u
+  if (part.icon) drawIconBadge(ctx, part.icon, left + badge / 2, 0, badge, tone, life - 0.1)
+  const textX = part.icon ? left + badge + 2.8 * u : left
+  // The words come in a beat after the card, sliding a touch.
+  const tp = clamp01((t - at - 0.12) / 0.3)
+  ctx.globalAlpha *= tp
+  drawText(ctx, fitted.text, textX + (1 - easeOut(tp)) * 2 * u, 0.2 * u, textW + 2 * u, fitted.px, COLOURS.ink, { weight: 800 })
+  ctx.restore()
 }
 
 function drawPart(ctx: Ctx, part: Part, box: Box, u: number, t: number, time: Timing): void {
@@ -620,7 +714,7 @@ function drawPart(ctx: Ctx, part: Part, box: Box, u: number, t: number, time: Ti
         ctx.font = font(fitted.px, 800)
         const textW = ctx.measureText(fitted.text).width
         const left = box.x + (box.w - (badge + 1.6 * u + textW)) / 2
-        drawIconBadge(ctx, part.icon, left + badge / 2, box.y + box.h / 2, badge, COLOURS.purple)
+        drawIconBadge(ctx, part.icon, left + badge / 2, box.y + box.h / 2, badge, COLOURS.purple, t - time.start(part.at))
         drawText(ctx, fitted.text, left + badge + 1.6 * u, box.y + box.h / 2, textW + 1, fitted.px, COLOURS.ink, { weight: 800 })
       })
       return
@@ -640,7 +734,7 @@ function drawPart(ctx: Ctx, part: Part, box: Box, u: number, t: number, time: Ti
             ctx.arc(cx, box.y + disc / 2 + 0.5 * u, disc / 2, 0, Math.PI * 2)
             ctx.fill()
           })
-          drawIconBadge(ctx, item.icon, cx, box.y + disc / 2 + 0.5 * u, disc, toneColour(item.tone))
+          drawIconBadge(ctx, item.icon, cx, box.y + disc / 2 + 0.5 * u, disc, toneColour(item.tone), t - time.start(item.at))
           if (item.text) drawText(ctx, item.text, cx, box.y + disc + 5 * u, w, 3.6 * u, COLOURS.ink, { weight: 700, align: 'center' })
         }, 2 * u)
       })
@@ -665,6 +759,7 @@ function drawPart(ctx: Ctx, part: Part, box: Box, u: number, t: number, time: Ti
         const value = countText(part.text, clamp01((t - at + PART_LEAD) / COUNT_SEC))
         if (!part.icon) {
           drawText(ctx, value, box.x + box.w / 2, valueY, box.w, 11 * u, COLOURS.green, { weight: 800, align: 'center' })
+          confetti(ctx, box.x + box.w / 2, valueY, u, t - at - COUNT_SEC, part.at)
           return
         }
         // Laid out on the number as it ends, so it doesn't slide while counting.
@@ -673,9 +768,10 @@ function drawPart(ctx: Ctx, part: Part, box: Box, u: number, t: number, time: Ti
         ctx.font = font(fitted.px, 800)
         const textW = ctx.measureText(fitted.text).width
         const left = box.x + (box.w - (badge + 2 * u + textW)) / 2
-        drawIconBadge(ctx, part.icon, left + badge / 2, valueY, badge, COLOURS.green)
+        drawIconBadge(ctx, part.icon, left + badge / 2, valueY, badge, COLOURS.green, t - at)
         drawText(ctx, value, left + badge + 2 * u, valueY, textW + 4 * u, fitted.px, COLOURS.green, { weight: 800 })
       })
+      confetti(ctx, box.x + box.w / 2, box.y + (part.label ? 5 : 0) * u + 6.5 * u, u, t - at - COUNT_SEC, part.at)
       return
     }
     case 'cards':
@@ -774,16 +870,22 @@ function drawEnd(ctx: Ctx, end: NonNullable<Storyboard['end']>, width: number, h
 /** Everything of the storyboard at `t` on the finished video: the board and
  *  the scene on it, the hook card, the end banner. His face is drawn first
  *  by the caller, moved down by faceDropAt. */
-export function drawMotion(ctx: Ctx, width: number, height: number, board: Storyboard, time: Timing, t: number, kinetic?: Kinetic): void {
-  if (formatOf(board) === 'words') {
-    drawWordsLook(ctx, width, height, board, time, t, kinetic)
+export function drawMotion(ctx: Ctx, width: number, height: number, board: Storyboard, time: Timing, t: number, kinetic?: Kinetic, cutout?: CanvasImageSource | null): void {
+  if (formatOf(board) === 'glass') {
+    drawGlassLook(ctx, width, height, board, time, t, kinetic, cutout)
     return
   }
   const up = splitAt(board, time, t)
   drawBoardBackground(ctx, width, height, up)
   const u = width / 100
   const windows = sceneWindows(board, time)
+  let pops = 0
   board.scenes.forEach((scene, i) => {
+    if (popScene(scene)) {
+      const n = pops++
+      for (const part of scene.parts) if (part.kind === 'pop') drawPop(ctx, part, n, width, height, t, time)
+      return
+    }
     const w = windows[i]
     if (t < w.start || t >= w.end) return
     const fade = Math.min(clamp01((w.end - t) / 0.22), up > 0 ? 1 : 0)
@@ -807,7 +909,10 @@ export function drawMotion(ctx: Ctx, width: number, height: number, board: Story
  *  which drops under it with his face, so it never covers the graphics. */
 export function captionPositionAt(board: Storyboard, time: Timing, t: number, position: CaptionPosition): CaptionPosition {
   if (position !== 'top' && position !== 'middle') return position
-  return splitAt(board, time, t) > 0.5 ? 'usual' : position
+  if (splitAt(board, time, t) > 0.5) return 'usual'
+  // A caption set at the top makes room for a pop card while it is up.
+  const popUp = board.scenes.some((s) => popScene(s) && s.parts.some((p) => p.kind === 'pop' && t >= time.start(p.at) - 0.1 && t <= time.end(p.to) + SCENE_HOLD))
+  return position === 'top' && popUp ? 'usual' : position
 }
 
 /** Fills the strip his face leaves at the top as it moves down, so nothing

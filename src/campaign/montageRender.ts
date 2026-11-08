@@ -382,6 +382,8 @@ export async function renderMontage(
     const voicePlanes = voice ? Array.from({ length: CHANNELS }, () => new Float32Array(Math.ceil((total + 2) * RATE))) : null
     const soundTo = musicTrack(bed, (sample) => audioSource.add(sample), voicePlanes)
     const behind = voicePlanes ? VOICE_LEAD : 0
+    /** How loud his voice got, for the report when a talking clip gave no sound. */
+    let voicePeak = 0
     const seconds: number[] = []
     let at = 0
     // Frames written so far, at a steady FPS. Each steady frame shows the
@@ -463,6 +465,7 @@ export async function renderMontage(
                     const into = voicePlanes[c]
                     const plane = planes[c] ?? planes[0]
                     if (!plane || from >= into.length) continue
+                    for (let k = 0; k < plane.length; k += 64) voicePeak = Math.max(voicePeak, Math.abs(plane[k]))
                     into.set(from < 0 ? plane.subarray(-from) : plane.subarray(0, into.length - from), Math.max(0, from))
                   }
                 },
@@ -488,6 +491,15 @@ export async function renderMontage(
     }
     at = Math.max(at, made / FPS)
     await soundTo(at)
+    // A talking clip that gave no sound: said, so a muted video is never a
+    // mystery (his report, 2026-11-08: "all the reaction clips are muted").
+    if (voicePlanes && voicePeak < 0.002) {
+      reportProblem({
+        kind: 'check',
+        phase: 'voice',
+        message: `${files[0] instanceof File ? files[0].name : 'clip 1'}: his voice was to be kept but the clip gave ${voicePeak > 0 ? 'almost ' : ''}no sound (sound track: ${clips[0].hasSound ? (clips[0].audio ? 'readable' : 'not readable here') : 'none'})`,
+      })
+    }
     const start = openingProblem(opening, await usualFrame(clips[0].video, clips[0].first))
     if (start) reportProblem({ kind: 'check', phase: 'start', message: `${files[0] instanceof File ? files[0].name : 'clip 1'}: ${start}` })
 

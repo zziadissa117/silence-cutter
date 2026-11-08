@@ -149,25 +149,36 @@ describe('Motion graphics: captions he can fix, as on Videos', () => {
   })
 })
 
-describe('Motion graphics: Format 2 words he can style', () => {
-  it('taps a word through big, gold, fancy and back, saved on the storyboard', async () => {
-    const wordsBoard = cleanStoryboard({ format: 'words', emphasis: [{ at: 4, style: 'gold' }], scenes: [] }, words.length)
-    kept = { id: 'm2', file: new Blob(['x']), fileName: 'take.mov', ask: '', plan, storyboard: wordsBoard, chat: [], costCents: 0 }
+describe('Motion graphics: Format 2 (glass) captions he can style', () => {
+  it('taps a word through orange, pill and back, saved on the storyboard', async () => {
+    const glassBoard = cleanStoryboard({ format: 'glass', emphasis: [{ at: 4, style: 'accent' }], scenes: [] }, words.length)
+    kept = { id: 'm2', file: new Blob(['x']), fileName: 'take.mov', ask: '', plan, storyboard: glassBoard, chat: [], costCents: 0 }
     await act(async () => root.render(<MotionView onBack={() => {}} />))
     await settle()
     expect(host.textContent).toContain('Your words')
+    expect(host.textContent).toContain('Change the wording')
     const chip = (text: string) => [...host.querySelectorAll('.motion-word')].find((b) => b.textContent === text) as HTMLButtonElement
-    // Claude's gold word shows gold, in capitals.
-    expect(chip('WORD4').className).toContain('gold')
+    expect(chip('word4').className).toContain('accent')
     await act(async () => chip('word2').click())
     await settle()
     expect(saved.at(-1)?.storyboard?.emphasis).toEqual([
-      { at: 2, style: 'big' },
-      { at: 4, style: 'gold' },
+      { at: 2, style: 'accent' },
+      { at: 4, style: 'accent' },
     ])
     await act(async () => chip('word2').click())
     await settle()
-    expect(saved.at(-1)?.storyboard?.emphasis?.[0]).toEqual({ at: 2, style: 'gold' })
+    expect(saved.at(-1)?.storyboard?.emphasis?.[0]).toEqual({ at: 2, style: 'pill' })
+  })
+
+  it('a video planned in the old Format 2 goes back to its caption check, to be planned again as glass', async () => {
+    kept = { id: 'm5', file: new Blob(['x']), fileName: 'take.mov', ask: '', plan, storyboard: { ...board, format: 'words' } as never, checked: true, chat: [], costCents: 0 }
+    const { fromOldFormat2 } = await vi.importActual<typeof import('./motion/session')>('./motion/session')
+    kept = fromOldFormat2(kept)
+    expect(kept.storyboard).toBeUndefined()
+    expect(kept.format).toBe('glass')
+    await act(async () => root.render(<MotionView onBack={() => {}} />))
+    await settle()
+    expect(host.textContent).toContain('Check the captions')
   })
 })
 
@@ -184,5 +195,26 @@ describe("Motion graphics: Claude checks the captions, as on Videos", () => {
     await settle()
     expect(recheck).toHaveBeenCalled()
     expect(host.textContent).toContain('Claude fixed this')
+  })
+})
+
+describe('Motion graphics: the caption check comes before the plan (his ask, 2026-11-08)', () => {
+  it("Claude checks the heard captions by itself; Approve plans the graphics from the fixed words", async () => {
+    localStorage.clear()
+    recheck.mockImplementation(async (phrases: string[]) => ({ phrases: ['Ziad fixed', ...phrases.slice(1)], changed: [0], costCents: 1 }))
+    motionPlan.mockResolvedValue({ storyboard: board, reply: '', costCents: 2 })
+    kept = { id: 'm4', file: new Blob(['x']), fileName: 'take.mov', ask: '', plan, chat: [], costCents: 0 }
+    await act(async () => root.render(<MotionView onBack={() => {}} />))
+    await settle()
+    expect(host.textContent).toContain('Check the captions')
+    expect(recheck).toHaveBeenCalled()
+    expect(motionPlan).not.toHaveBeenCalled()
+    const approve = [...host.querySelectorAll('button')].find((b) => b.textContent?.startsWith('Approve'))!
+    await act(async () => approve.click())
+    await settle()
+    expect(saved.some((s) => s.checked)).toBe(true)
+    const sent = motionPlan.mock.calls[0][0] as { words: string[] }
+    expect(sent.words[0]).toBe('Ziad')
+    expect(host.textContent).toContain('Two cards side by side.')
   })
 })

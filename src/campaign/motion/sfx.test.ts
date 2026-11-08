@@ -27,33 +27,35 @@ describe('motion graphics: the sound effects, worked out from the storyboard', (
     expect(cues.filter((c) => c.sound === 'pop').length).toBeGreaterThanOrEqual(3)
   })
 
-  it('words look: a deep hit on gold words, a camera flash on a white flash, ticks on diamonds, no whoosh', () => {
+  it('glass look: a swish as each card slides in, a whoosh for the light screen, a tick on a key phrase, a pop on the call to action', () => {
     const board = cleanStoryboard(
       {
-        format: 'words',
-        emphasis: [{ at: 2, style: 'gold' }],
+        format: 'glass',
+        title: { text: 'How I edit', to: 2 },
+        emphasis: [{ at: 2, style: 'pill' }],
         scenes: [
-          { from: 4, to: 8, says: '', parts: [{ kind: 'diamonds', at: 4, items: [{ at: 5 }, { at: 6 }, { at: 7 }] }] },
-          { from: 10, to: 12, says: '', parts: [{ kind: 'flash', at: 10, to: 12 }] },
+          { from: 4, to: 8, says: '', parts: [{ kind: 'tag', at: 4, to: 8, label: 'x', text: 'edited end-to-end', mark: 'end-to-end', place: 'low' }] },
+          { from: 10, to: 16, says: '', parts: [{ kind: 'steps', at: 10, to: 16, tag: '', items: [{ text: 'a', at: 11 }, { text: 'b', at: 13 }] }] },
         ],
       },
       20,
     )
-    const names = motionSounds(board, start).map((c) => c.sound)
-    expect(names).toContain('hit')
-    expect(names).toContain('shutter')
-    expect(names.filter((n) => n === 'tick').length).toBe(3)
-    expect(names).not.toContain('whoosh')
+    const cues = motionSounds(board, start)
+    expect(cues).toContainEqual({ sound: 'swish', at: 0 })
+    expect(cues).toContainEqual({ sound: 'tick', at: 1 })
+    expect(cues).toContainEqual({ sound: 'swish', at: 2 })
+    expect(cues).toContainEqual({ sound: 'whoosh', at: 5 })
+    expect(cues.filter((c) => c.sound === 'pop').length).toBe(3)
   })
 
   it('never two closer than the gap - the stronger one stays', () => {
     const board = cleanStoryboard(
-      { format: 'words', emphasis: [{ at: 4, style: 'gold' }], scenes: [{ from: 4, to: 6, says: '', parts: [{ kind: 'point', at: 4, number: 1, text: 'x' }] }] },
-      10,
+      { format: 'glass', emphasis: [{ at: 4, style: 'pill' }], scenes: [{ from: 4, to: 8, says: '', parts: [{ kind: 'stat', at: 4, to: 8, text: '94%', place: 'side' }] }] },
+      12,
     )
     const cues = motionSounds(board, start)
     for (let i = 1; i < cues.length; i++) expect(cues[i].at - cues[i - 1].at).toBeGreaterThanOrEqual(MIN_GAP)
-    expect(cues.find((c) => c.at === 2)?.sound).toBe('hit')
+    expect(cues.find((c) => c.at === 2)?.sound).toBe('swish')
   })
 
   it('groups them by sound for the render, each with its level', () => {

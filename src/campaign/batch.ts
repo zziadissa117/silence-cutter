@@ -492,9 +492,20 @@ export function styleFor(planned: HeadlineStyle | undefined, picked: readonly He
   return picked[hash % picked.length]
 }
 
-/** Whether he talks in this reaction: its own mark, else the bank's old
- *  one-for-all sound setting. */
-export function talksIn(bank: Pick<BatchBank, 'voice'>, file: BankFile): boolean {
+/** Whether a format's clips keep his voice: a talking head always, a green
+ *  screen when he turned "You talk in these" on. */
+export function formatTalks(format: Pick<BatchFormat, 'kind' | 'voice'>): boolean {
+  return format.kind === 'talking' || (format.kind === 'greenscreen' && Boolean(format.voice))
+}
+
+/** Whether he talks in this reaction: the format it is in when it is in one
+ *  (a clip in a Talking head format always keeps its sound - his report,
+ *  2026-11-08: "all the reaction clips are muted, but they have to have
+ *  sound on every single one of them"), else its own mark, else the bank's
+ *  old one-for-all sound setting. */
+export function talksIn(bank: Pick<BatchBank, 'voice'> & { formats?: BatchFormat[] }, file: BankFile): boolean {
+  const format = (bank.formats ?? []).find((f) => file.formats?.includes(f.id))
+  if (format) return formatTalks(format)
   return file.talks ?? bank.voice === true
 }
 
@@ -603,7 +614,7 @@ const inFormat = (id: string) => (item: { formats?: string[] }) => Boolean(item.
 export function formatBank(bank: BatchBank, format: BatchFormat): BatchBank {
   const mine = inFormat(format.id)
   const steps = bank.steps?.filter(mine)
-  const talks = format.kind === 'talking' || (format.kind === 'greenscreen' && Boolean(format.voice))
+  const talks = formatTalks(format)
   return {
     ...bank,
     layout: format.kind === 'greenscreen' ? 'greenscreen' : 'after',
