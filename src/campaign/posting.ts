@@ -1000,13 +1000,27 @@ export function handleOf(account: { profile?: string }): string {
   return (account.profile ?? '').trim().replace(/^@+/, '')
 }
 
-/** "@kari.ugc" - an account is always shown by its username alone: names
+/** "@kari.ugc · TT" - an account is always shown by its username and a
+ *  two-letter platform mark, never its name: names
  *  are mostly first names, and many accounts share one (his rule,
  *  2026-11-08: "Always, always, always put the username. I don't care about
  *  the name"). Only an account with no username (YouTube) shows its name. */
 export function accountLabel(account: { name: string; platform: string; profile?: string }): string {
   const handle = handleOf(account)
-  return handle ? `@${handle}` : account.name.trim() || platformName(account.platform)
+  const who = handle ? `@${handle}` : account.name.trim() || platformName(account.platform)
+  // A small marker, so a TikTok and an Instagram of the same username are
+  // told apart (his ask, 2026-11-08).
+  const mark = platformMark(account.platform)
+  return mark ? `${who} · ${mark}` : who
+}
+
+/** "TT", "IG", "YT", "FB" - the platform in two letters. */
+export function platformMark(platform: string): string {
+  if (platform.startsWith('tiktok')) return 'TT'
+  if (platform.startsWith('instagram')) return 'IG'
+  if (platform.startsWith('youtube')) return 'YT'
+  if (platform.startsWith('facebook')) return 'FB'
+  return ''
 }
 
 /** A posted video's link, named by the server after its account (its name,

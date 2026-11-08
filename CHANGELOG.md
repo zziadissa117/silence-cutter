@@ -3,6 +3,11 @@
 Newest first. Every change says what it does, how to use it, and how it works
 underneath. Kept up to date with each commit.
 
+## Accounts: a two-letter platform mark after the username
+App only: run ./deploy.sh.
+- Every account label is "@username · TT" / "· IG" / "· YT" / "· FB" (`posting.platformMark`), so a TikTok and an
+  Instagram with the same username can be told apart (his ask, 2026-11-08). Test: `accountLabel.test.ts`.
+
 ## Accounts shown by their username, everywhere
 Needs deploying: run ./deploy-server.sh (./deploy.sh runs it by itself).
 **What he said (2026-11-08):** in Analytics, "accounts that stopped getting views ... it's just the name of the account.

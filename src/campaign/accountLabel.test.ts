@@ -6,11 +6,11 @@ import { heldNote } from '../../supabase/functions/postiz/limits.ts'
 
 describe('accountLabel', () => {
   it('is the username alone - never the name, however many share it', () => {
-    expect(accountLabel({ name: 'Kari', platform: 'tiktok', profile: 'kari.ugc' })).toBe('@kari.ugc')
-    expect(accountLabel({ name: 'Kari', platform: 'instagram', profile: '@kari.ugc2' })).toBe('@kari.ugc2')
+    expect(accountLabel({ name: 'Kari', platform: 'tiktok', profile: 'kari.ugc' })).toBe('@kari.ugc · TT')
+    expect(accountLabel({ name: 'Kari', platform: 'instagram-standalone', profile: '@kari.ugc' })).toBe('@kari.ugc · IG')
   })
   it('falls back to the name only when there is no username', () => {
-    expect(accountLabel({ name: 'Kari', platform: 'youtube' })).toBe('Kari')
+    expect(accountLabel({ name: 'Kari', platform: 'youtube' })).toBe('Kari · YT')
     expect(handleOf({ profile: '  @x ' })).toBe('x')
   })
   it("names a posted video's link by its account's username", () => {
@@ -18,7 +18,7 @@ describe('accountLabel', () => {
       { name: 'Kari', platform: 'tiktok', profile: 'kari.tt' },
       { name: 'Kari', platform: 'instagram', profile: 'kari.ig' },
     ]
-    expect(linkLabel('Kari (Instagram)', accounts)).toBe('@kari.ig')
+    expect(linkLabel('Kari (Instagram)', accounts)).toBe('@kari.ig · IG')
     expect(linkLabel('Someone', accounts)).toBe('Someone')
   })
   it('is how the server names them too: shadowban warnings and held posts', () => {
