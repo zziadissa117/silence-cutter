@@ -96,7 +96,7 @@ import { cleanWindow, type PostingWindow } from './window.ts'
 import { planRespread, type RespreadRow } from './respread.ts'
 import { MIN_AGE_DAYS as HOURS_MIN_AGE_DAYS, LOOK_BACK_DAYS as HOURS_LOOK_BACK_DAYS, hoursOn, learnHours, parseHours, type BestHours } from './bestHours.ts'
 import { LOOK_BACK_DAYS as HOOKS_LOOK_BACK_DAYS, hookInsights } from './hookInsights.ts'
-import { TELL_AGAIN_DAYS, USUAL_TO, deadAccounts, deadNote, type DeadAccount } from './deadAccounts.ts'
+import { TELL_AGAIN_DAYS, USUAL_TO, deadAccounts, deadNote, userName, type DeadAccount } from './deadAccounts.ts'
 import { IDEAS_SCHEMA, IDEAS_SYSTEM, cleanIdeas, ideasMessage } from './headlineIdeas.ts'
 import { NOTE_SCHEMA, NOTE_SYSTEM, cleanNote, noteMessage } from './handNote.ts'
 import { VIDEO_HEADLINE_SCHEMA, VIDEO_HEADLINE_SYSTEM, cleanVideoHeadline, pastHeadlines, videoHeadlineMessage } from './videoHeadline.ts'
@@ -1735,12 +1735,12 @@ async function toBuffer(
     const channel = matched[account.id]
     if (!channel || post.buffer_ids?.[account.id]) continue
     if ((room.get(channel.id) ?? 0) <= 0) {
-      full.push(account.name)
+      full.push(userName(account))
       continue
     }
     const key = keys[channel.key]
     if (!key) {
-      problems.push(`${account.name}: its Buffer key is gone - paste it again in Settings, Posting.`)
+      problems.push(`${userName(account)}: its Buffer key is gone - paste it again in Settings, Posting.`)
       continue
     }
     try {
@@ -1761,8 +1761,8 @@ async function toBuffer(
       if (isFull(said)) {
         // Buffer counts it full before we do (posts added in Buffer by hand).
         room.set(channel.id, 0)
-        full.push(account.name)
-      } else problems.push(`${account.name}: ${said}`)
+        full.push(userName(account))
+      } else problems.push(`${userName(account)}: ${said}`)
     }
   }
   return { post, problems, full }
@@ -2714,7 +2714,7 @@ async function schedule(start: Post): Promise<Post> {
     const handed = await toBuffer(profile, post, covered, now ? null : at, await bufferRoom(profile))
     post = handed.post
     if (toPostiz.every((a) => post.buffer_ids?.[a.id])) return scheduled({})
-    const through = covered.filter((a) => post.buffer_ids?.[a.id]).map((a) => a.name)
+    const through = covered.filter((a) => post.buffer_ids?.[a.id]).map(userName)
     const note = [
       error.message,
       through.length > 0 ? `Sent through Buffer to ${through.join(', ')}.` : '',
@@ -4132,7 +4132,7 @@ async function checkPosted(now: number): Promise<void> {
         // days at the top of the list, Postiz saying "Post not found").
         const lost = post.accounts.filter((a) => !a.held && (post.postiz_ids ?? []).some((ref) => ref.integration === a.id))
         if (mine.length === 0 && lost.length > 0 && post.checks >= 6 && Date.parse(post.post_at!) < Date.now() - 60 * MINUTE) {
-          const names = [...new Set(lost.map((a) => accountName(a.name, a.platform, post.accounts)))].join(', ')
+          const names = [...new Set(lost.map((a) => (a.profile ? userName(a) : accountName(a.name, a.platform, post.accounts))))].join(', ')
           const saved = await update(post.id, {
             status: 'error',
             error: `Not posted to ${names}. Postiz no longer has it - Post again sends it now.`,
@@ -4245,7 +4245,7 @@ async function checkBuffer(now: number): Promise<void> {
       const fields: Partial<Post> = { buffer_ids: refs, release_urls: links, checked_at: new Date().toISOString(), checks: post.checks + 1 }
       if (post.accounts.every((a) => refs[a.id].status === 'sent' || refs[a.id].status === 'error')) {
         const errored = post.accounts.filter((a) => refs[a.id].status === 'error')
-        const names = errored.map((a) => a.name).join(', ')
+        const names = errored.map(userName).join(', ')
         if (errored.length === post.accounts.length) {
           fields.status = 'error'
           fields.error = `Buffer couldn't post it to ${names}. Open Buffer to see why.`

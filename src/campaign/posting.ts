@@ -956,15 +956,20 @@ export function handleOf(account: { profile?: string }): string {
   return (account.profile ?? '').trim().replace(/^@+/, '')
 }
 
-/** "@kari.ugc · TikTok (Kari)" - the username first, because accounts often
- *  share a name and the username is what tells them apart; the name follows
- *  when it adds anything. With no username it is "Kari · TikTok". */
+/** "@kari.ugc" - an account is always shown by its username alone: names
+ *  are mostly first names, and many accounts share one (his rule,
+ *  2026-11-08: "Always, always, always put the username. I don't care about
+ *  the name"). Only an account with no username (YouTube) shows its name. */
 export function accountLabel(account: { name: string; platform: string; profile?: string }): string {
   const handle = handleOf(account)
-  const on = platformName(account.platform)
-  if (!handle) return `${account.name} · ${on}`
-  const same = handle.toLowerCase() === account.name.trim().replace(/^@+/, '').toLowerCase()
-  return `@${handle} · ${on}${same || !account.name.trim() ? '' : ` (${account.name.trim()})`}`
+  return handle ? `@${handle}` : account.name.trim() || platformName(account.platform)
+}
+
+/** A posted video's link, named by the server after its account (its name,
+ *  with the platform when two share it): shown by that account's username. */
+export function linkLabel(key: string, accounts: readonly { name: string; platform: string; profile?: string }[]): string {
+  const account = accounts.find((a) => a.name === key) ?? accounts.find((a) => key.startsWith(`${a.name} (`) && key.includes(platformName(a.platform)))
+  return account ? accountLabel(account) : key
 }
 
 /** "Today 6:04 PM", "Tomorrow 9:03 AM", "Mon 9:03 AM" - in the phone's time. */

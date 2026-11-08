@@ -3,6 +3,20 @@
 Newest first. Every change says what it does, how to use it, and how it works
 underneath. Kept up to date with each commit.
 
+## Accounts shown by their username, everywhere
+Needs deploying: run ./deploy-server.sh (./deploy.sh runs it by itself).
+**What he said (2026-11-08):** in Analytics, "accounts that stopped getting views ... it's just the name of the account.
+Most of these names are just the first name, and they're usually the same ... Always, always, always put the username.
+I don't care about the name."
+- `posting.accountLabel` is now "@username" alone (the name only for an account with none, like YouTube) - every list,
+  picker and line that names an account: Posts, Batch, campaign Posting, Trial reels, Analytics.
+- "Accounts that stopped getting views": the server now keeps each account's username (`deadAccounts.ts` `profile`) and
+  the card and its notification say "@username on Instagram may be shadowbanned" (`userName`); the card also finds the
+  username of an account the server named before.
+- The server's own lines say "@username" too: "Not posted to ...", "Held back: ... is paused", the Buffer notes. A posted
+  video's links are labelled by username (`linkLabel`). Stored keys (views and links by account name) are unchanged.
+- Tests: `accountLabel.test.ts`, `analyticsView.test.tsx`.
+
 ## People: a sign-in link for Trial reels and nothing else
 Needs deploying: run ./deploy-server.sh (./deploy.sh runs it by itself).
 **What he said (2026-11-07):** "make a new account for SAMTPNQ ... we want a magic link ... Only access to one feature:

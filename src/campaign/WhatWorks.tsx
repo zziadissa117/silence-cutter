@@ -7,7 +7,8 @@
 
 import { useState } from 'react'
 
-import { platformName, type DeadAccount } from '../../supabase/functions/postiz/deadAccounts.ts'
+import { type DeadAccount } from '../../supabase/functions/postiz/deadAccounts.ts'
+import { accountLabel } from './posting'
 
 import { bestRuns, dayOfWeek, type BestHours } from '../../supabase/functions/postiz/bestHours.ts'
 import type { CampaignHooks, HookKind, HookRow } from '../../supabase/functions/postiz/hookInsights.ts'
@@ -149,8 +150,11 @@ export function TroubleCard({
   accounts,
   paused,
   onPause,
+  known = [],
 }: {
   accounts: readonly DeadAccount[]
+  /** The profile's accounts, for the usernames of those the server named only. */
+  known?: readonly { id: string; profile?: string }[]
   /** Account ids paused now. */
   paused: ReadonlySet<string>
   onPause: (accountId: string, paused: boolean) => Promise<void>
@@ -174,7 +178,7 @@ export function TroubleCard({
           <li key={a.id} className="trouble-row">
             <div>
               <div className="label">
-                {a.name} · {platformName(a.platform)}
+                {accountLabel({ ...a, profile: a.profile ?? known.find((k) => k.id === a.id)?.profile })}
               </div>
               <div className="hint">
                 About {shortNumber(a.recent)} views a video lately - it usually gets {shortNumber(a.usual)}.

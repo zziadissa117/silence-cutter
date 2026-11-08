@@ -17,7 +17,9 @@
 //     accounts:  { "<account id>": { paused?: true, perDay?: 1 } },
 //   }
 //
-// Plain TypeScript with no imports, for Deno and for the unit tests.
+// Plain TypeScript (only deadAccounts.ts userName), for Deno and for the unit tests.
+
+import { userName } from './deadAccounts.ts'
 
 export interface Limit {
   paused?: boolean
@@ -120,8 +122,8 @@ export function firstDayWithRoom(
 /** "TikTok is paused" / "TikTok is full today" - for the post's own note. */
 export function heldNote(held: readonly PostAccount[]): string | null {
   if (held.length === 0) return null
-  const paused = held.filter((a) => a.held === 'paused').map((a) => a.name)
-  const full = held.filter((a) => a.held === 'cap').map((a) => a.name)
+  const paused = held.filter((a) => a.held === 'paused').map(userName)
+  const full = held.filter((a) => a.held === 'cap').map(userName)
   const parts: string[] = []
   if (paused.length > 0) parts.push(`${paused.join(', ')} ${paused.length === 1 ? 'is' : 'are'} paused`)
   if (full.length > 0) parts.push(`${full.join(', ')} ${full.length === 1 ? 'has' : 'have'} reached today's limit`)

@@ -173,10 +173,11 @@ describe('what works and when to post', () => {
   })
 
   it('an account that stopped getting views shows with a Pause', async () => {
-    insights = { campaigns: [], bestHours: null, trouble: [{ id: 'tt', name: 'inflow.pay', platform: 'tiktok', recent: 40, usual: 1200, videos: 6 }] }
+    insights = { campaigns: [], bestHours: null, trouble: [{ id: 'tt', name: 'Inflow', profile: 'inflow.pay', platform: 'tiktok', recent: 40, usual: 1200, videos: 6 }] }
     await show()
     expect(host.textContent).toContain('Accounts that stopped getting views')
-    expect(host.textContent).toContain('inflow.pay · TikTok')
+    expect(host.textContent).toContain('@inflow.pay')
+    expect(host.textContent).not.toContain('Inflow ·')
     await act(async () => button('Pause')!.click())
     expect(extra.onPauseAccount).toHaveBeenCalledWith('tt', true)
   })

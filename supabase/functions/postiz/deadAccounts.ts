@@ -26,7 +26,7 @@ export const TELL_AGAIN_DAYS = 7
 
 export interface AccountVideo {
   post_at: string | null
-  accounts: { id: string; name: string; platform: string }[]
+  accounts: { id: string; name: string; platform: string; profile?: string }[]
   views: Record<string, number> | null
 }
 
@@ -34,6 +34,8 @@ export interface DeadAccount {
   id: string
   name: string
   platform: string
+  /** Its username: what it is shown by (his rule, 2026-11-08). */
+  profile?: string
   /** Its recent videos' middle number of views, and its usual. */
   recent: number
   usual: number
@@ -50,7 +52,7 @@ const median = (list: readonly number[]) => {
 /** The accounts in trouble now, worst first. */
 export function deadAccounts(videos: readonly AccountVideo[], now: number): DeadAccount[] {
   const day = 86_400_000
-  const byAccount = new Map<string, { name: string; platform: string; recent: number[]; usual: number[] }>()
+  const byAccount = new Map<string, { name: string; platform: string; profile?: string; recent: number[]; usual: number[] }>()
   for (const video of videos) {
     const at = Date.parse(video.post_at ?? '')
     if (!Number.isFinite(at) || !video.views) continue
@@ -61,6 +63,7 @@ export function deadAccounts(videos: readonly AccountVideo[], now: number): Dead
       const views = video.views[account.name]
       if (typeof views !== 'number' || !Number.isFinite(views)) continue
       const entry = byAccount.get(account.id) ?? { name: account.name, platform: account.platform, recent: [], usual: [] }
+      if (account.profile) entry.profile = account.profile
       entry[side].push(views)
       byAccount.set(account.id, entry)
     }
@@ -71,9 +74,16 @@ export function deadAccounts(videos: readonly AccountVideo[], now: number): Dead
     const usual = median(a.usual)
     const recent = median(a.recent)
     if (usual < LEAST_USUAL || recent >= usual * DOWN_SHARE) continue
-    out.push({ id, name: a.name, platform: a.platform, recent: Math.round(recent), usual: Math.round(usual), videos: a.recent.length })
+    out.push({ id, name: a.name, platform: a.platform, ...(a.profile ? { profile: a.profile } : {}), recent: Math.round(recent), usual: Math.round(usual), videos: a.recent.length })
   }
   return out.sort((x, y) => x.recent / x.usual - y.recent / y.usual)
+}
+
+/** An account as he reads it: "@username" - its name only when it has
+ *  none (his rule, 2026-11-08: "I don't care about the name"). */
+export function userName(account: { name: string; profile?: string }): string {
+  const handle = (account.profile ?? '').trim().replace(/^@+/, '')
+  return handle ? `@${handle}` : account.name
 }
 
 /** A platform as he says it. */
@@ -88,7 +98,7 @@ export function platformName(platform: string): string {
 /** What he is told about one. */
 export function deadNote(a: DeadAccount): { title: string; body: string } {
   return {
-    title: `${a.name} on ${platformName(a.platform)} may be shadowbanned`,
+    title: `${userName(a)} on ${platformName(a.platform)} may be shadowbanned`,
     body: `Its videos from the last few days get about ${a.recent} views each - it usually gets ${a.usual}. Check the account; you can pause posting to it in Analytics.`,
   }
 }

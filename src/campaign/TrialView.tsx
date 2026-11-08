@@ -25,7 +25,7 @@ import { BatchStatus } from './BatchStatus'
 import { batchState, lastReadyAt, statusDays } from './batchNow'
 import { serverConnected } from './serverFlag'
 import { lastServerStatus, linkProblem, roomProblem, sendingLine, serverMaking, SERVER_LINK_EVENT } from './serverLink'
-import { listPosts, placeFor, postAction, readViralReel, rewordTrial, whenLabel, type LocalPosting, type ServerPost } from './posting'
+import { accountLabel, listPosts, placeFor, postAction, readViralReel, rewordTrial, whenLabel, type LocalPosting, type ServerPost } from './posting'
 import { Watch } from './PostsView'
 import { BATCH_BANK_SAVED, loadBankFile, loadBatchBank, retireBankFiles, saveBankFile, saveBatchBank } from './store'
 import { measureSong } from './songLength'
@@ -408,7 +408,10 @@ export function TrialView({
   const loopAccounts = place?.accounts ?? []
   const limit = instagramLimit(profile?.settings.trial, loopAccounts)
   const blocked = notAllowedOn(profile?.settings.trial, loopAccounts)
-  const accountNames = loopAccounts.map((id) => profile?.accounts.find((a) => a.id === id)?.name ?? 'your account').join(', ')
+  const accountNames = loopAccounts
+    .map((id) => profile?.accounts.find((a) => a.id === id))
+    .map((a) => (a ? accountLabel(a) : 'your account'))
+    .join(', ')
 
   const save = async (next: BatchBank) => {
     await saveBatchBank(next)
@@ -821,7 +824,7 @@ export function TrialView({
                 <option value="">Pick one</option>
                 {accounts.map((a) => (
                   <option key={a.id} value={a.id}>
-                    {a.name}
+                    {accountLabel(a)}
                   </option>
                 ))}
               </select>

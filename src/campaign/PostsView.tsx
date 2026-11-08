@@ -26,6 +26,7 @@ import { copyKind, forgetSend, localVideo, retryStuck, sending, tidySends, watch
 import {
   PostingError,
   accountLabel,
+  linkLabel,
   handleOf,
   isBeingRemade,
   lastPosts,
@@ -438,7 +439,7 @@ function OtherPost({
         <div className="post-links">
           {links.map(([name, href]) => (
             <a key={name} className="linkbtn" href={href} target="_blank" rel="noreferrer">
-              {name}
+              {linkLabel(name, post.accounts)}
             </a>
           ))}
         </div>

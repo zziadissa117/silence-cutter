@@ -3,11 +3,14 @@
 // name - "Ilyan Hamdane" on YouTube and on Instagram), and what the post says.
 
 import { addDays, localDate, localTime, zoned } from './slots.ts'
+import { userName } from './deadAccounts.ts'
 
 export interface FailedAccount {
   id: string
   name: string
   platform: string
+  /** Its username: what he is told it by. */
+  profile?: string
 }
 
 export interface PostizRef {
@@ -56,6 +59,7 @@ export function failedRefs(ids: PostizRef[], found: PostizState[]): PostizRef[] 
 export function notPostedNote(errored: PostizState[], accounts: FailedAccount[]): string {
   const names = errored.map((p) => {
     const account = accounts.find((a) => a.id === p.integration?.id)
+    if (account?.profile) return userName(account)
     const name = account?.name ?? p.integration?.name ?? 'an account'
     return accountName(name, account?.platform ?? p.integration?.providerIdentifier, accounts)
   })
