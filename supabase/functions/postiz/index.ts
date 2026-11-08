@@ -104,7 +104,7 @@ import { LOOK_BACK_DAYS as HOOKS_LOOK_BACK_DAYS, hookInsights } from './hookInsi
 import { TELL_AGAIN_DAYS, USUAL_TO, deadAccounts, deadNote, type DeadAccount } from './deadAccounts.ts'
 import { IDEAS_SCHEMA, IDEAS_SYSTEM, cleanIdeas, ideasMessage } from './headlineIdeas.ts'
 import { NOTE_SCHEMA, NOTE_SYSTEM, cleanNote, noteMessage } from './handNote.ts'
-import { MOTION_SCHEMA, MOTION_SYSTEM, cleanReply, cleanStoryboard, fakeStoryboard, motionMessage, numberedWords, type ChatTurn, type FormatAsk, type Storyboard } from './motion.ts'
+import { MOTION_ANSWER, MOTION_SYSTEM, cleanReply, parseMotionAnswer, cleanStoryboard, fakeStoryboard, motionMessage, numberedWords, type ChatTurn, type FormatAsk, type Storyboard } from './motion.ts'
 import { VIDEO_HEADLINE_SCHEMA, VIDEO_HEADLINE_SYSTEM, cleanVideoHeadline, pastHeadlines, videoHeadlineMessage } from './videoHeadline.ts'
 import { countBefore, type DayRow } from './dayRoom.ts'
 import { cleanPlace, instagramPlace, type Place } from './place.ts'
@@ -1158,8 +1158,8 @@ async function planWithClaude(
   const request = {
     model: MODEL,
     max_tokens: 12000,
-    system: [{ type: 'text', text: MOTION_SYSTEM, cache_control: { type: 'ephemeral' } }],
-    output_config: { effort: 'low', format: { type: 'json_schema', schema: MOTION_SCHEMA } },
+    system: [{ type: 'text', text: `${MOTION_SYSTEM}\n\n${MOTION_ANSWER}`, cache_control: { type: 'ephemeral' } }],
+    output_config: { effort: 'low' },
     messages: [{ role: 'user', content: motionMessage(numberedWords(words, times), ask, current, chat, format) }],
   }
   let response
@@ -1175,12 +1175,7 @@ async function planWithClaude(
     .filter((b) => b.type === 'text')
     .map((b) => b.text ?? '')
     .join('')
-  let parsed: unknown = null
-  try {
-    parsed = JSON.parse(said)
-  } catch {
-    parsed = null
-  }
+  const parsed = parseMotionAnswer(said)
   const storyboard = cleanStoryboard(parsed, words.length)
   const cost = costCents(message.usage?.input_tokens ?? 0, message.usage?.output_tokens ?? 0)
   if (storyboard.scenes.length === 0 && !storyboard.hook && (storyboard.emphasis ?? []).length === 0) {

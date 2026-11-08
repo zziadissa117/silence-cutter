@@ -3,6 +3,13 @@
 Newest first. Every change says what it does, how to use it, and how it works
 underneath. Kept up to date with each commit.
 
+## Motion graphics: Claude's "Schema is too complex" fixed
+Needs deploying: run ./deploy-server.sh (./deploy.sh runs it by itself).
+**What he said (2026-11-08):** "Claude said: 400 ... Schema is too complex. When generating motion graphics".
+- The strict answer format (a JSON schema) had grown too big for the API with the two looks and every part's
+  fields. Claude now answers plain JSON, shown the exact shape in its instructions (`motion.ts MOTION_ANSWER`), read
+  even with a code fence around it (`parseMotionAnswer`); `cleanStoryboard` still keeps only what is valid.
+
 ## Posting: set up with a Buffer key or a Postiz key
 Needs deploying: run ./deploy-server.sh (./deploy.sh runs it by itself).
 **What he said (2026-11-08):** "for samtpnq account why are you forcing him to put a postiz api key, it can be a

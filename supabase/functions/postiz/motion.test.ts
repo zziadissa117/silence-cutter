@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { cleanReply, cleanStoryboard, fakeStoryboard, motionMessage, numberedWords } from './motion.ts'
+import { MOTION_ANSWER, cleanReply, cleanStoryboard, fakeStoryboard, motionMessage, numberedWords, parseMotionAnswer } from './motion.ts'
 
 describe('the motion graphics storyboard Claude writes, made safe', () => {
   it('keeps every word number inside the words and scenes apart, in order', () => {
@@ -81,5 +81,28 @@ describe('the motion graphics storyboard Claude writes, made safe', () => {
     const message = motionMessage(text, '', { hook: null, scenes: [], end: null }, [{ from: 'him', text: 'bigger' }])
     expect(message).toContain('Him: bigger')
     expect(message).toContain('The storyboard now:')
+  })
+})
+
+
+describe("Claude's answer as plain JSON (the strict schema was too complex for the API)", () => {
+  it('reads the JSON with or without a code fence or words around it', () => {
+    expect(parseMotionAnswer('{"reply":"ok","scenes":[]}')).toEqual({ reply: 'ok', scenes: [] })
+    expect(parseMotionAnswer('```json\n{"reply":"ok"}\n```')).toEqual({ reply: 'ok' })
+    expect(parseMotionAnswer('Here it is: {"a":1} done')).toEqual({ a: 1 })
+    expect(parseMotionAnswer('no json')).toBeNull()
+    expect(parseMotionAnswer('{broken')).toBeNull()
+  })
+
+  it('a full answer in the shape Claude is shown comes through cleaned', () => {
+    const answer = parseMotionAnswer(`\`\`\`
+{"reply":"Planned it.","format":"words","grade":"teal","emphasis":[{"at":2,"style":"gold"}],
+ "scenes":[{"from":3,"to":6,"says":"Three diamonds.","parts":[{"kind":"diamonds","at":3,"items":[{"at":4},{"at":5},{"at":6}]}]}]}
+\`\`\``)
+    const board = cleanStoryboard(answer, 10)
+    expect(board.format).toBe('words')
+    expect(board.scenes[0].parts[0]).toMatchObject({ kind: 'diamonds' })
+    expect(cleanReply(answer)).toBe('Planned it.')
+    expect(MOTION_ANSWER).toContain('"kind": "diamonds"')
   })
 })

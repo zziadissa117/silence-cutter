@@ -164,88 +164,48 @@ Rules:
 - Only use the parts of the format you chose.
 - If he asked for something, do it. When he asks to change the storyboard, change only what he asked and keep the rest the same (switching format if he asks); "reply" says in one short sentence what you changed (or answers his question).`
 
-const TONE = { type: 'string', enum: TONES }
-const AT = { type: 'integer' }
-const TEXT = { type: 'string' }
-const LINE = {
-  type: 'object',
-  properties: { text: TEXT, at: AT, mark: { type: 'string', enum: ['check', 'cross', 'none'] } },
-  required: ['text', 'at'],
-  additionalProperties: false,
+/** How Claude answers: plain JSON, shaped like this. Not a strict output
+ *  schema - with two looks and every part's fields the schema was "too
+ *  complex" for the API (his first try, 2026-11-08); cleanStoryboard keeps
+ *  what is usable of whatever comes back. */
+export const MOTION_ANSWER = `Answer with ONE JSON object and nothing else - no code fence, no words before or after:
+{
+  "reply": "one short sentence for him",
+  "format": "board" or "words",
+  "grade": "warm" | "teal" | "none",                       (words only)
+  "emphasis": [{"at": 12, "style": "big" | "gold" | "serif"}],   (words only)
+  "hook": {"at": 0, "to": 6, "label": "PER MONTH", "text": "+10 000 $"},   (board only, optional)
+  "scenes": [
+    {"from": 14, "to": 40, "says": "what shows, for him", "parts": [ ...parts... ]}
+  ],
+  "end": {"at": 120, "text": "+ Follow for more"}           (optional)
 }
-const TIMED_TEXT = { type: 'object', properties: { text: TEXT, at: AT }, required: ['text', 'at'], additionalProperties: false }
+Parts - "kind" and its fields:
+  {"kind": "title", "at": 14, "text": "..."}
+  {"kind": "note", "at": 15, "text": "..."}
+  {"kind": "cards", "at": 15, "cards": [{"badge": "BASE PAY", "tone": "purple", "at": 15, "lines": [{"text": "...", "at": 18, "mark": "check" | "cross" | "none"}]}]}
+  {"kind": "list", "at": 15, "items": [{"text": "...", "at": 16}]}
+  {"kind": "tiles", "at": 15, "count": 10, "window": "", "unit": "videos", "steps": [{"at": 16, "filled": 2, "tone": "purple", "locked": true}]}
+  {"kind": "phones", "at": 15, "items": [{"text": "1,2k", "at": 15, "lit": false}], "sign": "=" | "vs" | "none", "prices": [{"text": "25 $", "at": 20}]}
+  {"kind": "math", "at": 15, "lines": [{"text": "50 videos", "at": 15}], "result": {"text": "= 300 $ / day", "at": 22}}
+  {"kind": "number", "at": 15, "label": "a day", "text": "300 $"}
+  {"kind": "diamonds", "at": 15, "items": [{"at": 16}, {"at": 18}, {"at": 20}]}
+  {"kind": "point", "at": 15, "number": 1, "text": "NOT SETTING GOALS"}
+  {"kind": "flash", "at": 15, "to": 19}
+  {"kind": "dim", "at": 15, "to": 18, "text": "Bruh...."}
+Every "at", "from", "to" is a word number.`
 
-// One flat shape per part, with the fields of every kind optional: simpler
-// for the model than a union, and cleanStoryboard keeps what fits its kind.
-const PART = {
-  type: 'object',
-  properties: {
-    kind: { type: 'string', enum: [...BOARD_PARTS, ...WORDS_PARTS] },
-    to: AT,
-    number: { type: 'integer' },
-    at: AT,
-    text: TEXT,
-    label: TEXT,
-    cards: {
-      type: 'array',
-      items: {
-        type: 'object',
-        properties: { badge: TEXT, tone: TONE, at: AT, lines: { type: 'array', items: LINE } },
-        required: ['badge', 'tone', 'at', 'lines'],
-        additionalProperties: false,
-      },
-    },
-    items: {
-      type: 'array',
-      items: { type: 'object', properties: { text: TEXT, at: AT, lit: { type: 'boolean' } }, required: ['at'], additionalProperties: false },
-    },
-    count: { type: 'integer' },
-    steps: {
-      type: 'array',
-      items: {
-        type: 'object',
-        properties: { at: AT, filled: { type: 'integer' }, tone: TONE, locked: { type: 'boolean' } },
-        required: ['at', 'filled', 'tone', 'locked'],
-        additionalProperties: false,
-      },
-    },
-    window: TEXT,
-    unit: TEXT,
-    sign: { type: 'string', enum: ['=', 'vs', 'none'] },
-    prices: { type: 'array', items: TIMED_TEXT },
-    lines: { type: 'array', items: TIMED_TEXT },
-    result: TIMED_TEXT,
-  },
-  required: ['kind', 'at'],
-  additionalProperties: false,
-}
-
-export const MOTION_SCHEMA = {
-  type: 'object',
-  properties: {
-    reply: TEXT,
-    format: { type: 'string', enum: FORMATS },
-    grade: { type: 'string', enum: ['warm', 'teal', 'none'] },
-    emphasis: {
-      type: 'array',
-      items: { type: 'object', properties: { at: AT, style: { type: 'string', enum: ['big', 'gold', 'serif'] } }, required: ['at', 'style'], additionalProperties: false },
-    },
-    // Left out when there is none (optional fields, not a union: simpler for
-    // the model, and cleanStoryboard reads a missing one as none).
-    hook: { type: 'object', properties: { at: AT, to: AT, label: TEXT, text: TEXT }, required: ['at', 'to', 'label', 'text'], additionalProperties: false },
-    scenes: {
-      type: 'array',
-      items: {
-        type: 'object',
-        properties: { from: AT, to: AT, says: TEXT, parts: { type: 'array', items: PART } },
-        required: ['from', 'to', 'says', 'parts'],
-        additionalProperties: false,
-      },
-    },
-    end: { type: 'object', properties: { at: AT, text: TEXT }, required: ['at', 'text'], additionalProperties: false },
-  },
-  required: ['reply', 'format', 'scenes'],
-  additionalProperties: false,
+/** Claude's answer as an object: the JSON in it, even with a code fence or a
+ *  word around it; null when there is none. */
+export function parseMotionAnswer(text: string): unknown {
+  const start = text.indexOf('{')
+  const end = text.lastIndexOf('}')
+  if (start < 0 || end <= start) return null
+  try {
+    return JSON.parse(text.slice(start, end + 1))
+  } catch {
+    return null
+  }
 }
 
 /** His words as Claude reads them: numbered, a line every few seconds with
