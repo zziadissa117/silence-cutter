@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 
 import {
   BUFFER_QUEUE,
+  channelAccount,
   BufferError,
   HAND_AHEAD_MS,
   MISSED_GAP_MS,
@@ -162,5 +163,20 @@ describe('YouTube through Buffer', () => {
     expect(youtubeTitle('', '\nFirst line here\nsecond')).toBe('First line here')
     expect(youtubeTitle('x'.repeat(150), '').length).toBe(100)
     expect(youtubeTitle('', '')).toBe('New video')
+  })
+})
+
+
+describe('a login posting through Buffer only: its channels are its accounts', () => {
+  it('keeps the channel id, names the platform as Postiz does', () => {
+    expect(channelAccount({ key: 0, id: 'ch1', name: 'samtpnq', displayName: 'Sam', service: 'instagram' })).toEqual({
+      id: 'ch1',
+      name: 'Sam',
+      platform: 'instagram',
+      profile: 'samtpnq',
+      picture: '',
+      disabled: false,
+    })
+    expect(channelAccount({ key: 0, id: 'ch2', name: 'sam', displayName: '', service: 'twitter' })).toMatchObject({ name: 'sam', platform: 'x' })
   })
 })

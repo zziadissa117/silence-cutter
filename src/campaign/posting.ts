@@ -8,6 +8,7 @@
 // it posts at are each person's own, kept in their profile on the server.
 // The phone keeps only which profile is its own, and whether it sends.
 
+import type { ChatTurn, FormatAsk, Storyboard } from '../../supabase/functions/postiz/motion.ts'
 import type { ViewsByAccount } from './analytics'
 import { DEFAULT_WINDOW, LEAST_GAP_MINUTES, cleanWindow, evenTimes, windowTimes, type PostingWindow } from '../../supabase/functions/postiz/window.ts'
 import { cleanPlace, type Place } from '../../supabase/functions/postiz/place.ts'
@@ -74,6 +75,9 @@ export interface Profile {
     /** Trial reels (postiz/trial.ts): each Instagram account's daily trial
      *  limit as Instagram showed it, and the accounts it won't take them on. */
     trial?: TrialAccounts
+    /** 'buffer': this login posts through Buffer only, no Postiz - its
+     *  accounts are its Buffer channels. */
+    via?: 'buffer'
   }
   timezone: string
   hasAnthropic: boolean
@@ -242,11 +246,15 @@ function remember(profile: Profile): Profile {
   return profile
 }
 
-/** Sets posting up on this phone with this person's keys - or finds their
- *  profile again, if the Postiz key has been used before. */
-export async function connect(postizKey: string, anthropicKey: string): Promise<Profile> {
+/** Where a login's videos are posted from: its own Postiz, or Buffer only. */
+export type PostingService = 'postiz' | 'buffer'
+
+/** Sets posting up on this phone with this person's keys - a Postiz key or a
+ *  Buffer key - or finds their profile again, if that key has been used
+ *  before. */
+export async function connect(key: string, anthropicKey: string, service: PostingService = 'postiz'): Promise<Profile> {
   const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone
-  return remember(await call<Profile>('connect', { postizKey, anthropicKey, timezone }))
+  return remember(await call<Profile>('connect', { ...(service === 'buffer' ? { bufferKey: key } : { postizKey: key }), anthropicKey, timezone }))
 }
 
 const askProfile = shared(async () => remember(await call<Profile>('profile', { profile: profileId() })), 2000)
@@ -618,6 +626,42 @@ export async function videoHeadline(words: string, campaignName: string): Promis
     return answer?.headline?.trim() ?? ''
   } catch {
     return ''
+  }
+}
+
+/** Motion graphics: Claude's storyboard for a talking video from its words
+ *  (times: when each is said in the cut video), or the storyboard changed as
+ *  he asks in the chat (postiz/motion.ts). Only the words go.
+ *
+ *  Claude works on the server in the background (longer than one request may
+ *  last - a 504 on his first try): the job is started, then asked after
+ *  every few seconds until it is done. `job` names it, so a second start of
+ *  the same job is the same job. A dropped connection while waiting is just
+ *  asked again. */
+export async function motionPlan(
+  ask: { job: string; words: string[]; times: number[]; ask: string; format?: FormatAsk; storyboard?: Storyboard; chat?: ChatTurn[] },
+  { everyMs = 3000, wait = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms)) }: { everyMs?: number; wait?: (ms: number) => Promise<void> } = {},
+): Promise<{ storyboard: Storyboard; reply: string; costCents: number }> {
+  type Answer = { status?: 'working' | 'done' | 'failed'; storyboard?: Storyboard; reply?: string; costCents?: number; error?: string }
+  const finished = (answer: Answer) => {
+    if (answer.status === 'failed') throw new PostingError(answer.error ?? "Claude couldn't plan it. Try again.")
+    if (!answer.storyboard) return null
+    return { storyboard: answer.storyboard, reply: answer.reply ?? '', costCents: answer.costCents ?? 0 }
+  }
+  // A server from before jobs answers with the storyboard itself.
+  const first = finished(await call<Answer>('motion-plan', { profile: profileId(), ...ask }))
+  if (first) return first
+  for (;;) {
+    await wait(everyMs)
+    let answer: Answer
+    try {
+      answer = await call<Answer>('motion-result', { profile: profileId(), job: ask.job })
+    } catch (error) {
+      if (error instanceof PostingError && error.later) continue
+      throw error
+    }
+    const done = finished(answer)
+    if (done) return done
   }
 }
 

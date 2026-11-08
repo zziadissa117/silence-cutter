@@ -73,6 +73,11 @@ import { Voice, measureLoudness, type WalkAudio } from './voice'
 import { frameRateOf, makeSize, videoQuality } from './quality'
 import { PopFrames, drawPop, occurrencesOf, popAt, popLayout, type PopLayout, type PopPosition } from './popVideo'
 import { report as reportProblem } from '../report'
+import type { EmphasisStyle, Storyboard } from '../../supabase/functions/postiz/motion.ts'
+import type { Kinetic } from './motion/words'
+import { makeSound, type MotionSound } from './motion/sfx'
+import { captionPositionAt, drawMotion, faceDropAt, fillBehindFace } from './motion/draw'
+import { MotionTrack } from './motion/track'
 
 /** A pop-up clip's frames from its own start, timed from 0. */
 async function* fromStart(sink: CanvasSink, first: number, seconds: number): AsyncGenerator<WrappedCanvas> {
@@ -178,6 +183,19 @@ export interface CampaignRenderInput {
   /** Videos he put over himself in the edit screen: muted, each in its box
    *  (laid out as a picture is), from `at` for `seconds` or to its end. */
   overlays?: { file: Blob; at: number; seconds: number; position: LogoPosition; widthPct: number; center?: { x: number; y: number } }[]
+  /** Motion graphics (More -> Motion graphics): the storyboard, and the
+   *  words its numbers point at, on the raw video's timeline. While a scene
+   *  is up his face moves down under the board (motion/draw.ts). */
+  motion?: {
+    board: Storyboard
+    words: { start: number; end: number }[]
+    /** The words look: his words as they build up under his face - in place
+     *  of the captions (motion/words.ts). */
+    kinetic?: { words: { text: string; start: number; end: number }[]; phrases: [number, number][]; styles: (EmphasisStyle | null)[]; centerY?: number; scale?: number }
+    /** Its sound effects (motion/sfx.ts): each sound, when it plays on the
+     *  raw video's timeline, and how loud. */
+    sounds?: { name: MotionSound; moments: number[]; volumeDb: number }[]
+  }
 }
 
 export interface CampaignRenderResult {
@@ -230,6 +248,7 @@ export async function renderCampaignCut(
     pops,
     texts: handTexts = [],
     overlays: handVideos = [],
+    motion: graphics,
   }: CampaignRenderInput,
   onProgress?: (fraction: number) => void,
 ): Promise<CampaignRenderResult> {
@@ -529,6 +548,21 @@ export async function renderCampaignCut(
       keep,
     )
     const brandPlacer = new MomentPlacer(brandMoments, keep)
+    const motionTrack =
+      graphics && (graphics.board.scenes.length + (graphics.board.hook ? 1 : 0) + (graphics.board.end ? 1 : 0) > 0 || graphics.kinetic) ? new MotionTrack(graphics.words, keep) : null
+    // The words look's block: his shown words placed like the captions.
+    const kineticTrack = graphics?.kinetic ? new MotionTrack(graphics.kinetic.words, keep) : null
+    const kinetic: Kinetic | undefined =
+      graphics?.kinetic && kineticTrack
+        ? {
+            words: graphics.kinetic.words,
+            phrases: graphics.kinetic.phrases,
+            timing: kineticTrack.timing,
+            styleOf: (i) => graphics.kinetic!.styles[i] ?? null,
+            centerY: graphics.kinetic.centerY,
+            scale: graphics.kinetic.scale,
+          }
+        : undefined
     const motion = planMotion(
       gentle ? { ...look.effects, cutPunch: 'off', hookPush: 'off', brandHit: 'off' } : look.effects,
       keep.map((r) => r.end - r.start),
@@ -545,7 +579,18 @@ export async function renderCampaignCut(
       look.sounds.forEach((sound, i) => {
         if (sound.trigger.kind === 'start') placed.push({ ...prepared[i], startFrame: Math.round(at * sampleRate), gain: dbToGain(sound.volumeDb) })
       })
+    // Motion graphics' own sounds, placed with each part like the look's.
+    const motionSounds = (graphics?.sounds ?? []).map((sound) => ({
+      prepared: { channels: [makeSound(sound.name, sampleRate)] },
+      placer: new MomentPlacer(sound.moments, keep),
+      gain: dbToGain(sound.volumeDb),
+    }))
     const placeSounds = (index: number, shift: number) => {
+      for (const sound of motionSounds) {
+        const before = sound.placer.times.length
+        sound.placer.enterRange(index, shift)
+        for (const t of sound.placer.times.slice(before)) placed.push({ ...sound.prepared, startFrame: Math.round(t * sampleRate), gain: sound.gain })
+      }
       soundPlacers.forEach((placer, i) => {
         if (!placer) return
         const before = placer.times.length
@@ -707,6 +752,8 @@ export async function renderCampaignCut(
                   for (const p of popClips) p.placer.enterRange(index, videoShift)
                   for (const t of texts) t.placer.enterRange(index, videoShift)
                   for (const o of overlayClips) o.placer.enterRange(index, videoShift)
+                  motionTrack?.enterRange(index, videoShift)
+                  kineticTrack?.enterRange(index, videoShift)
                 }
                 const timestamp = videoClock(sample.timestamp + videoShift)
                 const duration = sample.duration
@@ -718,14 +765,17 @@ export async function renderCampaignCut(
                   talkStart === 0 ? brandPlacer.times : brandPlacer.times.map((at) => at - talkStart),
                 )
                 colour.noteFrame(sample)
+                // With motion graphics up, his face moves down under the board.
+                const drop = motionTrack && graphics ? faceDropAt(graphics.board, motionTrack.timing, timestamp, height) : 0
+                if (drop > 0) fillBehindFace(ctx, width, drop)
                 if (backdrop) {
                   // Fit: the whole picture over a blurred copy; no zoom here.
                   backdrop.draw(ctx, sample, width, height, displayWidth, displayHeight)
                   const m = framePlan.main
-                  sample.draw(ctx, m.x, m.y, m.width, m.height)
+                  sample.draw(ctx, m.x, m.y + drop, m.width, m.height)
                 } else if (framing.scale === 1 && framing.dx === 0) {
                   const m = framePlan.main
-                  sample.draw(ctx, m.x, m.y, m.width, m.height)
+                  sample.draw(ctx, m.x, m.y + drop, m.width, m.height)
                 } else {
                   // Drawn larger than the canvas, from the full-size frame - so a
                   // zoom into 4K footage loses no sharpness at all.
@@ -733,7 +783,7 @@ export async function renderCampaignCut(
                   const inner = placeFrame(framing, m.width, m.height)
                   const x = Math.min(0, Math.max(width - inner.width, m.x + inner.x))
                   const y = Math.min(0, Math.max(height - inner.height, m.y + inner.y))
-                  sample.draw(ctx, x, y, inner.width, inner.height)
+                  sample.draw(ctx, x, y + drop, inner.width, inner.height)
                 }
                 sample.close()
                 // Pictures under the headline and logo: those two always read.
@@ -806,6 +856,9 @@ export async function renderCampaignCut(
                     reportProblem({ kind: 'fallback', phase: 'video put on by hand', message: error instanceof Error ? error.message : String(error) })
                   }
                 }
+                // The motion graphics over everything but the words: his own
+                // texts, the headline, logo and captions still read on top.
+                if (motionTrack && graphics) drawMotion(ctx, width, height, graphics.board, motionTrack.timing, timestamp, kinetic)
                 for (const t of texts) if (inWindow(timestamp, t.placer.times, t.seconds)) drawHeadline(ctx, t.layout)
                 if (headline && timestamp - talkStart < look.headline.seconds) drawHeadline(ctx, headline)
                 if (logo && logoImage && inWindow(timestamp, logoPlacer.times, look.logo.seconds)) {
@@ -818,7 +871,20 @@ export async function renderCampaignCut(
                 const word = captionAt(captionPlacer.times, captions, timestamp, captionStyle === 'word' ? undefined : PHRASE_HOLD_SEC)
                 if (word >= 0) {
                   const since = timestamp + CAPTION_LEAD - captionPlacer.times[word]
-                  drawStyledCaption(ctx, width, height, captions, captionPhrases, word, since, false, captionPosition, captionSize, captionStyle)
+                  drawStyledCaption(
+                    ctx,
+                    width,
+                    height,
+                    captions,
+                    captionPhrases,
+                    word,
+                    since,
+                    false,
+                    // Under the motion graphics' board while it is up (motion/draw.ts).
+                    motionTrack && graphics ? captionPositionAt(graphics.board, motionTrack.timing, timestamp, captionPosition) : captionPosition,
+                    captionSize,
+                    captionStyle,
+                  )
                 }
                 // The new sample copies the canvas, so one canvas does every frame.
                 const frame = new VideoSample(canvas, { timestamp, duration })

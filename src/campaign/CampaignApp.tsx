@@ -36,6 +36,7 @@ import { NOT_ALLOWED, trialAngle, trialFileName, withAccounts } from './trialLoo
 import { AnalyticsView, addHeadline, answerSuggestion, saveTarget, useCampaignRows } from './AnalyticsView'
 import { FormatsView, type FormatClips } from './FormatsView'
 import { TrialView } from './TrialView'
+import { MotionView } from './MotionView'
 import { afterMixing, daysLine, mixesOf, spreadOver } from './formats'
 import type { ViewsByAccount } from './analytics'
 import { bareName, filesOf, stepTitle, styleFor, stylesOf, type BankFile, type BatchBank } from './batch'
@@ -4479,7 +4480,7 @@ export function CampaignApp() {
           <div className="screen-head">
             <h1>Posts</h1>
           </div>
-          <p className="lede">Connect Postiz once and every finished video can post to your accounts from here.</p>
+          <p className="lede">Connect Buffer or Postiz once and every finished video can post to your accounts from here.</p>
           <button type="button" className="btn primary" onClick={() => setSettingUpPosting(true)}>
             Set up posting
           </button>
@@ -4487,6 +4488,8 @@ export function CampaignApp() {
       )
     ) : tab === 'more' ? (
       <MoreView campaigns={ownCampaigns.length} onOpen={setTab} workToLose={workToLose} trialReels={posting?.profile.trialReels === true} />
+    ) : tab === 'motion' ? (
+      <MotionView onBack={() => setTab('more')} />
     ) : tab === 'trial' ? (
       <TrialView
         campaigns={campaigns}
@@ -4643,6 +4646,7 @@ export function CampaignApp() {
         {settingUpPosting || !posting ? (
           <PostingSetup
             again={posting !== null}
+            trialOnly
             onDone={() => {
               setPosting(postingHere())
               setSettingUpPosting(false)
@@ -4663,7 +4667,7 @@ export function CampaignApp() {
         <p className="footnote">
           {posting && !settingUpPosting ? (
             <button type="button" className="linkbtn" onClick={() => setSettingUpPosting(true)}>
-              Postiz and Claude keys
+              Posting keys (Buffer or Postiz) and Claude
             </button>
           ) : null}{' '}
           <button

@@ -16,6 +16,181 @@ I don't care about the name."
 - The server's own lines say "@username" too: "Not posted to ...", "Held back: ... is paused", the Buffer notes. A posted
   video's links are labelled by username (`linkLabel`). Stored keys (views and links by account name) are unchanged.
 - Tests: `accountLabel.test.ts`, `analyticsView.test.tsx`.
+## Motion graphics, Format 1: drawings on the board
+Needs deploying: run ./deploy-server.sh (./deploy.sh runs it by itself).
+**What he said (2026-11-08):** "make the white part on top less plain right now its just text could be nice if we
+had some drawings".
+- 36 drawings made for the app (money, coins, charts up and down, video, camera, phone, eye, heart, star, fire, bolt,
+  clock, calendar, people, target, bulb, lock, gift, cart, megaphone, trophy, warning, question, chat, play, globe,
+  home, rocket, check, cross, arrow, hashtag, brain, tools) - simple line icons on a soft disc in the board's
+  colours, drawn from code: nothing to load, sharp at any size, the same on the phone and the server
+  (`motion/icons.ts`).
+- Claude now gives most titles, cards, list rows and big numbers a drawing that fits, and a new part: a row of 2-4
+  big drawings with a word under each, for the key ideas (Film · Automate · Grow). Each pops in on its word, with a
+  pop sound.
+- The board itself is no longer plain grey: a faint dot grid and two soft glows of purple and green.
+
+## Motion graphics: Claude checks the captions, as on Videos
+App only: run ./deploy.sh.
+**What he said (2026-11-08):** "add the claude inside the captions that verifies if they are good".
+- Edit captions on a motion video now has Claude's caption check, the same as on Videos: it runs by itself the first
+  time the captions are opened (and again on a tap) - the words it thinks were heard wrong come back fixed, each
+  marked to keep or undo, the ones it isn't sure of flagged. Claude is told what the video is about: what you asked
+  for and the words on its graphics (names, numbers). The plan's button says "Edit captions · Claude checks them".
+- What Claude fixes is what the video shows - in Format 1's captions and in Format 2's words.
+
+## Motion graphics, Format 1: a smaller board, more of your face
+App only: run ./deploy.sh.
+**What he said (2026-11-08):** "format one the white screen part takes too much of the screen make it take less".
+- The board now covers the top 44% of the frame (was 55%, his friend's), its fade into the face shorter, and the face
+  moves down less (28% of the height, was 38%) - his whole face shows under it. The graphics fit themselves to the
+  smaller board as before (`draw.ts` BOARD_BOTTOM, FACE_DROP).
+
+## Motion graphics: Format 2's words - tap any word to make it big, gold or fancy
+App only: run ./deploy.sh.
+**What he said (2026-11-08):** "captions on this formats are not really customizable, since theyre custom and
+outside the cutters actual captions, i cant actually edit them".
+- On the plan of a Format 2 video, Your words: every block of words as chips, Claude's picks lit (big dark, gold,
+  fancy italic). Tap a word to go big -> gold -> fancy -> normal; the big picture jumps to that moment to show it.
+  Kept with the plan; the chat with Claude keeps your choices unless you ask it to change them.
+- Edit captions still fixes the words themselves, where they sit and how big - all of it shows in Format 2's words
+  (since the last update). Its "one word / highlight" choice is hidden in Format 2, where it did nothing.
+
+## Motion graphics: the words follow the caption settings, and never cover the graphics
+App only: run ./deploy.sh.
+**What he said (2026-11-08):** "I put them at the bottom, but the VFX captions are independent ... it's going to stay
+the same", and "let's say there's a list, 1 through 3. The captions get in the way of that list" (Format 2).
+- Format 2: the words under your face now sit where you put the captions on Edit captions - Top, Middle, Usual or
+  Bottom - and are as big as the size you picked there (`Kinetic.centerY`, `scale`, `words.BLOCK_CENTER`).
+- The numbered diamonds and the point labels place themselves clear of the words: just under every block said while
+  they are up, or just over them when the words are low (Bottom) - worked out once per moment, so they never jump
+  (`bandBetween`, `clearOf`). The dimmed word and the gold end words sit where the words do.
+- Format 1: captions set to Top or Middle drop under the board while it is up (they would cover the cards), and go
+  back when it slides away; Usual and Bottom stay where they are (`draw.captionPositionAt`, in the render and the
+  plan's stills).
+- The little preview phone of Format 2 no longer blanks between its blocks.
+
+## Motion graphics: sound effects, by themselves
+App only: run ./deploy.sh.
+**What he said (2026-11-08):** "can we also add some sound effects".
+- Every motion video gets sound effects on its graphics, worked out from the storyboard - nothing to pick: a whoosh
+  as the board comes up, a pop as a card or part comes in, a tick for each line, square, price and diamond, a ding
+  as a sum's result or a big number counts up, a deep hit on a gold word and on a dimmed moment, a swish on a big
+  word or a point, a camera flash on a white flash. Never two closer than 0.18 s (the stronger one stays), all
+  under the voice.
+- On the plan: "Sound effects" says how many and which, with Hear them (plays each once) and a switch to make that
+  video without.
+- Underneath: `motion/sfx.ts` (the sounds made from maths like the look's own - nothing to load, the same on the
+  phone and the server; `motionSounds`, `soundsByName`), render.ts `motion.sounds` placed like the look's sounds,
+  `make.soundsFor`, `MotionSession.noSounds`. Checked on a real render: each sound at its planned moment.
+
+## Motion graphics: "The object can not be found here" when making
+App only: run ./deploy.sh.
+**What he said (2026-11-08):** "the motion graphics say it couldnt be made: The object can not be found here"
+(report 1522, phase `motion make`).
+- The recording was kept inside the session record, and that record was written again at every step (a chat
+  change, a caption fix). Safari deletes a stored file when its record is written again, and the video the screen
+  held from before could no longer be read - Make failed. Now the recording and the made video each have a record
+  of their own, written once (`motion/session.ts`); and Make reads the recording fresh from storage
+  (`freshFile`). A video kept the old way is moved over once when Motion graphics opens - his plan is not lost.
+
+## Trial reels logins: posting keys easy to find, and a warning about Buffer
+App only: run ./deploy.sh.
+**What he said (2026-11-08):** "make Sam TPNQ log in to let him go to his settings so he can change his API key from
+Postiz to Buffer". samtpnq is a Trial-reels-only login (People): its app is Trial reels and nothing else, so it has
+no Settings tab - its keys are behind the link at the bottom of Trial reels.
+- That link now says "Posting keys (Buffer or Postiz) and Claude", and opens the setup with the Buffer / Postiz
+  choice - Postiz first for this login, and with Buffer picked it says plainly that trial reels can't go through
+  Buffer (it would post them as normal Reels to his followers), so a Buffer key would post none of them.
+
+## Motion graphics: Claude's "Schema is too complex" fixed
+Needs deploying: run ./deploy-server.sh (./deploy.sh runs it by itself).
+**What he said (2026-11-08):** "Claude said: 400 ... Schema is too complex. When generating motion graphics".
+- The strict answer format (a JSON schema) had grown too big for the API with the two looks and every part's
+  fields. Claude now answers plain JSON, shown the exact shape in its instructions (`motion.ts MOTION_ANSWER`), read
+  even with a code fence around it (`parseMotionAnswer`); `cleanStoryboard` still keeps only what is valid.
+
+## Posting: set up with a Buffer key or a Postiz key
+Needs deploying: run ./deploy-server.sh (./deploy.sh runs it by itself).
+**What he said (2026-11-08):** "for samtpnq account why are you forcing him to put a postiz api key, it can be a
+buffer api key too that works better, make it so he can put either one" - samtpnq had been given a friend's Postiz
+key, so its posts would have gone to that friend's accounts and shared his Postiz hour.
+- Settings, Posting setup: Post through Buffer / Postiz (Buffer first), then that key and the Anthropic key. A
+  Buffer key makes a login that posts through Buffer only: its accounts are the key's Buffer channels (Instagram,
+  TikTok, YouTube, Facebook...), picked per campaign as before.
+- Each video goes into Buffer 6 hours before its time (Buffer's free plan holds 10 a channel), at its time; a full
+  channel or a refusal is tried again every 10 minutes and then shown. Posted / failed and links come back from
+  Buffer as for the backup. Trial reels need Postiz (Buffer would post them to followers) and say so. Views
+  (Analytics) come from Postiz, so a Buffer login has none yet.
+- Settings shows "Posting · Buffer" with its channels; another key adds its channels; no "Postiz is down" switch
+  and no taking the key out.
+- Underneath: profile `settings.via = 'buffer'`, `connectBuffer`, `scheduleViaBuffer`, `backupFor` (each account is
+  its channel), `refreshAccounts` reads Buffer; `postiz()` never sends a request without a key (a Buffer login keeps
+  an empty sealed Postiz key - the column can't be empty - so no table change). `buffer.ts channelAccount`.
+
+## Motion graphics: Format 2 (words), a look picker, and examples to tap
+Needs deploying: run ./deploy-server.sh (./deploy.sh runs it by itself).
+**What he said (2026-11-08):** "can we make like different type of formats? ... This is Format #2", "go built format
+2 and when choosing give description and little ui", "in the what you want (optional) give me some examples".
+- Before dropping a video: Which look - Claude picks / Format 1 · Board / Format 2 · Words - each a little phone
+  playing that look, with a line saying what it is for. The pick is remembered.
+- Format 2 · Words (his example reel): your face stays full screen under a dark cinematic edge (warm or teal); your
+  words build up word by word in a block under your face - small words, the key one huge (white, or gold capitals),
+  a fancy italic word before a big one ("the Three"). Numbered cyan diamonds light up when you announce a list, a
+  diamond with an UPPERCASE label for each point, a white flash with your words in black, a dimmed moment with a
+  word over it ("Bruh...."), big gold words at the end ("DM 'EDIT'"). The block is the caption: fix its words on
+  Edit captions as before, and the words Claude made big stay on them.
+- "What you want" has examples for the look you picked: tap to add, tap again to take out.
+- On the plan: which look it is (and that Claude picked it), and Switch to the other look - planned again.
+- Claude is told the look (or to pick: the board for numbers and money, the words for stories and tips).
+- Underneath: `motion.ts` `format`, `emphasis`, `grade`, parts `diamonds`/`point`/`flash`/`dim`; `motion/words.ts`
+  draws it; `motion/FormatPicker.tsx`; render.ts `motion.kinetic`. Plans made before keep the board look.
+- Tested here: rules, layout and drawing (vitest), the picker in a browser, and a real 20 s render in Chrome for
+  Testing with every part of the look. Not tested: an iPhone, a real plan from Claude.
+
+## Motion graphics: captions you can fix, like on Videos
+App only: run ./deploy.sh.
+**What he said (2026-11-08):** "make it a little editable just like the cutter. meaning captions i can edit them".
+- The plan screen has Edit captions: the Cutter's own caption screen on this video - type into any phrase, move
+  them (Top / Middle / Usual / Bottom), size, one word or Highlight - or make it without captions. Done goes back to
+  the plan; the stills and the made video show the captions as you left them. The graphics keep their moments
+  whatever you type (their word numbers stay on the words as heard).
+- Kept with the video on the phone (`MotionSession.captions`, `motion/make.ts` `CaptionChoice`, `shownCaptions`).
+
+## Motion graphics: no more 504, and something to watch while Claude plans
+Needs deploying: run ./deploy-server.sh (./deploy.sh runs it by itself).
+**What he said (2026-11-07):** "Server said 504", and "when it says claude is planning the graphics, make a little
+ui showing anything ... its boring and idk if its working".
+- The 504: Supabase cuts a request off at 150 s, and Claude took longer (the server's log: 150 112 ms, 04:28). Now
+  `motion-plan` answers at once with a job and Claude works in the background; the phone asks `motion-result` every
+  3 s until the plan is there (`posting.motionPlan`), through dropped connections too. Claude also plans at low
+  effort now - picking and filling parts from the words is quick work - so it fits well inside the server's limit.
+  A job still going after 7 minutes is said to have been stopped; the phone gives up after 8 and says so.
+- While it plans (`motion/Planning.tsx`): a clock counting the seconds, your words with a light moving through
+  them, the numbers you say popping up one by one ("10K", "25 dollars", "10 000 views" - what graphics are made of),
+  and the style of the graphics playing over your own video. Changing the plan in the chat shows the seconds too.
+  Nothing on it pretends to know how far Claude has got.
+
+## Motion graphics: drop in a talking video, Claude puts graphics around what you say
+Needs deploying: run ./deploy-server.sh (./deploy.sh runs it by itself).
+**What he said (2026-11-07):** "I just drop in the videos, and it does it automatically", like his friend's reel,
+and "is there a way to check before if it's good ... an explanation of how it would look like before?"
+- More -> Motion graphics. Pick a video (and, if you like, a line of what you want). It is cut and heard like on
+  Videos, then Claude writes a storyboard from your words: a counter over your face at the start, scenes where a
+  light board slides over the top and your face moves down under it - titles, cards with ticks and crosses, lists,
+  grids of squares filling up, phones with view counts, sums that count up - each coming up on the word you say it,
+  and a follow banner near the end.
+- Before anything is made you see the plan: one line and a picture per scene, a big picture you can slide through
+  to any moment, drawn by the same code that makes the video. Type what to change ("make the sum come in later",
+  "drop the phones") and Claude changes it and says what it did. Then Make; Save / share when done. "Change the
+  graphics and make it again" goes back to the plan.
+- Every step is kept on the phone: closing the app never loses the video or the plan. Only your words go to
+  Claude (server action `motion-plan`, your Anthropic key, about 3-10 cents a video), never the video.
+- Underneath: `motion/draw.ts` draws the board and parts on each frame; times are word numbers, placed like the
+  captions (`motion/track.ts`); render.ts draws it when given `motion`, nothing changes for any other video.
+- Tested here: the storyboard rules, the drawing of every part, the plan screen and chat (vitest), and a real
+  render of a 62 s video in Chrome for Testing (made in 18 s, graphics on the right words). Not tested: an iPhone,
+  and Claude's own storyboards (the key is on the server).
 
 ## People: a sign-in link for Trial reels and nothing else
 Needs deploying: run ./deploy-server.sh (./deploy.sh runs it by itself).

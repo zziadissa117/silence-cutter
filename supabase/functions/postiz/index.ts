@@ -62,6 +62,11 @@
 //                  words, their look and place from one still, and rewords them a word or two (trial.ts); only a
 //                  login allowed Trial reels (the owner's, or one he turned it on for in People)
 //                  (headlineIdeas.ts); insights also carries `trouble`, accounts whose views fell away (deadAccounts.ts)
+//   motion-plan    { profile, job, words, times?, ask?, format?, storyboard?, chat? } -> { job, status: 'working' }
+//                  Motion graphics: Claude's storyboard for a talking video from its words, or the storyboard
+//                  changed as he asks in the chat (motion.ts), written in the background (longer than a request
+//                  may last). Only the words go, never the video.
+//   motion-result  { profile, job } -> { status: working | done (storyboard, reply, costCents) | failed (error) }
 //   tick           { secret }                   (the scheduler; no token)
 //   channels       { cutterCampaignId }         (the planner's server; no token - see bridgeAllowed)
 //                  -> { profiles: [{ id, inUse, accounts }] }  which Postiz channels a campaign holds
@@ -99,6 +104,7 @@ import { LOOK_BACK_DAYS as HOOKS_LOOK_BACK_DAYS, hookInsights } from './hookInsi
 import { TELL_AGAIN_DAYS, USUAL_TO, deadAccounts, deadNote, userName, type DeadAccount } from './deadAccounts.ts'
 import { IDEAS_SCHEMA, IDEAS_SYSTEM, cleanIdeas, ideasMessage } from './headlineIdeas.ts'
 import { NOTE_SCHEMA, NOTE_SYSTEM, cleanNote, noteMessage } from './handNote.ts'
+import { MOTION_ANSWER, MOTION_SYSTEM, cleanReply, parseMotionAnswer, cleanStoryboard, fakeStoryboard, motionMessage, numberedWords, type ChatTurn, type FormatAsk, type Storyboard } from './motion.ts'
 import { VIDEO_HEADLINE_SCHEMA, VIDEO_HEADLINE_SYSTEM, cleanVideoHeadline, pastHeadlines, videoHeadlineMessage } from './videoHeadline.ts'
 import { countBefore, type DayRow } from './dayRoom.ts'
 import { cleanPlace, instagramPlace, type Place } from './place.ts'
@@ -132,6 +138,7 @@ import { VIEWS_WINDOW_DAYS, dueAt, fillPerVideo, notRead, parseCache, readViews,
 import { POST_VIEW_AGES_H, POST_VIEW_MAX_DAYS, accountNameFor, postViewCount, postViewsDue } from './postViews.ts'
 import {
   BUFFER_QUEUE,
+  channelAccount,
   HAND_AHEAD_MS,
   MISSED_MS,
   createPost as createBufferPost,
@@ -401,6 +408,8 @@ async function postizAllowance(key: string, need: PostizNeed): Promise<{ id: str
 }
 
 async function postiz<T>(key: string, method: string, path: string, body?: unknown, need: PostizNeed = 'post'): Promise<T> {
+  // A login that posts through Buffer has no Postiz key: never asked.
+  if (!key) throw new PostizProblem('This login posts through Buffer - Postiz is not connected.', false, 400)
   if (isFakePostiz(key)) {
     try {
       return (await fakePostiz(db, key, method, path, body)) as T
@@ -545,6 +554,11 @@ interface Profile {
     /** Buffer as a backup (buffer.ts): its channels as last read - never the
      *  keys, which are sealed with the Postiz key. */
     backup?: BackupSettings
+    /** 'buffer': this login posts through Buffer only, no Postiz (his ask,
+     *  2026-11-08: a login set up with a Buffer key instead). Its accounts are
+     *  its Buffer channels (`backup.channels`, same ids); every post goes
+     *  through Buffer at its time (scheduleViaBuffer). */
+    via?: 'buffer'
     /** Trial reels (trial.ts): each Instagram account's daily trial limit
      *  as Instagram showed it, and the accounts it won't take trials on. */
     trial?: TrialAccounts
@@ -1033,6 +1047,143 @@ async function readNote(profile: Profile, body: Record<string, unknown>): Promis
   return reply(cleanNote(parsed, note, today))
 }
 
+/** Motion graphics: the storyboard for a talking video, written by Claude
+ *  from its words - or, with `storyboard` and `chat`, changed as he asks in
+ *  his last message (motion.ts). Only his words come here, never the video.
+ *
+ *  Answered at once with a job: Claude takes longer than the 150 s Supabase
+ *  gives one request (a 504 on his first try, 2026-11-07), so it works in the
+ *  background and the phone asks `motion-result` every few seconds. The
+ *  phone names the job, so asking twice starts one. */
+async function motionPlan(profile: Profile, body: Record<string, unknown>): Promise<Response> {
+  const words = (Array.isArray(body.words) ? body.words : [])
+    .slice(0, 3000)
+    .map((w) => (typeof w === 'string' ? w.slice(0, 40) : ''))
+  if (words.filter((w) => w.trim()).length < 3) throw new Problem('There are too few words in this video to put graphics on.')
+  const times = (Array.isArray(body.times) ? body.times : []).slice(0, 3000).map((t) => (typeof t === 'number' && Number.isFinite(t) ? t : NaN))
+  const ask = typeof body.ask === 'string' ? body.ask.slice(0, 600) : ''
+  const format: FormatAsk = body.format === 'board' || body.format === 'words' ? body.format : 'auto'
+  const current = body.storyboard ? cleanStoryboard(body.storyboard, words.length) : null
+  const chat: ChatTurn[] = (Array.isArray(body.chat) ? body.chat : [])
+    .filter((t): t is { from: string; text: string } => Boolean(t) && typeof t === 'object' && typeof (t as { text?: unknown }).text === 'string')
+    .slice(-12)
+    .map((t): ChatTurn => ({ from: t.from === 'claude' ? 'claude' : 'him', text: t.text.slice(0, 600) }))
+  const keys = await keysFor(profile.id)
+  if (!keys.anthropic) throw new Problem('Your Anthropic key is missing - paste it in Settings, Posting.')
+  const job = typeof body.job === 'string' && /^[\w-]{6,80}$/.test(body.job) ? body.job : crypto.randomUUID()
+  const key = motionKey(profile, job)
+  const had = await readMotionJob(key)
+  if (had) return reply(motionView(job, had))
+  if (keys.anthropic === FAKE_CLAUDE) {
+    await writeMotionJob(key, { status: 'done', at: Date.now(), storyboard: fakeStoryboard(words.length, format), reply: current ? 'A fake change.' : '', costCents: 0 })
+    return reply({ job, status: 'working' })
+  }
+  await writeMotionJob(key, { status: 'working', at: Date.now() })
+  later(
+    planWithClaude(keys.anthropic, words, times, ask, current, chat, format)
+      .then((done) => writeMotionJob(key, { status: 'done', at: Date.now(), ...done }))
+      .catch((error) =>
+        writeMotionJob(key, {
+          status: 'failed',
+          at: Date.now(),
+          error: error instanceof Problem ? error.message : `Claude could not plan it (${error instanceof Error ? error.message : String(error)}).`,
+        }),
+      ),
+  )
+  return reply({ job, status: 'working' })
+}
+
+/** Where a motion graphics job keeps its answer until the phone reads it. */
+const motionKey = (profile: Profile, job: string) => `motion:${profile.id}:${job}`
+
+/** Past this, a job still "working" was stopped by the server's own time
+ *  limit: said so rather than waited on for ever. */
+const MOTION_GIVE_UP_MS = 7 * MINUTE
+
+interface MotionJob {
+  status: 'working' | 'done' | 'failed'
+  at: number
+  storyboard?: Storyboard
+  reply?: string
+  costCents?: number
+  error?: string
+}
+
+async function readMotionJob(key: string): Promise<MotionJob | null> {
+  const { data } = await db.from('cutter_config').select('value').eq('key', key).maybeSingle()
+  try {
+    return data ? (JSON.parse((data as { value: string }).value) as MotionJob) : null
+  } catch {
+    return null
+  }
+}
+
+async function writeMotionJob(key: string, job: MotionJob): Promise<void> {
+  await db.from('cutter_config').upsert({ key, value: JSON.stringify(job) }, { onConflict: 'key' })
+}
+
+function motionView(job: string, row: MotionJob): Record<string, unknown> {
+  if (row.status === 'working' && Date.now() - row.at > MOTION_GIVE_UP_MS) {
+    return { job, status: 'failed', error: 'Claude took too long and the server stopped it. Try again - a shorter line of what you want can help.' }
+  }
+  return { job, ...row }
+}
+
+/** How a motion graphics job is getting on: working, or its storyboard, or
+ *  why it failed. Read once done: the row is let go. */
+async function motionResult(profile: Profile, body: Record<string, unknown>): Promise<Response> {
+  const job = typeof body.job === 'string' && /^[\w-]{6,80}$/.test(body.job) ? body.job : ''
+  if (!job) throw new Problem('Which plan? Try again.')
+  const key = motionKey(profile, job)
+  const row = await readMotionJob(key)
+  if (!row) return reply({ job, status: 'failed', error: 'That plan is gone from the server. Try again.' })
+  const view = motionView(job, row)
+  if (view.status !== 'working') await db.from('cutter_config').delete().eq('key', key)
+  return reply(view)
+}
+
+/** Claude writes (or changes) the storyboard. Low effort: picking and
+ *  filling parts from the words is quick work, and it has to fit well inside
+ *  the server's time limit. */
+async function planWithClaude(
+  apiKey: string,
+  words: string[],
+  times: number[],
+  ask: string,
+  current: Storyboard | null,
+  chat: ChatTurn[],
+  format: FormatAsk,
+): Promise<{ storyboard: Storyboard; reply: string; costCents: number }> {
+  const client = new Anthropic({ apiKey, maxRetries: 1, timeout: 4 * MINUTE })
+  const request = {
+    model: MODEL,
+    max_tokens: 12000,
+    system: [{ type: 'text', text: `${MOTION_SYSTEM}\n\n${MOTION_ANSWER}`, cache_control: { type: 'ephemeral' } }],
+    output_config: { effort: 'low' },
+    messages: [{ role: 'user', content: motionMessage(numberedWords(words, times), ask, current, chat, format) }],
+  }
+  let response
+  try {
+    response = await client.beta.messages.create({ ...request, betas: ['server-side-fallback-2026-07-01'], fallbacks: 'default' } as never)
+  } catch (error) {
+    if (error instanceof Anthropic.BadRequestError && /fallback/i.test(error.message)) {
+      response = await client.beta.messages.create(request as never).catch(anthropicProblem)
+    } else anthropicProblem(error)
+  }
+  const message = response as { content: { type: string; text?: string }[]; usage?: { input_tokens?: number; output_tokens?: number } }
+  const said = message.content
+    .filter((b) => b.type === 'text')
+    .map((b) => b.text ?? '')
+    .join('')
+  const parsed = parseMotionAnswer(said)
+  const storyboard = cleanStoryboard(parsed, words.length)
+  const cost = costCents(message.usage?.input_tokens ?? 0, message.usage?.output_tokens ?? 0)
+  if (storyboard.scenes.length === 0 && !storyboard.hook && (storyboard.emphasis ?? []).length === 0) {
+    throw new Problem(current ? "Claude's change didn't come back usable - try saying it another way." : "Claude couldn't plan graphics for this video - try again.")
+  }
+  return { storyboard, reply: cleanReply(parsed), costCents: cost }
+}
+
 /** A talking video's headline from all he says in it, in the style of his
  *  past headlines (videoHeadline.ts). */
 async function videoHeadline(profile: Profile, body: Record<string, unknown>): Promise<Response> {
@@ -1173,7 +1324,9 @@ async function connect(spaceId: string, body: Record<string, unknown>): Promise<
   const anthropicKey = typeof body.anthropicKey === 'string' ? body.anthropicKey.trim() : ''
   const timezone =
     typeof body.timezone === 'string' && body.timezone.length < 64 && isTimezone(body.timezone) ? body.timezone : 'America/Toronto'
-  if (!postizKey) throw new Problem('Paste your Postiz API key.')
+  const bufferKey = typeof body.bufferKey === 'string' ? body.bufferKey.trim() : ''
+  if (!postizKey && bufferKey) return await connectBuffer(spaceId, bufferKey, anthropicKey, timezone)
+  if (!postizKey) throw new Problem('Paste your Postiz or your Buffer API key.')
   let accounts: Account[]
   try {
     accounts = await listAccounts(postizKey)
@@ -1221,6 +1374,57 @@ async function connect(spaceId: string, body: Record<string, unknown>): Promise<
   return reply(await profileView(profile))
 }
 
+/** A login posting through Buffer only: set up with a Buffer key in place of
+ *  Postiz's. Its accounts are the key's channels; the key is sealed like a
+ *  backup key, and no Postiz key is kept (an empty one, never sent). Pasting
+ *  the same key again refreshes its channels. */
+async function connectBuffer(spaceId: string, bufferKey: string, anthropicKey: string, timezone: string): Promise<Response> {
+  if (bufferKey.length > 500 || /\s/.test(bufferKey)) throw new Problem("That doesn't look like a Buffer key - copy it again from Buffer: Settings, API.")
+  let channels: BufferChannel[]
+  try {
+    channels = await listChannels(bufferKey, 0)
+  } catch (error) {
+    throw new Problem(error instanceof Error ? error.message : String(error))
+  }
+  if (channels.length === 0) throw new Problem('That Buffer key has no channels yet - connect your accounts in Buffer first, then paste it again.')
+  if (anthropicKey) await checkAnthropicKey(anthropicKey)
+  const accounts = channels.map(channelAccount)
+  const keyHash = await sha256(`buffer:${bufferKey}`)
+  const now = new Date().toISOString()
+  const { data: existing } = await db.from('cutter_profiles').select('*').eq('space_id', spaceId).eq('key_hash', keyHash).maybeSingle()
+  let profile = existing as Profile | null
+  const backup: BackupSettings = { keys: 1, channels, active: false, checkedAt: now, problem: null }
+  if (profile) {
+    const { data } = await db
+      .from('cutter_profiles')
+      .update({ accounts, accounts_at: now, timezone, settings: { ...profile.settings, via: 'buffer', backup }, updated_at: now })
+      .eq('id', profile.id)
+      .select('*')
+      .single()
+    profile = data as Profile
+  } else {
+    if (!anthropicKey) throw new Problem('Paste your Anthropic API key too - Claude writes the captions with it.')
+    const { data, error } = await db
+      .from('cutter_profiles')
+      .insert({ space_id: spaceId, key_hash: keyHash, accounts, accounts_at: now, timezone, settings: { via: 'buffer', backup } })
+      .select('*')
+      .single()
+    if (error || !data) throw new Problem('Your posting could not be set up. Try again.', true, 500)
+    profile = data as Profile
+  }
+  const { data: secret } = await db.from('cutter_profile_secrets').select('anthropic_key').eq('profile_id', profile.id).maybeSingle()
+  if (!anthropicKey && !secret?.anthropic_key) throw new Problem('Paste your Anthropic API key too - Claude writes the captions with it.')
+  const { error } = await db.from('cutter_profile_secrets').upsert({
+    profile_id: profile.id,
+    postiz_key: await seal(''),
+    buffer_keys: await seal(JSON.stringify([bufferKey])),
+    anthropic_key: anthropicKey ? await seal(anthropicKey) : secret!.anthropic_key,
+    updated_at: now,
+  })
+  if (error) throw new Problem('Your keys could not be saved. Try again.', true, 500)
+  return reply(await profileView(profile))
+}
+
 function isTimezone(tz: string): boolean {
   try {
     new Intl.DateTimeFormat('en-US', { timeZone: tz })
@@ -1247,6 +1451,27 @@ async function checkAnthropicKey(apiKey: string): Promise<void> {
 }
 
 async function refreshAccounts(profile: Profile): Promise<Profile> {
+  if (profile.settings.via === 'buffer') {
+    // Its accounts are its Buffer channels, read again.
+    const keys = await bufferKeysFor(profile.id)
+    const channels: BufferChannel[] = []
+    for (const [i, key] of keys.entries()) {
+      try {
+        channels.push(...(await listChannels(key, i)))
+      } catch (error) {
+        throw new Problem(error instanceof Error ? error.message : String(error))
+      }
+    }
+    const now = new Date().toISOString()
+    const backup: BackupSettings = { ...(profile.settings.backup ?? { active: false, problem: null }), keys: keys.length, channels, checkedAt: now }
+    const { data } = await db
+      .from('cutter_profiles')
+      .update({ accounts: channels.map(channelAccount), accounts_at: now, settings: { ...profile.settings, backup } })
+      .eq('id', profile.id)
+      .select('*')
+      .single()
+    return data as Profile
+  }
   const { postiz: key } = await keysFor(profile.id)
   const accounts = await listAccounts(key)
   const { data } = await db
@@ -1686,6 +1911,11 @@ async function bufferKeysFor(profileId: string): Promise<string[]> {
 
 /** Postiz account id -> the Buffer channel that backs it up. */
 function backupFor(profile: Pick<Profile, 'accounts' | 'settings'>): Record<string, BufferChannel> {
+  // Posting through Buffer only: each account is its channel, every platform.
+  if (profile.settings.via === 'buffer') {
+    const byId = new Map((profile.settings.backup?.channels ?? []).map((c) => [c.id, c]))
+    return Object.fromEntries(profile.accounts.flatMap((a) => (byId.has(a.id) ? [[a.id, byId.get(a.id)!]] : [])))
+  }
   return matchChannels(profile.accounts, profile.settings.backup?.channels ?? [])
 }
 
@@ -1799,7 +2029,11 @@ async function saveBackup(profile: Profile, body: Record<string, unknown>): Prom
       keys = [...keys, pasted]
     }
   }
-  if (body.removeKeys === true) keys = []
+  if (body.removeKeys === true) {
+    // A login posting through Buffer only would have nothing to post with.
+    if (profile.settings.via === 'buffer') throw new Problem('This login posts through Buffer - its key stays. Paste a new one to add it.')
+    keys = []
+  }
   const channels: BufferChannel[] = []
   const problems: string[] = []
   for (const [i, key] of keys.entries()) {
@@ -1824,7 +2058,8 @@ async function saveBackup(profile: Profile, body: Record<string, unknown>): Prom
       problem: problems.join(' ') || null,
     },
   }))
-  return reply(await profileView(saved))
+  // Posting through Buffer only: a key added brings its channels in as accounts.
+  return reply(await profileView(saved.settings.via === 'buffer' ? await refreshAccounts(saved) : saved))
 }
 
 // --- A video arriving -----------------------------------------------------------
@@ -2105,7 +2340,7 @@ async function prepare(start: Post): Promise<Post> {
   }
 
   // A batch video's goes in with it, half a day before its time (schedule).
-  if (!post.media && !post.batch) {
+  if (!post.media && !post.batch && profile.settings.via !== 'buffer') {
     const backedUp = accounts.some((a) => backupFor(profile)[a.id])
     try {
       post = await mediaInPostiz(keys.postiz, post, backedUp)
@@ -2616,6 +2851,8 @@ async function schedule(start: Post): Promise<Post> {
     if (made.length > 0 && current.status !== 'scheduled') await deleteScheduled(keys.postiz, { ...current, postiz_ids: made }).catch(() => {})
     return current
   }
+  if (profile.settings.via === 'buffer') return scheduleViaBuffer(profile, post, send, now ? null : new Date(date).getTime(), scheduled)
+
   // YouTube's daily limit (Postiz's) is used up from the afternoon in
   // California. A YouTube copy due then goes through Buffer at its own time
   // when Buffer has that channel (its own limit); if not, or if Buffer turns
@@ -2733,6 +2970,41 @@ async function schedule(start: Post): Promise<Post> {
     }
     throw new PostizProblem(note, error.later, error.status)
   }
+}
+
+/** A login posting through Buffer only: every account of the post goes
+ *  through Buffer at its time (null: now). Buffer's free plan holds 10 posts
+ *  a channel, so one goes in only HAND_AHEAD_MS (6 h) before its time; a
+ *  channel that is full, or a refusal, is tried again in 10 minutes. */
+async function scheduleViaBuffer(
+  profile: Profile,
+  start: Post,
+  send: PostAccount[],
+  dueAt: number | null,
+  scheduled: (fields: Partial<Post>) => Promise<Post>,
+): Promise<Post> {
+  let post = start
+  // A Trial reel through Buffer would go to his followers as a normal Reel.
+  if (post.batch?.trial) throw new Problem("Trial reels need Postiz - Buffer would post them as normal Reels to your followers.")
+  const left = send.filter((a) => !post.buffer_ids?.[a.id])
+  if (left.length === 0) return scheduled({})
+  if (dueAt !== null && dueAt - Date.now() > HAND_AHEAD_MS) {
+    return update(post.id, { retry_at: new Date(dueAt - HAND_AHEAD_MS).toISOString(), error: null, attempts: 0, creating_at: null })
+  }
+  const handed = await toBuffer(profile, post, left, dueAt, await bufferRoom(profile))
+  post = handed.post
+  if (send.every((a) => post.buffer_ids?.[a.id])) return scheduled({})
+  const missing = send.filter((a) => !backupFor(profile)[a.id]).map((a) => a.name)
+  const note = [
+    missing.length > 0 ? `${missing.join(', ')} ${missing.length === 1 ? 'is' : 'are'} not in Buffer any more - reconnect in Buffer, then Refresh accounts.` : '',
+    handed.full.length > 0 ? `Buffer holds ${BUFFER_QUEUE} at a time for ${handed.full.join(', ')} - it goes in as soon as one is out.` : '',
+    ...handed.problems,
+  ]
+    .filter(Boolean)
+    .join(' ')
+  const attempts = handed.problems.length > 0 || missing.length > 0 ? post.attempts + 1 : post.attempts
+  if (attempts < MAX_ATTEMPTS) return update(post.id, { error: note, retry_at: new Date(Date.now() + 10 * MINUTE).toISOString(), attempts, creating_at: null })
+  throw new Problem(note || "Buffer didn't take it.", true)
 }
 
 interface PostizPost {
@@ -4006,6 +4278,8 @@ async function refreshViews(now: number): Promise<void> {
   const caches = new Map((saved ?? []).map((row: { key: string; value: string }) => [row.key, parseCache(row.value)]))
   let pick: { profileId: string; account: Account; cache: ViewsCache; due: number } | null = null
   for (const row of (profiles ?? []) as Pick<Profile, 'id' | 'accounts' | 'settings'>[]) {
+    // Views come from Postiz: a login posting through Buffer has none to read.
+    if (row.settings?.via === 'buffer') continue
     const inUse = new Set(Object.values(row.settings?.campaigns ?? {}).flatMap((c) => c.accounts ?? []))
     const cache = caches.get(viewsKey(row.id)) ?? { accounts: {} }
     for (const account of row.accounts ?? []) {
@@ -4551,6 +4825,10 @@ Deno.serve(async (req) => {
         return await readNote(profile, body)
       case 'video-headline':
         return await videoHeadline(profile, body)
+      case 'motion-plan':
+        return await motionPlan(profile, body)
+      case 'motion-result':
+        return await motionResult(profile, body)
       case 'trial-read':
         return await trialRead(profile, body)
       case 'trial-reword':

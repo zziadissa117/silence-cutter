@@ -359,6 +359,42 @@ pick the logos and `formulaLine(…, amount)`, a headline pick its `headlineStyl
 picked now, and `withHeadlineStyle` swaps it into the angle. The bottom of the Batch tab shows
 the number of variations and `variationParts` (what multiplies into it).
 
+## Motion graphics (`MotionView.tsx`, `motion/*`, server `postiz/motion.ts`)
+
+More -> Motion graphics (his ask, 2026-11-07: drop in a talking video, Claude puts graphics around what he says,
+check it before it is made, chat to fix). For a few videos a day on his own brand, apart from the campaigns.
+
+```
+pick      one recording + an optional line (MotionView)
+hear      motion/make.ts hear: pipeline.listen with his Videos settings (pacing, "um"s), words aligned
+plan      postiz motion-plan { job, words, times, ask } -> answers at once; Claude (MOTION_SYSTEM, MOTION_SCHEMA,
+          effort low) in the background, its answer in cutter_config `motion:<profile>:<job>`; the phone asks
+          motion-result every 3 s (requests are cut at 150 s); meanwhile motion/Planning.tsx
+          -> cleanStoryboard: hook card, scenes (word numbers from/to, parts), end banner
+see       PlanScreen: a still at any moment (motion/frames.ts FrameReader + the render's own drawing),
+          a line + still per scene; chat -> motion-plan { storyboard, chat } -> the whole storyboard back + a reply
+make      motion/make.ts makeMotionVideo -> render.ts renderCampaignCut with `motion` (plain look, his captions
+          and voice settings); done: watch, Save / share (shareFile.ts)
+```
+- The storyboard's times are WORD NUMBERS into the captions' words (`storyWords`), so a graphic lands on its word
+  whatever was cut: in the render `motion/track.ts MotionTrack` (a MomentPlacer over every word's start and end),
+  before it, `cutTiming` (captions.cutTime). Parts: title, note, cards (badge + lines with check/cross), list,
+  tiles (grid filling, locks, app window, counter), phones (view counts, "=" and prices), math (lines + a result
+  counting up), number. Limits in `MOTION_LIMITS`.
+- Two looks (`Storyboard.format`, picked before dropping in `motion/FormatPicker.tsx`, remembered in localStorage
+  `motion.format`, or 'auto' - Claude picks): "board" (below) and "words" (`motion/words.ts`): face full screen,
+  vignette + `grade`, his shown captions built up in blocks (`kineticPhrases`, `layoutBlock`) with Claude's
+  `emphasis` (big / gold / serif, matched to his fixed captions by time, `make.kineticFor`) in place of the
+  captions; parts diamonds, point, flash, dim; `end` as big gold words. render.ts gets `motion.kinetic`.
+- Look (`motion/draw.ts`): his friend's reel - while a scene is up a light board covers the top 55% and his face is
+  drawn `FACE_DROP` (38% of the height) lower, faded into it; scenes closer than 1.2 s keep the board up. Drawn over
+  the pictures, under his own texts, headline, logo and captions.
+- Sound effects (`motion/sfx.ts`): from the storyboard by themselves (whoosh, pop, tick, ding, hit, swish, shutter,
+  made from maths), at least `MIN_GAP` apart, passed as render.ts `motion.sounds` and placed with MomentPlacer like
+  the look's sounds; off per video (`noSounds`).
+- Kept on the phone at every step in its own IndexedDB database `cutter-motion` (`motion/session.ts`): the
+  recording, what was heard, the storyboard, the chat, the made video. Only the words go to Claude.
+
 ## Trial reels (`trialLoop.ts`, `viralReel.ts`, `TrialView.tsx`, server `postiz/trial.ts`)
 
 A reel of his that went viral, made again and again and posted as Instagram Trial Reels - shown to non-followers
@@ -421,6 +457,14 @@ its API is down. `checkBuffer` reads Buffer's status for posts that went only th
 copy (the outbox parts) until its post is posted, errored or rejected, for Buffer to fetch through
 the signed `videoUrl`; without it (posts Postiz took before this), Postiz's own `media.path`. Reject,
 unschedule and stop also delete it in Buffer (`dropFromBuffer`).
+
+**A login posting through Buffer only** (2026-11-08, set up with a Buffer key in place of Postiz's: `connect`
+{ bufferKey } -> `connectBuffer`): profile `settings.via = 'buffer'`, its accounts its Buffer channels
+(`channelAccount`, id = channel id), the key in `buffer_keys`, an empty sealed `postiz_key` (NOT NULL column;
+`postiz()` refuses an empty key with a PostizProblem, so nothing ever asks Postiz for it). `backupFor` maps every
+account to its own channel; `prepare` keeps the server's copy (no Postiz media); `schedule` -> `scheduleViaBuffer`:
+in Buffer `HAND_AHEAD_MS` before its time via `toBuffer`, full / refused tried again in 10 min; `checkBuffer` marks
+it posted. `refreshAccounts` re-reads the channels; views are not read (`refreshViews` skips it). Trial reels refused.
 
 ## Formats (`formats.ts`, `FormatsView.tsx`)
 
