@@ -3,6 +3,13 @@
 Newest first. Every change says what it does, how to use it, and how it works
 underneath. Kept up to date with each commit.
 
+## Motion graphics, Format 1: a smaller board, more of your face
+App only: run ./deploy.sh.
+**What he said (2026-11-08):** "format one the white screen part takes too much of the screen make it take less".
+- The board now covers the top 44% of the frame (was 55%, his friend's), its fade into the face shorter, and the face
+  moves down less (28% of the height, was 38%) - his whole face shows under it. The graphics fit themselves to the
+  smaller board as before (`draw.ts` BOARD_BOTTOM, FACE_DROP).
+
 ## Motion graphics: Format 2's words - tap any word to make it big, gold or fancy
 App only: run ./deploy.sh.
 **What he said (2026-11-08):** "captions on this formats are not really customizable, since theyre custom and

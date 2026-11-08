@@ -27,12 +27,14 @@ export interface Timing {
 /** How far his face moves down while the board is up, as a share of the
  *  frame's height: the middle of a talking-head frame lands in the middle of
  *  the space under the board. */
-export const FACE_DROP = 0.38
-/** The board covers the frame down to here, fading out over the next bit. */
-export const BOARD_BOTTOM = 0.55
-const BOARD_FADE = 0.09
+export const FACE_DROP = 0.28
+/** The board covers the frame down to here, fading out over the next bit.
+ *  Was 0.55, his friend's; "the white screen part takes too much of the
+ *  screen, make it take less" (2026-11-08) - more of his face. */
+export const BOARD_BOTTOM = 0.44
+const BOARD_FADE = 0.07
 /** Under TikTok's top bar. */
-const BOARD_TOP = 0.1
+const BOARD_TOP = 0.09
 /** A scene comes up a touch before its first word and stays a moment after
  *  its last; two closer than GLUE_SEC keep the board up between them. */
 const SCENE_LEAD = 0.2

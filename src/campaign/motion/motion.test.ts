@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 
 import { cleanStoryboard, type Storyboard } from '../../../supabase/functions/postiz/motion.ts'
-import { appear, countText, drawMotion, faceDropAt, FACE_DROP, layoutScene, sceneWindows, splitAt, type Timing } from './draw'
+import { BOARD_BOTTOM, appear, countText, drawMotion, faceDropAt, FACE_DROP, layoutScene, sceneWindows, splitAt, type Timing } from './draw'
 import { MotionTrack, cutTiming, rawTimeAt } from './track'
 
 /** Word i said from i/2 s to i/2 + 0.4 s. */
@@ -92,8 +92,8 @@ describe('motion graphics: laid out on the board', () => {
     for (const scene of board.scenes) {
       const { boxes, scale, originY } = layoutScene(scene, 1080, 1920)
       const last = boxes[boxes.length - 1]
-      expect(originY).toBeGreaterThanOrEqual(0.1 * 1920 - 1)
-      expect(originY + (last.y + last.h) * scale).toBeLessThanOrEqual(0.55 * 1920)
+      expect(originY).toBeGreaterThanOrEqual(0.09 * 1920 - 1)
+      expect(originY + (last.y + last.h) * scale).toBeLessThanOrEqual(BOARD_BOTTOM * 1920)
     }
   })
 })
