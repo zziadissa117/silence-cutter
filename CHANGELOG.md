@@ -3,6 +3,22 @@
 Newest first. Every change says what it does, how to use it, and how it works
 underneath. Kept up to date with each commit.
 
+## Motion graphics, Format 1: the board less often, pop cards over his face, animations
+Needs deploying: run ./deploy-server.sh (./deploy.sh runs it by itself).
+**What he said (2026-11-08):** "Format 1, I don't want the white screen to always be there ... The drawings ... look
+pretty mid ... What I meant is probably some animations."
+- The board is now for the 2-4 big moments only (a comparison, a sum, a grid, steps), 3-7 seconds each, with his
+  face between. Claude is told so, and a board scene longer than 22 words is cut short (`MOTION_LIMITS.boardWords`).
+- New: pop cards. The rest of the time a small white card with a drawing and 1-4 words ("Goes viral", "Only 2
+  hours") springs up over his face, tilted, floats while he talks and shrinks away - the board stays down. A
+  swish as it comes in. A caption set at the top steps down while one is up. The plan screen says which scenes
+  are "Board" and which are "Card over your face".
+- Animations: every drawing now draws itself on, line by line, then keeps moving its own way - the rocket shakes
+  and lifts, the heart beats, money and gifts float, the clock and megaphone wiggle, fire and bolts flicker, charts
+  bob up (or down). Discs pop out a touch past their size. Confetti bursts when a big number or a sum's result
+  finishes counting.
+- Plans made before this still play as they were (no pop cards in them).
+
 ## Motion graphics: the caption check before the plan, and the words of Format 2 can be changed
 **What he said (2026-11-08):** "With format number 2, I click on them ... I can make them italic, bold, and
 yellow, but I cannot even edit them ... Claude checks the captions, and then I review or approve, say they're

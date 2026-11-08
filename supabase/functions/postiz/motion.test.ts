@@ -136,3 +136,44 @@ describe('drawings on the board (his ask: "less plain ... some drawings")', () =
     expect(MOTION_SYSTEM).toContain('chart-up')
   })
 })
+
+describe('Format 1: the board for a few moments, pop cards over his face the rest (his ask, 2026-11-08)', () => {
+  it('keeps a pop card alone in its scene, short, with a known drawing', () => {
+    const board = cleanStoryboard(
+      { format: 'board', scenes: [{ from: 2, to: 30, says: '', parts: [{ kind: 'pop', at: 2, to: 40, icon: 'fire', text: 'Goes viral', tone: 'red' }] }] },
+      60,
+    )
+    const [scene] = board.scenes
+    expect(scene.parts[0]).toMatchObject({ kind: 'pop', at: 2, icon: 'fire', text: 'Goes viral', tone: 'red' })
+    const pop = scene.parts[0] as { to: number }
+    expect(pop.to).toBeLessThanOrEqual(12)
+    expect(scene.to).toBe(pop.to)
+  })
+
+  it('a pop card with board parts is left out; the board parts stay', () => {
+    const board = cleanStoryboard(
+      { format: 'board', scenes: [{ from: 0, to: 9, says: '', parts: [{ kind: 'title', at: 0, text: 'Hi' }, { kind: 'pop', at: 1, to: 4, text: 'x' }] }] },
+      20,
+    )
+    expect(board.scenes[0].parts.map((p) => p.kind)).toEqual(['title'])
+  })
+
+  it('cuts a long board scene short and leaves out what came after its end', () => {
+    const board = cleanStoryboard(
+      { format: 'board', scenes: [{ from: 0, to: 80, says: '', parts: [{ kind: 'title', at: 0, text: 'A' }, { kind: 'note', at: 60, text: 'late' }] }] },
+      100,
+    )
+    expect(board.scenes[0].to).toBe(22)
+    expect(board.scenes[0].parts.map((p) => p.kind)).toEqual(['title'])
+  })
+
+  it('tells Claude the board is for a few moments, and about pop cards', () => {
+    expect(MOTION_SYSTEM).toContain('NOT the default')
+    expect(MOTION_ANSWER).toContain('"kind": "pop"')
+  })
+
+  it('pop cards are not a part of the words look', () => {
+    const board = cleanStoryboard({ format: 'words', scenes: [{ from: 0, to: 5, says: '', parts: [{ kind: 'pop', at: 0, to: 4, text: 'x' }] }] }, 10)
+    expect(board.scenes).toEqual([])
+  })
+})

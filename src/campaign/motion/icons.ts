@@ -304,39 +304,106 @@ function paths(ctx: Ctx, name: Icon): void {
   }
 }
 
-/** Draws icon `name` centred on (cx, cy), `size` across, in `colour`. */
-export function drawIcon(ctx: Ctx, name: Icon, cx: number, cy: number, size: number, colour: string): void {
+/** How long a drawing takes to draw itself on, in seconds. */
+export const DRAW_ON_SEC = 0.5
+
+const clamp01 = (n: number) => (n <= 0 ? 0 : n >= 1 ? 1 : Number.isFinite(n) ? n : 1)
+
+/** How a drawing keeps moving once it is drawn - his ask (2026-11-08): "What
+ *  I meant is probably some animations". Each in its own way: the rocket
+ *  shakes and lifts, the heart beats, money and gifts float, the clock and
+ *  the megaphone wiggle, fire and bolts flicker; the rest breathe gently.
+ *  `life`: seconds since it came up. Offsets in the icon's 24 grid. */
+export function iconMotion(name: Icon, life: number): { dx: number; dy: number; turn: number; grow: number } {
+  if (!Number.isFinite(life) || life <= 0) return { dx: 0, dy: 0, turn: 0, grow: 1 }
+  // Comes in slowly after it is drawn, so the drawing on reads first.
+  const k = clamp01((life - DRAW_ON_SEC * 0.6) / 0.6)
+  const s = (speed: number, phase = 0) => Math.sin(life * speed + phase)
+  switch (name) {
+    case 'rocket':
+      return { dx: 0.35 * s(47) * k, dy: (-1.2 + 1.2 * s(3.2)) * k, turn: 0, grow: 1 }
+    case 'heart': {
+      const beat = Math.max(0, s(7)) ** 6
+      return { dx: 0, dy: 0, turn: 0, grow: 1 + 0.14 * beat * k }
+    }
+    case 'money':
+    case 'coins':
+    case 'gift':
+    case 'trophy':
+    case 'star':
+      return { dx: 0, dy: 1.1 * s(3.4) * k, turn: name === 'star' ? 0.12 * s(2.2) * k : 0, grow: 1 }
+    case 'clock':
+    case 'megaphone':
+    case 'warning':
+    case 'phone':
+      return { dx: 0, dy: 0, turn: 0.13 * s(9) * Math.max(0, s(1.6)) * k, grow: 1 }
+    case 'fire':
+    case 'bolt':
+      return { dx: 0, dy: 0, turn: 0, grow: 1 + 0.06 * s(13) * s(5.3) * k }
+    case 'chart-up':
+      return { dx: 0, dy: -0.7 * (0.5 + 0.5 * s(3)) * k, turn: 0, grow: 1 }
+    case 'chart-down':
+      return { dx: 0, dy: 0.7 * (0.5 + 0.5 * s(3)) * k, turn: 0, grow: 1 }
+    case 'arrow':
+      return { dx: 1.2 * (0.5 + 0.5 * s(5)) * k, dy: 0, turn: 0, grow: 1 }
+    case 'globe':
+    case 'target':
+      return { dx: 0, dy: 0, turn: 0.1 * s(2.4) * k, grow: 1 }
+    default:
+      return { dx: 0, dy: 0, turn: 0, grow: 1 + 0.035 * s(3) * k }
+  }
+}
+
+/** Draws icon `name` centred on (cx, cy), `size` across, in `colour`.
+ *  `life`, seconds since it came up: it draws itself on, line by line, then
+ *  keeps moving (iconMotion); left out, it is drawn still and whole. */
+export function drawIcon(ctx: Ctx, name: Icon, cx: number, cy: number, size: number, colour: string, life = Infinity): void {
+  const drawn = clamp01(life / DRAW_ON_SEC)
+  if (drawn <= 0) return
+  const move = iconMotion(name, life)
   ctx.save()
-  ctx.translate(cx - size / 2, cy - size / 2)
-  ctx.scale(size / 24, size / 24)
+  ctx.translate(cx, cy)
+  if (move.turn) ctx.rotate(move.turn)
+  ctx.scale((size / 24) * move.grow, (size / 24) * move.grow)
+  ctx.translate(-12 + move.dx, -12 + move.dy)
   ctx.strokeStyle = colour
   ctx.fillStyle = colour
   ctx.lineWidth = 2
   ctx.lineCap = 'round'
   ctx.lineJoin = 'round'
+  // Drawn on: every line grows from its start at once (the dash starts again
+  // on each line of the drawing).
+  if (drawn < 1) ctx.setLineDash([64 * (1 - (1 - drawn) ** 2), 64])
   ctx.beginPath()
   paths(ctx, name)
   ctx.stroke()
+  if (drawn < 1) ctx.setLineDash([])
   // A soft fill inside the closed shapes that read better solid.
   if (name === 'heart' || name === 'star' || name === 'bolt' || name === 'fire') {
-    ctx.globalAlpha *= 0.18
+    ctx.globalAlpha *= 0.18 * drawn
     ctx.fill()
   }
   if (name === 'money') {
-    ctx.globalAlpha = 1
+    ctx.globalAlpha = drawn
     glyph(ctx, '$', 12, 12, 5)
   }
   ctx.restore()
 }
 
 /** An icon on a soft disc of its colour - how it sits on the board. */
-export function drawIconBadge(ctx: Ctx, name: Icon, cx: number, cy: number, size: number, colour: string): void {
-  ctx.save()
-  ctx.fillStyle = colour
-  ctx.globalAlpha *= 0.13
-  ctx.beginPath()
-  ctx.arc(cx, cy, size / 2, 0, Math.PI * 2)
-  ctx.fill()
-  ctx.restore()
-  drawIcon(ctx, name, cx, cy, size * 0.58, colour)
+export function drawIconBadge(ctx: Ctx, name: Icon, cx: number, cy: number, size: number, colour: string, life = Infinity): void {
+  // The disc pops out a little past its size and back, then the drawing
+  // draws itself on it.
+  const p = clamp01(life / 0.3)
+  const pop = p >= 1 ? 1 : 1 + 2.4 * (p - 1) ** 3 + 1.4 * (p - 1) ** 2
+  if (pop > 0) {
+    ctx.save()
+    ctx.fillStyle = colour
+    ctx.globalAlpha *= 0.13
+    ctx.beginPath()
+    ctx.arc(cx, cy, (size / 2) * pop, 0, Math.PI * 2)
+    ctx.fill()
+    ctx.restore()
+  }
+  drawIcon(ctx, name, cx, cy, size * 0.58, colour, life - 0.12)
 }

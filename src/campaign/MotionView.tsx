@@ -29,7 +29,7 @@ import { drawMotion, faceDropAt, fillBehindFace, type Timing } from './motion/dr
 import { FrameReader } from './motion/frames'
 import { Planning, useElapsed } from './motion/Planning'
 import { AskExamples, FORMAT_INFO, FormatPicker, saveFormat, savedFormat } from './motion/FormatPicker'
-import { formatOf, type EmphasisStyle, type FormatAsk } from '../../supabase/functions/postiz/motion.ts'
+import { formatOf, popScene, type EmphasisStyle, type FormatAsk } from '../../supabase/functions/postiz/motion.ts'
 import { captionLook, captionsToEdit, claudeWords, drawCaptionAt, forClaude, hear, kineticFor, kineticStill, makeMotionVideo, shownCaptions, soundsFor, storyWords, type CaptionChoice } from './motion/make'
 import { SOUND_DB, makeSound, type MotionSound } from './motion/sfx'
 import { CaptionReview, type EmbeddedVideo } from './CaptionReview'
@@ -651,6 +651,7 @@ function PlanScreen({
               <span className="row-text">
                 <span className="row-name">
                   {clock(timing.start(scene.from))}–{clock(timing.end(scene.to))}
+                  {look === 'board' ? (popScene(scene) ? ' · Card over your face' : ' · Board') : ''}
                 </span>
                 <span className="row-line">{scene.says || scene.parts.map((p) => p.kind).join(', ')}</span>
               </span>

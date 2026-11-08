@@ -87,6 +87,11 @@ export type Part =
   | { kind: 'phones'; at: number; items: Phone[]; sign: '=' | 'vs' | null; prices: { text: string; at: number }[] }
   | { kind: 'math'; at: number; lines: { text: string; at: number }[]; result: { text: string; at: number } }
   | { kind: 'number'; at: number; label: string; text: string; icon?: Icon }
+  /** A small card that pops up over his face - a drawing and a few words -
+   *  with the board staying down: most moments get one of these instead of
+   *  the board ("I don't want the white screen to always be there", his ask
+   *  2026-11-08). Alone in its scene; from "at" to "to". */
+  | { kind: 'pop'; at: number; to: number; text: string; icon?: Icon; tone: Tone }
   // The words look:
   | { kind: 'diamonds'; at: number; items: { at: number }[] }
   | { kind: 'point'; at: number; number: number; text: string }
@@ -96,7 +101,10 @@ export type Part =
 export type PartKind = Part['kind']
 
 /** Which parts belong to which look. */
-export const BOARD_PARTS: readonly PartKind[] = ['title', 'note', 'cards', 'list', 'icons', 'tiles', 'phones', 'math', 'number']
+export const BOARD_PARTS: readonly PartKind[] = ['title', 'note', 'cards', 'list', 'icons', 'tiles', 'phones', 'math', 'number', 'pop']
+
+/** A scene of pop cards only: over his face, the board stays down. */
+export const popScene = (scene: Pick<Scene, 'parts'>): boolean => scene.parts.length > 0 && scene.parts.every((p) => p.kind === 'pop')
 export const WORDS_PARTS: readonly PartKind[] = ['diamonds', 'point', 'flash', 'dim']
 
 export interface Scene {
@@ -144,6 +152,10 @@ export const MOTION_LIMITS = {
   diamonds: 5,
   /** A white flash or a dimmed moment lasts at most this many words. */
   flashWords: 8,
+  /** The board is up for at most this many words at a time (about 7 s). */
+  boardWords: 22,
+  /** A pop card over his face, at most this many words. */
+  popWords: 10,
 } as const
 
 export const MOTION_SYSTEM = `You are the motion designer of a short vertical talking video (TikTok, Instagram Reels). The creator talks to the camera; you add motion graphics around what he says, each appearing on the exact word he says it.
@@ -152,7 +164,7 @@ You get his words, numbered: [12]word. Every "at", "from", "to" is a word number
 
 There are two looks ("format"). He may have picked one; if he says "you pick", choose the one that fits the video best: "board" for explaining with numbers, money, comparisons, steps; "words" for stories, opinions, tips, hot takes.
 
-FORMAT "board": while a scene is up, the top 55% of the frame is a light grey board with flat graphics and his face moves to the bottom; between scenes he is full screen. Captions are burned in already - never repeat his sentences on the board; show the idea. Parts (1 to 4 per scene, stacked top to bottom in your order):
+FORMAT "board": while a board scene is up, the top 45% of the frame is a light grey board with flat graphics and his face moves to the bottom; between scenes he is full screen. The board is the big moment, NOT the default: use it only for the 2 to 4 moments that need a picture (a comparison, a sum, a grid, a list of steps), each 3 to 7 seconds (at most 20 words), with at least as long of his face between two boards - his face is on screen most of the video. Everywhere else he makes a point worth seeing, use a "pop" scene instead: a small card with a drawing and 1 to 4 words popping up over his face, the board staying down (aim for 3 to 6 of them). Captions are burned in already - never repeat his sentences on the board; show the idea. Parts (1 to 4 per scene, stacked top to bottom in your order):
 - title: a short heading, e.g. "2 types of contracts".
 - note: a small dark label in code font, e.g. "max 2 videos = max $50 / day".
 - cards: 1 to 3 white cards side by side, each with a coloured badge ("BASE PAY") and up to 4 short lines, each line appearing on its own word, optionally with a check or a cross.
@@ -162,6 +174,7 @@ FORMAT "board": while a scene is up, the top 55% of the frame is a light grey bo
 - math: a sum built line by line ("50 videos", "× 1,500 views", "× $4 / 1000") and a big result ("= $300 / day") that counts up.
 - number: one big number that counts up, with a small label.
 - icons: 2 to 4 big drawings in a row, one short word under each, each on its word - for the key ideas, e.g. "video" "Film", "chart-up" "Grow", "money" "Earn".
+- pop: ALONE in its scene, no board: a card over his face with an "icon" and 1 to 4 words ("text"), from "at" to "to" (3 to 10 words), e.g. "fire" "Goes viral", "clock" "Only 2 hours". Tone for its colour.
 Tones: purple, green, red, dark.
 Drawings ("icon"): give most titles, cards, list rows and numbers an "icon" that fits, so the board is never just text, and use an "icons" part in some scenes. Only these: ${ICONS.join(', ')}. Optional "hook": a small card over his face at the very start with a label and a number counting up (only for a striking number in his first sentence). 3 to 8 scenes for a 30-90 s video.
 
@@ -207,6 +220,7 @@ Parts - "kind" and its fields:
   {"kind": "phones", "at": 15, "items": [{"text": "1,2k", "at": 15, "lit": false}], "sign": "=" | "vs" | "none", "prices": [{"text": "25 $", "at": 20}]}
   {"kind": "math", "at": 15, "lines": [{"text": "50 videos", "at": 15}], "result": {"text": "= 300 $ / day", "at": 22}}
   {"kind": "number", "at": 15, "label": "a day", "text": "300 $", "icon": "money"}
+  {"kind": "pop", "at": 15, "to": 21, "icon": "fire", "text": "Goes viral", "tone": "red"}
   {"kind": "diamonds", "at": 15, "items": [{"at": 16}, {"at": 18}, {"at": 20}]}
   {"kind": "point", "at": 15, "number": 1, "text": "NOT SETTING GOALS"}
   {"kind": "flash", "at": 15, "to": 19}
@@ -386,6 +400,12 @@ function cleanPart(raw: Record<string, unknown>, from: number, to: number, words
       const text = str(raw.text, 24)
       return text ? { kind: 'number', at, label: str(raw.label), text, ...withIcon(raw.icon) } : null
     }
+    case 'pop': {
+      const text = str(raw.text, 32) || str(raw.label, 32)
+      if (!text) return null
+      const end = Math.min(to, at + L.popWords, Math.max(at + 2, inside(raw.to, at + 5)))
+      return { kind: 'pop', at, to: end, text, ...withIcon(raw.icon), tone: toneOf(raw.tone, 'purple') }
+    }
     case 'diamonds': {
       const items = list(raw.items)
         .slice(0, L.diamonds)
@@ -432,11 +452,24 @@ export function cleanStoryboard(value: unknown, words: number): Storyboard {
     // Never on top of the one before: it ends where this one starts.
     if (last && from <= last.from) continue
     if (last && last.to >= from) last.to = from - 1
-    const to = Math.max(from, wordAt(s.to, words, from))
-    const parts = list(s.parts)
+    let to = Math.max(from, wordAt(s.to, words, from))
+    let parts = list(s.parts)
       .slice(0, MOTION_LIMITS.parts)
       .filter((p) => allowed.includes(p.kind as PartKind))
       .flatMap((p) => cleanPart(p, from, to, words) ?? [])
+    if (format === 'board') {
+      // A pop card is alone in its scene: with board parts it would sit on
+      // the board, so there the board parts win.
+      if (parts.some((p) => p.kind !== 'pop')) parts = parts.filter((p) => p.kind !== 'pop')
+      else parts = parts.slice(0, 1)
+      // The board is up for a moment, not a minute: a long scene is cut
+      // short, and what came after its end is left out.
+      if (!popScene({ parts }) && to - from > MOTION_LIMITS.boardWords) {
+        to = from + MOTION_LIMITS.boardWords
+        parts = parts.filter((p) => p.at <= to)
+      }
+      if (popScene({ parts })) to = Math.min(to, (parts[0] as { to: number }).to)
+    }
     if (parts.length === 0) continue
     scenes.push({ from, to, says: str(s.says, MOTION_LIMITS.says), parts })
   }
@@ -504,6 +537,7 @@ function clampPart(part: Part, from: number, to: number): void {
       break
     case 'flash':
     case 'dim':
+    case 'pop':
       part.to = Math.max(part.at, clamp(part.to))
       break
     default:

@@ -39,7 +39,7 @@ export const FORMAT_INFO: Record<FormatAsk, { name: string; line: string }> = {
   },
   board: {
     name: 'Format 1 · Board',
-    line: 'Cards, grids and sums on a board over the top. For numbers and money.',
+    line: 'Little cards pop up over your face; for the big moments a board with cards, grids and sums. For numbers and money.',
   },
   words: {
     name: 'Format 2 · Words',

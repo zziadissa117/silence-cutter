@@ -159,3 +159,75 @@ describe('motion graphics: the numbers he says, shown while Claude plans', () =>
     expect(numbersSaid(['no', 'numbers', 'here'])).toEqual([])
   })
 })
+
+import { captionPositionAt, confetti } from './draw'
+import { iconMotion } from './icons'
+import { motionSounds } from './sfx'
+
+describe('Format 1: pop cards over his face, drawings that move, confetti', () => {
+  const withPop: Storyboard = cleanStoryboard(
+    {
+      format: 'board',
+      scenes: [
+        { from: 2, to: 8, says: '', parts: [{ kind: 'pop', at: 2, to: 8, icon: 'rocket', text: 'Grows fast', tone: 'green' }] },
+        { from: 14, to: 20, says: '', parts: [{ kind: 'number', at: 14, label: 'a day', text: '300 $', icon: 'money' }] },
+      ],
+    },
+    words.length,
+  )
+
+  it('the board stays down while a pop card is up, and comes up for a board scene', () => {
+    expect(splitAt(withPop, time, 2.5)).toBe(0)
+    expect(splitAt(withPop, time, 8.5)).toBe(1)
+  })
+
+  it('a caption set at the top makes room for the pop card', () => {
+    expect(captionPositionAt(withPop, time, 2.5, 'top')).toBe('usual')
+    expect(captionPositionAt(withPop, time, 6, 'bottom')).toBe('bottom')
+  })
+
+  it('the pop card swishes in; only the board whooshes', () => {
+    const sounds = motionSounds(withPop, (i) => words[i]?.start ?? Infinity)
+    expect(sounds.find((s) => Math.abs(s.at - 1) < 0.01)?.sound).toBe('swish')
+    expect(sounds.filter((s) => s.sound === 'whoosh').map((s) => s.at)).toEqual([7])
+  })
+
+  it('drawings keep moving once drawn, each its own way; still before they come up', () => {
+    expect(iconMotion('rocket', 0)).toEqual({ dx: 0, dy: 0, turn: 0, grow: 1 })
+    const beats = [1, 1.1, 1.2, 1.3, 1.4].map((t) => iconMotion('heart', t).grow)
+    expect(Math.max(...beats)).toBeGreaterThan(1.02)
+    expect(iconMotion('money', 1.5).dy).not.toBe(0)
+  })
+
+  it('confetti only in the moment after a number lands', () => {
+    const calls: string[] = []
+    const ctx = new Proxy({}, { get: (_t, key) => () => calls.push(String(key)), set: () => true }) as unknown as OffscreenCanvasRenderingContext2D
+    confetti(ctx, 50, 50, 10, -0.1, 1)
+    confetti(ctx, 50, 50, 10, 3, 1)
+    expect(calls).toEqual([])
+    confetti(ctx, 50, 50, 10, 0.4, 1)
+    expect(calls.filter((c) => c === 'fillRect').length).toBe(34)
+  })
+
+  it('draws a pop card and a counting number with its confetti without throwing', () => {
+    const calls: string[] = []
+    const gradient = { addColorStop: () => {} }
+    const ctx = new Proxy(
+      {},
+      {
+        get: (_target, key) => {
+          if (key === 'measureText') return (s: string) => ({ width: s.length * 20 })
+          if (key === 'createLinearGradient' || key === 'createRadialGradient') return () => gradient
+          return (...args: unknown[]) => {
+            calls.push(String(key))
+            return args
+          }
+        },
+        set: () => true,
+      },
+    ) as unknown as OffscreenCanvasRenderingContext2D
+    for (let t = 0; t < 12; t += 0.05) drawMotion(ctx, 1080, 1920, withPop, time, t)
+    expect(calls).toContain('setLineDash')
+    expect(calls).toContain('rotate')
+  })
+})

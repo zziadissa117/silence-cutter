@@ -10,7 +10,7 @@
 // there is nothing to load and they sound the same on the phone and the
 // Cutter server.
 
-import { formatOf, type Part, type Storyboard } from '../../../supabase/functions/postiz/motion.ts'
+import { formatOf, popScene, type Part, type Storyboard } from '../../../supabase/functions/postiz/motion.ts'
 import { synthesize } from '../sounds'
 
 export type MotionSound = 'whoosh' | 'pop' | 'ding' | 'tick' | 'hit' | 'shutter' | 'swish'
@@ -133,6 +133,10 @@ function partCues(part: Part, cues: SoundCue[]): void {
     case 'icons':
       for (const item of part.items) cues.push({ sound: 'pop', at: item.at })
       return
+    case 'pop':
+      // A card springing up over his face: a quick swish into its pop.
+      cues.push({ sound: 'swish', at: part.at })
+      return
     case 'tiles':
       cues.push({ sound: 'pop', at: part.at })
       for (const step of part.steps) cues.push({ sound: 'tick', at: step.at })
@@ -169,8 +173,9 @@ export function motionSounds(board: Storyboard, start: WordTimes, glue = 1.2): {
   const words = formatOf(board) === 'words'
   if (board.hook) cues.push({ sound: 'pop', at: board.hook.at })
   board.scenes.forEach((scene, k) => {
-    if (!words) {
-      const before = board.scenes[k - 1]
+    if (!words && !popScene(scene)) {
+      // The board scene before this one, pop cards between left out.
+      const before = board.scenes.slice(0, k).reverse().find((s) => !popScene(s))
       // Only when the board comes up from his face.
       if (!before || start(scene.from) - start(before.to) > glue) cues.push({ sound: 'whoosh', at: scene.from })
     }
