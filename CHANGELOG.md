@@ -3,6 +3,32 @@
 Newest first. Every change says what it does, how to use it, and how it works
 underneath. Kept up to date with each commit.
 
+## Motion graphics: Format 2 is now the glass look (the old Format 2 is gone); always a call to action
+Needs deploying: run ./deploy-server.sh (./deploy.sh runs it by itself).
+**What he said (2026-11-08):** sent a reel - "I want the formats to look a little more like this. I want claude to
+be able to edit just like this" - then "Keep format 1, remove format 2, and put this as format 2 ... Claude can just
+write the title on top of my head at the start ... there's my face, and then there's the glass behind me ... always
+have a call to action at the end ... most of the time the call to action is going to end with UGC."
+- Format 2 · Glass (`motion/glass.ts`): his face full screen; every few seconds a frosted glass card slides up and
+  goes - a small label and a bold line with one word in an orange pill, a row of blocks whose red ones close up
+  ("cuts the dead space" -> "tight. no filler."), a number counting up over growing bars (with confetti), a picture
+  card with a big emoji. Claude puts each one under his face, at his side, or BEHIND him: then he is cut out of the
+  frame as it is made (the green screen's cut-out tool, `motion/liveCutout.ts`, only on those frames) and drawn back
+  over the card, his head in front of the glass. If the tool can't run, the card goes over him and the video is
+  still made.
+- For a list of steps the whole screen turns light blue, his video shrinks into a rounded box under the list, the
+  numbered rows slide in on their words, and it grows back.
+- A title over his head at the start (Claude writes it), captions in a dark bar word by word with an orange word
+  now and then and key phrases in a white pill with a green tick, and the shot moves a little closer or back out at
+  the cuts.
+- Every video, both formats, ends on a call to action: his own words when he says one, else 'Comment "UGC"'. The
+  glass look shows it as a glass pill with a chat drawing and a pulsing ring; Format 1 as its banner.
+- The old Format 2 (words) is removed. A video still on the phone planned in it goes back to its caption check and
+  is planned again as glass. Its tap-to-style chips now cycle orange -> pill -> normal.
+- The glass cards are frosted by shrinking and growing a copy of the frame (Safari has no canvas blur).
+- Checked: a real render in Chrome (12 s, made in 18 s) with the cut-out running, and stills of every card. Not
+  checked on the iPhone.
+
 ## Motion graphics, Format 1: the board less often, pop cards over his face, animations
 Needs deploying: run ./deploy-server.sh (./deploy.sh runs it by itself).
 **What he said (2026-11-08):** "Format 1, I don't want the white screen to always be there ... The drawings ... look

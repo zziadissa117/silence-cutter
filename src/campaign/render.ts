@@ -73,8 +73,9 @@ import { Voice, measureLoudness, type WalkAudio } from './voice'
 import { frameRateOf, makeSize, videoQuality } from './quality'
 import { PopFrames, drawPop, occurrencesOf, popAt, popLayout, type PopLayout, type PopPosition } from './popVideo'
 import { report as reportProblem } from '../report'
-import type { EmphasisStyle, Storyboard } from '../../supabase/functions/postiz/motion.ts'
-import type { Kinetic } from './motion/words'
+import { formatOf, type EmphasisStyle, type Storyboard } from '../../supabase/functions/postiz/motion.ts'
+import { behindAt, type Kinetic } from './motion/glass'
+import { LiveCutout } from './motion/liveCutout'
 import { makeSound, type MotionSound } from './motion/sfx'
 import { captionPositionAt, drawMotion, faceDropAt, fillBehindFace } from './motion/draw'
 import { MotionTrack } from './motion/track'
@@ -189,8 +190,8 @@ export interface CampaignRenderInput {
   motion?: {
     board: Storyboard
     words: { start: number; end: number }[]
-    /** The words look: his words as they build up under his face - in place
-     *  of the captions (motion/words.ts). */
+    /** The glass look: his words in its caption bar - in place of the
+     *  captions (motion/glass.ts). */
     kinetic?: { words: { text: string; start: number; end: number }[]; phrases: [number, number][]; styles: (EmphasisStyle | null)[]; centerY?: number; scale?: number }
     /** Its sound effects (motion/sfx.ts): each sound, when it plays on the
      *  raw video's timeline, and how loud. */
@@ -276,6 +277,8 @@ export async function renderCampaignCut(
   const joined: Clip[] = []
   const popInputs: Input[] = []
   let popPlayer: PopFrames<WrappedCanvas> | null = null
+  /** Cuts him out of the frames where a glass card sits behind him. */
+  let cutout: LiveCutout | null = null
   let overlayPlayer: PopFrames<WrappedCanvas> | null = null
 
   try {
@@ -550,7 +553,8 @@ export async function renderCampaignCut(
     const brandPlacer = new MomentPlacer(brandMoments, keep)
     const motionTrack =
       graphics && (graphics.board.scenes.length + (graphics.board.hook ? 1 : 0) + (graphics.board.end ? 1 : 0) > 0 || graphics.kinetic) ? new MotionTrack(graphics.words, keep) : null
-    // The words look's block: his shown words placed like the captions.
+    if (graphics && formatOf(graphics.board) === 'glass' && graphics.board.scenes.some((s) => s.parts.some((p) => 'place' in p && p.place === 'behind'))) cutout = new LiveCutout()
+    // The glass look's captions: his shown words placed like the captions.
     const kineticTrack = graphics?.kinetic ? new MotionTrack(graphics.kinetic.words, keep) : null
     const kinetic: Kinetic | undefined =
       graphics?.kinetic && kineticTrack
@@ -858,7 +862,10 @@ export async function renderCampaignCut(
                 }
                 // The motion graphics over everything but the words: his own
                 // texts, the headline, logo and captions still read on top.
-                if (motionTrack && graphics) drawMotion(ctx, width, height, graphics.board, motionTrack.timing, timestamp, kinetic)
+                if (motionTrack && graphics) {
+                  const mask = cutout && behindAt(graphics.board, motionTrack.timing, timestamp) ? await cutout.maskOf(canvas) : null
+                  drawMotion(ctx, width, height, graphics.board, motionTrack.timing, timestamp, kinetic, mask)
+                }
                 for (const t of texts) if (inWindow(timestamp, t.placer.times, t.seconds)) drawHeadline(ctx, t.layout)
                 if (headline && timestamp - talkStart < look.headline.seconds) drawHeadline(ctx, headline)
                 if (logo && logoImage && inWindow(timestamp, logoPlacer.times, look.logo.seconds)) {
@@ -979,6 +986,7 @@ export async function renderCampaignCut(
     for (const clip of joined) clip.input.dispose()
     await popPlayer?.stop().catch(() => {})
     await overlayPlayer?.stop().catch(() => {})
+    cutout?.close()
     for (const popInput of popInputs) popInput.dispose()
     input.dispose()
     if (!finished) {

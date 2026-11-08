@@ -12,7 +12,7 @@
 
 import { formatOf, popScene, type Card, type Part, type Scene, type Storyboard, type Tone } from '../../../supabase/functions/postiz/motion.ts'
 import { HEADLINE_FAMILY } from '../headlineFont'
-import { drawWordsLook, type Kinetic } from './words'
+import { drawGlassLook, type Kinetic } from './glass'
 import { drawIconBadge } from './icons'
 import type { CaptionPosition } from '../captions'
 
@@ -91,8 +91,8 @@ export function sceneWindows(board: Storyboard, time: Timing): { start: number; 
 /** How far the board is up at `t`: 0 his face full screen, 1 the board up
  *  and his face below it. Scenes close together keep it up between them. */
 export function splitAt(board: Storyboard, time: Timing, t: number): number {
-  // The words look never moves his face.
-  if (formatOf(board) === 'words') return 0
+  // The glass look never moves his face.
+  if (formatOf(board) === 'glass') return 0
   const merged: { start: number; end: number }[] = []
   const windows = sceneWindows(board, time)
   for (const [i, w] of windows.entries()) {
@@ -870,9 +870,9 @@ function drawEnd(ctx: Ctx, end: NonNullable<Storyboard['end']>, width: number, h
 /** Everything of the storyboard at `t` on the finished video: the board and
  *  the scene on it, the hook card, the end banner. His face is drawn first
  *  by the caller, moved down by faceDropAt. */
-export function drawMotion(ctx: Ctx, width: number, height: number, board: Storyboard, time: Timing, t: number, kinetic?: Kinetic): void {
-  if (formatOf(board) === 'words') {
-    drawWordsLook(ctx, width, height, board, time, t, kinetic)
+export function drawMotion(ctx: Ctx, width: number, height: number, board: Storyboard, time: Timing, t: number, kinetic?: Kinetic, cutout?: CanvasImageSource | null): void {
+  if (formatOf(board) === 'glass') {
+    drawGlassLook(ctx, width, height, board, time, t, kinetic, cutout)
     return
   }
   const up = splitAt(board, time, t)

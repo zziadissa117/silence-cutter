@@ -1062,7 +1062,8 @@ async function motionPlan(profile: Profile, body: Record<string, unknown>): Prom
   if (words.filter((w) => w.trim()).length < 3) throw new Problem('There are too few words in this video to put graphics on.')
   const times = (Array.isArray(body.times) ? body.times : []).slice(0, 3000).map((t) => (typeof t === 'number' && Number.isFinite(t) ? t : NaN))
   const ask = typeof body.ask === 'string' ? body.ask.slice(0, 600) : ''
-  const format: FormatAsk = body.format === 'board' || body.format === 'words' ? body.format : 'auto'
+  // The old Format 2 ("words") is gone; a phone that still asks for it gets glass.
+  const format: FormatAsk = body.format === 'board' || body.format === 'glass' ? body.format : body.format === 'words' ? 'glass' : 'auto'
   const current = body.storyboard ? cleanStoryboard(body.storyboard, words.length) : null
   const chat: ChatTurn[] = (Array.isArray(body.chat) ? body.chat : [])
     .filter((t): t is { from: string; text: string } => Boolean(t) && typeof t === 'object' && typeof (t as { text?: unknown }).text === 'string')

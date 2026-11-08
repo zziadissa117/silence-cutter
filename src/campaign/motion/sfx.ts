@@ -149,17 +149,22 @@ function partCues(part: Part, cues: SoundCue[]): void {
       for (const line of part.lines) cues.push({ sound: 'tick', at: line.at })
       if (part.result.text) cues.push({ sound: 'ding', at: part.result.at })
       return
-    case 'diamonds':
-      for (const item of part.items) cues.push({ sound: 'tick', at: item.at })
-      return
-    case 'point':
+    // The glass look: a swish as a card slides in, its own sound after.
+    case 'tag':
+    case 'picture':
       cues.push({ sound: 'swish', at: part.at })
       return
-    case 'flash':
-      cues.push({ sound: 'shutter', at: part.at })
+    case 'blocks':
+      cues.push({ sound: 'swish', at: part.at })
+      if (part.after) cues.push({ sound: 'pop', at: part.after.at })
       return
-    case 'dim':
-      cues.push({ sound: 'hit', at: part.at })
+    case 'stat':
+      cues.push({ sound: 'swish', at: part.at })
+      cues.push({ sound: 'ding', at: part.at + 2 })
+      return
+    case 'steps':
+      cues.push({ sound: 'whoosh', at: part.at })
+      for (const item of part.items) cues.push({ sound: 'pop', at: item.at })
       return
   }
 }
@@ -170,10 +175,11 @@ function partCues(part: Part, cues: SoundCue[]): void {
  *  MIN_GAP - the stronger one stays. */
 export function motionSounds(board: Storyboard, start: WordTimes, glue = 1.2): { sound: MotionSound; at: number }[] {
   const cues: SoundCue[] = []
-  const words = formatOf(board) === 'words'
+  const glass = formatOf(board) === 'glass'
   if (board.hook) cues.push({ sound: 'pop', at: board.hook.at })
+  if (board.title) cues.push({ sound: 'swish', at: 0 })
   board.scenes.forEach((scene, k) => {
-    if (!words && !popScene(scene)) {
+    if (!glass && !popScene(scene)) {
       // The board scene before this one, pop cards between left out.
       const before = board.scenes.slice(0, k).reverse().find((s) => !popScene(s))
       // Only when the board comes up from his face.
@@ -181,8 +187,8 @@ export function motionSounds(board: Storyboard, start: WordTimes, glue = 1.2): {
     }
     for (const part of scene.parts) partCues(part, cues)
   })
-  for (const e of board.emphasis ?? []) cues.push({ sound: e.style === 'gold' ? 'hit' : e.style === 'big' ? 'swish' : 'tick', at: e.at })
-  if (board.end) cues.push({ sound: words ? 'hit' : 'pop', at: board.end.at })
+  for (const e of board.emphasis ?? []) if (e.style === 'pill') cues.push({ sound: 'tick', at: e.at })
+  if (board.end) cues.push({ sound: 'pop', at: board.end.at })
   // On the recording's clock, the stronger first at any moment.
   const timed = cues
     .map((c) => ({ sound: c.sound, at: start(c.at) }))

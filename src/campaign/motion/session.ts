@@ -102,10 +102,20 @@ export async function loadSession(): Promise<MotionSession | null> {
     storedFile = file.blob
     storedMade = made && made.id === kept.id && kept.madeFrom ? made.blob : null
     const { file: _f, made: _m, ...meta } = kept
-    return { ...meta, file: file.blob, ...(storedMade ? { made: storedMade } : {}) }
+    return { ...fromOldFormat2(meta), file: file.blob, ...(storedMade ? { made: storedMade } : {}) }
   } catch {
     return null
   }
+}
+
+/** A video planned in the old Format 2 ("words", taken out 2026-11-08): its
+ *  plan can't be drawn any more, so it goes back to its caption check and is
+ *  planned again in the glass look that replaced it. */
+export function fromOldFormat2<T extends Pick<MotionSession, 'format' | 'storyboard' | 'checked' | 'chat' | 'made' | 'madeFrom'>>(session: T): T {
+  const old = (session.storyboard as { format?: string } | undefined)?.format === 'words' || (session.format as string | undefined) === 'words'
+  if (!old) return session
+  const { storyboard: _s, made: _m, madeFrom: _f, ...rest } = session
+  return { ...rest, format: 'glass', checked: false, chat: [] } as unknown as T
 }
 
 /** The recording, read again from the phone's storage - a fresh Blob, for

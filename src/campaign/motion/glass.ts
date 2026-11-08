@@ -1,0 +1,865 @@
+// The "glass" look of motion graphics (Format 2 since 2026-11-08, from his
+// example reel: "I want the formats to look a little more like this. I want
+// claude to be able to edit just like this"). His face stays full screen and,
+// every few seconds, a frosted glass card comes and goes: a label with a bold
+// line and one word in an orange pill, a row of blocks losing its red ones, a
+// number counting up over growing bars, a picture. Sometimes the card is
+// BEHIND him - his head and shoulders cut out and drawn back over it ("there's
+// my face, and then there's the glass behind me"). For a list of steps the
+// whole screen turns light blue and his video shrinks into a box under the
+// list. A title over his head at the start, the captions in a dark bar, and
+// always a call to action at the end.
+//
+// The captions here are the look's own (in the old Format 2 too): the bar is
+// drawn from his checked words, so the Cutter's caption screen still edits them.
+// Drawn by drawMotion (draw.ts) on every frame of the render and every still.
+
+import { DEFAULT_CTA, type EmphasisStyle, type Part, type Place, type Storyboard } from '../../../supabase/functions/postiz/motion.ts'
+import { HEADLINE_FAMILY } from '../headlineFont'
+import { confetti, countText, type Timing } from './draw'
+import { drawIcon, drawIconBadge } from './icons'
+
+type Ctx = CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D
+type Canvas = OffscreenCanvas | HTMLCanvasElement
+
+/** His words for the captions: what shows, when each is said (`timing`, on
+ *  the finished video), which phrase each is in, and which stand out. */
+export interface Kinetic {
+  words: readonly { text: string }[]
+  timing: Timing
+  /** [first, end) of each phrase, in order. */
+  phrases: readonly (readonly [number, number])[]
+  styleOf: (i: number) => EmphasisStyle | null
+  /** Where the bar's middle sits, as a share of the frame's height - from
+   *  where he put the captions (CAPTION_CENTER). */
+  centerY?: number
+  /** His caption size, 1 for normal. */
+  scale?: number
+}
+
+/** Where the caption bar sits for each caption position he can pick on the
+ *  caption screen - clear of TikTok's top bar and bottom buttons. */
+export const CAPTION_CENTER: Record<'top' | 'middle' | 'usual' | 'bottom', number> = { top: 0.2, middle: 0.5, usual: 0.7, bottom: 0.77 }
+
+const SANS = HEADLINE_FAMILY
+export const GLASS_COLOURS = {
+  ink: '#141826',
+  grey: '#6b7186',
+  blue: '#3d5afe',
+  blueLight: '#7b93ff',
+  orange: '#ec7a4f',
+  orangeLight: '#f59a6c',
+  red: '#ef5a6f',
+  green: '#22b45e',
+  bar: 'rgba(20, 28, 62, 0.8)',
+  stage: '#e9f2fb',
+  stageLow: '#d4e4f5',
+} as const
+/** The steps' number badges, in turn. */
+const STEP_COLOURS = ['#2bb6c9', '#3d5afe', '#7b5cf0', '#ec7a4f', '#e2508f', '#22b45e']
+
+const clamp01 = (n: number) => (n <= 0 ? 0 : n >= 1 ? 1 : Number.isFinite(n) ? n : 0)
+const easeOut = (p: number) => 1 - (1 - p) ** 3
+const easeInOut = (p: number) => (p < 0.5 ? 4 * p * p * p : 1 - (-2 * p + 2) ** 3 / 2)
+const easeBack = (p: number) => 1 + 2.4 * (p - 1) ** 3 + 1.4 * (p - 1) ** 2
+/** Things come up this much before their word, like the captions. */
+const LEAD = 0.05
+const IN_SEC = 0.38
+const OUT_SEC = 0.28
+/** A card stays this long after its last word. */
+const HOLD = 0.35
+/** The light screen of the steps takes this long to come and go. */
+const STAGE_SEC = 0.5
+/** Most words in one caption phrase, and a pause that ends one. */
+const PHRASE_WORDS = 5
+const PHRASE_PAUSE = 0.45
+/** A caption phrase stays a moment after its last word. */
+const PHRASE_HOLD = 0.5
+
+// ---------------------------------------------------------------------------
+// The captions' phrases
+
+/** His words split into phrases for the bar: at most PHRASE_WORDS, ending at
+ *  a sentence or comma, or a pause. */
+export function kineticPhrases(words: readonly { text: string; start: number; end: number }[]): [number, number][] {
+  const phrases: [number, number][] = []
+  let first = 0
+  for (let i = 0; i < words.length; i++) {
+    const next = words[i + 1]
+    const ends = !next || i - first + 1 >= PHRASE_WORDS || /[.!?,;:…]["'”)]*$/.test(words[i].text.trim()) || next.start - words[i].end > PHRASE_PAUSE
+    if (ends) {
+      phrases.push([first, i + 1])
+      first = i + 1
+    }
+  }
+  return phrases
+}
+
+/** A word as it shows in the bar: no trailing comma or full stop (an
+ *  ellipsis, a question or an exclamation mark stays). */
+export function barText(text: string): string {
+  const trimmed = text.trim().replace(/^["'“(]+/, '').replace(/["'”)]+$/, '')
+  return /\.{2,}$|…$/.test(trimmed) ? trimmed : trimmed.replace(/[.,;:]+$/, '')
+}
+
+/** The phrase up at `t`, if any: the newest one started, until the next
+ *  starts or a moment after its last word. */
+export function phraseAt(kinetic: Kinetic, t: number): { phrase: readonly [number, number]; fade: number; since: number } | null {
+  let found = -1
+  for (let k = 0; k < kinetic.phrases.length; k++) {
+    if (kinetic.timing.start(kinetic.phrases[k][0]) - LEAD <= t) found = k
+    else break
+  }
+  if (found < 0) return null
+  const phrase = kinetic.phrases[found]
+  const next = kinetic.phrases[found + 1]
+  const start = kinetic.timing.start(phrase[0]) - LEAD
+  const until = Math.min(kinetic.timing.end(phrase[1] - 1) + PHRASE_HOLD, next ? kinetic.timing.start(next[0]) - LEAD : Infinity)
+  if (t >= until) return null
+  return { phrase, fade: clamp01((until - t) / 0.12), since: t - start }
+}
+
+// ---------------------------------------------------------------------------
+// Canvas helpers
+
+function makeCanvas(width: number, height: number): Canvas | null {
+  const w = Math.max(1, Math.round(width))
+  const h = Math.max(1, Math.round(height))
+  if (typeof OffscreenCanvas !== 'undefined') return new OffscreenCanvas(w, h)
+  if (typeof document !== 'undefined') {
+    const c = document.createElement('canvas')
+    c.width = w
+    c.height = h
+    return c
+  }
+  return null
+}
+
+const kept = new Map<string, Canvas>()
+/** A canvas of this size kept for the whole render, one per `name`. */
+function scratch(name: string, width: number, height: number): { canvas: Canvas; ctx: Ctx } | null {
+  const key = `${name}:${Math.round(width)}x${Math.round(height)}`
+  let canvas = kept.get(key) ?? null
+  if (!canvas) {
+    canvas = makeCanvas(width, height)
+    if (!canvas) return null
+    kept.set(key, canvas)
+  }
+  const ctx = canvas.getContext('2d') as Ctx | null
+  return ctx ? { canvas, ctx } : null
+}
+
+function roundRect(ctx: Ctx, x: number, y: number, w: number, h: number, r: number): void {
+  const rr = Math.max(0, Math.min(r, w / 2, h / 2))
+  ctx.beginPath()
+  ctx.moveTo(x + rr, y)
+  ctx.arcTo(x + w, y, x + w, y + h, rr)
+  ctx.arcTo(x + w, y + h, x, y + h, rr)
+  ctx.arcTo(x, y + h, x, y, rr)
+  ctx.arcTo(x, y, x + w, y, rr)
+  ctx.closePath()
+}
+
+function font(px: number, weight = 700): string {
+  return `${weight} ${Math.round(px)}px ${SANS}`
+}
+
+function textWidth(ctx: Ctx, text: string, px: number, weight = 700): number {
+  ctx.font = font(px, weight)
+  return ctx.measureText(text).width
+}
+
+function text(ctx: Ctx, value: string, x: number, y: number, px: number, colour: string, weight = 700, align: CanvasTextAlign = 'left', maxWidth?: number): void {
+  ctx.font = font(px, weight)
+  ctx.fillStyle = colour
+  ctx.textAlign = align
+  ctx.textBaseline = 'middle'
+  if (maxWidth) ctx.fillText(value, x, y, maxWidth)
+  else ctx.fillText(value, x, y)
+}
+
+/** Small capitals spaced out, like the example's labels. */
+function spaced(value: string): string {
+  return value.split('').join(' ')
+}
+
+/** The frame as it is now, before anything of the look is drawn on it. */
+interface Frame {
+  /** The frame itself, for his video in the steps' box and for him over a
+   *  card behind him. */
+  copy: Canvas | null
+  /** A blurred copy, for the frost of the glass - made when first needed. */
+  frost: () => Canvas | null
+}
+
+function grabFrame(ctx: Ctx, width: number, height: number): Frame {
+  const source = (ctx as { canvas?: unknown }).canvas as CanvasImageSource | undefined
+  if (!source || typeof (source as { width?: unknown }).width !== 'number') return { copy: null, frost: () => null }
+  const copy = scratch('frame', width, height)
+  if (!copy) return { copy: null, frost: () => null }
+  copy.ctx.globalCompositeOperation = 'copy'
+  copy.ctx.drawImage(source, 0, 0, width, height)
+  copy.ctx.globalCompositeOperation = 'source-over'
+  let frost: Canvas | null | undefined
+  return {
+    copy: copy.canvas,
+    frost: () => {
+      if (frost !== undefined) return frost
+      // Blurred by shrinking it twice and growing it back: works on every
+      // phone, where a canvas blur filter does not (Safari).
+      const small = scratch('frost-a', width / 10, height / 10)
+      const tiny = scratch('frost-b', width / 34, height / 34)
+      if (!small || !tiny) return (frost = null)
+      for (const s of [small, tiny]) {
+        s.ctx.imageSmoothingEnabled = true
+        s.ctx.imageSmoothingQuality = 'high'
+      }
+      small.ctx.drawImage(copy.canvas, 0, 0, small.canvas.width, small.canvas.height)
+      tiny.ctx.drawImage(small.canvas, 0, 0, tiny.canvas.width, tiny.canvas.height)
+      small.ctx.drawImage(tiny.canvas, 0, 0, small.canvas.width, small.canvas.height)
+      return (frost = small.canvas)
+    },
+  }
+}
+
+/** A frosted glass panel: the frame behind it blurred and lightened, a soft
+ *  shadow, a bright edge. `dark` for the picture card. */
+function glassPanel(ctx: Ctx, frame: Frame, width: number, height: number, x: number, y: number, w: number, h: number, r: number, u: number, dark = false): void {
+  ctx.save()
+  ctx.shadowColor = 'rgba(10, 14, 30, 0.28)'
+  ctx.shadowBlur = 4 * u
+  ctx.shadowOffsetY = 1.2 * u
+  ctx.fillStyle = dark ? 'rgba(18, 20, 30, 0.9)' : 'rgba(255, 255, 255, 0.55)'
+  roundRect(ctx, x, y, w, h, r)
+  ctx.fill()
+  ctx.restore()
+  ctx.save()
+  roundRect(ctx, x, y, w, h, r)
+  ctx.clip()
+  const frost = frame.frost()
+  if (frost) {
+    // Drawn where it is on the frame, whatever the card's own move.
+    ctx.save()
+    ctx.setTransform(1, 0, 0, 1, 0, 0)
+    ctx.imageSmoothingEnabled = true
+    ctx.drawImage(frost, 0, 0, width, height)
+    ctx.restore()
+  }
+  ctx.fillStyle = dark ? 'rgba(16, 18, 28, 0.72)' : 'rgba(250, 251, 255, 0.72)'
+  ctx.fillRect(x, y, w, h)
+  // Light catching the top edge.
+  const shine = ctx.createLinearGradient(0, y, 0, y + h)
+  shine.addColorStop(0, dark ? 'rgba(255, 255, 255, 0.1)' : 'rgba(255, 255, 255, 0.6)')
+  shine.addColorStop(0.45, 'rgba(255, 255, 255, 0)')
+  ctx.fillStyle = shine
+  ctx.fillRect(x, y, w, h)
+  ctx.restore()
+  ctx.save()
+  ctx.strokeStyle = dark ? 'rgba(255, 255, 255, 0.22)' : 'rgba(255, 255, 255, 0.95)'
+  ctx.lineWidth = Math.max(1, 0.28 * u)
+  roundRect(ctx, x, y, w, h, r)
+  ctx.stroke()
+  ctx.restore()
+}
+
+// ---------------------------------------------------------------------------
+// The cards
+
+type CardPart = Extract<Part, { kind: 'tag' | 'blocks' | 'stat' | 'picture' }>
+
+/** How far a card is in (0 to 1) at `t`, and how far out at its end. */
+function cardLife(part: { at: number; to: number }, time: Timing, t: number): { p: number; out: number; at: number } | null {
+  const at = time.start(part.at)
+  const until = time.end(part.to) + HOLD
+  if (!(t >= at - LEAD) || t > until) return null
+  return { p: clamp01((t - at + LEAD) / IN_SEC), out: clamp01((until - t) / OUT_SEC), at }
+}
+
+/** A card's size in u (a hundredth of the width). */
+function cardSize(ctx: Ctx, part: CardPart, u: number): { w: number; h: number } {
+  switch (part.kind) {
+    case 'tag': {
+      const label = part.label ? textWidth(ctx, spaced(part.label), 2.3 * u, 700) + 7 * u : 0
+      const line = textWidth(ctx, part.text, 6.4 * u, 800) + (part.mark ? 3 * u : 0)
+      return { w: Math.min(88 * u, Math.max(46 * u, label, line) + 7 * u), h: part.label ? 19 * u : 13 * u }
+    }
+    case 'blocks':
+      return { w: 82 * u, h: 19 * u }
+    case 'stat':
+      return { w: 40 * u, h: 36 * u }
+    case 'picture':
+      return { w: 32 * u, h: 34 * u }
+  }
+}
+
+/** Where a card of `size` sits for `place`. Behind him: big and high, his
+ *  head in front; at the side: right of his head; low: over his chest. */
+function cardBox(place: Place, size: { w: number; h: number }, width: number, height: number, u: number): { x: number; y: number; scale: number } {
+  if (place === 'behind') {
+    const scale = Math.min(1.25, (90 * u) / size.w)
+    // High, its words in its top part; his head comes up over the empty
+    // glass under them (drawCard makes a card behind him taller).
+    return { x: width / 2 - (size.w * scale) / 2, y: height * 0.095, scale }
+  }
+  // Beside his neck and shoulder, clear of his face.
+  if (place === 'side') return { x: width - 4 * u - size.w, y: height * 0.4, scale: 1 }
+  return { x: width / 2 - size.w / 2, y: height * 0.56 - size.h / 2, scale: 1 }
+}
+
+/** The fixed pattern of red blocks for a row: three or four, never side by
+ *  side, the same every frame. */
+export function redBlocks(count: number, seed: number): Set<number> {
+  const red = new Set<number>()
+  let state = (seed * 2654435761 + 11) >>> 0
+  const next = () => {
+    state = (state * 1664525 + 1013904223) >>> 0
+    return state / 0x100000000
+  }
+  for (let tries = 0; red.size < 4 && tries < 40; tries++) {
+    const i = 1 + Math.floor(next() * (count - 2))
+    if (!red.has(i - 1) && !red.has(i + 1)) red.add(i)
+  }
+  return red
+}
+
+function drawCardInside(ctx: Ctx, part: CardPart, x: number, y: number, w: number, h: number, u: number, t: number, time: Timing, at: number): void {
+  switch (part.kind) {
+    case 'tag': {
+      let rowY = y + h / 2
+      if (part.label) {
+        // The label in a thin pill with a dot, then the line under it.
+        const lp = clamp01((t - at - 0.1) / 0.3)
+        ctx.save()
+        ctx.globalAlpha *= lp
+        const label = spaced(part.label)
+        const lw = textWidth(ctx, label, 2.3 * u, 700) + 6 * u
+        const ly = y + 5.4 * u
+        ctx.strokeStyle = 'rgba(236, 122, 79, 0.45)'
+        ctx.lineWidth = Math.max(1, 0.22 * u)
+        roundRect(ctx, x + 3.5 * u, ly - 2.1 * u, Math.min(lw, w - 7 * u), 4.2 * u, 2.1 * u)
+        ctx.stroke()
+        ctx.fillStyle = GLASS_COLOURS.orange
+        ctx.beginPath()
+        ctx.arc(x + 5.6 * u, ly, 0.6 * u, 0, Math.PI * 2)
+        ctx.fill()
+        text(ctx, label, x + 7.2 * u, ly + 0.1 * u, 2.3 * u, GLASS_COLOURS.orange, 700, 'left', w - 12 * u)
+        ctx.restore()
+        rowY = y + 12.6 * u
+      }
+      // The line, the marked words in an orange pill that wipes in.
+      const px = Math.min(6.4 * u, (6.4 * u * (w - 9 * u)) / Math.max(1, textWidth(ctx, part.text, 6.4 * u, 800) + (part.mark ? 3 * u : 0)))
+      const lower = part.text.toLowerCase()
+      const from = part.mark ? lower.indexOf(part.mark.toLowerCase()) : -1
+      const pieces = from >= 0 ? [part.text.slice(0, from), part.text.slice(from, from + part.mark.length), part.text.slice(from + part.mark.length)] : [part.text, '', '']
+      let cx = x + 3.5 * u
+      const pad = 1.5 * u
+      for (let k = 0; k < 3; k++) {
+        const piece = pieces[k]
+        if (!piece) continue
+        const pw = textWidth(ctx, piece, px, 800)
+        if (k === 1) {
+          const mp = clamp01((t - at - 0.35) / 0.32)
+          ctx.save()
+          const grad = ctx.createLinearGradient(cx, 0, cx + pw + 2 * pad, 0)
+          grad.addColorStop(0, GLASS_COLOURS.orange)
+          grad.addColorStop(1, GLASS_COLOURS.orangeLight)
+          ctx.fillStyle = grad
+          roundRect(ctx, cx, rowY - px * 0.68, (pw + 2 * pad) * easeOut(mp), px * 1.36, 1.4 * u)
+          ctx.fill()
+          ctx.restore()
+          text(ctx, piece, cx + pad, rowY, px, mp > 0.5 ? '#ffffff' : GLASS_COLOURS.ink, 800)
+          cx += pw + 2 * pad
+        } else {
+          text(ctx, piece, cx, rowY, px, GLASS_COLOURS.ink, 800)
+          cx += pw
+        }
+      }
+      return
+    }
+    case 'blocks': {
+      const count = 12
+      const red = redBlocks(count, part.at)
+      const after = part.after ? clamp01((t - time.start(part.after.at)) / 0.4) : 0
+      const title = after > 0.5 && part.after ? part.after.text : part.title
+      ctx.save()
+      ctx.globalAlpha *= after > 0 ? Math.abs(after - 0.5) * 2 : 1
+      text(ctx, title, x + 3.5 * u, y + 5 * u, 4 * u, GLASS_COLOURS.ink, 800, 'left', w - 26 * u)
+      ctx.restore()
+      if (part.tag) text(ctx, spaced(part.tag), x + w - 3.5 * u, y + 5 * u, 2 * u, GLASS_COLOURS.blue, 700, 'right')
+      // The row: each block pops in in turn; on "after" the red ones close up.
+      const rowX = x + 3.5 * u
+      const rowW = w - 7 * u
+      const gap = 1 * u
+      const sizeOf = (i: number) => (red.has(i) ? 1 - easeInOut(after) : 1)
+      const total = Array.from({ length: count }, (_, i) => sizeOf(i)).reduce((a, b) => a + b, 0)
+      const unit = (rowW - gap * (count - 1)) / count
+      const stretch = (rowW - gap * (total - 1)) / Math.max(0.001, total * unit)
+      let bx = rowX
+      for (let i = 0; i < count; i++) {
+        const share = sizeOf(i)
+        const bw = unit * share * stretch
+        const bp = clamp01((t - at - 0.15 - i * 0.04) / 0.2)
+        if (bw > 0.2 && bp > 0) {
+          const by = y + 9.6 * u
+          const bh = 6.6 * u
+          ctx.save()
+          ctx.globalAlpha *= bp
+          const grad = ctx.createLinearGradient(0, by, 0, by + bh)
+          grad.addColorStop(0, red.has(i) ? '#ff7a8c' : GLASS_COLOURS.blueLight)
+          grad.addColorStop(1, red.has(i) ? GLASS_COLOURS.red : GLASS_COLOURS.blue)
+          ctx.fillStyle = grad
+          const s = 0.7 + 0.3 * easeBack(bp)
+          roundRect(ctx, bx + (bw * (1 - s)) / 2, by + (bh * (1 - s)) / 2, bw * s, bh * s, 1 * u)
+          ctx.fill()
+          ctx.restore()
+        }
+        bx += bw + gap * Math.min(1, share * 2)
+      }
+      return
+    }
+    case 'stat': {
+      if (part.tag) text(ctx, spaced(part.tag), x + w - 3.5 * u, y + 4.6 * u, 1.9 * u, GLASS_COLOURS.blue, 700, 'right', w - 6 * u)
+      const counted = clamp01((t - at - 0.1) / 1)
+      text(ctx, countText(part.text, easeOut(counted)), x + w - 3.5 * u, y + 11.5 * u, 9 * u, GLASS_COLOURS.ink, 800, 'right', w - 6 * u)
+      if (part.sub) text(ctx, part.sub, x + w - 3.5 * u, y + 17.2 * u, 2.1 * u, GLASS_COLOURS.grey, 600, 'right', w - 6 * u)
+      // The bars grow in turn, then breathe a little.
+      const bars = [0.5, 0.72, 0.46, 0.9, 0.66, 0.98]
+      const areaY = y + h - 3.5 * u
+      const areaH = 15 * u
+      const gap = 1.2 * u
+      const bw = (w - 7 * u - gap * (bars.length - 1)) / bars.length
+      bars.forEach((height, i) => {
+        const bp = easeOut(clamp01((t - at - 0.2 - i * 0.08) / 0.5))
+        const bh = areaH * height * bp * (1 + 0.04 * Math.sin((t - at) * 3 + i))
+        if (bh <= 0) return
+        const bx = x + 3.5 * u + i * (bw + gap)
+        const grad = ctx.createLinearGradient(0, areaY - bh, 0, areaY)
+        grad.addColorStop(0, GLASS_COLOURS.blueLight)
+        grad.addColorStop(1, GLASS_COLOURS.blue)
+        ctx.fillStyle = grad
+        roundRect(ctx, bx, areaY - bh, bw, bh, 0.9 * u)
+        ctx.fill()
+      })
+      confetti(ctx, x + w * 0.6, y + 11.5 * u, u, t - at - 1.1, part.at)
+      return
+    }
+    case 'picture': {
+      if (part.tag) {
+        const tw = textWidth(ctx, spaced(part.tag), 1.8 * u, 700) + 3.6 * u
+        ctx.strokeStyle = 'rgba(255, 255, 255, 0.5)'
+        ctx.lineWidth = Math.max(1, 0.2 * u)
+        roundRect(ctx, x + 2.6 * u, y + 2.6 * u, Math.min(tw, w - 5.2 * u), 3.8 * u, 1.9 * u)
+        ctx.stroke()
+        text(ctx, spaced(part.tag), x + 4.4 * u, y + 4.6 * u, 1.8 * u, '#ffffff', 700, 'left', w - 9 * u)
+      }
+      const life = t - at
+      const bob = Math.sin(life * 2.4) * 0.9 * u
+      const pp = easeBack(clamp01((life - 0.12) / 0.4))
+      const cx = x + w / 2
+      const cy = y + h / 2 + 2.6 * u + bob
+      ctx.save()
+      ctx.translate(cx, cy)
+      ctx.scale(pp, pp)
+      // A glow under it.
+      const glow = ctx.createRadialGradient(0, 0, 0, 0, 0, 13 * u)
+      glow.addColorStop(0, 'rgba(255, 150, 90, 0.35)')
+      glow.addColorStop(1, 'rgba(255, 150, 90, 0)')
+      ctx.fillStyle = glow
+      ctx.fillRect(-14 * u, -14 * u, 28 * u, 28 * u)
+      if (part.emoji) {
+        ctx.font = `${Math.round(17 * u)}px "Apple Color Emoji", "Segoe UI Emoji", "Noto Color Emoji", sans-serif`
+        ctx.textAlign = 'center'
+        ctx.textBaseline = 'middle'
+        ctx.fillStyle = '#ffffff'
+        ctx.fillText(part.emoji, 0, 0)
+      } else if (part.icon) drawIcon(ctx, part.icon, 0, 0, 18 * u, '#ffffff', life)
+      ctx.restore()
+      return
+    }
+  }
+}
+
+function drawCard(ctx: Ctx, frame: Frame, part: CardPart, width: number, height: number, t: number, time: Timing): void {
+  const life = cardLife(part, time, t)
+  if (!life) return
+  const u = width / 100
+  const inside = cardSize(ctx, part, u)
+  // Behind him: glass reaching down under the words, for his head to cover.
+  const size = part.place === 'behind' ? { w: inside.w, h: inside.h + 14 * u } : inside
+  const box = cardBox(part.place, size, width, height, u)
+  ctx.save()
+  ctx.globalAlpha *= clamp01(life.p * 2) * life.out
+  // Rises in, a touch small, and settles; on the way out it sinks a little.
+  const s = box.scale * (0.92 + 0.08 * easeBack(life.p)) * (0.96 + 0.04 * life.out)
+  const cx = box.x + (size.w * box.scale) / 2
+  const cy = box.y + (size.h * box.scale) / 2
+  ctx.translate(cx, cy + (1 - easeOut(life.p)) * 5 * u + Math.sin((t - life.at) * 1.8) * 0.4 * u)
+  ctx.scale(s, s)
+  ctx.translate(-size.w / 2, -size.h / 2)
+  glassPanel(ctx, frame, width, height, 0, 0, size.w, size.h, 3.2 * u, u, part.kind === 'picture')
+  drawCardInside(ctx, part, 0, 0, inside.w, inside.h, u, t, time, life.at)
+  ctx.restore()
+}
+
+// ---------------------------------------------------------------------------
+// The steps: the light screen, his video in a box
+
+/** How far the light screen of a steps part is up at `t`, 0 to 1. */
+function stageOf(part: Extract<Part, { kind: 'steps' }>, time: Timing, t: number): number {
+  const at = time.start(part.at) - LEAD
+  const until = time.end(part.to) + HOLD
+  if (!(t >= at) || t > until) return 0
+  return easeInOut(Math.min(clamp01((t - at) / STAGE_SEC), clamp01((until - t) / STAGE_SEC)))
+}
+
+/** The steps part up at `t`, with how far its screen is up. */
+export function stageAt(board: Storyboard, time: Timing, t: number): { part: Extract<Part, { kind: 'steps' }>; up: number } | null {
+  for (const scene of board.scenes) {
+    for (const part of scene.parts) {
+      if (part.kind !== 'steps') continue
+      const up = stageOf(part, time, t)
+      if (up > 0) return { part, up }
+    }
+  }
+  return null
+}
+
+/** Where his video sits on the light screen: a box under the list. */
+function stageBox(rows: number, width: number, height: number, u: number): { x: number; y: number; w: number; h: number } {
+  const listEnd = 16 * u + rows * 10.6 * u
+  const top = listEnd + 5 * u
+  const h = Math.min(74 * u, height - 13 * u - top)
+  const w = h / 1.22
+  return { x: width / 2 - w / 2, y: top, w, h }
+}
+
+function drawStage(ctx: Ctx, frame: Frame, part: Extract<Part, { kind: 'steps' }>, up: number, width: number, height: number, t: number, time: Timing): void {
+  const u = width / 100
+  ctx.save()
+  ctx.globalAlpha = up
+  const bg = ctx.createLinearGradient(0, 0, 0, height)
+  bg.addColorStop(0, GLASS_COLOURS.stage)
+  bg.addColorStop(1, GLASS_COLOURS.stageLow)
+  ctx.fillStyle = bg
+  ctx.fillRect(0, 0, width, height)
+  const glow = ctx.createRadialGradient(width * 0.2, height * 0.15, 0, width * 0.2, height * 0.15, width * 0.8)
+  glow.addColorStop(0, 'rgba(255, 255, 255, 0.7)')
+  glow.addColorStop(1, 'rgba(255, 255, 255, 0)')
+  ctx.fillStyle = glow
+  ctx.fillRect(0, 0, width, height)
+  ctx.restore()
+  // His video: from the whole frame into its box, and back.
+  const box = stageBox(part.items.length, width, height, u)
+  const lerp = (a: number, b: number) => a + (b - a) * up
+  const x = lerp(0, box.x)
+  const y = lerp(0, box.y)
+  const w = lerp(width, box.w)
+  const h = lerp(height, box.h)
+  if (frame.copy) {
+    // The part of the frame the box shows: as tall as it can, around his face.
+    const aspect = w / h
+    const srcH = Math.min(height, width / aspect)
+    const srcW = srcH * aspect
+    const sx = Math.max(0, Math.min(width - srcW, width * 0.5 - srcW / 2))
+    const sy = Math.max(0, Math.min(height - srcH, height * 0.42 - srcH / 2))
+    ctx.save()
+    if (up > 0.05) {
+      ctx.shadowColor = `rgba(20, 30, 60, ${0.3 * up})`
+      ctx.shadowBlur = 5 * u
+      ctx.shadowOffsetY = 1.5 * u
+      ctx.fillStyle = '#000'
+      roundRect(ctx, x, y, w, h, 3.4 * u * up)
+      ctx.fill()
+      ctx.shadowColor = 'transparent'
+    }
+    roundRect(ctx, x, y, w, h, 3.4 * u * up)
+    ctx.clip()
+    ctx.drawImage(frame.copy, sx, sy, srcW, srcH, x, y, w, h)
+    ctx.restore()
+    if (up > 0.05) {
+      ctx.save()
+      ctx.globalAlpha = up
+      ctx.strokeStyle = 'rgba(255, 255, 255, 0.9)'
+      ctx.lineWidth = 0.5 * u
+      roundRect(ctx, x, y, w, h, 3.4 * u)
+      ctx.stroke()
+      ctx.restore()
+    }
+  }
+  // The list.
+  ctx.save()
+  ctx.globalAlpha = clamp01(up * 1.6)
+  if (part.tag) text(ctx, spaced(part.tag), 7 * u, 11.4 * u, 2.2 * u, GLASS_COLOURS.blue, 800, 'left', 86 * u)
+  part.items.forEach((item, i) => {
+    const at = time.start(item.at)
+    const p = clamp01((t - at + LEAD) / 0.35)
+    if (p <= 0) return
+    const rowY = 15 * u + i * 10.6 * u
+    const rowX = 6 * u + (1 - easeOut(p)) * -8 * u
+    const rowW = 88 * u
+    const rowH = 8.8 * u
+    const colour = STEP_COLOURS[i % STEP_COLOURS.length]
+    ctx.save()
+    ctx.globalAlpha *= clamp01(p * 1.8)
+    ctx.shadowColor = 'rgba(30, 50, 90, 0.12)'
+    ctx.shadowBlur = 2.6 * u
+    ctx.shadowOffsetY = 0.6 * u
+    ctx.fillStyle = 'rgba(255, 255, 255, 0.92)'
+    roundRect(ctx, rowX, rowY, rowW, rowH, 2.2 * u)
+    ctx.fill()
+    ctx.shadowColor = 'transparent'
+    // A strip of its colour down the left edge, as in the example.
+    ctx.save()
+    roundRect(ctx, rowX, rowY, rowW, rowH, 2.2 * u)
+    ctx.clip()
+    ctx.fillStyle = colour
+    ctx.fillRect(rowX, rowY, 0.8 * u, rowH)
+    ctx.restore()
+    const mid = rowY + rowH / 2
+    ctx.fillStyle = colour
+    roundRect(ctx, rowX + 2.6 * u, mid - 2.8 * u, 5.6 * u, 5.6 * u, 1.3 * u)
+    ctx.fill()
+    text(ctx, String(i + 1), rowX + 5.4 * u, mid + 0.1 * u, 3 * u, '#ffffff', 800, 'center')
+    let tx = rowX + 10.4 * u
+    if (item.icon) {
+      drawIcon(ctx, item.icon, tx + 2.3 * u, mid, 4.6 * u, colour, t - at)
+      tx += 6.4 * u
+    }
+    text(ctx, item.text, tx, mid + 0.1 * u, 3.9 * u, GLASS_COLOURS.ink, 800)
+    const tw = textWidth(ctx, item.text, 3.9 * u, 800)
+    if (item.note) text(ctx, item.note, tx + tw + 1.8 * u, mid + 0.3 * u, 2.3 * u, GLASS_COLOURS.grey, 500, 'left', Math.max(4 * u, rowX + rowW - (tx + tw + 1.8 * u) - (item.pill ? 17 * u : 3 * u)))
+    if (item.pill) {
+      const pw = textWidth(ctx, item.pill, 1.9 * u, 800) + 3.4 * u
+      const px = rowX + rowW - 2.6 * u - pw
+      ctx.fillStyle = i % 2 === 0 ? '#7b5cf0' : GLASS_COLOURS.orange
+      roundRect(ctx, px, mid - 1.9 * u, pw, 3.8 * u, 1.9 * u)
+      ctx.fill()
+      text(ctx, item.pill, px + pw / 2, mid + 0.1 * u, 1.9 * u, '#ffffff', 800, 'center')
+    }
+    ctx.restore()
+  })
+  ctx.restore()
+}
+
+// ---------------------------------------------------------------------------
+// The title, the captions, the call to action
+
+function drawTitle(ctx: Ctx, title: NonNullable<Storyboard['title']>, board: Storyboard, width: number, height: number, t: number, time: Timing): void {
+  const u = width / 100
+  // Gone by the time the first card comes up, if that is sooner.
+  const first = board.scenes[0] ? time.start(board.scenes[0].from) - LEAD : Infinity
+  const until = Math.min(time.end(title.to) + HOLD, first - OUT_SEC)
+  if (t > until + OUT_SEC) return
+  const out = clamp01((until + OUT_SEC - t) / OUT_SEC)
+  const px = 7.4 * u
+  // At most two lines, as even as can be.
+  const words = title.text.split(/\s+/).filter(Boolean)
+  let lines = [words]
+  if (textWidth(ctx, title.text, px, 800) > 86 * u && words.length > 1) {
+    let best = 1
+    let bestDiff = Infinity
+    for (let k = 1; k < words.length; k++) {
+      const diff = Math.abs(textWidth(ctx, words.slice(0, k).join(' '), px, 800) - textWidth(ctx, words.slice(k).join(' '), px, 800))
+      if (diff < bestDiff) {
+        bestDiff = diff
+        best = k
+      }
+    }
+    lines = [words.slice(0, best), words.slice(best)]
+  }
+  const widest = Math.max(...lines.map((l) => textWidth(ctx, l.join(' '), px, 800)))
+  const fit = Math.min(1, (88 * u) / Math.max(1, widest))
+  const size = px * fit
+  const space = textWidth(ctx, ' ', size, 800)
+  let k = 0
+  lines.forEach((line, row) => {
+    const y = height * 0.105 + (row - (lines.length - 1) / 2) * size * 1.15
+    let x = width / 2 - textWidth(ctx, line.join(' '), size, 800) / 2
+    for (const word of line) {
+      // Word by word, quickly, rising into place.
+      const p = clamp01((t - 0.05 - k * 0.07) / 0.3)
+      const ww = textWidth(ctx, word, size, 800)
+      if (p > 0) {
+        ctx.save()
+        ctx.globalAlpha = clamp01(p * 1.6) * out
+        ctx.shadowColor = 'rgba(0, 0, 0, 0.55)'
+        ctx.shadowBlur = size * 0.25
+        ctx.shadowOffsetY = size * 0.05
+        text(ctx, word, x, y + (1 - easeOut(p)) * 2 * u, size, '#ffffff', 800)
+        ctx.restore()
+      }
+      x += ww + space
+      k++
+    }
+  })
+}
+
+function tick(ctx: Ctx, cx: number, cy: number, size: number): void {
+  ctx.fillStyle = GLASS_COLOURS.green
+  roundRect(ctx, cx - size / 2, cy - size / 2, size, size, size * 0.25)
+  ctx.fill()
+  ctx.strokeStyle = '#ffffff'
+  ctx.lineWidth = size * 0.14
+  ctx.lineCap = 'round'
+  ctx.lineJoin = 'round'
+  ctx.beginPath()
+  ctx.moveTo(cx - size * 0.24, cy + size * 0.02)
+  ctx.lineTo(cx - size * 0.06, cy + size * 0.2)
+  ctx.lineTo(cx + size * 0.26, cy - size * 0.2)
+  ctx.stroke()
+}
+
+function drawCaptions(ctx: Ctx, kinetic: Kinetic, width: number, height: number, t: number): void {
+  const up = phraseAt(kinetic, t)
+  if (!up) return
+  const [first, end] = up.phrase
+  const u = (width / 100) * (kinetic.scale ?? 1)
+  const words: { i: number; text: string }[] = []
+  for (let i = first; i < end; i++) {
+    const value = barText(kinetic.words[i]?.text ?? '')
+    if (value) words.push({ i, text: value })
+  }
+  if (words.length === 0) return
+  const pill = words.some((w) => kinetic.styleOf(w.i) === 'pill')
+  let px = (pill ? 4.8 : 4.5) * u
+  const space = () => textWidth(ctx, ' ', px, pill ? 800 : 700)
+  const full = () => words.reduce((sum, w) => sum + textWidth(ctx, w.text, px, pill ? 800 : 700), 0) + space() * (words.length - 1)
+  const room = width * 0.82 - (pill ? 8 * u : 0)
+  if (full() > room) px *= room / full()
+  const lineW = full()
+  const cy = height * (kinetic.centerY ?? CAPTION_CENTER.usual)
+  const padX = 3 * u
+  const barW = lineW + 2 * padX + (pill ? 6 * u : 0)
+  const barH = px * 2
+  const x0 = width / 2 - barW / 2
+  ctx.save()
+  ctx.globalAlpha = up.fade
+  if (pill) {
+    // A key phrase: a white pill that pops, a green tick at its end.
+    const p = easeBack(clamp01(up.since / 0.3))
+    ctx.translate(width / 2, cy)
+    ctx.scale(0.85 + 0.15 * p, 0.85 + 0.15 * p)
+    ctx.translate(-width / 2, -cy)
+    ctx.shadowColor = 'rgba(0, 0, 0, 0.3)'
+    ctx.shadowBlur = 2.4 * u
+    ctx.fillStyle = '#ffffff'
+    roundRect(ctx, x0, cy - barH / 2, barW, barH, barH / 2)
+    ctx.fill()
+    ctx.shadowColor = 'transparent'
+  } else {
+    ctx.fillStyle = GLASS_COLOURS.bar
+    roundRect(ctx, x0, cy - barH / 2, barW, barH, 1.4 * u)
+    ctx.fill()
+    ctx.strokeStyle = 'rgba(140, 160, 255, 0.35)'
+    ctx.lineWidth = Math.max(1, 0.2 * u)
+    ctx.stroke()
+  }
+  let x = x0 + padX
+  for (const w of words) {
+    const ww = textWidth(ctx, w.text, px, pill ? 800 : 700)
+    const p = clamp01((t - (kinetic.timing.start(w.i) - LEAD)) / 0.12)
+    if (p > 0) {
+      ctx.save()
+      ctx.globalAlpha *= p
+      const accent = kinetic.styleOf(w.i) === 'accent'
+      text(ctx, w.text, x, cy + 0.1 * u, px, pill ? GLASS_COLOURS.ink : accent ? GLASS_COLOURS.orangeLight : '#ffffff', pill || accent ? 800 : 700)
+      ctx.restore()
+    }
+    x += ww + space()
+  }
+  if (pill) {
+    const last = kinetic.timing.end(words[words.length - 1].i)
+    const tp = easeBack(clamp01((t - last + 0.1) / 0.3))
+    if (tp > 0) {
+      ctx.save()
+      const cx = x0 + barW - padX - 2.4 * u
+      ctx.translate(cx, cy)
+      ctx.scale(tp, tp)
+      tick(ctx, 0, 0, 4.4 * u)
+      ctx.restore()
+    }
+  }
+  ctx.restore()
+}
+
+function drawCallToAction(ctx: Ctx, frame: Frame, end: NonNullable<Storyboard['end']>, width: number, height: number, t: number, time: Timing): void {
+  const at = time.start(end.at)
+  if (!(t >= at - LEAD)) return
+  const u = width / 100
+  const p = clamp01((t - at + LEAD) / 0.45)
+  const value = end.text || DEFAULT_CTA
+  const px = 6 * u
+  const badge = 10 * u
+  const w = Math.min(90 * u, badge + 3 * u + textWidth(ctx, value, px, 800) + 8 * u)
+  const h = 15 * u
+  const x = width / 2 - w / 2
+  const y = height * 0.53 - h / 2
+  ctx.save()
+  ctx.globalAlpha = clamp01(p * 2)
+  ctx.translate(width / 2, y + h / 2 + (1 - easeOut(p)) * 6 * u)
+  const s = 0.9 + 0.1 * easeBack(p)
+  ctx.scale(s, s)
+  ctx.translate(-width / 2, -(y + h / 2))
+  glassPanel(ctx, frame, width, height, x, y, w, h, h / 2, u)
+  // A ring that pulses out every so often, to catch the eye.
+  const ring = ((t - at) % 1.6) / 1.6
+  if (t - at > 0.5) {
+    ctx.save()
+    ctx.globalAlpha *= (1 - ring) * 0.6
+    ctx.strokeStyle = GLASS_COLOURS.orange
+    ctx.lineWidth = 0.6 * u
+    roundRect(ctx, x - ring * 3 * u, y - ring * 3 * u, w + ring * 6 * u, h + ring * 6 * u, h / 2 + ring * 3 * u)
+    ctx.stroke()
+    ctx.restore()
+  }
+  drawIconBadge(ctx, 'chat', x + 3 * u + badge / 2, y + h / 2, badge, GLASS_COLOURS.orange, t - at)
+  text(ctx, value, x + 3 * u + badge + 2.6 * u, y + h / 2 + 0.2 * u, px, GLASS_COLOURS.ink, 800, 'left', w - badge - 9 * u)
+  ctx.restore()
+}
+
+// ---------------------------------------------------------------------------
+// The whole frame
+
+/** Whether a card behind him is up at `t` - only then is he cut out of the
+ *  frame (render.ts runs the cut-out tool for those frames alone). */
+export function behindAt(board: Storyboard, time: Timing, t: number): boolean {
+  for (const scene of board.scenes) {
+    for (const part of scene.parts) {
+      if (!('place' in part) || part.place !== 'behind') continue
+      if (cardLife(part, time, t)) return true
+    }
+  }
+  return false
+}
+
+/** Everything of the glass look at `t`. `cutout`: his mask for this frame
+ *  (white where he is), so a card behind him has him drawn back over it;
+ *  without it such a card is simply drawn over him. */
+export function drawGlassLook(ctx: Ctx, width: number, height: number, board: Storyboard, time: Timing, t: number, kinetic?: Kinetic, cutout?: CanvasImageSource | null): void {
+  const frame = grabFrame(ctx, width, height)
+  const stage = stageAt(board, time, t)
+  if (stage) drawStage(ctx, frame, stage.part, stage.up, width, height, t, time)
+  const full = stage !== null && stage.up > 0.5
+  if (!full) {
+    const cards = board.scenes.flatMap((scene) => scene.parts.filter((p): p is CardPart => p.kind === 'tag' || p.kind === 'blocks' || p.kind === 'stat' || p.kind === 'picture'))
+    const behind = cards.filter((p) => p.place === 'behind' && cardLife(p, time, t))
+    for (const part of behind) drawCard(ctx, frame, part, width, height, t, time)
+    if (behind.length > 0 && cutout && frame.copy) {
+      // Him, cut out of the frame, back over the card.
+      const him = scratch('him', width, height)
+      if (him) {
+        him.ctx.globalCompositeOperation = 'copy'
+        him.ctx.drawImage(frame.copy, 0, 0)
+        him.ctx.globalCompositeOperation = 'destination-in'
+        him.ctx.imageSmoothingEnabled = true
+        him.ctx.drawImage(cutout, 0, 0, width, height)
+        him.ctx.globalCompositeOperation = 'source-over'
+        ctx.drawImage(him.canvas, 0, 0)
+      }
+    }
+    for (const part of cards) if (part.place !== 'behind') drawCard(ctx, frame, part, width, height, t, time)
+    if (board.title) drawTitle(ctx, board.title, board, width, height, t, time)
+    if (kinetic) drawCaptions(ctx, kinetic, width, height, t)
+  }
+  if (board.end) drawCallToAction(ctx, frame, board.end, width, height, t, time)
+}

@@ -18,7 +18,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 
 import type { CaptionWord } from './captions'
-import { blockText, type Kinetic } from './motion/words'
+import { barText, type Kinetic } from './motion/glass'
 
 import type { ChatTurn, Storyboard } from '../../supabase/functions/postiz/motion.ts'
 import { forgetCut } from '../media/outputSink'
@@ -223,7 +223,7 @@ export function MotionView({ onBack }: { onBack: () => void }) {
         </>
       ) : null}
       {step.kind === 'hearing' ? <Working what={step.what} fraction={step.fraction} /> : null}
-      {step.kind === 'planning' && session ? <Planning words={step.words} file={session.file} raw={step.raw} ask={session.ask} format={session.format === 'words' ? 'words' : 'board'} /> : null}
+      {step.kind === 'planning' && session ? <Planning words={step.words} file={session.file} raw={step.raw} ask={session.ask} format={session.format === 'glass' ? 'glass' : 'board'} /> : null}
       {step.kind === 'making' ? <Working what="Making the video" fraction={step.fraction} note="Keep the app open - it is made on this phone." /> : null}
       {(step.kind === 'plan' || step.kind === 'making') && session?.plan && session.storyboard ? (
         <PlanScreen
@@ -299,7 +299,7 @@ function WordStyles({
 }) {
   const heard = useMemo(() => storyWords(session.plan!), [session.plan])
   const shown = kinetic.words as { text: string; start: number }[]
-  const next: Record<string, EmphasisStyle | null> = { none: 'big', big: 'gold', gold: 'serif', serif: null }
+  const next: Record<string, EmphasisStyle | null> = { none: 'accent', accent: 'pill', pill: null }
   const tap = (i: number) => {
     const at = shown[i]?.start
     if (at === undefined) return
@@ -317,7 +317,7 @@ function WordStyles({
   return (
     <div className="motion-words">
       <div className="list-title">Your words</div>
-      <p className="hint">Tap a word to change its look: big, then gold, then fancy, then normal.</p>
+      <p className="hint">Tap a word: orange, then its phrase in a white pill with a tick, then normal.</p>
       <button type="button" className="btn wide" disabled={disabled} onClick={onWording}>
         Change the wording · Claude checks it
       </button>
@@ -325,7 +325,7 @@ function WordStyles({
         <div key={first} className="motion-block">
           {Array.from({ length: end - first }, (_, k) => first + k).map((i) => {
             const style = kinetic.styleOf(i)
-            const text = blockText(kinetic.words[i]?.text ?? '', style)
+            const text = barText(kinetic.words[i]?.text ?? '')
             if (!text) return null
             return (
               <button key={i} type="button" disabled={disabled} className={`motion-word${style ? ` ${style}` : ''}`} onClick={() => tap(i)}>
@@ -465,6 +465,15 @@ function CaptionCheck({ session, onDone }: { session: MotionSession; onDone: (ca
   )
 }
 
+/** What a glass scene is, for its row on the plan screen. */
+function glassLabel(scene: Storyboard['scenes'][number]): string {
+  const part = scene.parts[0]
+  if (!part) return ''
+  if (part.kind === 'steps') return 'Light screen with your steps'
+  const where = 'place' in part ? (part.place === 'behind' ? 'behind you' : part.place === 'side' ? 'at your side' : 'under your face') : ''
+  return `Glass card ${where}`
+}
+
 /** What Claude is told about a motion video when it checks its captions:
  *  what he asked for, and the plan's own words on screen - the names and
  *  numbers it should expect to hear. */
@@ -488,7 +497,7 @@ function recheckContext(session: MotionSession): RecheckContext {
  *  given back means he left without changing anything. */
 function EditCaptions({ session, onDone }: { session: MotionSession; onDone: (captions: CaptionChoice | null) => void }) {
   const plan = session.plan!
-  const wordsLook = session.storyboard ? formatOf(session.storyboard) === 'words' : false
+  const wordsLook = session.storyboard ? formatOf(session.storyboard) === 'glass' : false
   const [choice, setChoice] = useState<CaptionChoice>(() => ({ ...session.captions }))
   const [initial] = useState(() => captionsToEdit(plan, session.captions))
   const look = captionLook(choice)
@@ -562,9 +571,9 @@ function PlanScreen({
   const choice = session.captions
   const shown = useMemo(() => shownCaptions(plan, choice), [plan, choice])
   const look = formatOf(session.storyboard!)
-  // The words look: his words building up under his face, as they will.
+  // The glass look: his words in its caption bar, as they will show.
   const kinetic = useMemo(() => {
-    if (look !== 'words') return undefined
+    if (look !== 'glass') return undefined
     const made = kineticFor(plan, choice, session.storyboard!)
     return kineticStill(made, cutTiming(made.words, plan.keep))
   }, [look, plan, choice, session.storyboard])
@@ -631,6 +640,16 @@ function PlanScreen({
         </div>
       </div>
       <ul className="rows group motion-scenes">
+        {board.title ? (
+          <li>
+            <button type="button" className="row-link" onClick={() => setAt(1.2)}>
+              <span className="row-text">
+                <span className="row-name">0:00 · Title over your head</span>
+                <span className="row-line">{board.title.text}</span>
+              </span>
+            </button>
+          </li>
+        ) : null}
         {board.hook ? (
           <li>
             <button type="button" className="row-link" onClick={() => setAt(timing.start(board.hook!.at) + 0.9)}>
@@ -651,7 +670,7 @@ function PlanScreen({
               <span className="row-text">
                 <span className="row-name">
                   {clock(timing.start(scene.from))}–{clock(timing.end(scene.to))}
-                  {look === 'board' ? (popScene(scene) ? ' · Card over your face' : ' · Board') : ''}
+                  {look === 'board' ? (popScene(scene) ? ' · Card over your face' : ' · Board') : ` · ${glassLabel(scene)}`}
                 </span>
                 <span className="row-line">{scene.says || scene.parts.map((p) => p.kind).join(', ')}</span>
               </span>
@@ -662,7 +681,7 @@ function PlanScreen({
           <li>
             <button type="button" className="row-link" onClick={() => setAt(timing.start(board.end!.at) + 0.5)}>
               <span className="row-text">
-                <span className="row-name">{clock(timing.start(board.end.at))} · Banner at the top</span>
+                <span className="row-name">{clock(timing.start(board.end.at))} · Call to action</span>
                 <span className="row-line">{board.end.text}</span>
               </span>
             </button>
@@ -676,8 +695,8 @@ function PlanScreen({
           Look: <strong>{FORMAT_INFO[look].name}</strong>
           {session.format === 'auto' || !session.format ? ' (Claude picked it)' : ''}
         </span>
-        <button type="button" className="linkbtn" disabled={making} onClick={() => window.confirm(`Plan it again as ${FORMAT_INFO[look === 'board' ? 'words' : 'board'].name}? This plan is replaced.`) && onFormat(look === 'board' ? 'words' : 'board')}>
-          Switch to {look === 'board' ? 'Format 2 · Words' : 'Format 1 · Board'}
+        <button type="button" className="linkbtn" disabled={making} onClick={() => window.confirm(`Plan it again as ${FORMAT_INFO[look === 'board' ? 'glass' : 'board'].name}? This plan is replaced.`) && onFormat(look === 'board' ? 'glass' : 'board')}>
+          Switch to {look === 'board' ? 'Format 2 · Glass' : 'Format 1 · Board'}
         </button>
       </div>
       <button type="button" className="btn wide" disabled={making} onClick={onCaptions}>
