@@ -54,6 +54,24 @@ export function forClaude(words: readonly CaptionWord[], plan: CampaignPlan): { 
   return { words: words.map((w) => w.text.trim()), times: words.map((w) => Math.round(cutTime(w.start, plan.keep) * 10) / 10) }
 }
 
+/** What Claude is sent to plan from: the words as heard - the storyboard's
+ *  numbers point at them - each with the wording he approved on the caption
+ *  check, so the graphics spell names and numbers the way he fixed them. */
+export function claudeWords(plan: CampaignPlan, choice: CaptionChoice | undefined): { words: string[]; times: number[] } {
+  const heard = storyWords(plan)
+  const sent = forClaude(heard, plan)
+  const fixed = choice?.edited ? captionWords(choice.edited, plan.keep, { rough: !plan.aligned }) : null
+  if (!fixed || fixed.length === 0) return sent
+  return {
+    ...sent,
+    words: heard.map((w, i) => {
+      let best = 0
+      for (let j = 1; j < fixed.length; j++) if (Math.abs(fixed[j].start - w.start) < Math.abs(fixed[best].start - w.start)) best = j
+      return Math.abs(fixed[best].start - w.start) < 0.35 ? fixed[best].text.trim() : sent.words[i]
+    }),
+  }
+}
+
 /** His caption choices for this one video, made on the Cutter's own caption
  *  screen (CaptionReview): the words as he fixed them (on the recording's
  *  timeline, as heard), or none at all, and where / how big / which style.

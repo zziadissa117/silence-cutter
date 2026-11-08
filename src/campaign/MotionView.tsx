@@ -30,9 +30,9 @@ import { FrameReader } from './motion/frames'
 import { Planning, useElapsed } from './motion/Planning'
 import { AskExamples, FORMAT_INFO, FormatPicker, saveFormat, savedFormat } from './motion/FormatPicker'
 import { formatOf, type EmphasisStyle, type FormatAsk } from '../../supabase/functions/postiz/motion.ts'
-import { captionLook, captionsToEdit, drawCaptionAt, forClaude, hear, kineticFor, kineticStill, makeMotionVideo, shownCaptions, soundsFor, storyWords, type CaptionChoice } from './motion/make'
+import { captionLook, captionsToEdit, claudeWords, drawCaptionAt, forClaude, hear, kineticFor, kineticStill, makeMotionVideo, shownCaptions, soundsFor, storyWords, type CaptionChoice } from './motion/make'
 import { SOUND_DB, makeSound, type MotionSound } from './motion/sfx'
-import { CaptionReview } from './CaptionReview'
+import { CaptionReview, type EmbeddedVideo } from './CaptionReview'
 import { clearSession, freshFile, loadSession, saveSession, type MotionSession } from './motion/session'
 import { cutLength, cutTiming, rawTimeAt } from './motion/track'
 import { motionPlan, postingHere, recheckCaptions } from './posting'
@@ -48,6 +48,7 @@ type Step =
   | { kind: 'making'; fraction: number }
   | { kind: 'done' }
   | { kind: 'captions' }
+  | { kind: 'check' }
 
 const STILL = { width: 360, height: 640 }
 
@@ -89,6 +90,8 @@ export function MotionView({ onBack }: { onBack: () => void }) {
       if (!kept) setStep({ kind: 'pick' })
       else if (kept.made) setStep({ kind: 'done' })
       else if (kept.storyboard) setStep({ kind: 'plan' })
+      // Heard, not checked yet: the caption check is where he left off.
+      else if (kept.plan && !kept.checked) setStep({ kind: 'check' })
       else setStep({ kind: 'pick' })
       if (kept && !kept.storyboard) setAsk(kept.ask)
     })
@@ -119,7 +122,14 @@ export function MotionView({ onBack }: { onBack: () => void }) {
       }
       const words = storyWords(current.plan!)
       if (words.length < 3) throw new Error("No words were heard in this video, so there's nothing to put graphics on.")
-      const sent = forClaude(words, current.plan!)
+      // The captions first, as on Videos: Claude checks them, he looks over
+      // its fixes and approves - then the plan is made from the words as he
+      // approved them (onChecked carries on from here).
+      if (!current.checked) {
+        setStep({ kind: 'check' })
+        return
+      }
+      const sent = claudeWords(current.plan!, current.captions)
       setStep({ kind: 'planning', words: sent.words, raw: (current.plan!.keep[0]?.start ?? 0) + 1 })
       const answer = await withinMinutes(motionPlan({ job: `${current.id}-${Date.now().toString(36)}`, ...sent, ask: current.ask, format: current.format ?? 'auto' }), PLAN_MINUTES)
       current = { ...current, storyboard: answer.storyboard, chat: [], costCents: current.costCents + answer.costCents }
@@ -176,7 +186,7 @@ export function MotionView({ onBack }: { onBack: () => void }) {
 
   return (
     <section className="screen motion">
-      {step.kind === 'captions' ? null : (
+      {step.kind === 'captions' || step.kind === 'check' ? null : (
         <>
           <BackToMore onBack={onBack} />
           <div className="screen-head">
@@ -230,6 +240,17 @@ export function MotionView({ onBack }: { onBack: () => void }) {
           making={step.kind === 'making'}
         />
       ) : null}
+      {step.kind === 'check' && session?.plan ? (
+        <CaptionCheck
+          session={session}
+          onDone={(captions) => {
+            const next = { ...session, checked: true, ...(captions ? { captions } : {}) }
+            keep(next)
+            window.scrollTo({ top: 0 })
+            void plan(next)
+          }}
+        />
+      ) : null}
       {step.kind === 'captions' && session?.plan ? (
         <EditCaptions
           session={session}
@@ -265,12 +286,15 @@ function WordStyles({
   kinetic,
   onChange,
   onSee,
+  onWording,
   disabled,
 }: {
   session: MotionSession
   kinetic: Kinetic
   onChange: (next: MotionSession) => void
   onSee: (t: number) => void
+  /** Opens the Cutter's caption screen, to change what a word says. */
+  onWording: () => void
   disabled: boolean
 }) {
   const heard = useMemo(() => storyWords(session.plan!), [session.plan])
@@ -293,7 +317,10 @@ function WordStyles({
   return (
     <div className="motion-words">
       <div className="list-title">Your words</div>
-      <p className="hint">Tap a word: big, then gold, then fancy, then normal. The words themselves and where they sit are in Edit captions.</p>
+      <p className="hint">Tap a word to change its look: big, then gold, then fancy, then normal.</p>
+      <button type="button" className="btn wide" disabled={disabled} onClick={onWording}>
+        Change the wording · Claude checks it
+      </button>
       {kinetic.phrases.map(([first, end]) => (
         <div key={first} className="motion-block">
           {Array.from({ length: end - first }, (_, k) => first + k).map((i) => {
@@ -369,6 +396,73 @@ async function hearSounds(names: MotionSound[]): Promise<void> {
     at += Math.max(0.45, samples.length / context.sampleRate + 0.15)
   }
   setTimeout(() => void context.close().catch(() => {}), (at - context.currentTime + 0.5) * 1000)
+}
+
+/** The caption check before the plan - the same as on Videos: Claude reads
+ *  the captions by itself, and only what it changed or isn't sure of comes up,
+ *  one at a time, to keep (Good), undo or fix; then Approve. "All captions"
+ *  opens every phrase. His ask (2026-11-08): "You know how we usually just
+ *  check the captions, like Claude checks the captions, and then I review or
+ *  approve ... That's exactly the format that I want." */
+function CaptionCheck({ session, onDone }: { session: MotionSession; onDone: (captions: CaptionChoice | null) => void }) {
+  const plan = session.plan!
+  const [quick, setQuick] = useState(true)
+  const [initial] = useState(() => captionsToEdit(plan, session.captions))
+  const player = useRef<HTMLVideoElement>(null)
+  const url = useMemo(() => URL.createObjectURL(session.file), [session.file])
+  useEffect(() => () => URL.revokeObjectURL(url), [url])
+  const embedded = useMemo<EmbeddedVideo>(
+    () => ({
+      seek: (t) => {
+        if (player.current) player.current.currentTime = Math.max(0, t)
+      },
+      playFrom: (t) => {
+        const v = player.current
+        if (!v) return
+        v.currentTime = Math.max(0, t)
+        void v.play().catch(() => {})
+      },
+      subscribe: (listener) => {
+        const v = player.current
+        if (!v) return () => {}
+        const tell = () => listener(v.currentTime, !v.paused)
+        const events = ['timeupdate', 'play', 'pause', 'seeked'] as const
+        for (const e of events) v.addEventListener(e, tell)
+        return () => {
+          for (const e of events) v.removeEventListener(e, tell)
+        }
+      },
+      onTyping: () => {},
+    }),
+    [],
+  )
+  const sameWords = (words: CaptionWord[]) => words.map((w) => w.text.trim()).join(' ') === initial.map((w) => w.text.trim()).join(' ')
+  const finish = (words: CaptionWord[], off: boolean) =>
+    onDone(off || !sameWords(words) || session.captions ? { ...session.captions, edited: sameWords(words) ? session.captions?.edited : words, off } : null)
+  return (
+    <section className="screen motion motion-check">
+      <div className="screen-head">
+        <h1>Check the captions</h1>
+      </div>
+      <p className="lede">Claude reads them first - look over what it fixed, then Approve. The graphics are planned from the words you approve.</p>
+      <video ref={player} className="motion-check-video" src={url} playsInline controls preload="metadata" />
+      <CaptionReview
+        name={session.fileName}
+        file={null}
+        initial={initial}
+        embedded={embedded}
+        quick={quick}
+        onTimeline={() => setQuick(false)}
+        approveLabel="Approve - plan the graphics"
+        onRecheck={postingHere() ? (phrases) => recheckCaptions(phrases, [], undefined, recheckContext(session)) : undefined}
+        recheckKey={`motion:${session.id}`}
+        onChange={() => {}}
+        onApprove={(words) => finish(words, false)}
+        onSkip={(words) => finish(words, true)}
+        onClose={(words) => finish(words, false)}
+      />
+    </section>
+  )
 }
 
 /** What Claude is told about a motion video when it checks its captions:
@@ -574,7 +668,7 @@ function PlanScreen({
           </li>
         ) : null}
       </ul>
-      {kinetic ? <WordStyles session={session} kinetic={kinetic} onChange={onChange} onSee={(t) => setAt(Math.min(length, t + 0.35))} disabled={making} /> : null}
+      {kinetic ? <WordStyles session={session} kinetic={kinetic} onChange={onChange} onSee={(t) => setAt(Math.min(length, t + 0.35))} onWording={onCaptions} disabled={making} /> : null}
       <SoundEffects session={session} onChange={onChange} disabled={making} />
       <div className="motion-look">
         <span className="hint">

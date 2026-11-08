@@ -186,3 +186,24 @@ describe("Motion graphics: Claude checks the captions, as on Videos", () => {
     expect(host.textContent).toContain('Claude fixed this')
   })
 })
+
+describe('Motion graphics: the caption check comes before the plan (his ask, 2026-11-08)', () => {
+  it("Claude checks the heard captions by itself; Approve plans the graphics from the fixed words", async () => {
+    localStorage.clear()
+    recheck.mockImplementation(async (phrases: string[]) => ({ phrases: ['Ziad fixed', ...phrases.slice(1)], changed: [0], costCents: 1 }))
+    motionPlan.mockResolvedValue({ storyboard: board, reply: '', costCents: 2 })
+    kept = { id: 'm4', file: new Blob(['x']), fileName: 'take.mov', ask: '', plan, chat: [], costCents: 0 }
+    await act(async () => root.render(<MotionView onBack={() => {}} />))
+    await settle()
+    expect(host.textContent).toContain('Check the captions')
+    expect(recheck).toHaveBeenCalled()
+    expect(motionPlan).not.toHaveBeenCalled()
+    const approve = [...host.querySelectorAll('button')].find((b) => b.textContent?.startsWith('Approve'))!
+    await act(async () => approve.click())
+    await settle()
+    expect(saved.some((s) => s.checked)).toBe(true)
+    const sent = motionPlan.mock.calls[0][0] as { words: string[] }
+    expect(sent.words[0]).toBe('Ziad')
+    expect(host.textContent).toContain('Two cards side by side.')
+  })
+})

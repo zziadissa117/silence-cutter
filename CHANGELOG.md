@@ -3,6 +3,20 @@
 Newest first. Every change says what it does, how to use it, and how it works
 underneath. Kept up to date with each commit.
 
+## Motion graphics: the caption check before the plan, and the words of Format 2 can be changed
+**What he said (2026-11-08):** "With format number 2, I click on them ... I can make them italic, bold, and
+yellow, but I cannot even edit them ... Claude checks the captions, and then I review or approve, say they're
+good, or fix them? That's exactly the format that I want."
+- Right after the video is heard, before Claude plans the graphics, the same caption check as on Videos opens by
+  itself: Claude reads the captions, only what it changed or isn't sure of comes up one at a time - Good, Undo or
+  Fix - then "Approve - plan the graphics". "All captions" opens every phrase; "Make it without captions" turns
+  them off. His video plays above it.
+- Claude plans the graphics from the words as he approved them, so names and numbers on the board are spelled the
+  way he fixed them (`make.claudeWords`; the storyboard's word numbers still point at the words as heard).
+- Format 2's "Your words": tapping a word still changes its look; a "Change the wording" button opens the same
+  caption screen to change what it says.
+- A video heard but not checked yet comes back to the check (`session.checked`).
+
 ## Accounts shown by their username, everywhere
 Needs deploying: run ./deploy-server.sh (./deploy.sh runs it by itself).
 **What he said (2026-11-08):** in Analytics, "accounts that stopped getting views ... it's just the name of the account.

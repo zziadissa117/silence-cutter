@@ -1237,6 +1237,7 @@ input[type='color']::-webkit-color-swatch { border: 0.5px solid var(--edge); bor
 
 /* The words look's words, to tap (MotionView WordStyles). */
 .motion-words { display: flex; flex-direction: column; gap: 8px; }
+.motion-check-video { display: block; width: 100%; max-height: 46vh; border-radius: 14px; background: #000; object-fit: contain; margin: 0 0 12px; }
 .motion-block { display: flex; flex-wrap: wrap; gap: 5px; padding-bottom: 8px; border-bottom: 1px solid var(--edge); }
 .motion-word { padding: 5px 9px; border: 1px solid var(--edge); border-radius: 8px; background: var(--surface); color: var(--text); font: inherit; font-size: 15px; cursor: pointer; }
 .motion-word.big { font-weight: 800; font-size: 18px; background: #1d1d24; color: #fff; border-color: #1d1d24; }

@@ -23,6 +23,9 @@ export interface MotionSession {
   captions?: CaptionChoice
   /** Sound effects off for this video; on when not set. */
   noSounds?: boolean
+  /** He has been through the caption check (Claude's fixes kept or undone,
+   *  approved) - it comes before the plan, once. */
+  checked?: boolean
   /** The finished video, once made, and the storyboard it was made from. */
   made?: Blob
   madeFrom?: Storyboard
