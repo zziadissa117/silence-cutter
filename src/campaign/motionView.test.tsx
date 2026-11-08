@@ -23,6 +23,7 @@ let kept: MotionSession | null = null
 const saved: MotionSession[] = []
 vi.mock('./motion/session', () => ({
   loadSession: vi.fn(async () => kept),
+  freshFile: vi.fn(async (_id: string, fallback: Blob) => fallback),
   saveSession: vi.fn(async (s: MotionSession) => {
     saved.push(s)
   }),

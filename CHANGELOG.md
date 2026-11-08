@@ -3,6 +3,16 @@
 Newest first. Every change says what it does, how to use it, and how it works
 underneath. Kept up to date with each commit.
 
+## Motion graphics: "The object can not be found here" when making
+App only: run ./deploy.sh.
+**What he said (2026-11-08):** "the motion graphics say it couldnt be made: The object can not be found here"
+(report 1522, phase `motion make`).
+- The recording was kept inside the session record, and that record was written again at every step (a chat
+  change, a caption fix). Safari deletes a stored file when its record is written again, and the video the screen
+  held from before could no longer be read - Make failed. Now the recording and the made video each have a record
+  of their own, written once (`motion/session.ts`); and Make reads the recording fresh from storage
+  (`freshFile`). A video kept the old way is moved over once when Motion graphics opens - his plan is not lost.
+
 ## Trial reels logins: posting keys easy to find, and a warning about Buffer
 App only: run ./deploy.sh.
 **What he said (2026-11-08):** "make Sam TPNQ log in to let him go to his settings so he can change his API key from

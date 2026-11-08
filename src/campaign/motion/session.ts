@@ -56,19 +56,77 @@ async function run<T>(mode: IDBTransactionMode, work: (store: IDBObjectStore) =>
   }
 }
 
+// The recording and the made video are kept in records of their own, each
+// written once: Safari deletes a stored file when its record is written
+// again, and a Blob read from it before then can no longer be read - "The
+// object can not be found here." when Make read the recording, after a chat
+// change or a caption fix had saved the session again (his report,
+// 2026-11-08). The session itself (the plan, the chat...) is rewritten at
+// every step, with no file in it.
+const FILE_KEY = 'file'
+const MADE_KEY = 'made'
+
+/** The files this page last read or wrote, so a step saved again never
+ *  writes them again. */
+let storedFile: Blob | null = null
+let storedMade: Blob | null = null
+
+type Kept = Omit<MotionSession, 'file' | 'made'> & { file?: Blob; made?: Blob }
+
+async function get<T>(key: string): Promise<T | undefined> {
+  return (await run('readonly', (s) => s.get(key))) as T | undefined
+}
+
 /** The video being worked on, or null. Never throws: storage that can't be
  *  read is the same as nothing kept. */
 export async function loadSession(): Promise<MotionSession | null> {
   try {
-    return ((await run('readonly', (s) => s.get(KEY))) as MotionSession | undefined) ?? null
+    const kept = await get<Kept>(KEY)
+    if (!kept) return null
+    // Kept before the files had records of their own: moved out once, then
+    // read again from where they now are.
+    if (kept.file) {
+      await run('readwrite', (s) => s.put({ id: kept.id, blob: kept.file }, FILE_KEY))
+      if (kept.made) await run('readwrite', (s) => s.put({ id: kept.id, blob: kept.made }, MADE_KEY))
+      const { file: _file, made: _made, ...rest } = kept
+      await run('readwrite', (s) => s.put(rest, KEY))
+    }
+    const file = await get<{ id: string; blob: Blob }>(FILE_KEY)
+    if (!file || file.id !== kept.id) return null
+    const made = await get<{ id: string; blob: Blob }>(MADE_KEY)
+    storedFile = file.blob
+    storedMade = made && made.id === kept.id && kept.madeFrom ? made.blob : null
+    const { file: _f, made: _m, ...meta } = kept
+    return { ...meta, file: file.blob, ...(storedMade ? { made: storedMade } : {}) }
   } catch {
     return null
   }
 }
 
+/** The recording, read again from the phone's storage - a fresh Blob, for
+ *  making the video - or `fallback` when it can't be. */
+export async function freshFile(id: string, fallback: Blob): Promise<Blob> {
+  try {
+    const file = await get<{ id: string; blob: Blob }>(FILE_KEY)
+    return file && file.id === id ? file.blob : fallback
+  } catch {
+    return fallback
+  }
+}
+
 export async function saveSession(session: MotionSession): Promise<void> {
   try {
-    await run('readwrite', (s) => s.put(session, KEY))
+    const { file, made, ...meta } = session
+    if (file !== storedFile) {
+      await run('readwrite', (s) => s.put({ id: session.id, blob: file }, FILE_KEY))
+      storedFile = file
+    }
+    if (made && made !== storedMade) {
+      await run('readwrite', (s) => s.put({ id: session.id, blob: made }, MADE_KEY))
+      storedMade = made
+    }
+    if (!made) storedMade = null
+    await run('readwrite', (s) => s.put(meta, KEY))
   } catch (error) {
     console.warn("Motion graphics: this step couldn't be kept on the phone:", error)
   }
@@ -77,6 +135,10 @@ export async function saveSession(session: MotionSession): Promise<void> {
 export async function clearSession(): Promise<void> {
   try {
     await run('readwrite', (s) => s.delete(KEY))
+    await run('readwrite', (s) => s.delete(FILE_KEY))
+    await run('readwrite', (s) => s.delete(MADE_KEY))
+    storedFile = null
+    storedMade = null
   } catch {
     // Nothing kept, or nothing to clear.
   }

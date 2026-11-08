@@ -32,7 +32,7 @@ import { AskExamples, FORMAT_INFO, FormatPicker, saveFormat, savedFormat } from 
 import { formatOf, type FormatAsk } from '../../supabase/functions/postiz/motion.ts'
 import { captionLook, captionsToEdit, drawCaptionAt, forClaude, hear, kineticFor, kineticStill, makeMotionVideo, shownCaptions, storyWords, type CaptionChoice } from './motion/make'
 import { CaptionReview } from './CaptionReview'
-import { clearSession, loadSession, saveSession, type MotionSession } from './motion/session'
+import { clearSession, freshFile, loadSession, saveSession, type MotionSession } from './motion/session'
 import { cutLength, cutTiming, rawTimeAt } from './motion/track'
 import { motionPlan, postingHere } from './posting'
 import { hasShareSheet, shareVideo, useSharable } from './shareFile'
@@ -146,7 +146,9 @@ export function MotionView({ onBack }: { onBack: () => void }) {
     setProblem(null)
     setStep({ kind: 'making', fraction: 0 })
     try {
-      const made = await makeMotionVideo(session.file, session.plan, session.storyboard, session.id, (fraction) => setStep({ kind: 'making', fraction }), session.captions)
+      // Read again from the phone's storage, so it is never a Blob Safari has let go.
+      const file = await freshFile(session.id, session.file)
+      const made = await makeMotionVideo(file, session.plan, session.storyboard, session.id, (fraction) => setStep({ kind: 'making', fraction }), session.captions)
       // Kept with the session, copied out of the render's own storage.
       const copy = new Blob([await made.blob.arrayBuffer()], { type: 'video/mp4' })
       if (made.storedAs) void forgetCut(made.storedAs)
