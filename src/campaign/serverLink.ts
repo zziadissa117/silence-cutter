@@ -400,7 +400,10 @@ async function linkBank(
   const key = settingsKey(latest)
   // Not seen there a minute after it went (a new server, its disk lost): again.
   const lost = !there && status.page !== null && Boolean(sent) && Date.parse(status.page.at) > sent.at + 60_000
-  if (sent?.key === key && !lost) return
+  // Running there and stopped here (or the other way), a minute after it
+  // went: the server lost his Stop or Start - sent again until it has it.
+  const apart = Boolean(there) && status.page !== null && Boolean(sent) && Date.parse(status.page.at) > sent.at + 60_000 && Boolean(there?.running) !== Boolean(latest.running)
+  if (sent?.key === key && !lost && !apart) return
   await sendFiles(latest)
   await call('PUT', `/banks/${encodeURIComponent(campaignId)}`, {
     bank: latest,

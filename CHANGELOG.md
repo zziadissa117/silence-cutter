@@ -3,6 +3,22 @@
 Newest first. Every change says what it does, how to use it, and how it works
 underneath. Kept up to date with each commit.
 
+## Batch: Stop holds - on the Cutter server too
+App only: run ./deploy.sh (the Cutter server rebuilds by itself).
+**What he said (2026-11-09):** batches "never stop being made, even after you click on Stop ... indefinitely until you
+actually make a new batch"; it worked for him, not for his friend (same "yes" login, each with his own server).
+- Why: the server reads the phone's bank (Stop included) while it may be planning that batch's next day. The top-up
+  then saved its plan - read before the Stop, so still "running" - over it. The server was running again for good, while
+  the phone showed Stopped and never sent the Stop again (nothing changed on its side). Not the shared login: each
+  phone and each server keeps its own batch.
+- Fixes: (1) the server takes in the phone's bank only after a top-up of it has finished (`serverMode.takeInbox`,
+  `nextInLine`); (2) every top-up's save keeps a Stop made while it planned (`batchRun.keepStopped`); (3) the server,
+  told a batch stopped, drops its videos queued and not started, as Stop does on the phone (`SERVER_STOP_EVENT`,
+  `stopBatch`); (4) the phone sends the bank again whenever the server says running and the phone says stopped (or the
+  other way) a minute after it went (`serverLink.linkBank` `apart`) - a batch already stuck going on fixes itself
+  the first time the phone opens the app after this deploy.
+- Test: `keepStopped.test.ts`.
+
 ## Talking head formats: the product steps keep his voice, played whole, the music low under it
 App only: run ./deploy.sh.
 **What he said (2026-11-08, "number one priority"):** in a talking head video "it's going to be very awkward if I talk at

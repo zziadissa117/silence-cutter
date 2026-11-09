@@ -15,12 +15,15 @@
 import { canEncodeAudio } from 'mediabunny'
 
 import { fromPhone, type BatchBank } from './batch'
+import { nextInLine } from './batchRun'
 import { loadEmojiSprites } from './emojiSprites'
 import { SERVER_MODE } from './serverFlag'
 import { loadBankFile, loadBatchBank, saveBatchBank } from './store'
 
 /** A bank arrived or changed: make what is due now rather than at the next half hour. */
 export const SERVER_BANKS_EVENT = 'cutter:server-banks'
+/** Fired with a campaign's id when the phone's bank arrives stopped. */
+export const SERVER_STOP_EVENT = 'cutter:server-stop'
 /** Start over, or hand back to the phone: CampaignApp has the jobs to do it with. */
 export const SERVER_COMMAND_EVENT = 'cutter:server-command'
 
@@ -112,9 +115,16 @@ async function takeInbox(): Promise<void> {
   const taken: { banks: Record<string, string>; commands: string[] } = { banks: {}, commands: [] }
   let changed = false
   for (const [campaignId, { bank, at }] of Object.entries(box.banks ?? {})) {
-    const here = await loadBatchBank(campaignId)
-    const merged = fromPhone(here, { ...bank, campaignId })
-    await saveBatchBank(merged)
+    // After a top-up of it that is planning now, never during it: its save
+    // would put back what this one brings - his Stop above all.
+    const merged = await nextInLine(campaignId, async () => {
+      const here = await loadBatchBank(campaignId)
+      const next = fromPhone(here, { ...bank, campaignId })
+      await saveBatchBank(next)
+      return next
+    })
+    // Stopped on the phone: the days queued here go too, as they do there.
+    if (!merged.running) window.dispatchEvent(new CustomEvent(SERVER_STOP_EVENT, { detail: campaignId }))
     void loadEmojiSprites(merged.emojis, loadBankFile)
     keepServerCampaigns([...serverCampaigns(), campaignId])
     taken.banks[campaignId] = at

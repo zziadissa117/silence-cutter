@@ -31,7 +31,7 @@ import { MusicBankView } from './MusicBankView'
 import { VideoBankView } from './VideoBankView'
 import { findSong, songFile, syncSongs } from './musicBank'
 import { BatchView } from './BatchView'
-import { dislikedBy, oneAtATime, overfull, settled, startOver, takenBy, topUp, trimDown, type BatchVideo } from './batchRun'
+import { dislikedBy, keepStopped, nextInLine, oneAtATime, overfull, settled, startOver, stopBatch, takenBy, topUp, trimDown, type BatchVideo } from './batchRun'
 import { NOT_ALLOWED, trialAngle, trialFileName, withAccounts } from './trialLoop'
 import { AnalyticsView, addHeadline, answerSuggestion, saveTarget, useCampaignRows } from './AnalyticsView'
 import { FormatsView, type FormatClips } from './FormatsView'
@@ -238,7 +238,7 @@ import { linkBatches, SERVER_URL_EVENT, serverUrl } from './serverLink'
 import { dropTalk, orderListen, orderMake, serverLetDown, talkNow, talkPlan, talkServerUp, upload } from './talkLink'
 import { popsSaid, talkFileId, toServer, type MakeOrder, type TalkSummary } from './talkOrder'
 import { clipTexts, clipsOf, headlineSeconds, noSpeechIn } from './noTalk'
-import { reportMaking, SERVER_BANKS_EVENT, SERVER_COMMAND_EVENT, serverLog, type ServerCommand, type ServerMaking } from './serverMode'
+import { reportMaking, SERVER_BANKS_EVENT, SERVER_COMMAND_EVENT, SERVER_STOP_EVENT, serverLog, type ServerCommand, type ServerMaking } from './serverMode'
 import { TabBar, type Tab } from './TabBar'
 import { BackToMore, MoreView } from './MoreView'
 import { Recorder } from './Recorder'
@@ -3154,7 +3154,8 @@ export function CampaignApp() {
             if (bank.runProblem === NOT_ALLOWED || !profile.trialReels) return null
           }
           if (overfull(bank, new Date(), dislikedBy(lastPosts(), owner.id)).length > 0) {
-            ;({ bank } = await trimDown({ bank, campaignId: owner.id, jobs: jobsRef.current, removeJob, save: saveBatchBank }))
+            ;({ bank } = await trimDown({ bank, campaignId: owner.id, jobs: jobsRef.current, removeJob, save: keepStopped(saveBatchBank, loadBatchBank) }))
+            if (!bank.running) return null
           }
           const angle = owner.angles.find((a) => a.id === bank.angleId) ?? owner.angles[0]
           return topUp({
@@ -3164,7 +3165,7 @@ export function CampaignApp() {
             profileId: profile.id,
             taken: takenBy(lastPosts(), jobsRef.current, owner.id),
             disliked: dislikedBy(lastPosts(), owner.id),
-            save: saveBatchBank,
+            save: keepStopped(saveBatchBank, loadBatchBank),
             make: (videos, retire) => addBatchRef.current(owner, angle, videos, retire),
           })
         }).catch(() => {})
@@ -3215,8 +3216,23 @@ export function CampaignApp() {
         .catch((error) => serverLog(`${command}: ${error instanceof Error ? error.message : String(error)}`))
         .finally(done)
     }
+    // Stopped on the phone: nothing more of it is made here - the videos
+    // queued and not started go, the days counted from what is left
+    // (batchRun.stopBatch), as Stop does on the phone.
+    const onStop = (event: Event) => {
+      const campaignId = (event as CustomEvent<string>).detail
+      const queued = () => jobsRef.current.some((j) => j.campaignId === campaignId && j.batch && j.status === 'queued')
+      if (!queued()) return
+      void nextInLine(campaignId, async () => {
+        const bank = await loadBatchBank(campaignId)
+        if (!bank || bank.running || !queued()) return
+        const posts = await listPosts(true)
+        await saveBatchBank(stopBatch({ bank, campaignId, jobs: jobsRef.current, posts, removeJob }))
+      }).catch((error) => serverLog(`stop: ${error instanceof Error ? error.message : String(error)}`))
+    }
     window.addEventListener(SERVER_BANKS_EVENT, onBanks)
     window.addEventListener(SERVER_COMMAND_EVENT, onCommand)
+    window.addEventListener(SERVER_STOP_EVENT, onStop)
     reportMaking(() => {
       const making: Record<string, ServerMaking> = {}
       for (const job of jobsRef.current) {
@@ -3234,6 +3250,7 @@ export function CampaignApp() {
     return () => {
       window.removeEventListener(SERVER_BANKS_EVENT, onBanks)
       window.removeEventListener(SERVER_COMMAND_EVENT, onCommand)
+      window.removeEventListener(SERVER_STOP_EVENT, onStop)
     }
   }, [removeJob])
 

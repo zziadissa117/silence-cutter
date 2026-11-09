@@ -956,6 +956,24 @@ export function stopBatch(args: Parameters<typeof handOver>[0]): BatchBank {
   return { ...handOver(args), running: false }
 }
 
+/** A top-up's save that never undoes a Stop made while it was planning: it
+ *  read the bank running, he (or the phone, on the server) stopped it
+ *  meanwhile, and saving its plan as it was would start the batch again -
+ *  on the server for good, the phone showing Stopped and never sending it
+ *  again (his friend's batch, 2026-11-09). A Start since (a new startedAt)
+ *  is his and stays. */
+export function keepStopped(save: (bank: BatchBank) => Promise<void>, load: (campaignId: string) => Promise<BatchBank | null>): (bank: BatchBank) => Promise<void> {
+  return async (next) => {
+    const now = await load(next.campaignId).catch(() => null)
+    await save(stoppedSince(next, now) ? { ...next, running: false } : next)
+  }
+}
+
+/** Whether the bank as it is now (`now`) was stopped after `planned` was read. */
+export function stoppedSince(planned: Pick<BatchBank, 'running' | 'startedAt'>, now: Pick<BatchBank, 'running' | 'startedAt'> | null): boolean {
+  return Boolean(planned.running && now && !now.running && now.startedAt === planned.startedAt)
+}
+
 /** The days from today on as they really are: how many of the batch's
  *  videos each holds now - for after the engine was stopped partway, when
  *  the days it hadn't reached hold fewer than were handed to it. */
