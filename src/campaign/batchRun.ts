@@ -43,6 +43,7 @@ import {
   type BankFile,
   type BatchBank,
   type BatchFormat,
+  type CopySource,
   type BatchLook,
   type BatchPick,
   type BatchSlot,
@@ -87,6 +88,9 @@ export interface BatchVideo {
    *  brightness. `reaction` is the clean clip (and `product` too), `music`
    *  the viral reel's sound. */
   trial?: TrialLook
+  /** One video, new songs: `reaction` (and `product`) is the video, `music`
+   *  the song it gets (songSwap.ts). */
+  copy?: { sourceId: string; talks: boolean }
   batch: JobBatch
 }
 
@@ -426,11 +430,83 @@ export function formatShare(bank: Pick<BatchBank, 'formatShares'>, formatId: str
   return typeof share === 'number' && share > 0 ? share : 1
 }
 
+type Plan = { videos: BatchVideo[]; slots: BatchSlot[]; bank: BatchBank; retire: string[] }
+
+/** The copies still to make of each video (CopySource): as many as he asked
+ *  for, never more than the batch has songs it hasn't had - and none while
+ *  it is stopped, on the engine or in a Trial loop. */
+export function copiesLeft(bank: Pick<BatchBank, 'copies' | 'copiesMade' | 'music' | 'layout'>): { source: CopySource; left: number; songs: BankFile[] }[] {
+  if (bank.layout === 'engine' || bank.layout === 'trial') return []
+  return (bank.copies ?? []).flatMap((source) => {
+    if (source.stopped) return []
+    const had = new Set(bank.copiesMade?.[source.id] ?? [])
+    const songs = bank.music.filter((m) => !had.has(m.id))
+    const left = Math.min(source.count - had.size, songs.length)
+    return left > 0 ? [{ source, left, songs }] : []
+  })
+}
+
+/** Stop: no more copies of any video until Start (or his Go on). */
+export function stopCopies(copies: CopySource[]): CopySource[] {
+  return copies.map((c) => (c.stopped ? c : { ...c, stopped: true }))
+}
+
+/** Start: the copies go on too. */
+export function goCopies(copies: CopySource[]): CopySource[] {
+  return copies.map((c) => (c.stopped ? { ...c, stopped: undefined } : c))
+}
+
+/** How many copies are still to be made, all videos together. */
+export function copiesToMake(bank: Pick<BatchBank, 'copies' | 'copiesMade' | 'music' | 'layout'>): number {
+  return copiesLeft(bank).reduce((n, c) => n + c.left, 0)
+}
+
+/** The copies' videos for the earliest of `slots`, oldest video first, each
+ *  with a song it hasn't had, picked at random. */
+function planCopies(bank: BatchBank, slots: BatchSlot[], { id, now, rand }: { id: string; now: Date; rand: () => number }): Plan {
+  const videos: BatchVideo[] = []
+  const made = { ...(bank.copiesMade ?? {}) }
+  const queue = copiesLeft(bank).sort((a, b) => a.source.addedAt - b.source.addedAt)
+  for (const { source, left, songs } of queue) {
+    const pool = [...songs]
+    for (let n = 0; n < left && videos.length < slots.length; n++) {
+      const song = pool.splice(Math.floor(rand() * pool.length), 1)[0]
+      made[source.id] = [...(made[source.id] ?? []), song.id]
+      videos.push({
+        reaction: source.clip,
+        product: source.clip,
+        music: song,
+        headline: '',
+        copy: { sourceId: source.id, talks: source.talks },
+        batch: { id, date: slots[videos.length].date, time: slots[videos.length].time, size: 0 },
+      })
+    }
+  }
+  const used = slots.slice(0, videos.length)
+  for (const v of videos) v.batch.size = videos.length
+  return { videos, slots: used, bank: videos.length > 0 ? fill({ ...bank, copiesMade: made }, used, now) : bank, retire: [] }
+}
+
+/** The batch's next videos: copies of a video first (planCopies), on the
+ *  earliest of the slots, then - while it runs - its own mixes on the rest. */
 export function planVideos(
   bank: BatchBank,
   slots: BatchSlot[],
   { id = `b-${Date.now().toString(36)}`, now = new Date(), rand = Math.random }: { id?: string; now?: Date; rand?: () => number } = {},
-): { videos: BatchVideo[]; slots: BatchSlot[]; bank: BatchBank; retire: string[] } {
+): Plan {
+  const copies = planCopies(bank, slots, { id, now, rand })
+  if (copies.videos.length === 0) return planMain(bank, slots, { id, now, rand })
+  const rest = slots.slice(copies.videos.length)
+  if (!bank.running || rest.length === 0 || missingFor(bank).length > 0) return copies
+  const main = planMain(copies.bank, rest, { id: `${id}-m`, now, rand })
+  return { videos: [...copies.videos, ...main.videos], slots: [...copies.slots, ...main.slots], bank: main.slots.length > 0 ? main.bank : copies.bank, retire: main.retire }
+}
+
+function planMain(
+  bank: BatchBank,
+  slots: BatchSlot[],
+  { id = `b-${Date.now().toString(36)}`, now = new Date(), rand = Math.random }: { id?: string; now?: Date; rand?: () => number } = {},
+): Plan {
   if (bank.layout === 'engine') return { videos: [], slots, bank: fill(bank, slots, now), retire: [] }
   if (bank.layout === 'trial') return planTrialVideos(bank, slots, { id, now, rand })
   if (withFormats(bank).formats?.length) return planFormats(bank, slots, { id, now, rand })
@@ -566,7 +642,9 @@ export async function topUp({
   // Moved to the Cutter server, or about to be: made there (serverLink.ts,
   // serverMode.ts), never here too.
   if (!SERVER_MODE && (bank.where === 'server' || (serverConnected() && bank.layout !== 'engine'))) return null
-  if (!bank.running || missingFor(bank).length > 0) return null
+  // Copies of a video are made whether the batch runs or not (Stop stops
+  // them too: BatchView.stop).
+  if (!(bank.running && missingFor(bank).length === 0) && copiesToMake(bank) === 0) return null
   const slots = runSlots({ bank, place, campaignId: campaign.id, taken, disliked, now })
   if (slots.length === 0) return null
   const id = `b-${now.getTime().toString(36)}`
@@ -936,8 +1014,18 @@ export function handOver({
       .flatMap((p) => prefixes(p.fileName, p.headline)),
     ...videos.filter((v) => v.kind === 'job' && !goneIds.has(v.id)).flatMap((v) => ofJob(v.id)),
   ]
+  // A copy dropped is made again, its song free for it once more.
+  const copiesMade = { ...(bank.copiesMade ?? {}) }
+  for (const v of gone) {
+    const parts = jobs.find((j) => j.id === v.id)?.montage?.bank
+    if (!parts?.copy || !parts.music) continue
+    const had = copiesMade[parts.copy.sourceId] ?? []
+    const at = had.indexOf(parts.music.id)
+    if (at >= 0) copiesMade[parts.copy.sourceId] = [...had.slice(0, at), ...had.slice(at + 1)]
+  }
   return {
     ...bank,
+    ...(bank.copiesMade ? { copiesMade } : {}),
     made: unmake(bank.made ?? [], gone.flatMap((v) => ofJob(v.id)), kept),
     filled: countedDays(videos.filter((v) => !goneIds.has(v.id)), now),
     madeThrough: undefined,
@@ -965,7 +1053,10 @@ export function stopBatch(args: Parameters<typeof handOver>[0]): BatchBank {
 export function keepStopped(save: (bank: BatchBank) => Promise<void>, load: (campaignId: string) => Promise<BatchBank | null>): (bank: BatchBank) => Promise<void> {
   return async (next) => {
     const now = await load(next.campaignId).catch(() => null)
-    await save(stoppedSince(next, now) ? { ...next, running: false } : next)
+    // His copies as they are now too (a Stop stops them; a video taken out
+    // stays out).
+    const his = now ? { ...next, copies: now.copies } : next
+    await save(stoppedSince(next, now) ? { ...his, running: false } : his)
   }
 }
 

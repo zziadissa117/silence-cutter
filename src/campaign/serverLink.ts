@@ -164,6 +164,7 @@ export function bankFiles(bank: BatchBank): BankFile[] {
     ...(bank.formula?.left ? [bank.formula.left] : []),
     ...(bank.formula?.right ? [bank.formula.right] : []),
     ...(bank.emojis ?? []),
+    ...(bank.copies ?? []).map((c) => c.clip),
   ]
   return [...new Map(all.map((f) => [f.id, f])).values()]
 }

@@ -15,7 +15,7 @@
 import { canEncodeAudio } from 'mediabunny'
 
 import { fromPhone, type BatchBank } from './batch'
-import { nextInLine } from './batchRun'
+import { copiesToMake, nextInLine } from './batchRun'
 import { loadEmojiSprites } from './emojiSprites'
 import { SERVER_MODE } from './serverFlag'
 import { loadBankFile, loadBatchBank, saveBatchBank } from './store'
@@ -124,7 +124,7 @@ async function takeInbox(): Promise<void> {
       return next
     })
     // Stopped on the phone: the days queued here go too, as they do there.
-    if (!merged.running) window.dispatchEvent(new CustomEvent(SERVER_STOP_EVENT, { detail: campaignId }))
+    if (!merged.running && copiesToMake(merged) === 0) window.dispatchEvent(new CustomEvent(SERVER_STOP_EVENT, { detail: campaignId }))
     void loadEmojiSprites(merged.emojis, loadBankFile)
     keepServerCampaigns([...serverCampaigns(), campaignId])
     taken.banks[campaignId] = at

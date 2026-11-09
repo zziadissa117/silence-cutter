@@ -3,6 +3,25 @@
 Newest first. Every change says what it does, how to use it, and how it works
 underneath. Kept up to date with each commit.
 
+## Batch: one video, new songs
+App only: run ./deploy.sh (the Cutter server rebuilds by itself).
+**What he said (2026-11-09):** "a batch for just one single video and variations of that same exact video ... it's the
+same video with only 5 different audios" - audio only for now, no text changes. His picks: the sound automatic, the
+copies into the campaign's batch.
+- Batch tab, under Music: **One video, new songs**. Set "Copies of each" (5 to start, never more than the batch has
+  songs), tap + Add, pick the video. The batch posts it again that many times on its next free times, each copy with a
+  different song from the batch's Music.
+- The picture is the video exactly as it was: its frames are copied, never redrawn or encoded again (checked here: the
+  copies' picture is byte-for-byte the original's). Only the sound is new (`songSwap.ts`).
+- Sound, decided by itself: the video is listened to once when it goes in (`copyTalk.ts`). You talk in it -> your voice
+  stays, the song quietly under it (dipping while you talk). No talking -> the song replaces the video's sound. The card
+  says which ("Your voice + song under" / "Song only"); tap it if it heard wrong.
+- Copies are made even with the batch's own videos stopped; Stop stops them too, Start lets them go on; each has its
+  own Stop/Go on, - and + for the number, and ✕. A copy taken out before it was made gets made again with its song.
+- A clip trimmed on the iPhone (hidden frames before its start) is the one case drawn again, from its first real frame.
+- Works on the Cutter server: the video goes up with the bank, and the server no longer deletes it as unused.
+- Tests: `copies.test.ts`; renders checked in Chrome for Testing (6 s and a trimmed 4.7 s clip, both sound modes).
+
 ## Batch: Stop holds - on the Cutter server too
 App only: run ./deploy.sh (the Cutter server rebuilds by itself).
 **What he said (2026-11-09):** batches "never stop being made, even after you click on Stop ... indefinitely until you

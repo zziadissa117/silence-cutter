@@ -282,6 +282,17 @@ the Batch tab for its own campaign while open (`WhenDue`, a moment after the las
 otherwise `CampaignApp` for every running campaign when the app opens, comes back on screen,
 and every 30 min. `oneAtATime`/`settled` keep the two from making the same days at once.
 Batch banks are on the phone with the footage, never synced, so a second phone never tops up.
+Stop holds everywhere: a top-up's save never undoes a Stop made while it planned (`keepStopped`), the
+server takes the phone's bank in only after a top-up of it (`serverMode.takeInbox`, `nextInLine`) and drops
+a stopped batch's queued videos (`SERVER_STOP_EVENT`), and the phone sends the bank again while the
+server disagrees on `running` (`serverLink.linkBank` `apart`).
+One video, new songs (`BatchBank.copies`, `CopySource`, Batch tab `CopiesCard.tsx`): a video he puts in
+and a number of copies; `planVideos` puts them first on the next free slots (`planCopies`), each with a
+song of the batch's music it hasn't had (`copiesMade`, a progress field), whether the batch runs or
+not - Stop stops them (`stopCopies`), Start lets them go on. Made by `songSwap.ts`: the picture's
+packets copied as they are (redrawn only for a clip with hidden lead-in frames), only the sound new -
+his voice with the song low under it when he talks in it (`copyTalk.hearsTalking`, once, when added;
+one tap on the card turns it round), else the song alone.
 Lowering the number (or 0, a pause) works at once too: `overfull` finds the days over it,
 `dayVideos` lists the batch's videos on them (server posts + jobs here, one per key), and
 `trimPlan` picks the extra to take out, leaving the rest spread through the day - jobs not

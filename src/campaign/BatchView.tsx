@@ -10,6 +10,8 @@ import { TrackName, TrackPlayer } from './TrackPlayer'
 import { useEffect, useRef, useState } from 'react'
 
 import { VideoPicker } from '../VideoPicker'
+import { CopiesCard } from './CopiesCard'
+import { hearsTalking } from './copyTalk'
 import { pickArrived, pickSaved } from '../pickWatch'
 import {
   dayLabel,
@@ -38,6 +40,7 @@ import {
   type BatchFormat,
   type FormatKind,
   type BankFile,
+  type CopySource,
   type BatchBank,
   type BatchFormula,
   type BatchStep,
@@ -87,7 +90,7 @@ import {
   type LocalPosting,
   type ServerPost,
 } from './posting'
-import { deleteBankFile, loadBankFile, loadBatchBank, saveBankFile, saveBatchBank } from './store'
+import { deleteBankFile, loadBankFile, loadBatchBank, retireBankFiles, saveBankFile, saveBatchBank } from './store'
 import {
   AHEAD_DAYS,
   dayVideos,
@@ -103,6 +106,9 @@ import {
   oneAtATime,
   overfull,
   stopBatch,
+  stopCopies,
+  goCopies,
+  copiesToMake,
   runSlots,
   settled,
   startOver,
@@ -550,6 +556,48 @@ export function BatchView({
     }
   }
 
+  /** His copies changed; a video taken out goes from the phone once no copy
+   *  still to be made needs it (retireBankFiles). */
+  const changeCopies = (copies: CopySource[]) => {
+    const current = bankRef.current
+    if (!current) return
+    const gone = (current.copies ?? []).filter((c) => !copies.some((k) => k.id === c.id)).map((c) => c.clip.id)
+    keep({ ...current, copies })
+    if (gone.length > 0) void retireBankFiles(gone).catch(() => {})
+  }
+
+  /** One video, new songs: each video kept like the clips, heard once for
+   *  whether he talks in it, then in the batch with `count` copies. */
+  const addCopies = async (files: File[], count: number) => {
+    setProblem(null)
+    const skipped: string[] = []
+    try {
+      for (const [i, file] of files.entries()) {
+        const fp = await fingerprint(file)
+        if ((bankRef.current?.copies ?? []).some((c) => c.clip.fp === fp)) {
+          skipped.push(file.name)
+          continue
+        }
+        const of = files.length > 1 ? ` (${i + 1} of ${files.length})` : ''
+        setSaving(`Keeping ${file.name} on this phone${of}…`)
+        const id = crypto.randomUUID()
+        await saveBankFile(id, file)
+        const seconds = (await filmingOf(file)).seconds
+        setSaving(`Listening for your voice in ${file.name}${of}…`)
+        const talks = await hearsTalking(file).catch(() => false)
+        const clip: BankFile = { id, name: file.name, type: file.type || 'video/mp4', size: file.size, fp, ...(seconds ? { seconds } : {}) }
+        const latest = bankRef.current
+        if (!latest) break
+        keep({ ...latest, copies: [...(latest.copies ?? []), { id: crypto.randomUUID(), clip, count, talks, addedAt: Date.now() + i }] })
+      }
+    } catch (error) {
+      setProblem(`Not all of them could be kept: ${error instanceof Error ? error.message : String(error)}`)
+    } finally {
+      setSaving(null)
+      setNotice(skipped.length > 0 ? `${skipped.join(', ')} ${skipped.length === 1 ? 'is' : 'are'} in already.` : null)
+    }
+  }
+
   /** A logo for the formula hook, kept in the bank like the clips. The left
    *  one is remembered for other campaigns' batches too - it is usually
    *  Claude everywhere. */
@@ -776,7 +824,7 @@ export function BatchView({
     if (!current || current.running || !canStart) return
     remember(campaign.id)
     setProblem(null)
-    const next = { ...current, running: true, runProblem: undefined, spent: undefined, startedAt: new Date().toISOString() }
+    const next = { ...current, running: true, runProblem: undefined, spent: undefined, startedAt: new Date().toISOString(), ...(current.copies ? { copies: goCopies(current.copies) } : {}) }
     keep(next)
     runTopUp(next)
   }
@@ -790,7 +838,7 @@ export function BatchView({
     remember(campaign.id)
     setProblem(null)
     const at = new Date().toISOString()
-    const next = { ...current, running: true, runProblem: undefined, spent: undefined, made: [], startedAt: at, anyway: at }
+    const next = { ...current, running: true, runProblem: undefined, spent: undefined, made: [], startedAt: at, anyway: at, ...(current.copies ? { copies: goCopies(current.copies) } : {}) }
     keep(next)
     runTopUp(next)
   }
@@ -802,7 +850,7 @@ export function BatchView({
     const current = bankRef.current
     if (!current) return
     setProblem(null)
-    keep({ ...current, running: false })
+    keep({ ...current, running: false, ...(current.copies ? { copies: stopCopies(current.copies) } : {}) })
     // On the server or the engine, the bank going there says it.
     if (onServer || onEngine) return
     const before = jobsRef.current
@@ -819,7 +867,7 @@ export function BatchView({
       // Any queued by a top-up that was running at the tap come out too.
       const all = [...new Map([...before, ...jobsRef.current].map((j) => [j.id, j])).values()]
       const late = jobsRef.current.filter((j) => j.campaignId === campaign.id && j.batch && j.status === 'queued' && !waiting.some((w) => w.id === j.id))
-      const next = stopBatch({ bank: latest, campaignId: campaign.id, jobs: all, posts: fresh, removeJob: onRemove })
+      const next = stopBatch({ bank: { ...latest, ...(latest.copies ? { copies: stopCopies(latest.copies) } : {}) }, campaignId: campaign.id, jobs: all, posts: fresh, removeJob: onRemove })
       setBank(next)
       bankRef.current = next
       await saveBatchBank(next)
@@ -1085,7 +1133,9 @@ export function BatchView({
   // On the server, the server does both.
   const over = running && bank && !onServer ? overfull(bank, new Date(), dislikedOn) : []
   const trimNow = over.length > 0 && saving === null && !topping
-  const dueNow = running && !onServer && over.length === 0 && due.length > 0 && missing.length === 0 && saving === null && !topping
+  // Copies of a video are made with the batch stopped too (Stop stops them).
+  const copiesDue = bank ? copiesToMake(bank) : 0
+  const dueNow = ((running && missing.length === 0) || copiesDue > 0) && !onServer && over.length === 0 && due.length > 0 && saving === null && !topping
   const setPerDay = (n: number) => {
     if (bank && Number.isFinite(n)) keep(withPerDay(bank, Math.min(MOST_A_DAY, Math.max(0, Math.round(n))), today))
   }
@@ -1487,7 +1537,7 @@ export function BatchView({
           heardAt={serverSeen ?? null}
           freeGB={onServer ? (lastServerStatus()?.freeGB ?? null) : null}
           sending={onServer ? sending : null}
-          stop={running || stoppable ? { label: running ? 'Stop' : `Stop the ${waitingHere} waiting to be made`, busy: saving === 'Stopping…', run: stop } : null}
+          stop={running || stoppable || copiesDue > 0 ? { label: running || copiesDue > 0 ? 'Stop' : `Stop the ${waitingHere} waiting to be made`, busy: saving === 'Stopping…', run: stop } : null}
           stopAll={
             scheduledHere > 0 ? { label: `Stop and take out the ${scheduledHere} scheduled`, busy: saving === 'Stopping…', run: () => void stopEverything() } : null
           }
@@ -1762,6 +1812,7 @@ export function BatchView({
                   )}
                 </>
               )}
+          {green || onEngine ? null : <CopiesCard bank={bank} busy={saving !== null} onAdd={(files, count) => void addCopies(files, count)} onChange={changeCopies} />}
           {saving ? <p className="hint">{saving}</p> : null}
           {bankSize > 0 ? <p className="hint">The bank keeps {mb(bankSize)} on this phone.</p> : null}
 
@@ -1890,7 +1941,7 @@ export function BatchView({
 
           <WhenChanged signal={weakKey} run={dropWeak} />
           <WhenDue due={trimNow} signal={`${perDay}|${over.join(',')}`} run={() => bankRef.current && runTrim(bankRef.current)} />
-          <WhenDue due={dueNow} signal={`${perDay}|${due.length}`} run={() => bankRef.current && runTopUp(bankRef.current)} />
+          <WhenDue due={dueNow} signal={`${perDay}|${due.length}|${copiesDue}`} run={() => bankRef.current && runTopUp(bankRef.current)} />
           {/* Mixes already made hold Start back: Start anyway, in red, makes
               them again for this batch. */}
           {!running && Number.isFinite(left) && left < different ? (

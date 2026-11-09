@@ -280,6 +280,9 @@ export interface MontageParts {
     /** A Trial loop's video: the viral reel's words in its look, at this
      *  place, the frame this much brighter or darker (trialLoop.ts). */
     trial?: TrialLook
+    /** One video, new songs (batch.CopySource): the video as it is, only
+     *  its sound new - the song (`music`) and his voice if he talks in it. */
+    copy?: { sourceId: string; talks: boolean }
   }
   clips: { name: string; type: string }[]
   /** The track under it: "" for its angle's, "none", another angle's as

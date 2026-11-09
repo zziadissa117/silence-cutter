@@ -36,6 +36,7 @@ import { placeCues } from './cueClips'
 import { renderGreenScreen, type Corner } from './greenScreenRender'
 import type { ClipPlace, JoinedClips } from './clips'
 import { planCampaignCut, type CampaignPlan } from './plan'
+import { renderSongSwap } from './songSwap'
 import { renderMontage } from './montageRender'
 import { talksIn } from './reaction'
 import { renderReaction } from './reactionRender'
@@ -497,6 +498,34 @@ export async function makeMontage(
     montage: {
       seconds: rendered.seconds,
       music: music && !rendered.musicFailed ? music.name : null,
+      ...(rendered.musicFailed ? { musicFailed: rendered.musicFailed } : {}),
+    },
+  }
+}
+
+/** One video, new song (songSwap.ts): the picture as it is, the song in
+ *  place of its sound - or under his voice when he talks in it. */
+export async function makeSongCopy(
+  video: Blob,
+  music: { audio: Blob; name: string },
+  keepVoice: boolean,
+  onRenderProgress?: (fraction: number) => void,
+): Promise<CampaignResult> {
+  const rendered = await renderSongSwap({ video, song: music.audio, songName: music.name, keepVoice }, onRenderProgress)
+  return {
+    blob: rendered.blob,
+    storedAs: rendered.storedAs,
+    originalDurationSec: rendered.totalSec,
+    newDurationSec: rendered.totalSec,
+    cuts: 0,
+    logoAt: [],
+    picturesAt: [],
+    headline: '',
+    notHeard: [],
+    said: '',
+    montage: {
+      seconds: [rendered.totalSec],
+      music: rendered.musicFailed ? null : music.name,
       ...(rendered.musicFailed ? { musicFailed: rendered.musicFailed } : {}),
     },
   }

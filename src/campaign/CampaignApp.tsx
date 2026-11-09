@@ -31,7 +31,7 @@ import { MusicBankView } from './MusicBankView'
 import { VideoBankView } from './VideoBankView'
 import { findSong, songFile, syncSongs } from './musicBank'
 import { BatchView } from './BatchView'
-import { dislikedBy, keepStopped, nextInLine, oneAtATime, overfull, settled, startOver, stopBatch, takenBy, topUp, trimDown, type BatchVideo } from './batchRun'
+import { copiesToMake, dislikedBy, keepStopped, nextInLine, oneAtATime, overfull, settled, startOver, stopBatch, takenBy, topUp, trimDown, type BatchVideo } from './batchRun'
 import { NOT_ALLOWED, trialAngle, trialFileName, withAccounts } from './trialLoop'
 import { AnalyticsView, addHeadline, answerSuggestion, saveTarget, useCampaignRows } from './AnalyticsView'
 import { FormatsView, type FormatClips } from './FormatsView'
@@ -115,7 +115,7 @@ import {
   withHeadlineStyle,
 } from './look'
 import { forgetSend, keepVoiceOnly, queueSend, replaceNow, sending, startSending, watchSending } from './outbox'
-import { headlineFor, listen, make, makeCampaignVideo, makeGreenScreen, makeMontage, makeReaction, plainCut, type CampaignResult, type PopSettings } from './pipeline'
+import { headlineFor, listen, make, makeCampaignVideo, makeGreenScreen, makeMontage, makeReaction, makeSongCopy, plainCut, type CampaignResult, type PopSettings } from './pipeline'
 import { makeCutout } from './cutout'
 import { popCue, posterOf, useVideoBank, videoFile, type BankVideo } from './videoBank'
 import { wordMoments } from './moments'
@@ -524,7 +524,7 @@ export function CampaignApp() {
     // A Trial reel's copy is its clean clip alone: its "product" is that same
     // clip, which played a second time after it without the words - Ilyan's
     // copies came out twice as long (2026-11-06).
-    if (parts.bank?.trial) return []
+    if (parts.bank?.trial || parts.bank?.copy) return []
     if (parts.bank?.steps?.length) return Promise.all(parts.bank.steps.map((step) => bankFileOf(step.file)))
     if (parts.bank) return [await bankFileOf(parts.bank.product)]
     const files: File[] = []
@@ -1923,7 +1923,14 @@ export function CampaignApp() {
         // planned before the fix) is never made muted (his report, 2026-11-08).
         const reactionFormat = batchBank && next.montage?.bank ? formatOfReaction(batchBank, next.montage.bank.reaction.id) : null
         const keepsVoice = next.montage?.bank?.voice === true || (reactionFormat ? formatTalks(reactionFormat) : false)
-        if (next.montage?.bank && green) {
+        const copy = next.montage?.bank?.copy
+        if (next.montage?.bank && copy) {
+          // One video, new songs: the picture as it is, only the sound new.
+          const track = await montageMusic(next)
+          if (!track) throw new SilenceCutError("This copy's song is no longer on this phone. Remove it, and the batch makes another.")
+          setPhase('cutting', 0)
+          result = await watched(makeSongCopy(file, track, copy.talks, (p) => setPhase('cutting', p)))
+        } else if (next.montage?.bank && green) {
           // Green screen: him cut out once per reaction, then over the background.
           const reactionId = next.montage.bank.reaction.id
           // The product steps' clips one after the other, or the one video.
@@ -3034,7 +3041,9 @@ export function CampaignApp() {
       id: `${Date.now()}-${nextId++}`,
       name: v.trial
         ? trialFileName(v.reaction)
-        : `${[v.reaction, ...(v.steps ? v.steps.map((s) => s.file) : [v.product])].map((f) => f.name.replace(/\.[^./]+$/, '')).join(' + ')}.mp4`,
+        : v.copy
+          ? `${bareName(v.reaction.name)} + ${bareName(v.music?.name ?? 'song')}.mp4`
+          : `${[v.reaction, ...(v.steps ? v.steps.map((s) => s.file) : [v.product])].map((f) => f.name.replace(/\.[^./]+$/, '')).join(' + ')}.mp4`,
       file: null,
       campaignId: owner.id,
       angleId: ownerAngle.id,
@@ -3056,6 +3065,7 @@ export function CampaignApp() {
           ...(v.steps ? { steps: v.steps } : {}),
           ...(v.headlineStyle ? { headlineStyle: v.headlineStyle } : {}),
           ...(v.trial ? { trial: v.trial } : {}),
+          ...(v.copy ? { copy: v.copy } : {}),
         },
         clips: [],
         music: 'bank',
@@ -3145,7 +3155,7 @@ export function CampaignApp() {
         await oneAtATime(owner.id, async () => {
           let bank = await loadBatchBank(owner.id)
           // A batch moved to the Cutter server is made there, never here too.
-          if (!alive || !bank?.running || (bank.where === 'server' && !SERVER_MODE)) return null
+          if (!alive || !bank || !(bank.running || copiesToMake(bank) > 0) || (bank.where === 'server' && !SERVER_MODE)) return null
           if (bank.layout === 'trial') {
             // A Trial loop: no more a day than Instagram takes trials on its
             // account, and nothing at all where it takes none.
@@ -3225,7 +3235,7 @@ export function CampaignApp() {
       if (!queued()) return
       void nextInLine(campaignId, async () => {
         const bank = await loadBatchBank(campaignId)
-        if (!bank || bank.running || !queued()) return
+        if (!bank || bank.running || copiesToMake(bank) > 0 || !queued()) return
         const posts = await listPosts(true)
         await saveBatchBank(stopBatch({ bank, campaignId, jobs: jobsRef.current, posts, removeJob }))
       }).catch((error) => serverLog(`stop: ${error instanceof Error ? error.message : String(error)}`))

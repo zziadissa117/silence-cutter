@@ -14,6 +14,24 @@ import type { HeadlineStyle } from './look'
 import type { TrialBank } from './trialLoop'
 
 /** A file in the bank, kept on this phone only - his own footage. */
+/** One video made again with other songs (his ask, 2026-11-09: "the same
+ *  exact video ... with only 5 different audios"): the picture as it is,
+ *  only the sound new (songSwap.ts). Its copies take the batch's next free
+ *  times, each with a song of the batch's music it hasn't had. */
+export interface CopySource {
+  id: string
+  /** The video, as he put it in. */
+  clip: BankFile
+  /** How many copies he wants. */
+  count: number
+  /** He talks in it (heard when it went in): his voice stays, the song low
+   *  under it. Otherwise the song takes the place of its sound. */
+  talks: boolean
+  /** Stopped (Stop, or his tap): no more copies of it until Start. */
+  stopped?: boolean
+  addedAt: number
+}
+
 export interface BankFile {
   id: string
   name: string
@@ -183,6 +201,11 @@ export interface BatchBank {
   /** How many videos of each format it has made, so they keep taking turns
    *  from one top-up to the next. */
   formatDone?: Record<string, number>
+  /** One video, new songs (CopySource): his, set on the phone. */
+  copies?: CopySource[]
+  /** The songs each of them has had so far (music ids), by its id: the
+   *  making's, like `made`. */
+  copiesMade?: Record<string, string[]>
   /** How much of the day each format gets, by id (1 when absent): set by
    *  how its videos do (Analytics). */
   formatShares?: Record<string, number>
@@ -215,7 +238,7 @@ export const FAVOUR = 2
 /** What the making of a batch has done so far - what was made, used, put on
  *  which day, why it stopped. On the server these are the server's own; every
  *  other field is a setting he changes on the phone. */
-export const PROGRESS_FIELDS = ['used', 'lastPair', 'made', 'usedClips', 'madeThrough', 'filled', 'runProblem', 'spent', 'lastPerDay', 'kinds', 'formatDone'] as const
+export const PROGRESS_FIELDS = ['used', 'lastPair', 'made', 'usedClips', 'madeThrough', 'filled', 'runProblem', 'spent', 'lastPerDay', 'kinds', 'formatDone', 'copiesMade'] as const
 
 /** The bank the server makes from, after the phone sent its latest: his
  *  settings from the phone (clips, headlines, looks, the number a day, Start
