@@ -66,9 +66,9 @@ export function acceptFix(original: string, fixed: unknown): string {
   return next
 }
 
-/** Dollars per million tokens for the model the function uses (claude-opus-5,
- *  Anthropic's published price, checked 2026-09-25). */
-export const PRICE_PER_MTOK = { input: 5, output: 25 }
+/** Dollars per million tokens for the model the function uses (claude-opus-5-5,
+ *  Anthropic's published price, checked 2026-11-10; claude-opus-5 was 5 and 25). */
+export const PRICE_PER_MTOK = { input: 4, output: 20 }
 
 /** What a call cost, in cents, from the token counts the API reported. */
 export function costCents(inputTokens: number, outputTokens: number): number {

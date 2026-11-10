@@ -30,10 +30,10 @@ describe('distance', () => {
 
 describe('costCents', () => {
   it('prices tokens at the published rate', () => {
-    // 1M input at $5 is 500 cents.
-    expect(costCents(1_000_000, 0)).toBe(500)
-    expect(costCents(0, 1_000_000)).toBe(2500)
-    expect(costCents(1000, 1000)).toBeCloseTo(3, 5)
+    // 1M input at $4 is 400 cents.
+    expect(costCents(1_000_000, 0)).toBe(400)
+    expect(costCents(0, 1_000_000)).toBe(2000)
+    expect(costCents(1000, 1000)).toBeCloseTo(2.4, 5)
   })
 })
 

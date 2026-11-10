@@ -161,7 +161,12 @@ const PUBLIC_URL = 'https://uykuoibqdxmpbbrsmyad.supabase.co/functions/v1/postiz
 const APP_URL = 'https://silence-cutter.netlify.app'
 const BUCKET = 'postiz-outbox'
 const POSTIZ = 'https://api.postiz.com/public/v1'
-const MODEL = 'claude-opus-5'
+/** The current Opus (2026-11-10): the same tier as claude-opus-5, newer and
+ *  cheaper - $4 and $20 a million tokens in and out, from $5 and $25
+ *  (recheck.ts PRICE_PER_MTOK). Every request here sets its effort (this
+ *  model's own default is medium) and none sends a thinking switch or a
+ *  forced tool choice, which it turns down. */
+const MODEL = 'claude-opus-5-5'
 
 /** Small enough that a dropped connection costs one part, not the video. */
 const PART_BYTES = 8 * 1024 * 1024
