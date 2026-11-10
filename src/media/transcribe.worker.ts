@@ -12,7 +12,7 @@
 
 import { pipeline } from '@huggingface/transformers'
 
-import { QUIET_PAD_SEC, keepInWindow, padWithQuiet, stuckOn, timedWords, unstuck, type TimestampedChunk } from '../campaign/timedWords'
+import { QUIET_PAD_SEC, addHeard, keepInWindow, padWithQuiet, stuckOn, timedWords, unstuck, type TimestampedChunk } from '../campaign/timedWords'
 import { pointRuntimeAtCdn } from './ort'
 
 import type { WordChunk } from './fillerWords'
@@ -131,7 +131,8 @@ self.onmessage = async (event: MessageEvent<TranscribeRequest>) => {
       return timedWords((output.chunks ?? []) as TimestampedChunk[], offset, audio.length / sampleRate)
     }
 
-    const words: WordChunk[] = []
+    // Window by window, the word heard by two neighbours kept once (addHeard).
+    let words: WordChunk[] = []
     for (let i = 0; i < windows.length; i++) {
       const { start, end } = windows[i]
       const from = Math.max(0, Math.floor((start - audioStart) * sampleRate))
@@ -157,18 +158,20 @@ self.onmessage = async (event: MessageEvent<TranscribeRequest>) => {
           const again = inWindow(await hear(heardSlice, sliceStart - QUIET_PAD_SEC, fallback))
           heard = stuckOn(again.map((w) => w.text)) ? unstuck(again.length < heard.length ? again : heard) : again
         } else if (stuckOn(heard.map((w) => w.text))) heard = unstuck(heard)
-        words.push(...heard)
+        words = addHeard(words, heard)
       } else {
         const result = await transcriber(slice, {
           return_timestamps: 'word',
           ...(primed ? { decoder_input_ids: primed } : {}),
         } as Parameters<typeof transcriber>[1])
         const output = Array.isArray(result) ? result[0] : result
+        const heard: WordChunk[] = []
         for (const chunk of (output.chunks ?? []) as TimestampedChunk[]) {
           const [a, b] = chunk.timestamp
           if (a == null || b == null) continue
-          words.push({ text: chunk.text, start: sliceStart + a, end: sliceStart + b })
+          heard.push({ text: chunk.text, start: sliceStart + a, end: sliceStart + b })
         }
+        words = addHeard(words, heard)
       }
       post({ type: 'progress', fraction: (i + 1) / windows.length })
       if (i < windows.length - 1) await new Promise((r) => setTimeout(r, PAUSE_BETWEEN_WINDOWS_MS))

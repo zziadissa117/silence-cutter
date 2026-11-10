@@ -37,6 +37,7 @@ import { pieceCuts, type HeardFiller, type TimedWord } from './align'
 import type { AlignMessage, AlignRequest } from './align.worker'
 import { ALIGNED_LATE_SEC, HEARD_LATE_SEC, captionWords, snapToOnsets, spokenWords, type CaptionWord } from './captions'
 import { LONG_SEC, TINY_SEC, cutNoise, loneSounds, peakDbIn, peaksOf, protectWords, type CutCheck, type WordSpan } from './noiseCuts'
+import { partWindows } from './timedWords'
 
 /** How long the letter model may go without a word before it is given up
  *  on, and the captions keep the speech model's own times. */
@@ -67,8 +68,10 @@ async function alignWords(
   // hears a piece at a time, cut in its pauses - or, for a word the speech
   // model put a little past its window's end, the nearest stretch, which is
   // the one it came from. Put in the last window instead, it made the letter
-  // model squeeze the real last words of the video to fit it.
-  const grouped = windows.map((w) => ({ ...w, words: [] as TimedWord[], cuts: pieceCuts(w, silences) }))
+  // model squeeze the real last words of the video to fit it. Two windows
+  // that share a stretch (a pause-free one's halves) are parted between two
+  // words first, so each hears only the sound of its own words.
+  const grouped = partWindows(windows, words).map((w) => ({ ...w, words: [] as TimedWord[], cuts: pieceCuts(w, silences) }))
   const nearest = (t: number) => {
     let best = grouped[grouped.length - 1]
     let distance = Infinity

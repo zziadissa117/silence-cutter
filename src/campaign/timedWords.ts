@@ -2,6 +2,7 @@
 // kept apart from transcribe.worker.ts so it can be tested without the model.
 
 import type { WordChunk } from '../media/fillerWords'
+import type { Range } from '../media/silenceMath'
 
 /** Mirrors the library's own (unexported) `Chunk` shape. */
 export interface TimestampedChunk {
@@ -51,6 +52,63 @@ export function keepInWindow(words: WordChunk[], start: number, end: number): Wo
     const from = Math.min(Math.max(w.start, start), end)
     return { ...w, start: from, end: Math.max(from, Math.min(w.end, end)) }
   })
+}
+
+/** How far back in what was heard a word can share a moment with a new one:
+ *  words come in time order, window by window, so only the last ones can. */
+const LOOK_BACK_SEC = 1
+
+/** The next window's words put after those heard so far. Two windows cut
+ *  out of one pause-free stretch share half a second
+ *  (silenceMath.WINDOW_OVERLAP_SEC), so the word at the seam is heard whole
+ *  by one of them instead of in two halves - and whatever is said in that
+ *  half second is heard by both. A word the last window already heard - the
+ *  same word, at the same moment - is kept once: the fuller hearing of it,
+ *  since the one cut short by a window's edge is the half. */
+export function addHeard(heard: WordChunk[], next: WordChunk[]): WordChunk[] {
+  const out = heard.slice()
+  for (const word of next) {
+    const [text] = bareWords([word.text])
+    let twin = -1
+    for (let i = out.length - 1; i >= 0 && out[i].end > word.start - LOOK_BACK_SEC; i--) {
+      if (out[i].start < word.end && word.start < out[i].end && bareWords([out[i].text])[0] === text) {
+        twin = i
+        break
+      }
+    }
+    if (twin < 0) out.push(word)
+    else if (word.end - word.start > out[twin].end - out[twin].start) out[twin] = word
+  }
+  return out
+}
+
+/** Windows that share a stretch (speechWindows gives a pause-free stretch's
+ *  neighbours WINDOW_OVERLAP_SEC in common) parted again, between two words:
+ *  at the gap between words nearest the middle of what they share, or the
+ *  middle itself with no words there. For the letter model, which times a
+ *  window's words against that window's sound alone - the sound of words on
+ *  the next window's list would throw its first words off. Windows parted
+ *  by a pause are left as they are. */
+export function partWindows(windows: Range[], words: WordChunk[]): Range[] {
+  const out = windows.map((w) => ({ ...w }))
+  const sorted = [...words].sort((a, b) => a.start - b.start)
+  for (let i = 1; i < out.length; i++) {
+    const before = out[i - 1]
+    const after = out[i]
+    if (after.start >= before.end) continue
+    const middle = (after.start + before.end) / 2
+    let seam = middle
+    let nearest = Infinity
+    for (let k = 0; k + 1 < sorted.length; k++) {
+      const gap = (sorted[k].end + sorted[k + 1].start) / 2
+      if (gap < after.start || gap > before.end || Math.abs(gap - middle) >= nearest) continue
+      nearest = Math.abs(gap - middle)
+      seam = gap
+    }
+    before.end = seam
+    after.start = seam
+  }
+  return out
 }
 
 /** What the model writes for a sound that is not a word: "[Music]",

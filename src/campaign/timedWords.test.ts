@@ -1,6 +1,64 @@
 import { describe, expect, it } from 'vitest'
 
-import { isNonSpeech, keepInWindow, padWithQuiet, stuckOn, timedWords, unstuck } from './timedWords'
+import { addHeard, isNonSpeech, keepInWindow, padWithQuiet, partWindows, stuckOn, timedWords, unstuck } from './timedWords'
+
+describe('the words of two windows that share a stretch', () => {
+  const w = (text: string, start: number, end: number) => ({ text, start, end })
+
+  it('keeps a word both heard once - the fuller hearing, not the half cut by the edge', () => {
+    // The first window ends at 25: "together" straddles it and is heard
+    // there as a half, clamped to the edge; the second window hears it whole.
+    const first = [w(' we', 24.2, 24.4), w(' go', 24.5, 24.8), w(' together', 24.85, 25)]
+    const second = [w(' go', 24.5, 24.8), w(' together', 24.85, 25.3), w(' now', 25.4, 25.6)]
+    expect(addHeard(first, second)).toEqual([w(' we', 24.2, 24.4), w(' go', 24.5, 24.8), w(' together', 24.85, 25.3), w(' now', 25.4, 25.6)])
+  })
+
+  it('keeps the first hearing when both are as full', () => {
+    const first = [w(' go', 24.5, 24.8)]
+    expect(addHeard(first, [w(' Go,', 24.52, 24.82)])).toEqual(first)
+  })
+
+  it('never takes two different words at the same moment, or the same word at another, for one', () => {
+    const first = [w(' no', 10, 10.3), w(' no', 10.4, 10.7)]
+    expect(addHeard(first, [w(' go', 10.4, 10.7), w(' no', 12, 12.3)])).toHaveLength(4)
+  })
+
+  it('adds a first window to nothing', () => {
+    expect(addHeard([], [w(' hi', 0, 0.2)])).toEqual([w(' hi', 0, 0.2)])
+  })
+})
+
+describe('windows parted again for the letter model', () => {
+  const w = (text: string, start: number, end: number) => ({ text, start, end })
+
+  it('parts two that share a stretch between the two words nearest its middle', () => {
+    const windows = [
+      { start: 0, end: 25 },
+      { start: 24.5, end: 40 },
+    ]
+    const words = [w(' we', 24.2, 24.4), w(' go', 24.5, 24.7), w(' together', 24.78, 25.2), w(' now', 25.4, 25.6)]
+    const parted = partWindows(windows, words)
+    expect(parted[0].end).toBeCloseTo(24.74, 6)
+    expect(parted[1].start).toBeCloseTo(24.74, 6)
+    expect(parted[0].start).toBe(0)
+    expect(parted[1].end).toBe(40)
+  })
+
+  it('parts them in the middle with no word gap to part at', () => {
+    const parted = partWindows([{ start: 0, end: 25 }, { start: 24.5, end: 40 }], [w(' long', 24, 26)])
+    expect(parted[0].end).toBeCloseTo(24.75, 6)
+    expect(parted[1].start).toBeCloseTo(24.75, 6)
+  })
+
+  it('leaves windows parted by a pause alone', () => {
+    const windows = [
+      { start: 0, end: 10 },
+      { start: 12, end: 20 },
+    ]
+    expect(partWindows(windows, [w(' a', 9.9, 10.1), w(' b', 11.9, 12.1)])).toEqual(windows)
+    expect(partWindows(windows, [])).toEqual(windows)
+  })
+})
 
 describe('the words of a window', () => {
   it('puts them on the video\'s timeline', () => {

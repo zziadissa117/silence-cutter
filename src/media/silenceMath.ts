@@ -390,6 +390,11 @@ export function totalDuration(ranges: Range[]): number {
   return ranges.reduce((sum, r) => sum + (r.end - r.start), 0)
 }
 
+/** What two windows cut out of one pause-free stretch have in common: long
+ *  enough for any word straddling the seam to be heard whole by one of them,
+ *  short enough that little is heard twice. */
+export const WINDOW_OVERLAP_SEC = 0.5
+
 /** Splits the speech in a video into windows for the speech model to listen
  *  to one at a time, breaking only inside pauses so no word is ever cut in
  *  half between two windows.
@@ -401,11 +406,15 @@ export function totalDuration(ranges: Range[]): number {
  *  nothing in it to hear, and the model tends to invent words in it.
  *
  *  A single stretch of speech longer than `maxSec` with no pause anywhere in
- *  it is the one case that has to be cut mid-flow; it is rare in real takes. */
+ *  it is the one case that has to be cut mid-flow; it is rare in real takes.
+ *  Its pieces are given WINDOW_OVERLAP_SEC in common, so the word at the
+ *  seam is heard whole by one of them rather than in two halves (heard
+ *  twice, or half of it); the word heard by both is kept once when the
+ *  windows' words are joined (timedWords.addHeard). */
 export function speechWindows(
   silences: Range[],
   duration: number,
-  { maxSec = 25, padSec = 0.3 }: { maxSec?: number; padSec?: number } = {},
+  { maxSec = 25, padSec = 0.3, overlapSec = WINDOW_OVERLAP_SEC }: { maxSec?: number; padSec?: number; overlapSec?: number } = {},
 ): Range[] {
   const speech: Range[] = []
   let cursor = 0
@@ -416,8 +425,13 @@ export function speechWindows(
   if (cursor < duration) speech.push({ start: cursor, end: duration })
 
   const pieces: Range[] = []
+  const stride = maxSec - Math.min(overlapSec, maxSec / 2)
   for (const { start, end } of speech) {
-    for (let s = start; s < end; s += maxSec) pieces.push({ start: s, end: Math.min(end, s + maxSec) })
+    for (let s = start; ; s += stride) {
+      const e = Math.min(end, s + maxSec)
+      pieces.push({ start: s, end: e })
+      if (e >= end) break
+    }
   }
 
   const grouped: Range[] = []
@@ -428,11 +442,13 @@ export function speechWindows(
   }
 
   // A little of the pause either side, so the model hears each word begin and
-  // end - but never more than half the gap, so neighbours can't overlap and
-  // hear the same word twice.
+  // end - but never more than half the gap, so neighbours parted by a pause
+  // can't overlap and hear the same word twice. Neighbours cut out of one
+  // pause-free stretch already share WINDOW_OVERLAP_SEC and are left as they
+  // are, not pulled apart.
   return grouped.map((w, i) => {
     const before = i === 0 ? w.start : (w.start - grouped[i - 1].end) / 2
     const after = i === grouped.length - 1 ? duration - w.end : (grouped[i + 1].start - w.end) / 2
-    return { start: w.start - Math.min(padSec, before), end: w.end + Math.min(padSec, after) }
+    return { start: w.start - Math.max(0, Math.min(padSec, before)), end: w.end + Math.max(0, Math.min(padSec, after)) }
   })
 }

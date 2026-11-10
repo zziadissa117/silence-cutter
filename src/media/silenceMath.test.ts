@@ -237,6 +237,19 @@ describe('speechWindows', () => {
     expect(windows[windows.length - 1].end).toBe(60)
   })
 
+  it('gives the pieces of a pause-free stretch half a second in common, so the word at the seam is heard whole by one of them', () => {
+    // Cut exactly at 25 s with nothing in common, a word straddling the cut
+    // came out in two halves - heard twice, or half of it.
+    expect(speechWindows([], 40, { maxSec: 25, padSec: 0.3 })).toEqual([
+      { start: 0, end: 25 },
+      { start: 24.5, end: 40 },
+    ])
+    // The padding into a pause never pulls those two apart again.
+    const windows = speechWindows([{ start: 41, end: 43 }], 50, { maxSec: 25, padSec: 0.3 })
+    expect(windows[0].end - windows[1].start).toBeCloseTo(0.5, 6)
+    expect(windows[1].end).toBeCloseTo(41.3, 6)
+  })
+
   it('returns nothing for a silent video', () => {
     expect(speechWindows([{ start: 0, end: 30 }], 30)).toEqual([])
   })
