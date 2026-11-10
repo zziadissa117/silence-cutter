@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { Resampler, TALKING_WORDS, cover, fitChannels, layOut, productMoment, talksIn, toStereo } from './reaction'
+import { Resampler, TALKING_WORDS, cover, fitChannels, layOut, productMoment, productMomentOrNext, talksIn, toStereo } from './reaction'
 
 const sine = (rate: number, seconds: number, hz = 440) =>
   Float32Array.from({ length: Math.round(rate * seconds) }, (_, i) => Math.sin((2 * Math.PI * hz * i) / rate))
@@ -68,6 +68,12 @@ describe('layOut', () => {
     expect(productMoment(segments, 2)).toBe(4)
     expect(productMoment(segments, 7)).toBe(7)
     expect(productMoment(segments, 5)).toBeNull()
+    // A moment in the cut between the kept parts lands where the next part
+    // starts; one past the end has nowhere to go.
+    expect(productMomentOrNext(segments, 5)).toBe(6)
+    expect(productMomentOrNext(segments, 0.5)).toBe(3)
+    expect(productMomentOrNext(segments, 7)).toBe(7)
+    expect(productMomentOrNext(segments, 9)).toBeNull()
   })
 })
 

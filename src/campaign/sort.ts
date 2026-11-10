@@ -6,7 +6,7 @@
 // he will say when it may go ahead on its own.
 
 import { isFillerWord, type WordChunk } from '../media/fillerWords'
-import { findMentions, squash } from './keywords'
+import { PROMPT_CHARS, findMentions, squash } from './keywords'
 import { GENERAL_ID, type Angle, type Campaign } from './look'
 
 export interface Guess {
@@ -118,16 +118,18 @@ export function firstLineHeadline(heard: WordChunk[]): string {
     const text = chunk.text.trim()
     if (!text) continue
     if (words.length === 0 && skipsLeadIn(text)) continue
+    // An "um" in the middle goes too - "So, um, I" reads "So I": the comma it
+    // carried goes with it. "like" only at the start, where it is a filler.
+    if (isFillerWord(text)) {
+      if (/[,;:]$/.test(text)) words[words.length - 1] = words[words.length - 1].replace(/[,;:]+$/, '')
+      continue
+    }
     words.push(text)
     if (/[.!?]$/.test(text) || words.length >= MAX_HEADLINE_WORDS) break
   }
   const line = words.join(' ').replace(/[,.;:]+$/, '')
   return line ? line[0].toUpperCase() + line.slice(1) : ''
 }
-
-/** How much the speech model may be told before it listens. Whisper keeps
- *  about 220 tokens of prompt; this stays well inside it. */
-const PROMPT_CHARS = 480
 
 /** Every name worth telling the model about for a day's videos: brands
  *  first, since they matter most, then angles' words and pictures', then the

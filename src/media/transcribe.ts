@@ -3,6 +3,30 @@ import { SilenceCutError } from './errors'
 import type { Range } from './silenceMath'
 import type { TranscribeMessage, TranscribeRequest } from './transcribe.worker'
 
+/** How long the speech model may go without a word - no download progress,
+ *  no window finished - before it is given up on. Loading the model after
+ *  its download says nothing for a while on a slow phone, so this is long. */
+const QUIET_MS = 120_000
+
+/** Fetching the model failed, which is a connection, not the video. */
+const NO_CONNECTION = /failed to fetch|load failed|networkerror|network error|net::|fetch/i
+
+export interface TranscribeOptions {
+  /** Text the model takes as having come just before - the brand's name, so
+   *  it writes it the way it was typed. Empty for none. */
+  prompt?: string
+  /** Told instead to a stretch the model got stuck on (the names alone). */
+  fallbackPrompt?: string
+  /** Hear each stretch with quiet either side and fold a loop - see
+   *  transcribe.worker.ts. */
+  padQuiet?: boolean
+  /** The time `samples[0]` sits at in the video; a phone's sound can start a
+   *  little before zero. The windows are in the video's time. */
+  audioStart?: number
+  onModelDownload?: (f: number) => void
+  onProgress?: (f: number) => void
+}
+
 /** Hears every word in `windows` of `samples` and returns them with their
  *  timings, running the model in a worker that is ended as soon as it is done
  *  - see transcribe.worker.ts for why that is the only way its memory comes
@@ -11,21 +35,51 @@ export async function transcribeOnDevice(
   samples: Float32Array,
   sampleRate: number,
   windows: Range[],
-  { onModelDownload, onProgress }: { onModelDownload?: (f: number) => void; onProgress?: (f: number) => void } = {},
+  { prompt = '', fallbackPrompt = '', padQuiet = false, audioStart = 0, onModelDownload, onProgress }: TranscribeOptions = {},
 ): Promise<WordChunk[]> {
   if (windows.length === 0) return []
   const worker = new Worker(new URL('./transcribe.worker.ts', import.meta.url), { type: 'module' })
+  let quiet: ReturnType<typeof setTimeout> | undefined
   try {
     return await new Promise<WordChunk[]>((resolve, reject) => {
       let started = false
+      let downloaded = 0
+      // A model fetch that stalls, a runtime that wedges, or a worker the
+      // phone ends without a word would otherwise leave the row frozen at a
+      // percentage for ever, and the queue behind it.
+      const stillThere = () => {
+        clearTimeout(quiet)
+        quiet = setTimeout(
+          () =>
+            reject(
+              new SilenceCutError(
+                'The speech model stopped answering. Check the connection, or turn off "um"s and captions for this video.',
+              ),
+            ),
+          QUIET_MS,
+        )
+      }
+      stillThere()
       worker.onmessage = (event: MessageEvent<TranscribeMessage>) => {
         started = true
+        stillThere()
         const message = event.data
-        if (message.type === 'download') onModelDownload?.(message.fraction)
-        else if (message.type === 'loaded') onProgress?.(0)
+        if (message.type === 'download') {
+          downloaded = message.fraction
+          onModelDownload?.(downloaded)
+        } else if (message.type === 'alive') {
+          // Still loading: the page's own stall watch hears it as movement.
+          onModelDownload?.(downloaded)
+        } else if (message.type === 'loaded') onProgress?.(0)
         else if (message.type === 'progress') onProgress?.(message.fraction)
         else if (message.type === 'done') resolve(message.words)
-        else reject(new Error(`the speech model failed: ${message.message}`))
+        else if (NO_CONNECTION.test(message.message)) {
+          reject(
+            new SilenceCutError(
+              'The speech model has to be downloaded once (about 40 MB). Connect to the internet and try again, or turn off "um"s and captions.',
+            ),
+          )
+        } else reject(new Error(`the speech model failed: ${message.message}`))
       }
       worker.onerror = (event) => {
         // Failing before saying anything almost always means its file could
@@ -39,10 +93,11 @@ export async function transcribeOnDevice(
               ),
         )
       }
-      const request: TranscribeRequest = { samples, sampleRate, windows }
+      const request: TranscribeRequest = { samples, sampleRate, windows, prompt, fallbackPrompt, padQuiet, audioStart }
       worker.postMessage(request, [samples.buffer])
     })
   } finally {
+    clearTimeout(quiet)
     worker.terminate()
   }
 }

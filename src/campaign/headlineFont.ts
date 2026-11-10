@@ -36,7 +36,9 @@ function fontReady(): Promise<void> {
       new FontFace('TikTok Sans', `url(${latinExt}) format('woff2')`, { weight: '300 900', unicodeRange: LATIN_EXT }),
     ]
     for (const face of faces) document.fonts.add(face)
-    await faces[0].load()
+    // Both halves: a headline with an ł or an ş laid out before its half
+    // arrived was measured in the fallback font and changed mid-video.
+    await Promise.all(faces.map((face) => face.load()))
   })().catch(() => {})
   return ready
 }

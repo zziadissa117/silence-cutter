@@ -12,6 +12,7 @@ import {
   rulerSteps,
   snapTo,
   splitAt,
+  tidyParts,
   trimPart,
 } from './cuts'
 
@@ -40,6 +41,14 @@ describe('splitAt', () => {
   it('does nothing in a gap or right at an edge', () => {
     expect(splitAt(keep, 5)).toEqual(keep)
     expect(splitAt(keep, 1 + MIN_PART_SEC / 2)).toEqual(keep)
+  })
+})
+
+describe('tidyParts', () => {
+  it('makes a split that was never followed by a Delete one part again', () => {
+    expect(tidyParts(splitAt(keep, 2.5))).toEqual(keep)
+    expect(tidyParts(trimPart(keep, 0, 'end', 6, 10))).toEqual([{ start: 1, end: 9 }])
+    expect(tidyParts(keep)).toEqual(keep)
   })
 })
 

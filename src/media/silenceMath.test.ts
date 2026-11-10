@@ -8,7 +8,6 @@ import {
   mergeRanges,
   HEAD_LEEWAY_SEC,
   TAIL_LEEWAY_SEC,
-  snapCutToQuiet,
   speechWindows,
   totalDuration,
   type Level,
@@ -166,73 +165,6 @@ describe('mergeRanges', () => {
 
   it('handles an empty list', () => {
     expect(mergeRanges([])).toEqual([])
-  })
-})
-
-describe('snapCutToQuiet', () => {
-  /** A level curve at 20ms steps from a list of [seconds, dB] turning points. */
-  function curve(spans: Array<[fromSec: number, toSec: number, db: number]>): Level[] {
-    const levels: Level[] = []
-    for (const [from, to, db] of spans) {
-      for (let t = from; t < to - 1e-9; t += 0.02) levels.push({ time: Number(t.toFixed(3)), db })
-    }
-    return levels
-  }
-
-  // speech ... gap ... "um" ... gap ... speech
-  const withGaps = curve([
-    [0, 1, -12],
-    [1, 1.2, -60],
-    [1.2, 1.6, -18],
-    [1.6, 1.8, -60],
-    [1.8, 3, -12],
-  ])
-
-  it('pulls a slightly-late boundary back onto the real gap', () => {
-    // Whisper reports the "um" ending 150ms late, inside the word after it.
-    const snapped = snapCutToQuiet({ start: 1.25, end: 1.95 }, withGaps, {
-      windowSec: 0.22,
-      quietBelowDb: -27,
-    })
-    expect(snapped).not.toBeNull()
-    // The end moved back into the gap rather than staying inside the speech.
-    expect(snapped!.end).toBeLessThan(1.8)
-    expect(snapped!.end).toBeGreaterThanOrEqual(1.6)
-  })
-
-  it('refuses the cut when the filler runs straight into the next word', () => {
-    // No gap anywhere - it is speech the whole way through.
-    const noGaps = curve([[0, 3, -12]])
-    expect(
-      snapCutToQuiet({ start: 1.2, end: 1.6 }, noGaps, { windowSec: 0.22, quietBelowDb: -27 }),
-    ).toBeNull()
-  })
-
-  it('refuses rather than cutting into a word when only one side has a gap', () => {
-    // Gap before the filler, but it runs straight on into the following word.
-    const oneSided = curve([
-      [0, 1, -12],
-      [1, 1.2, -60],
-      [1.2, 3, -12],
-    ])
-    expect(
-      snapCutToQuiet({ start: 1.25, end: 1.7 }, oneSided, { windowSec: 0.22, quietBelowDb: -27 }),
-    ).toBeNull()
-  })
-
-  it('returns null when the level curve does not reach the range', () => {
-    expect(
-      snapCutToQuiet({ start: 99, end: 99.5 }, withGaps, { windowSec: 0.22, quietBelowDb: -27 }),
-    ).toBeNull()
-  })
-
-  it('refuses a cut that collapses to nothing after snapping', () => {
-    // Both ends snap onto the same gap, leaving no span worth removing.
-    const snapped = snapCutToQuiet({ start: 1.05, end: 1.1 }, withGaps, {
-      windowSec: 0.22,
-      quietBelowDb: -27,
-    })
-    expect(snapped).toBeNull()
   })
 })
 
@@ -478,5 +410,23 @@ describe('quiet speech is not a pause', () => {
       const quietLeft = quietInTake - (5 - totalDuration(keeps))
       expect(quietLeft).toBeLessThan(0.5)
     }
+  })
+})
+
+describe("the sound's own extent", () => {
+  it('treats silence that reaches the end of the sound as the tail when the picture runs on', () => {
+    // The sound stops at 6 s, the container says 6.3 s.
+    const keeps = keepRanges([{ start: 4.3, end: 6 }], 6.3, 0.08, { start: 0, end: 6 })
+    expect(keeps).toHaveLength(1)
+    expect(keeps[0].start).toBe(0)
+    expect(keeps[0].end).toBeCloseTo(4.3 + TAIL_LEEWAY_SEC, 6)
+  })
+
+  it('treats silence from the start of a late sound as the head', () => {
+    // The sound starts 0.2 s into the picture; nothing before it is kept.
+    const keeps = keepRanges([{ start: 0.2, end: 1.5 }], 10, 0.08, { start: 0.2, end: 10 })
+    expect(keeps).toHaveLength(1)
+    expect(keeps[0].start).toBeCloseTo(1.5 - HEAD_LEEWAY_SEC, 6)
+    expect(keeps[0].end).toBe(10)
   })
 })

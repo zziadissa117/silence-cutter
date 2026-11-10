@@ -35,8 +35,8 @@ async function jpegOf(canvas: HTMLCanvasElement | OffscreenCanvas): Promise<stri
 /** Base64 JPEGs, in order. None when the video can't be read in time - the
  *  caption is then written without them. */
 export async function stillsOf(file: Blob): Promise<string[]> {
+  const input = new Input({ source: new BlobSource(file), formats: ALL_FORMATS })
   const read = async () => {
-    const input = new Input({ source: new BlobSource(file), formats: ALL_FORMATS })
     try {
       const video = await input.getPrimaryVideoTrack()
       if (!video || !(await video.canDecode())) return []
@@ -51,9 +51,12 @@ export async function stillsOf(file: Blob): Promise<string[]> {
       input.dispose()
     }
   }
-  return within(
-    read().catch(() => []),
-    20_000,
-    [],
-  )
+  // A read that runs out of time is stopped as well, not left holding the
+  // phone's decoder while the video is being posted.
+  const result = await within(read().catch(() => null), 20_000, null)
+  if (result === null) {
+    input.dispose()
+    return []
+  }
+  return result
 }

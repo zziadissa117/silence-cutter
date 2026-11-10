@@ -324,18 +324,26 @@ export const HEAD_LEEWAY_SEC = 0.15
 export const TAIL_LEEWAY_SEC = 0.2
 
 /** Turns silent ranges into the ranges to keep: everything else, padded so
- *  the cut lands just outside the speech rather than on top of it. */
-export function keepRanges(silences: Range[], duration: number, paddingSec: number): Range[] {
+ *  the cut lands just outside the speech rather than on top of it. `audio`
+ *  is where the sound itself runs: a track can start after the picture or
+ *  stop before it, and silence that reaches the sound's own edge is the
+ *  start or the end of the video, however the container has it. */
+export function keepRanges(
+  silences: Range[],
+  duration: number,
+  paddingSec: number,
+  audio: { start: number; end: number } = { start: 0, end: duration },
+): Range[] {
   const keeps: Range[] = []
   const head = Math.max(paddingSec, HEAD_LEEWAY_SEC)
   const tail = Math.max(paddingSec, TAIL_LEEWAY_SEC)
   let cursor = 0
 
   for (const { start, end } of silences) {
-    const isHead = start <= 0.01
+    const isHead = start <= audio.start + 0.01
     // A video's sound can stop a moment before its picture does; silence
     // that runs to the end of the sound is still the end of the video.
-    const isTail = end >= duration - EDGE_CLICK_SEC
+    const isTail = end >= Math.min(audio.end, duration) - EDGE_CLICK_SEC
     // What gets removed. In the middle, the pause less `paddingSec` at each
     // end. At the head and tail, the pause less a short breath, so the video
     // opens and closes just around his words, not on a syllable.
@@ -348,49 +356,6 @@ export function keepRanges(silences: Range[], duration: number, paddingSec: numb
   if (cursor < duration) keeps.push({ start: cursor, end: duration })
 
   return keeps.filter((r) => r.end - r.start >= MIN_KEEP_SEC)
-}
-
-/** The quietest moment within `windowSec` either side of `time`, or null if
- *  the level curve does not reach that far. */
-function quietestNear(levels: Level[], time: number, windowSec: number): Level | null {
-  let best: Level | null = null
-  for (const level of levels) {
-    if (level.time < time - windowSec) continue
-    if (level.time > time + windowSec) break
-    if (!best || level.db < best.db) best = level
-  }
-  return best
-}
-
-/** Pulls a roughly-placed cut onto the nearest genuine gap in the audio, and
- *  refuses the cut outright when there is no gap to land on.
- *
- *  This exists because a speech recogniser's word timings are approximate -
- *  good to about a fifth of a second - while a cut is exact. Trusting those
- *  timings directly is what turned "I really want to master that" into "I
- *  really want to mas", and "connections" into "connec": the reported end of
- *  an "um" sat a little late, inside the word after it, and the cut went
- *  where it was told.
- *
- *  The loudness curve already knows where the speech actually stops, so each
- *  end of the cut is moved to the quietest instant nearby. If neither end has
- *  a quiet instant to move to - the filler is said straight into the next
- *  word, with no gap at all - this returns null and the filler is left in.
- *  Leaving an "um" in costs him a second with the trimmer; taking a syllable
- *  off a word he needs costs him the take. */
-export function snapCutToQuiet(
-  range: Range,
-  levels: Level[],
-  { windowSec, quietBelowDb }: { windowSec: number; quietBelowDb: number },
-): Range | null {
-  const start = quietestNear(levels, range.start, windowSec)
-  const end = quietestNear(levels, range.end, windowSec)
-  if (!start || !end) return null
-  // Both ends have to land somewhere actually quiet. If they don't, this is
-  // speech all the way through and nothing here is safe to remove.
-  if (start.db > quietBelowDb || end.db > quietBelowDb) return null
-  if (end.time - start.time < 0.05) return null
-  return { start: start.time, end: end.time }
 }
 
 /** Sorts and collapses overlapping/touching ranges into one, so a list built

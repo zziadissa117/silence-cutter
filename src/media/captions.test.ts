@@ -91,3 +91,50 @@ describe('cuesToSrt', () => {
     )
   })
 })
+
+describe('words at the edge of a cut', () => {
+  const w = (text: string, start: number, end: number): WordChunk => ({ text, start, end })
+  // A pause at 2.0-3.5, cut with balanced padding.
+  const keep: Range[] = [
+    { start: 0, end: 2.08 },
+    { start: 3.42, end: 10 },
+  ]
+
+  it('keeps a word whose late-reported end falls inside the cut, clamped to the edge', () => {
+    const cues = buildCaptionCues([w('make', 1.2, 1.5), w('aware.', 1.6, 2.15), w('If', 3.5, 3.7)], keep)
+    expect(cues.map((c) => c.text)).toEqual(['make aware.', 'If'])
+    expect(cues[0].end).toBeCloseTo(2.08, 6)
+    // "If" starts 0.08 s into the second kept part, which follows straight on.
+    expect(cues[1].start).toBeCloseTo(2.08 + 0.08, 6)
+  })
+
+  it('keeps a word whose start is reported inside the cut', () => {
+    const cues = buildCaptionCues([w('So', 3.3, 3.6)], keep)
+    expect(cues).toHaveLength(1)
+    expect(cues[0].start).toBeCloseTo(2.08, 6)
+    expect(cues[0].end).toBeCloseTo(2.08 + 0.18, 6)
+  })
+
+  it('still drops a word that was cut out whole', () => {
+    expect(buildCaptionCues([w('um', 2.5, 2.9)], keep)).toEqual([])
+  })
+
+  it('places words by where each kept part really landed when told', () => {
+    // The second part landed 0.05 s later than the plan says.
+    const shifts = [0, 2.08 - 3.42 + 0.05]
+    const cues = buildCaptionCues([w('If', 3.5, 3.7)], keep, shifts)
+    expect(cues[0].start).toBeCloseTo(2.08 + 0.08 + 0.05, 6)
+  })
+})
+
+describe('lines on screen', () => {
+  const w = (text: string, start: number, end: number): WordChunk => ({ text, start, end })
+  const whole: Range[] = [{ start: 0, end: 10 }]
+
+  it('never overlap', () => {
+    const cues = buildCaptionCues([w('Done.', 0.2, 1.9), w('Next', 1.5, 1.5), w('thing', 1.6, 2.0)], whole)
+    expect(cues.map((c) => c.text)).toEqual(['Done.', 'Next thing'])
+    expect(cues[0].end).toBeCloseTo(1.5, 6)
+    expect(cues[1].end).toBeCloseTo(2.0, 6)
+  })
+})

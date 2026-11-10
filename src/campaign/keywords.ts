@@ -76,9 +76,37 @@ const MIN_WORD_KEY = 3
 
 const MAX_JOINED = 3
 
+/** Words further apart than this are not one name said in pieces: "I'm
+ *  in. ... Flow state is real" is not Inflow. The seam spokenWords uses. */
+const JOIN_GAP_SEC = 0.6
+
 /** Two mentions closer together than this are one mention - the same name
  *  matched twice, as "in flow" and "inflow". */
 const SAME_MENTION_SEC = 1
+
+/** Each heard word squashed and keyed once, however many names are looked
+ *  for in the same list - a video is searched once per picture, sound and
+ *  campaign, and a ten-minute take is well over a thousand words. A heard
+ *  word ending in 's is keyed both ways: "Inflow's" is Inflow, but "Virtu's"
+ *  is the model's way of writing Virtus. */
+interface HeardIndex {
+  squashed: string[]
+  keys: string[]
+  plainKeys: string[]
+}
+const indexes = new WeakMap<WordChunk[], HeardIndex>()
+function indexOf(heard: WordChunk[]): HeardIndex {
+  let index = indexes.get(heard)
+  if (!index) {
+    index = {
+      squashed: heard.map((w) => squash(w.text)),
+      keys: heard.map((w) => soundKey(w.text)),
+      plainKeys: heard.map((w) => soundKey(w.text.replace(/['’]/g, ''))),
+    }
+    indexes.set(heard, index)
+  }
+  return index
+}
 
 /** Every moment one of `words` is said, as the time the first heard word of
  *  the match starts, in order. */
@@ -88,35 +116,38 @@ export function findMentions(heard: WordChunk[], words: string[]): number[] {
   const sounds = new Set(
     words.map((w) => soundKey(w)).filter((k) => k.length >= MIN_KEY),
   )
-  const squashed = heard.map((w) => squash(w.text))
-  // A heard word ending in 's is tried both ways: "Inflow's" is Inflow, but
-  // "Virtu's" is the model's way of writing Virtus.
-  const soundsLike = (text: string) =>
-    sounds.has(soundKey(text)) || sounds.has(soundKey(text.replace(/['’]/g, '')))
+  const { squashed, keys, plainKeys } = indexOf(heard)
+  const soundsLike = (i: number) => sounds.has(keys[i]) || sounds.has(plainKeys[i])
+  // Said right after the word before, not across a pause.
+  const follows = (j: number) => heard[j].start - heard[j - 1].end <= JOIN_GAP_SEC
 
   // Names of more than one word, as the key of each word in turn.
   const phrases = words
     .map((w) => w.trim().split(/\s+/).filter((part) => squash(part)))
     .filter((parts) => parts.length > 1 && parts.length <= MAX_JOINED)
     .map((parts) => parts.map((part) => ({ key: soundKey(part), spelling: squash(part) })))
-  const wordMatches = (heardWord: WordChunk, target: { key: string; spelling: string }) =>
-    squash(heardWord.text) === target.spelling ||
-    (target.key.length >= MIN_WORD_KEY &&
-      (soundKey(heardWord.text) === target.key || soundKey(heardWord.text.replace(/['’]/g, '')) === target.key))
+  const wordMatches = (i: number, target: { key: string; spelling: string }) =>
+    squashed[i] === target.spelling ||
+    (target.key.length >= MIN_WORD_KEY && (keys[i] === target.key || plainKeys[i] === target.key))
 
   const hits: number[] = []
   for (let i = 0; i < heard.length; i++) {
     if (!squashed[i]) continue
-    if (soundsLike(heard[i].text)) {
+    if (soundsLike(i)) {
       hits.push(heard[i].start)
       continue
     }
-    if (phrases.some((parts) => i + parts.length <= heard.length && parts.every((part, k) => wordMatches(heard[i + k], part)))) {
+    if (
+      phrases.some(
+        (parts) => i + parts.length <= heard.length && parts.every((part, k) => wordMatches(i + k, part) && (k === 0 || follows(i + k))),
+      )
+    ) {
       hits.push(heard[i].start)
       continue
     }
     let joined = ''
     for (let j = i; j < Math.min(heard.length, i + MAX_JOINED); j++) {
+      if (j > i && !follows(j)) break
       joined += squashed[j]
       if (spellings.has(joined)) {
         hits.push(heard[i].start)
@@ -138,15 +169,29 @@ export function firing(mentions: number[], which: 'first' | 'every'): number[] {
   return which === 'first' ? mentions.slice(0, 1) : mentions
 }
 
+/** How much the speech model may be told before it listens. Whisper keeps
+ *  about 220 tokens of prompt, and every token of it is one fewer token of
+ *  transcript in the same window - so this stays well inside, whoever is
+ *  asking: a bank of a hundred pictures is cut off, not transcribed over. */
+export const PROMPT_CHARS = 480
+
 /** What the speech model is told before it listens: the names, spelled the
- *  way he typed them. Whisper takes this as text that came just before, and
- *  writes those names the same way when it hears them. */
+ *  way he typed them, in the order given - most important first, since the
+ *  list is cut off at PROMPT_CHARS (less the filler line when that goes
+ *  too). Whisper takes this as text that came just before, and writes those
+ *  names the same way when it hears them. */
 export function listeningPrompt(words: string[], { fillers = false }: { fillers?: boolean } = {}): string {
   // The first spelling of each wins - the campaign's brand name comes first.
   const names = new Map<string, string>()
+  const room = PROMPT_CHARS - (fillers ? FILLER_PROMPT.length + 1 : 0)
+  let length = 0
   for (const word of words) {
     const key = squash(word)
-    if (key && !names.has(key)) names.set(key, word.trim())
+    if (!key || names.has(key)) continue
+    const name = word.trim()
+    if (length + name.length + 2 > room) break
+    names.set(key, name)
+    length += name.length + 2
   }
   const parts = names.size > 0 ? [`${[...names.values()].join(', ')}.`] : []
   if (fillers) parts.push(FILLER_PROMPT)

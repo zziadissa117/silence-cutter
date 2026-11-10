@@ -1,23 +1,23 @@
 // Finds what to keep of a raw video, and when he said the brand's name.
 //
 // This is the plain cutter's planCut (media/silenceCut.ts) step for step -
-// one audio decode for the loudness curve and the speech model's copy, the
-// same silence maths, the same "um" and stumble checks - with one change:
-// the speech model is told the campaign's names before it listens (see
-// transcribe.worker.ts in this folder). planCut itself is left alone; the
-// plain cutter works and stays exactly as it is.
+// the same audio decode (media/audio.ts) for the loudness curve and the
+// speech model's copy, the same silence maths, the same "um" and stumble
+// checks, the same speech worker (media/transcribe.worker.ts) - with one
+// change: the speech model is told the campaign's names before it listens,
+// and hears each stretch with quiet either side. planCut itself is left
+// alone; the plain cutter works and stays exactly as it is.
 
-import { ALL_FORMATS, AudioBufferSink, BlobSource, Input, UnsupportedInputFormatError } from 'mediabunny'
+import { ALL_FORMATS, BlobSource, Input, UnsupportedInputFormatError } from 'mediabunny'
 
+import { audioExtent, decodeAudio } from '../media/audio'
 import { SilenceCutError } from '../media/errors'
 import {
   WHISPER_SAMPLE_RATE,
   alignToAudio,
-  concatFloat32,
   fillerWordRanges,
   isFillerWord,
   isFillerWordDetectionSupported,
-  resampleToMono16k,
   stutterRanges,
   type WordChunk,
 } from '../media/fillerWords'
@@ -32,98 +32,14 @@ import {
   type SilenceSettings,
 } from '../media/silenceMath'
 import { report } from '../report'
+import { transcribeOnDevice } from '../media/transcribe'
 import { pieceCuts, type HeardFiller, type TimedWord } from './align'
 import type { AlignMessage, AlignRequest } from './align.worker'
-import { ALIGNED_LATE_SEC, snapToOnsets, spokenWords } from './captions'
+import { ALIGNED_LATE_SEC, HEARD_LATE_SEC, captionWords, snapToOnsets, spokenWords, type CaptionWord } from './captions'
 import { LONG_SEC, TINY_SEC, cutNoise, loneSounds, peakDbIn, peaksOf, protectWords, type CutCheck, type WordSpan } from './noiseCuts'
-import type { TranscribeMessage, TranscribeRequest } from './transcribe.worker'
 
 const UNREADABLE_FORMAT =
   "This browser can't read this video's format. On a computer, open this page in Safari or Chrome; on a phone, update to the newest iOS."
-
-const ANALYSIS_WINDOW_SEC = 0.02
-
-function levelDb(rms: number): number {
-  return rms <= 0 ? -Infinity : 20 * Math.log10(rms)
-}
-
-function throttled(onProgress?: (fraction: number) => void): (fraction: number) => void {
-  let last = -1
-  return (fraction) => {
-    const capped = Math.max(0, Math.min(0.99, fraction))
-    if (!onProgress || capped - last < 0.01) return
-    last = capped
-    onProgress(capped)
-  }
-}
-
-async function decodeAudio(
-  audioTrack: NonNullable<Awaited<ReturnType<Input['getPrimaryAudioTrack']>>>,
-  wantMono16k: boolean,
-  duration: number,
-  onProgress?: (fraction: number) => void,
-): Promise<{ levels: Level[]; mono16k: Float32Array | null }> {
-  const sink = new AudioBufferSink(audioTrack)
-  const levels: Level[] = []
-  const monoChunks: Float32Array[] = []
-  const report = throttled(onProgress)
-  for await (const { buffer, timestamp } of sink.buffers()) {
-    if (duration > 0) report(timestamp / duration)
-    const channels = Array.from({ length: buffer.numberOfChannels }, (_, c) => buffer.getChannelData(c))
-    const windowFrames = Math.max(1, Math.round(ANALYSIS_WINDOW_SEC * buffer.sampleRate))
-    for (let i = 0; i < buffer.length; i += windowFrames) {
-      const end = Math.min(i + windowFrames, buffer.length)
-      let loudest = 0
-      for (const channel of channels) {
-        let sumSquares = 0
-        for (let j = i; j < end; j++) sumSquares += channel[j] * channel[j]
-        loudest = Math.max(loudest, Math.sqrt(sumSquares / (end - i)))
-      }
-      levels.push({ time: timestamp + i / buffer.sampleRate, db: levelDb(loudest) })
-    }
-    if (wantMono16k) monoChunks.push(resampleToMono16k(buffer))
-  }
-  return { levels, mono16k: wantMono16k ? concatFloat32(monoChunks) : null }
-}
-
-/** Runs the speech model in a worker that is ended as soon as it is done -
- *  the only way its memory comes back on a phone. */
-async function transcribe(
-  samples: Float32Array,
-  windows: Range[],
-  prompt: string,
-  { onModelDownload, onProgress, fallbackPrompt }: { onModelDownload?: (f: number) => void; onProgress?: (f: number) => void; fallbackPrompt?: string },
-): Promise<WordChunk[]> {
-  if (windows.length === 0) return []
-  const worker = new Worker(new URL('./transcribe.worker.ts', import.meta.url), { type: 'module' })
-  try {
-    return await new Promise<WordChunk[]>((resolve, reject) => {
-      let started = false
-      worker.onmessage = (event: MessageEvent<TranscribeMessage>) => {
-        started = true
-        const message = event.data
-        if (message.type === 'download') onModelDownload?.(message.fraction)
-        else if (message.type === 'loaded') onProgress?.(0)
-        else if (message.type === 'progress') onProgress?.(message.fraction)
-        else if (message.type === 'done') resolve(message.words)
-        else reject(new Error(`the speech model failed: ${message.message}`))
-      }
-      worker.onerror = (event) => {
-        reject(
-          started
-            ? new Error(`the speech model stopped: ${event.message || 'no reason given'}`)
-            : new SilenceCutError(
-                "The speech model couldn't start. Close this page and open it again - it has probably been updated since it was opened.",
-              ),
-        )
-      }
-      const request: TranscribeRequest = { samples, sampleRate: WHISPER_SAMPLE_RATE, windows, prompt, fallbackPrompt }
-      worker.postMessage(request, [samples.buffer])
-    })
-  } finally {
-    worker.terminate()
-  }
-}
 
 /** How long the letter model may go without a word before it is given up
  *  on, and the captions keep the speech model's own times. */
@@ -147,13 +63,26 @@ async function alignWords(
   windows: Range[],
   words: WordChunk[],
   silences: Range[],
+  audioStart: number,
   { onModelDownload, onProgress }: { onModelDownload?: (f: number) => void; onProgress?: (f: number) => void },
 ): Promise<{ words: TimedWord[]; fillers: HeardFiller[] }> {
   // Each word goes with the stretch it was heard in, which the letter model
-  // hears a piece at a time, cut in its pauses.
+  // hears a piece at a time, cut in its pauses - or, for a word the speech
+  // model put a little past its window's end, the nearest stretch, which is
+  // the one it came from. Put in the last window instead, it made the letter
+  // model squeeze the real last words of the video to fit it.
   const grouped = windows.map((w) => ({ ...w, words: [] as TimedWord[], cuts: pieceCuts(w, silences) }))
+  const nearest = (t: number) => {
+    let best = grouped[grouped.length - 1]
+    let distance = Infinity
+    for (const w of grouped) {
+      const d = t < w.start ? w.start - t : t >= w.end ? t - w.end : 0
+      if (d < distance) [best, distance] = [w, d]
+    }
+    return best
+  }
   for (const word of words) {
-    const window = grouped.find((w) => word.start >= w.start && word.start < w.end) ?? grouped[grouped.length - 1]
+    const window = grouped.find((w) => word.start >= w.start && word.start < w.end) ?? nearest(word.start)
     window?.words.push(word)
   }
   const worker = new Worker(new URL('./align.worker.ts', import.meta.url), { type: 'module' })
@@ -184,7 +113,7 @@ async function alignWords(
         window.clearTimeout(quiet)
         reject(new Error(event.message || 'the letter model stopped'))
       }
-      const request: AlignRequest = { samples, windows: grouped.filter((w) => w.words.length > 0) }
+      const request: AlignRequest = { samples, windows: grouped.filter((w) => w.words.length > 0), audioStart }
       worker.postMessage(request, [samples.buffer])
     })
   } finally {
@@ -256,6 +185,8 @@ export async function planCampaignCut(
   let duration: number
   let levels: Level[]
   let mono16k: Float32Array | null
+  // When the sound starts, in the video's own time (media/audio.ts).
+  let audioStart = 0
 
   {
     const input = new Input({ source: new BlobSource(file), formats: ALL_FORMATS })
@@ -269,9 +200,14 @@ export async function planCampaignCut(
       )
       if (!audioTrack && (options.quietIsFine || options.keepWhole)) return keptWhole(d, options.cleanSpeech)
       if (!audioTrack) throw new SilenceCutError('This video has no sound, so there is nothing to detect silence from.')
-      if (!(await audioTrack.canDecode())) throw new SilenceCutError(UNREADABLE_FORMAT)
+      if (!(await audioTrack.canDecode())) {
+        // A product clip whose sound this browser can't read is kept whole
+        // too - the render plays such sound as silence (see clipParts).
+        if (options.quietIsFine || options.keepWhole) return keptWhole(d, options.cleanSpeech)
+        throw new SilenceCutError(UNREADABLE_FORMAT)
+      }
       duration = d
-      ;({ levels, mono16k } = await decodeAudio(audioTrack, wantWords, d, options.onAnalyseProgress))
+      ;({ levels, mono16k, audioStart } = await decodeAudio(audioTrack, wantWords, d, options.onAnalyseProgress))
     } finally {
       input.dispose()
     }
@@ -288,7 +224,7 @@ export async function planCampaignCut(
   let forRecheck: Float32Array | null = null
   let audibleSec = duration
   if (wantWords && mono16k) {
-    const audible = Math.min(duration, mono16k.length / WHISPER_SAMPLE_RATE)
+    const audible = Math.min(duration, audioStart + mono16k.length / WHISPER_SAMPLE_RATE)
     audibleSec = audible
     const windows = speechWindows(silences, audible)
     // The speech model's worker takes the samples; the letter model needs
@@ -298,16 +234,19 @@ export async function planCampaignCut(
     // the samples too, after the first listen has taken them.
     forRecheck = options.cutNoise && !options.keepWhole ? mono16k.slice() : null
     const share = forAligning ? 0.85 : 1
-    const heard = await transcribe(mono16k, windows, options.prompt, {
+    const heard = await transcribeOnDevice(mono16k, WHISPER_SAMPLE_RATE, windows, {
+      prompt: options.prompt,
+      fallbackPrompt: options.fallbackPrompt,
+      padQuiet: true,
+      audioStart,
       onModelDownload: options.onModelDownload,
       onProgress: (p) => options.onTranscribeProgress?.(p * share),
-      fallbackPrompt: options.fallbackPrompt,
     })
     ;({ words, fillerWords, stutters, spoken } = fromHeard(heard, levels, settings, duration, options.cleanSpeech))
     if (options.cleanSpeech) fillersHeard = { spoken: heard.filter((w) => isFillerWord(w.text)).length, letters: 0 }
     if (forAligning && heard.length > 0) {
       const align = (samples: Float32Array) =>
-        alignWords(samples, windows, spokenWords(heard, 0), silences, {
+        alignWords(samples, windows, spokenWords(heard, 0), silences, audioStart, {
           onModelDownload: options.onModelDownload,
           onProgress: (p) => options.onTranscribeProgress?.(share + (1 - share) * p),
         })
@@ -331,7 +270,11 @@ export async function planCampaignCut(
           await new Promise((resolve) => setTimeout(resolve, ALIGN_RETRY_MS))
           timed = await align(spare)
         }
-        spoken = spokenWords(timed.words, ALIGNED_LATE_SEC)
+        // A word the letter model could not time is still the speech
+        // model's, and that late.
+        const extraLate = HEARD_LATE_SEC - ALIGNED_LATE_SEC
+        const evened = timed.words.map((w) => (w.aligned === false ? { ...w, start: w.start - extraLate, end: w.end - extraLate } : w))
+        spoken = spokenWords(evened, ALIGNED_LATE_SEC)
         aligned = true
         if (options.cleanSpeech) {
           // The cuts again from the exact times - an "um" placed to the frame
@@ -375,7 +318,7 @@ export async function planCampaignCut(
       peaks,
     }
   }
-  let keep = plainKeep(silences, fillerWords, stutters, duration, settings)
+  let keep = plainKeep(silences, fillerWords, stutters, duration, settings, audioExtent(levels))
   if (keep.length === 0 && options.quietIsFine) return { ...keptWhole(duration, options.cleanSpeech), words, peaks }
   // Nothing loud enough to be talking anywhere in it: a clip with no talking
   // (b-roll, a screen recording) or one recorded very far from the phone.
@@ -398,11 +341,11 @@ export async function planCampaignCut(
     const heardAgain = new Set<number>()
     if (worth.length > 0) {
       try {
-        const again = await transcribe(
+        const again = await transcribeOnDevice(
           forRecheck,
+          WHISPER_SAMPLE_RATE,
           worth.map(({ c }) => ({ start: Math.max(0, c.range.start - 0.25), end: Math.min(audibleSec, c.range.end + 0.25) })),
-          options.prompt,
-          { onModelDownload: options.onModelDownload },
+          { prompt: options.prompt, padQuiet: true, audioStart, onModelDownload: options.onModelDownload },
         )
         for (const { c, i } of worth) {
           const found = again.filter((w) => w.start < c.range.end + 0.1 && w.end > c.range.start - 0.1)
@@ -475,8 +418,10 @@ export function fromHeard(
  *  (fromHeard) or, better, the letter model's exact ones - each checked
  *  against the sound (fillerWords.ts) and padded like a pause. */
 export function speechCuts(words: WordChunk[], levels: Level[], settings: SilenceSettings, duration: number, exact = false): { fillerWords: Range[]; stutters: Range[] } {
+  // Never widened right to 0: a cut starting exactly at 0 reads as the head
+  // silence to keepRanges, which keeps a breath there instead.
   const uncramp = (range: Range) => ({
-    start: Math.max(0, range.start - settings.paddingSec),
+    start: Math.max(0.011, range.start - settings.paddingSec),
     end: Math.min(duration, range.end + settings.paddingSec),
   })
   // What counts as quiet for the "um" checks: this take's own line between
@@ -503,8 +448,17 @@ export function soundsLikeFiller(letters: string): boolean {
 
 /** What is kept: everything but the pauses, "um"s and stumbles, padded. This
  *  is the whole cut when noise cutting is off. */
-export function plainKeep(silences: Range[], fillerWords: Range[], stutters: Range[], duration: number, settings: SilenceSettings): Range[] {
-  return keepRanges(mergeRanges([...silences, ...fillerWords, ...stutters]), duration, settings.paddingSec)
+export function plainKeep(
+  silences: Range[],
+  fillerWords: Range[],
+  stutters: Range[],
+  duration: number,
+  settings: SilenceSettings,
+  /** Where the sound really runs (media/audio.ts audioExtent): a track that
+   *  starts late or ends early is head or tail silence, not a middle pause. */
+  audio?: { start: number; end: number },
+): Range[] {
+  return keepRanges(mergeRanges([...silences, ...fillerWords, ...stutters]), duration, settings.paddingSec, audio)
 }
 
 /** Noise cutting's first step: heard words brought back if they were cut,
@@ -526,11 +480,10 @@ export function noiseCandidates(keep: Range[], words: WordSpan[], meantToCut: Ra
  *  listening again. `offsets` come from joinRender: per part, what to add to
  *  its own times. */
 export function joinPlans(plans: CampaignPlan[], offsets: number[], duration: number): CampaignPlan {
-  const moved = <T extends { start: number; end: number }>(items: T[], by: number): T[] =>
-    items.map((item) => ({ ...item, start: item.start + by, end: item.end + by }))
+  const moved = <T extends { start: number; end: number }>(items: T[], by: number): T[] => movedInto(items, by, duration)
   const everySpoken = plans.every((p) => p.spoken)
   return {
-    keep: plans.flatMap((p, i) => moved(p.keep, offsets[i])),
+    keep: joinedRanges(plans.map((p) => p.keep), offsets, duration),
     duration,
     silences: plans.reduce((sum, p) => sum + p.silences, 0),
     fillerWords: plans.reduce((sum, p) => sum + p.fillerWords, 0),
@@ -549,4 +502,41 @@ export function joinPlans(plans: CampaignPlan[], offsets: number[], duration: nu
         }
       : {}),
   }
+}
+
+/** Items moved by `by` seconds and kept inside the joined video. */
+function movedInto<T extends { start: number; end: number }>(items: T[], by: number, duration: number): T[] {
+  const inside = (t: number) => Math.min(duration, Math.max(0, t + by))
+  return items.map((item) => ({ ...item, start: inside(item.start), end: inside(item.end) }))
+}
+
+/** The parts' kept ranges on the joined video, in order and never
+ *  overlapping: a part whose own first frame is not at 0 (an export with an
+ *  edit list) gives an offset that would start its ranges before 0, or a
+ *  frame or two inside the part before - and the render would then repeat
+ *  that sliver and place its words twice. */
+function joinedRanges(ranges: Range[][], offsets: number[], duration: number): Range[] {
+  const out: Range[] = []
+  let last = 0
+  for (const range of ranges.flatMap((part, i) => movedInto(part, offsets[i], duration))) {
+    const start = Math.max(range.start, last)
+    if (range.end > start) {
+      out.push({ start, end: range.end })
+      last = range.end
+    }
+  }
+  return out
+}
+
+/** The caption fixes made on each part, moved onto the joined video, so
+ *  joining never throws away a check he already did. A part never opened
+ *  contributes its words as heard, as the review would have shown them.
+ *  Nothing, when no part was checked. */
+export function joinCaptions(
+  parts: { captions?: CaptionWord[]; plan: CampaignPlan }[],
+  offsets: number[],
+  duration: number,
+): CaptionWord[] | undefined {
+  if (!parts.some((p) => p.captions)) return undefined
+  return parts.flatMap((p, i) => movedInto(p.captions ?? captionWords(p.plan.spoken ?? p.plan.words, p.plan.keep), offsets[i], duration))
 }

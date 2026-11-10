@@ -7,7 +7,7 @@
 // already works from - so the recording itself is never touched, and a
 // change can always be undone.
 
-import type { Range } from '../media/silenceMath'
+import { mergeRanges, type Range } from '../media/silenceMath'
 
 /** The shortest a kept part can be - shorter is a flicker, not a shot. */
 export const MIN_PART_SEC = 0.1
@@ -60,6 +60,14 @@ export function trimPart(keep: readonly Range[], i: number, edge: 'start' | 'end
     next[i] = { start: part.start, end: Math.max(Math.min(to, ceiling), part.start + MIN_PART_SEC) }
   }
   return next
+}
+
+/** The kept parts as the cut will use them: two that touch - a split that
+ *  was never followed by a Delete, or an edge trimmed up to its neighbour -
+ *  are one part again. Left as two, the render would treat the seam as a
+ *  cut and punch in on footage that never stopped. */
+export function tidyParts(keep: readonly Range[]): Range[] {
+  return mergeRanges([...keep])
 }
 
 /** `t` moved onto the nearest of `points` within `within` seconds - the edge

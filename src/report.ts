@@ -9,9 +9,9 @@
 // Reports wait in localStorage until they are sent, so one written with no
 // signal goes out the next time there is some.
 
-const FUNCTION_URL = 'https://uykuoibqdxmpbbrsmyad.supabase.co/functions/v1/cutter'
-// Public by design: it only lets a request reach the function.
-const PUBLISHABLE_KEY = 'sb_publishable_UhAfC6SJRmnDOR5Y10CmPg_DFepNyVA'
+import { FUNCTIONS_URL, PUBLISHABLE_KEY } from './config'
+
+const FUNCTION_URL = `${FUNCTIONS_URL}/cutter`
 const QUEUE_KEY = 'reports.pending'
 const MAX_WAITING = 20
 
@@ -60,12 +60,18 @@ function loginName(): string | null {
 
 let sending = false
 
-/** Sends everything waiting. Quietly does nothing without a signal. */
+/** How many go in one request: a keepalive request is capped at 64 KB, and
+ *  twenty reports with their device lines came close to it. */
+const PER_SEND = 5
+
+/** Sends what is waiting, a few at a time. Quietly does nothing without a
+ *  signal. */
 export async function sendReports(): Promise<void> {
   if (sending) return
-  const list = waiting()
+  const list = waiting().slice(0, PER_SEND)
   if (list.length === 0) return
   sending = true
+  let sent = false
   try {
     const response = await fetch(FUNCTION_URL, {
       method: 'POST',
@@ -75,14 +81,17 @@ export async function sendReports(): Promise<void> {
     })
     if (response.ok) {
       // Anything added while this was on its way stays for next time.
-      const sent = new Set(list.map((r) => r.id))
-      keep(waiting().filter((r) => !sent.has(r.id)))
+      const gone = new Set(list.map((r) => r.id))
+      keep(waiting().filter((r) => !gone.has(r.id)))
+      sent = true
     }
   } catch {
     // No signal. They stay for the next try.
   } finally {
     sending = false
   }
+  // The rest, while the signal is there.
+  if (sent && waiting().length > 0) void sendReports()
 }
 
 function thisPage(): 'cut' | 'campaign' {

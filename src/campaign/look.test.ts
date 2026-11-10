@@ -96,6 +96,12 @@ describe('angleProblems', () => {
     expect(angleProblems(vertus(), { ...base, headline: { ...base.headline, seconds: 0 } })).toHaveLength(1)
     expect(angleProblems(vertus(), { ...base, logo: { ...base.logo, seconds: Number.NaN } })).toHaveLength(1)
   })
+
+  it('checks the bank pictures’ placement like a picture’s, only when the bank is used', () => {
+    const base = blankAngle('a', 'A')
+    expect(angleProblems(vertus(), { ...base, bank: { ...base.bank, use: true, widthPct: 500 } })).toHaveLength(1)
+    expect(angleProblems(vertus(), { ...base, bank: { ...base.bank, use: false, widthPct: 500 } })).toHaveLength(0)
+  })
 })
 
 describe('videoLook', () => {

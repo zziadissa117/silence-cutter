@@ -4,9 +4,36 @@
 
 import { SilenceCutError } from './errors'
 
-/** The phone's video decoder giving up - "Decoder failure" on an iPhone. */
+/** The phone's storage is full: the file being written could not grow. */
+function outOfStorage(error: unknown): boolean {
+  return error instanceof DOMException && error.name === 'QuotaExceededError'
+}
+
+/** The phone's video decoder giving up - "Decoder failure" on an iPhone.
+ *  Not storage running out, which is a DOMException too and used to send a
+ *  render through four pointless decoder restarts. */
 export function decoderGaveUp(error: unknown): boolean {
-  return !(error instanceof SilenceCutError) && (error instanceof DOMException || /decod/i.test(String(error)))
+  if (error instanceof SilenceCutError || outOfStorage(error)) return false
+  return error instanceof DOMException || /decod/i.test(String(error))
+}
+
+/** A render's failure as it should be read: storage running out said
+ *  plainly; anything else as it came. */
+export function asRenderError(error: unknown): unknown {
+  return outOfStorage(error)
+    ? new SilenceCutError(
+        'The phone ran out of storage while the video was being written. Clear some space - finished videos still on the list count - and try again.',
+      )
+    : error
+}
+
+/** The video encoder refusing to go on - the only failure worth a second
+ *  cut without HDR (silenceCut.ts): a decoder giving up, a full disk or a
+ *  timestamp error would fail again, after the whole cut had been made twice. */
+export function encoderGaveUp(error: unknown): boolean {
+  if (error instanceof SilenceCutError || outOfStorage(error) || decoderGaveUp(error)) return false
+  if (error instanceof DOMException) return error.name === 'EncodingError' || error.name === 'NotSupportedError' || error.name === 'OperationError'
+  return /encod|codec/i.test(String(error))
 }
 
 /** The decoder stopped handing frames over before the part's end - with no

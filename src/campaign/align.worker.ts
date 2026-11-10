@@ -17,6 +17,8 @@ export interface AlignRequest {
    *  it, on the video's timeline - and where to cut it into pieces for the
    *  letter model, in its pauses (align.ts pieceCuts). */
   windows: { start: number; end: number; words: TimedWord[]; cuts?: number[] }[]
+  /** The time `samples[0]` sits at in the video - see media/audio.ts. */
+  audioStart?: number
 }
 
 export type AlignMessage =
@@ -45,7 +47,7 @@ interface Logits {
 }
 
 self.onmessage = async (event: MessageEvent<AlignRequest>) => {
-  const { samples, windows } = event.data
+  const { samples, windows, audioStart = 0 } = event.data
   try {
     const progress_callback = (data: { status: string; progress?: number }) => {
       if (data.status === 'progress' && typeof data.progress === 'number') post({ type: 'download', fraction: data.progress / 100 })
@@ -58,12 +60,12 @@ self.onmessage = async (event: MessageEvent<AlignRequest>) => {
     const fillers: HeardFiller[] = []
     for (let i = 0; i < windows.length; i++) {
       const { start, end, words: heard, cuts = [] } = windows[i]
-      const from = Math.floor(start * SAMPLE_RATE)
-      const to = Math.ceil(end * SAMPLE_RATE)
+      const from = Math.max(0, Math.floor((start - audioStart) * SAMPLE_RATE))
+      const to = Math.max(from, Math.ceil((end - audioStart) * SAMPLE_RATE))
       if (heard.length > 0 && to - from >= SAMPLE_RATE / 10) {
         // A piece at a time (see ALIGN_PIECE_SEC), each cut in a pause; the
         // letters are joined back up and the words laid along the whole window.
-        const bounds = [from, ...cuts.map((t) => Math.round(t * SAMPLE_RATE)).filter((s) => s > from && s < to), to]
+        const bounds = [from, ...cuts.map((t) => Math.round((t - audioStart) * SAMPLE_RATE)).filter((s) => s > from && s < to), to]
         const pieces: { logProbs: Float32Array; frames: number; start: number; end: number }[] = []
         let letters = 0
         for (let k = 0; k + 1 < bounds.length; k++) {
@@ -76,8 +78,8 @@ self.onmessage = async (event: MessageEvent<AlignRequest>) => {
           pieces.push({
             logProbs: logSoftmax(new Float32Array(logits.data), frames, count),
             frames,
-            start: bounds[k] / SAMPLE_RATE,
-            end: (bounds[k] + piece.length) / SAMPLE_RATE,
+            start: audioStart + bounds[k] / SAMPLE_RATE,
+            end: audioStart + (bounds[k] + piece.length) / SAMPLE_RATE,
           })
           post({ type: 'progress', fraction: (i + (k + 1) / (bounds.length - 1)) / windows.length })
         }
@@ -90,7 +92,12 @@ self.onmessage = async (event: MessageEvent<AlignRequest>) => {
         })
         words.push(...placed)
         fillers.push(...fillersBetween(spans, joined.logProbs, joined.frames, letters, joined.starts, joined.ends))
-      } else words.push(...heard)
+      } else {
+        // Too short to time: the speech model's own times, and said so, so
+        // they are brought back by the speech model's lateness rather than
+        // the letter model's (plan.ts).
+        words.push(...heard.map((w) => ({ ...w, aligned: false })))
+      }
       post({ type: 'progress', fraction: (i + 1) / windows.length })
     }
     post({ type: 'done', words, fillers })

@@ -163,6 +163,9 @@ export interface TimedWord {
    *  model heard over its span (lettersBetween), for plan.ts to check it
    *  really sounds like one. */
   letters?: string
+  /** False for a word the letter model could not time, which keeps the
+   *  speech model's own times. Absent means timed. */
+  aligned?: boolean
 }
 
 /** The words with their aligned times, `offset` seconds being frame 0 and
@@ -199,7 +202,8 @@ function place(words: TimedWord[], spans: Span[], startOf: (frame: number) => nu
     const before = placed.slice(0, i).reverse().find(Boolean)
     const after = placed.slice(i + 1).find(Boolean)
     const start = before ? before.end : after ? after.start : w.start
-    return { text: w.text, start, end: Math.max(start, after ? after.start : start) }
+    // With nothing after it, its own length rather than no length at all.
+    return { text: w.text, start, end: after ? Math.max(start, after.start) : start + Math.max(0, w.end - w.start) }
   })
 }
 

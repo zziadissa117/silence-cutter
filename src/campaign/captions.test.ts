@@ -32,6 +32,14 @@ describe('cleanWord', () => {
     expect(cleanWord(' wow!')).toBe('wow!')
     expect(cleanWord(" don't")).toBe("don't")
   })
+
+  it('leaves nothing of a lone dash or "…", and keeps a hyphen inside a word', () => {
+    expect(cleanWord(' —')).toBe('')
+    expect(cleanWord(' …')).toBe('')
+    expect(cleanWord(' wait…')).toBe('wait')
+    expect(cleanWord(' well-known')).toBe('well-known')
+    expect(cleanWord(' (laughs)')).toBe('laughs')
+  })
 })
 
 describe('snapToOnsets', () => {

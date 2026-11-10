@@ -43,6 +43,10 @@ interface StoredJob {
    *  it got - the one thing a silent tab kill on an iPhone doesn't otherwise
    *  tell you. */
   lastPhase?: 'reading' | 'model' | 'listening' | 'cutting'
+  /** Why it failed last time, when it did. Kept rather than deleted: a
+   *  passing failure - the phone's decoder, storage stalling for a moment -
+   *  used to take the only copy of a restored video with it. */
+  failed?: string
   addedAt: number
 }
 
@@ -57,6 +61,9 @@ export interface PendingJob {
   wantCaptions: boolean
   attempts: number
   lastPhase?: StoredJob['lastPhase']
+  failed?: string
+  /** Whether its video is still kept - a copy let go to make room is not. */
+  hasVideo: boolean
 }
 
 /** Two goes. A first failure might have been bad luck - the tab trimmed in
@@ -109,11 +116,14 @@ export async function persistJob(
 ): Promise<boolean> {
   const { fileBlob, ...meta } = job
   try {
-    await db.jobs.put({ ...meta, attempts: 0, addedAt: Date.now() })
     const { free } = await spaceOnDevice()
     // Room for the video, its cut, and room to spare.
     if (free !== null && free <= fileBlob.size * 2.5) return false
+    // The video first, the row last: a row with no video behind it was a
+    // phantom that came back after a reload only to fail, and sent "/" to
+    // this page to do it.
     await db.videos.put({ id: job.id, blob: fileBlob })
+    await db.jobs.put({ ...meta, attempts: 0, addedAt: Date.now() })
     return true
   } catch {
     // Out of room, or storage blocked. The cut itself does not depend on
@@ -163,7 +173,24 @@ async function countAttempt(id: string): Promise<boolean> {
  *  that is already spent and hold the video straight back - a button that
  *  does nothing. Asking counts as knowing. */
 export async function resetAttempts(id: string): Promise<void> {
-  await db.jobs.update(id, { attempts: 0 }).catch(() => {})
+  await db.jobs.update(id, { attempts: 0, failed: undefined }).catch(() => {})
+}
+
+/** Remembers that this video failed, and why, keeping its row and copy for
+ *  Try again - even after a restart. Says whether there was a row to mark. */
+export async function recordFailure(id: string, message: string): Promise<boolean> {
+  try {
+    return (await db.jobs.update(id, { failed: message })) > 0
+  } catch {
+    return false
+  }
+}
+
+/** Changes what a kept video is cut with on its next go - turning the
+ *  speech options off for a video that keeps crashing the page is the one
+ *  thing that reliably gets it through. */
+export async function updateJobOptions(id: string, fields: { cleanSpeech: boolean; wantCaptions: boolean }): Promise<void> {
+  await db.jobs.update(id, fields).catch(() => {})
 }
 
 /** Records the phase a video just entered. Called throughout the actual cut,
@@ -197,12 +224,14 @@ async function dropOrphans(jobIds: string[]): Promise<void> {
 /** Everything still waiting from a previous visit, oldest first. Metadata
  *  only - see the note at the top. */
 export async function loadPendingJobs(): Promise<PendingJob[]> {
-  const rows = await db.transaction('rw', db.jobs, db.videos, async () => {
+  const { rows, withVideo } = await db.transaction('rw', db.jobs, db.videos, async () => {
     const rows = await db.jobs.orderBy('addedAt').toArray()
     await dropOrphans(rows.map((row) => row.id))
-    return rows
+    // Keys only - never the videos themselves.
+    const withVideo = new Set(await db.videos.toCollection().primaryKeys())
+    return { rows, withVideo }
   })
-  return rows.map(({ id, fileName, fileType, settings, cleanSpeech, wantCaptions, attempts, lastPhase }) => ({
+  return rows.map(({ id, fileName, fileType, settings, cleanSpeech, wantCaptions, attempts, lastPhase, failed }) => ({
     id,
     fileName,
     fileType,
@@ -211,5 +240,7 @@ export async function loadPendingJobs(): Promise<PendingJob[]> {
     wantCaptions: wantCaptions ?? false, // rows saved before captions existed
     attempts,
     lastPhase,
+    ...(failed ? { failed } : {}),
+    hasVideo: withVideo.has(id),
   }))
 }

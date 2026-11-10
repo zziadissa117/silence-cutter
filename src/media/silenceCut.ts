@@ -9,7 +9,6 @@
 
 import {
   ALL_FORMATS,
-  AudioBufferSink,
   AudioSample,
   AudioSampleSink,
   AudioSampleSource,
@@ -28,6 +27,7 @@ import {
   VideoSampleSource,
 } from 'mediabunny'
 
+import { audioExtent, decodeAudio, throttled } from './audio'
 import { buildCaptionCues, type CaptionCue } from './captions'
 import { SilenceCutError } from './errors'
 import {
@@ -36,14 +36,12 @@ import {
   fillerWordRanges,
   stutterRanges,
   isFillerWordDetectionSupported,
-  resampleToMono16k,
-  concatFloat32,
   type WordChunk,
 } from './fillerWords'
 import { contiguousAudio, forwardOnly } from './forwardOnly'
 import { createOutputSink } from './outputSink'
 import { RangeReader, inTimestampOrder } from './rangeReader'
-import { decoderGaveUp, pause, visibleAgain } from './recovery'
+import { asRenderError, decoderGaveUp, encoderGaveUp, pause, visibleAgain } from './recovery'
 import {
   BALANCED_SETTINGS,
   findSilentRanges,
@@ -88,12 +86,6 @@ export async function isSilenceCutSupported(): Promise<boolean> {
 
 /** Loudness of one audio window, in dB, from its root-mean-square amplitude.
  *  Silence is -Infinity dB, which is always below any real threshold. */
-function levelDb(rms: number): number {
-  return rms <= 0 ? -Infinity : 20 * Math.log10(rms)
-}
-
-/** 10-bit HEVC, which is what an iPhone's HDR video already is. Levels in
- *  descending order: the first one the device will actually encode wins. */
 const HDR_CODEC_CANDIDATES = [
   'hvc1.2.4.L153.B0', // Main 10, level 5.1 - 4K
   'hvc1.2.4.L150.B0', // Main 10, level 5.0
@@ -139,61 +131,6 @@ async function audioConversionFor(
   throw new SilenceCutError(
     `This video's sound (${channels} channels at ${sampleRate} Hz) can't be re-encoded by this browser. Try Safari or Chrome.`,
   )
-}
-
-const ANALYSIS_WINDOW_SEC = 0.02 // 20ms, same grain ffmpeg's silencedetect uses by default
-
-/** Wraps a progress callback so it only fires on real movement. The points
- *  it is called from arrive dozens of times a second, and each one is a
- *  React render; a bar that moves in percent does not need more than this. */
-function throttled(onProgress?: (fraction: number) => void): (fraction: number) => void {
-  let last = -1
-  return (fraction) => {
-    const capped = Math.max(0, Math.min(0.99, fraction))
-    if (!onProgress || capped - last < 0.01) return
-    last = capped
-    onProgress(capped)
-  }
-}
-
-/** Decodes the audio track once and returns whatever it was asked for: the
- *  loudness curve silenceMath reads, and/or a 16kHz mono copy for Whisper.
- *  One pass either way, so asking for both doesn't mean decoding twice. */
-async function decodeAudio(
-  audioTrack: NonNullable<Awaited<ReturnType<Input['getPrimaryAudioTrack']>>>,
-  wantMono16k: boolean,
-  duration: number,
-  onProgress?: (fraction: number) => void,
-): Promise<{ levels: Level[]; mono16k: Float32Array | null }> {
-  const sink = new AudioBufferSink(audioTrack)
-  const levels: Level[] = []
-  const monoChunks: Float32Array[] = []
-  const report = throttled(onProgress)
-
-  for await (const { buffer, timestamp } of sink.buffers()) {
-    // Listening to a long take is minutes of work on a phone, and all of it
-    // happens before a single frame is encoded. Without this the bar sits at
-    // zero throughout and the app looks hung.
-    if (duration > 0) report(timestamp / duration)
-    // The loudest channel, not the first one. A phone's two channels are not
-    // the same recording, and judging by one of them can call a moment quiet
-    // that the other heard perfectly well - which is how a word ends up
-    // inside a "pause".
-    const channels = Array.from({ length: buffer.numberOfChannels }, (_, c) => buffer.getChannelData(c))
-    const windowFrames = Math.max(1, Math.round(ANALYSIS_WINDOW_SEC * buffer.sampleRate))
-    for (let i = 0; i < buffer.length; i += windowFrames) {
-      const end = Math.min(i + windowFrames, buffer.length)
-      let loudest = 0
-      for (const channel of channels) {
-        let sumSquares = 0
-        for (let j = i; j < end; j++) sumSquares += channel[j] * channel[j]
-        loudest = Math.max(loudest, Math.sqrt(sumSquares / (end - i)))
-      }
-      levels.push({ time: timestamp + i / buffer.sampleRate, db: levelDb(loudest) })
-    }
-    if (wantMono16k) monoChunks.push(resampleToMono16k(buffer))
-  }
-  return { levels, mono16k: wantMono16k ? concatFloat32(monoChunks) : null }
 }
 
 export interface SilenceCutResult {
@@ -261,6 +198,9 @@ export async function planCut(
   let duration: number
   let levels: Level[]
   let mono16k: Float32Array | null
+  // When the sound starts, in the video's own time - a phone's AAC starts a
+  // little before zero once its edit list is applied; see media/audio.ts.
+  let audioStart = 0
   const wantFillerWords = !!options.detectFillerWords && isFillerWordDetectionSupported()
   // Captions need the same transcript as filler-word detection, so asking
   // for either turns on the one transcription pass below - never two.
@@ -283,7 +223,7 @@ export async function planCut(
       }
       if (!(await audioTrack.canDecode())) throw new SilenceCutError(UNREADABLE_FORMAT)
       duration = d
-      ;({ levels, mono16k } = await decodeAudio(audioTrack, wantWords, d, options.onAnalyseProgress))
+      ;({ levels, mono16k, audioStart } = await decodeAudio(audioTrack, wantWords, d, options.onAnalyseProgress))
     } finally {
       input.dispose()
     }
@@ -301,8 +241,9 @@ export async function planCut(
     // than its audio does - a browser recording claimed minutes for a 13s
     // clip - and every window past the real end is the model listening to
     // nothing, a second at a time.
-    const audible = Math.min(duration, mono16k.length / WHISPER_SAMPLE_RATE)
+    const audible = Math.min(duration, audioStart + mono16k.length / WHISPER_SAMPLE_RATE)
     const heard = await transcribeOnDevice(mono16k, WHISPER_SAMPLE_RATE, speechWindows(silences, audible), {
+      audioStart,
       onModelDownload: options.onModelDownload,
       onProgress: options.onTranscribeProgress,
     })
@@ -314,8 +255,10 @@ export async function planCut(
       // given, which is right for a silence but would leave half an "um"
       // behind here. These ends are already exactly where they should be,
       // so they are widened by the same amount first and come out unchanged.
+      // Never widened right to 0: a cut starting exactly at 0 reads as the
+      // head silence to keepRanges, which keeps a breath there instead.
       const uncramp = (range: Range) => ({
-        start: Math.max(0, range.start - settings.paddingSec),
+        start: Math.max(0.011, range.start - settings.paddingSec),
         end: Math.min(duration, range.end + settings.paddingSec),
       })
       // Fenced in by the real words either side and checked against the
@@ -327,7 +270,9 @@ export async function planCut(
   }
 
   const toCut = mergeRanges([...silences, ...fillerWords, ...stutters])
-  const keep = keepRanges(toCut, duration, settings.paddingSec)
+  // Against the sound's own extent: a track that starts late or ends early
+  // is head or tail silence, not a pause in the middle.
+  const keep = keepRanges(toCut, duration, settings.paddingSec, audioExtent(levels))
   if (keep.length === 0) {
     throw new SilenceCutError('The whole video looks silent. Try recording somewhere quieter.')
   }
@@ -347,7 +292,7 @@ export async function cutSilence(
   file: Blob,
   keep: Range[],
   onProgress?: (fraction: number) => void,
-): Promise<{ blob: Blob; storedAs: string | null; recovered: number }> {
+): Promise<CutOutput> {
   try {
     return await renderCut(file, keep, onProgress, true)
   } catch (error) {
@@ -360,12 +305,25 @@ export async function cutSilence(
   }
 }
 
+/** What a cut came out as: the file, and where each kept range really landed
+ *  in it - a frame later than the plan at every cut - so captions and the
+ *  length shown come from the video, not the plan. */
+export interface CutOutput {
+  blob: Blob
+  storedAs: string | null
+  recovered: number
+  /** Per kept range, what to add to a source time in it to get its output time. */
+  shifts: number[]
+  /** How long the file really is. */
+  outputDuration: number
+}
+
 async function renderCut(
   file: Blob,
   keep: Range[],
   onProgress: ((fraction: number) => void) | undefined,
   allowHdr: boolean,
-): Promise<{ blob: Blob; storedAs: string | null; recovered: number }> {
+): Promise<CutOutput> {
   if (!(await isSilenceCutSupported())) {
     throw new SilenceCutError(
       "This browser can't cut video yet. Update to the newest iOS/Safari, or use the Mac version.",
@@ -485,6 +443,7 @@ async function renderCut(
     // last frame written, a few times at most - as the campaign renders do.
     let lastWritten = -Infinity
     let recovered = 0
+    const shifts: number[] = []
 
     for (const { start, end } of keep) {
       // Video and audio frames rarely land exactly on `start` - a decoder
@@ -538,7 +497,7 @@ async function renderCut(
               }
               return
             } catch (error) {
-              if (!decoderGaveUp(error)) throw error
+              if (!decoderGaveUp(error)) throw asRenderError(error)
               await videoFrames?.dispose().catch(() => {})
               if (document.visibilityState !== 'visible') {
                 // Taken away because the page went to the background: not the
@@ -567,6 +526,9 @@ async function renderCut(
           }
         })(),
       ])
+      // Where this range landed: the video's own shift, or - a range with no
+      // frame in it - where the cursor stood.
+      shifts.push(videoShift ?? cursor - start)
       // The next range starts after whichever track actually ran longer -
       // never behind either one, so the two tracks can't overlap.
       cursor = Math.max(videoEnd, audioEnd)
@@ -579,9 +541,11 @@ async function renderCut(
     if (blob.size === 0) throw new SilenceCutError('Rendering finished but produced no file. Try again.')
     finished = true
     onProgress?.(1)
-    return { blob, storedAs: sink.storedAs, recovered }
+    return { blob, storedAs: sink.storedAs, recovered, shifts, outputDuration: cursor }
   } catch (error) {
-    if (keepingHdr && !(error instanceof SilenceCutError)) throw new HdrEncodeFailed(error)
+    // Only the encoder refusing earns a second cut without HDR - anything
+    // else would fail again after the whole cut had been made twice.
+    if (keepingHdr && encoderGaveUp(error)) throw new HdrEncodeFailed(error)
     throw error
   } finally {
     await Promise.all([videoFrames?.dispose(), audioFrames?.dispose()]).catch(() => {})
@@ -603,16 +567,16 @@ export async function cutSilenceFromFile(
   options: CutOptions = {},
 ): Promise<SilenceCutResult> {
   const { keep, duration, silences, fillerWords, stutters, words } = await planCut(file, settings, options)
-  const { blob, storedAs, recovered } = await cutSilence(file, keep, onProgress)
+  const { blob, storedAs, recovered, shifts, outputDuration } = await cutSilence(file, keep, onProgress)
   return {
     blob,
     storedAs,
     ...(recovered > 0 ? { recovered } : {}),
     originalDurationSec: duration,
-    newDurationSec: totalDuration(keep),
+    newDurationSec: outputDuration,
     cuts: silences,
     ...(options.detectFillerWords ? { fillerWords, stutters } : {}),
-    ...(options.detectCaptions ? { captionCues: buildCaptionCues(words, keep) } : {}),
+    ...(options.detectCaptions ? { captionCues: buildCaptionCues(words, keep, shifts) } : {}),
   }
 }
 

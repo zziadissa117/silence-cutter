@@ -92,6 +92,11 @@ describe('firstLineHeadline', () => {
     expect(firstLineHeadline(heard('um so I found an app that pays. It is great'))).toBe('So I found an app that pays')
   })
 
+  it('leaves out an "um" in the middle too, and the comma it carried', () => {
+    expect(firstLineHeadline(heard('So, um, I found an app that pays.'))).toBe('So I found an app that pays')
+    expect(firstLineHeadline(heard('I like this app.'))).toBe('I like this app')
+  })
+
   it('stops at eight words', () => {
     expect(firstLineHeadline(heard('this is the longest opening line I have ever said on camera'))).toBe(
       'This is the longest opening line I have',

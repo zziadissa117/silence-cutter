@@ -98,6 +98,18 @@ export function productMoment(segments: Segment[], t: number): number | null {
   return null
 }
 
+/** Where a moment of the product clip lands on the finished video - or, for
+ *  a moment in a part that was cut out, the start of the kept part after it,
+ *  the nearest thing that still exists: the rule the talking-head render's
+ *  MomentPlacer uses, so a caption for a word that starts a breath before
+ *  its kept part is not lost. Null only past the last kept part. */
+export function productMomentOrNext(segments: Segment[], t: number): number | null {
+  for (const s of segments) {
+    if (s.part === 'product' && t < s.end) return s.at + Math.max(0, t - s.start)
+  }
+  return null
+}
+
 /** Enough words that he is really talking - not the odd word the speech
  *  model makes out of music or a room's noise. */
 export const TALKING_WORDS = 4

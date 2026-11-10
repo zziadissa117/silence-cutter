@@ -30,11 +30,12 @@ export interface CaptionWord {
 /** When a caption was heard: its own times before it was fitted to a cut. */
 export const heardTime = (w: { start: number; end: number; heard?: { start: number; end: number } }) => w.heard ?? { start: w.start, end: w.end }
 
-/** A word as a caption shows it: no surrounding spaces, and no commas or
- *  full stops trailing it - TikTok's word captions drop them - while ? and !
- *  stay, since they change how the word reads. */
+/** A word as a caption shows it: no surrounding spaces, and no commas,
+ *  full stops, dashes, dots or brackets trailing it - TikTok's word captions
+ *  drop them - while ? and ! stay, since they change how the word reads. A
+ *  lone dash or "…", the model's mark for a hesitation, is no word at all. */
 export function cleanWord(text: string): string {
-  return text.trim().replace(/^[,.;:"“”]+|[,.;:"“”]+$/g, '')
+  return text.trim().replace(/^[,.;:"“”…\-–—()]+|[,.;:"“”…\-–—()]+$/g, '')
 }
 
 /** Everything a bare caption leaves off: what is left of the punctuation

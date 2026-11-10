@@ -520,6 +520,14 @@ export function angleProblems(campaign: Campaign, angle: Angle): string[] {
     }
     if (picture.image.size === 0) problems.push(`${which}'s image is empty. Pick it again.`)
   })
+  if (angle.bank.use) {
+    if (!within(angle.bank.seconds, LIMITS.pictureSeconds)) {
+      problems.push(`A bank picture has to stay up between ${LIMITS.pictureSeconds.min} and ${LIMITS.pictureSeconds.max} seconds.`)
+    }
+    if (!within(angle.bank.widthPct, LIMITS.pictureWidthPct)) {
+      problems.push(`The bank pictures' width has to be between ${LIMITS.pictureWidthPct.min}% and ${LIMITS.pictureWidthPct.max}%.`)
+    }
+  }
   return problems
 }
 

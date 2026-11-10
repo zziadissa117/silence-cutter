@@ -19,13 +19,27 @@ if (typeof window !== 'undefined') {
       leaving = false
     }, 10_000)
   })
+  // "pagehide" too stops counting after a while: a browser that fires it for
+  // a page merely sent to the background, or a navigation given up on, left
+  // the page "leaving" for good - and every later failure was then swallowed
+  // as if the page were gone, the row stuck at "working".
   window.addEventListener('pagehide', () => {
     leaving = true
     window.clearTimeout(stayed)
+    stayed = window.setTimeout(() => {
+      leaving = false
+    }, 10_000)
   })
-  // Brought back from the back-forward cache: still here after all.
+  // Brought back from the back-forward cache, or simply shown again: still
+  // here after all.
   window.addEventListener('pageshow', () => {
     leaving = false
+  })
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible') {
+      leaving = false
+      window.clearTimeout(stayed)
+    }
   })
 }
 
