@@ -443,6 +443,7 @@ export async function makeReaction(
             .filter(Boolean)
             .join(' ')
         : '',
+    recovered: rendered.recovered,
     reaction: { reactionSec: rendered.reactionSec, productSec: rendered.productSec, talking },
   }
 }

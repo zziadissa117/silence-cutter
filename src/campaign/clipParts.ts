@@ -271,6 +271,59 @@ export async function eachSound(
   }
 }
 
+/** Runs `attempt` - one pass over a clip's frames from `from` on, with a
+ *  decoder opened for it - and runs it again each time the phone's decoder
+ *  gives up partway (decoderGaveUp: "Decoder failure", or frames that stop
+ *  coming with no error, StoppedEarly), from the last frame written, up to
+ *  `maxRecoveries` times; past that the failure is passed on, a stall as
+ *  stalledProblem. Taken away because the page went to the background (iOS
+ *  does that) is not the video's fault: it waits for the page to be in front
+ *  and is not counted. Anything else fails the render as it came
+ *  (asRenderError). `letGo` disposes the decoder of the attempt that failed,
+ *  before the next one opens. Returns how many times it recovered, with
+ *  `recovered` - recoveries already spent on this video - counted in, so one
+ *  count covers a video made of several clips. The loop render.ts runs for
+ *  his own video, written down once for the clips (writeWhole,
+ *  reactionRender). */
+export async function withDecoderRecovery(
+  attempt: (from: number) => Promise<void>,
+  {
+    start,
+    lastWritten,
+    letGo,
+    maxRecoveries,
+    recovered = 0,
+  }: {
+    /** Where the pass starts, on the clip's own timeline. */
+    start: number
+    /** The last frame written so far, on the clip's timeline; -Infinity for none. */
+    lastWritten: () => number
+    letGo: () => Promise<void>
+    maxRecoveries: number
+    recovered?: number
+  },
+): Promise<number> {
+  let from = start
+  for (;;) {
+    try {
+      await attempt(from)
+      return recovered
+    } catch (error) {
+      if (!decoderGaveUp(error)) throw asRenderError(error)
+      await letGo()
+      if (document.visibilityState !== 'visible') await visibleAgain()
+      else {
+        if (recovered >= maxRecoveries) throw error instanceof StoppedEarly ? stalledProblem(error.at) : error
+        recovered++
+        // A breath for the phone, then a fresh decoder from where this one
+        // stopped.
+        await pause(500)
+      }
+      from = Math.max(start, lastWritten())
+    }
+  }
+}
+
 /** Writes a whole clip into a video being made, from `at` on its timeline:
  *  every frame through `onFrame` (which draws and adds it; the sample is
  *  closed after), its sound at `rate` and `channels` through `onSound`,
@@ -320,17 +373,19 @@ export async function writeWhole(
   let written = 0
   await Promise.all([
     (async () => {
-      let from = whole.start
       let done = -Infinity
-      let recoveries = 0
       // Where the clip's time 0 is: its start - or, under music (a batch),
       // its first frame when that only comes later, so the video plays from
       // it instead of freezing on it until it is due.
       let origin: number | null = null
-      let frames = new RangeReader(inTimestampOrder(new VideoSampleSink(clip.video).samples(from, whole.end)))
+      let frames = null as RangeReader<VideoSample> | null
+      const letGo = async () => {
+        await frames?.dispose().catch(() => {})
+      }
       try {
-        for (;;) {
-          try {
+        await withDecoderRecovery(
+          async (from) => {
+            frames = new RangeReader(inTimestampOrder(new VideoSampleSink(clip.video).samples(from, whole.end)))
             let seen = -Infinity
             for await (const sample of frames.range(from, whole.end, await keyAt(from))) {
               seen = Math.max(seen, sample.timestamp)
@@ -355,22 +410,11 @@ export async function writeWhole(
             // The frames ran out before the clip's end, with no error: the
             // decoder stopped - never held frozen, picked up again.
             if (stoppedEarly(seen, from, whole.end, await pictureEnd)) throw new StoppedEarly(Math.max(seen, from))
-            return
-          } catch (error) {
-            if (!decoderGaveUp(error)) throw asRenderError(error)
-            await frames.dispose().catch(() => {})
-            if (document.visibilityState !== 'visible') await visibleAgain()
-            else {
-              if (recoveries >= maxRecoveries) throw error instanceof StoppedEarly ? stalledProblem(error.at) : error
-              recoveries++
-              await pause(500)
-            }
-            from = Math.max(whole.start, done)
-            frames = new RangeReader(inTimestampOrder(new VideoSampleSink(clip.video).samples(from, whole.end)))
-          }
-        }
+          },
+          { start: whole.start, lastWritten: () => done, letGo, maxRecoveries },
+        )
       } finally {
-        await frames.dispose().catch(() => {})
+        await letGo()
       }
     })(),
     onSound

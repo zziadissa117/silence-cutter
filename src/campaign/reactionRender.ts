@@ -27,11 +27,12 @@ import { SilenceCutError } from '../media/errors'
 import { forwardOnly } from '../media/forwardOnly'
 import { createOutputSink } from '../media/outputSink'
 import { RangeReader, inTimestampOrder } from '../media/rangeReader'
+import { MAX_RECOVERIES, StoppedEarly, stoppedEarly } from '../media/recovery'
 import { MAX_CHANNELS, SAFE_SAMPLE_RATE, isSilenceCutSupported } from '../media/silenceCut'
 import type { Range } from '../media/silenceMath'
 import { CAPTION_LEAD, captionAt, drawStyledCaption, captionRanges, type CaptionPosition, type CaptionSize, type CaptionStyle, type CaptionWord, PHRASE_HOLD_SEC } from './captions'
 import { framingAt, planMotion, reactionZoom, zoomPlace } from './effects'
-import { eachSound, openClip, type Clip } from './clipParts'
+import { eachSound, openClip, withDecoderRecovery, type Clip } from './clipParts'
 import { headlineFontReady } from './headlineFont'
 import type { BuiltInSound, VideoLook } from './look'
 import { MusicBed, musicGain, trackLoudness, type MusicLevel } from './music'
@@ -81,6 +82,9 @@ export interface ReactionRenderResult {
   reactionSec: number
   productSec: number
   totalSec: number
+  /** How many times the phone's decoder gave up partway and a fresh one
+   *  picked up from the last frame written - over both clips. */
+  recovered: number
 }
 
 export async function renderReaction(
@@ -172,49 +176,89 @@ export async function renderReaction(
 
     const videoClock = forwardOnly()
     let writtenFrames = 0
+    let recovered = 0
 
     for (const clip of clips) {
       const part: Segment['part'] = clip === reactionClip ? 'reaction' : 'product'
       const mine = rangesOf(part)
       const packets = new EncodedPacketSink(clip.video)
       const keyAt = async (t: number) => (await packets.getKeyPacket(t, { verifyKeyPackets: true }))?.timestamp ?? -Infinity
-      const frames = new RangeReader(inTimestampOrder(new VideoSampleSink(clip.video).samples(mine[0].start, mine[mine.length - 1].end)))
-      readers.push(frames)
+      // Where the clip's own picture ends: frames stopping before it are the
+      // decoder having stopped, not the clip.
+      const pictureEnd = await Promise.resolve()
+        .then(() => clip.video.computeDuration())
+        .catch(() => Infinity)
+      // The phone's decoder giving up partway through a clip ("Decoder
+      // failure") used to fail the whole reaction video. As for his own
+      // video (render.ts) and a clip joined on (writeWhole), a fresh decoder
+      // picks up from the last frame written, a few times at most.
+      let done = -Infinity
+      let frames = null as RangeReader<VideoSample> | null
+      const letGo = async () => {
+        await frames?.dispose().catch(() => {})
+      }
 
       await Promise.all([
         (async () => {
-          for (const segment of mine) {
-            for await (const sample of frames.range(segment.start, segment.end, await keyAt(segment.start))) {
-              const timestamp = videoClock(segment.at + Math.max(0, sample.timestamp - segment.start))
-              const duration = sample.duration
-              report(timestamp / total)
-              if (part === 'reaction') {
-                // Always a slow push-in over the reaction (effects.reactionZoom),
-                // or the angle's own push-in where that is closer.
-                const framing = framingAt(motion, 0, timestamp, [])
-                const zoomed = { ...framing, scale: Math.max(framing.scale, reactionZoom(timestamp, switchAt)) }
-                const spot = zoomPlace(reactionPlace, zoomed, width, height)
-                sample.draw(ctx, spot.x, spot.y, spot.width, spot.height)
-                if (headline) drawHeadline(ctx, headline)
-              } else {
-                ctx.fillStyle = '#000'
-                ctx.fillRect(0, 0, width, height)
-                const spot = zoomPlace(productPlace, framingAt(motion, 1, timestamp - switchAt, []), width, height)
-                sample.draw(ctx, spot.x, spot.y, spot.width, spot.height)
-                const word = captionAt(captionTimes, captionWords, timestamp, captionStyle === 'word' ? undefined : PHRASE_HOLD_SEC)
-                if (word >= 0) {
-                  const since = timestamp + CAPTION_LEAD - captionTimes[word]
-                  drawStyledCaption(ctx, width, height, captionWords, captionPhrases, word, since, false, captionPosition, captionSize, captionStyle)
+          try {
+            recovered = await withDecoderRecovery(
+              async (from) => {
+                frames = new RangeReader(inTimestampOrder(new VideoSampleSink(clip.video).samples(from, mine[mine.length - 1].end)))
+                readers.push(frames)
+                for (const segment of mine) {
+                  // Written whole before the decoder gave up.
+                  if (segment.end <= from) continue
+                  const begin = Math.max(segment.start, from)
+                  let seen = -Infinity
+                  for await (const sample of frames.range(begin, segment.end, await keyAt(begin))) {
+                    seen = Math.max(seen, sample.timestamp)
+                    if (sample.timestamp <= done) {
+                      sample.close()
+                      continue
+                    }
+                    const sourceTime = sample.timestamp
+                    const timestamp = videoClock(segment.at + Math.max(0, sample.timestamp - segment.start))
+                    const duration = sample.duration
+                    report(timestamp / total)
+                    if (part === 'reaction') {
+                      // Always a slow push-in over the reaction (effects.reactionZoom),
+                      // or the angle's own push-in where that is closer.
+                      const framing = framingAt(motion, 0, timestamp, [])
+                      const zoomed = { ...framing, scale: Math.max(framing.scale, reactionZoom(timestamp, switchAt)) }
+                      const spot = zoomPlace(reactionPlace, zoomed, width, height)
+                      sample.draw(ctx, spot.x, spot.y, spot.width, spot.height)
+                      if (headline) drawHeadline(ctx, headline)
+                    } else {
+                      ctx.fillStyle = '#000'
+                      ctx.fillRect(0, 0, width, height)
+                      const spot = zoomPlace(productPlace, framingAt(motion, 1, timestamp - switchAt, []), width, height)
+                      sample.draw(ctx, spot.x, spot.y, spot.width, spot.height)
+                      const word = captionAt(captionTimes, captionWords, timestamp, captionStyle === 'word' ? undefined : PHRASE_HOLD_SEC)
+                      if (word >= 0) {
+                        const since = timestamp + CAPTION_LEAD - captionTimes[word]
+                        drawStyledCaption(ctx, width, height, captionWords, captionPhrases, word, since, false, captionPosition, captionSize, captionStyle)
+                      }
+                    }
+                    sample.close()
+                    const frame = new VideoSample(canvas, { timestamp, duration })
+                    try {
+                      await videoSource.add(frame)
+                    } finally {
+                      frame.close()
+                    }
+                    // Marked done only once it is written, so a frame the
+                    // encoder refused is tried again rather than skipped.
+                    done = sourceTime
+                  }
+                  // The frames ran out before the part's end, with no error:
+                  // the decoder stopped - never held frozen, picked up again.
+                  if (stoppedEarly(seen, begin, segment.end, pictureEnd)) throw new StoppedEarly(Math.max(seen, begin))
                 }
-              }
-              sample.close()
-              const frame = new VideoSample(canvas, { timestamp, duration })
-              try {
-                await videoSource.add(frame)
-              } finally {
-                frame.close()
-              }
-            }
+              },
+              { start: mine[0].start, lastWritten: () => done, letGo, maxRecoveries: MAX_RECOVERIES, recovered },
+            )
+          } finally {
+            await letGo()
           }
         })(),
         eachSound(clip, mine, RATE, CHANNELS, async (planes) => {
@@ -236,7 +280,7 @@ export async function renderReaction(
       ])
       // Each clip's decoder let go before the next clip's starts: two 4K
       // decoders at once is what brings a phone's GPU process down.
-      await frames.dispose().catch(() => {})
+      await letGo()
     }
 
     await output.finalize()
@@ -245,7 +289,7 @@ export async function renderReaction(
     finished = true
     onProgress?.(1)
     const reactionSec = switchAt
-    return { blob, storedAs: sink.storedAs, reactionSec, productSec: total - reactionSec, totalSec: total }
+    return { blob, storedAs: sink.storedAs, reactionSec, productSec: total - reactionSec, totalSec: total, recovered }
   } finally {
     await Promise.all(readers.map((r) => r.dispose().catch(() => {})))
     for (const clip of clips) clip.input.dispose()
