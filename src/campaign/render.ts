@@ -33,7 +33,6 @@ import {
   AudioSampleSource,
   BlobSource,
   CanvasSink,
-  canEncodeAudio,
   EncodedPacketSink,
   Input,
   Mp4OutputFormat,
@@ -45,17 +44,17 @@ import {
   type WrappedCanvas,
 } from 'mediabunny'
 
-import { SilenceCutError } from '../media/errors'
+import { throttled } from '../media/audio'
+import { SilenceCutError, UNREADABLE_FORMAT } from '../media/errors'
 import { contiguousAudio, forwardOnly } from '../media/forwardOnly'
 import { createOutputSink } from '../media/outputSink'
 import { RangeReader, inTimestampOrder } from '../media/rangeReader'
-import { isSilenceCutSupported } from '../media/silenceCut'
+import { audioConversionFor, isSilenceCutSupported } from '../media/silenceCut'
 import { totalDuration, type Range } from '../media/silenceMath'
 import type { VideoLook } from './look'
 import { CAPTION_LEAD, captionAt, drawStyledCaption, captionRanges, type CaptionPosition, type CaptionSize, type CaptionStyle, type CaptionWord, PHRASE_HOLD_SEC } from './captions'
-import { decoderGaveUp, eachSound, firstShown, openClip, pause, visibleAgain, wholeOf, writeWhole, type Clip } from './clipParts'
-import { asRenderError } from '../media/recovery'
-import { StoppedEarly, stalledProblem, stoppedEarly } from '../media/recovery'
+import { decoderGaveUp, eachSound, firstShown, openClip, pause, planesOf, visibleAgain, wholeOf, writeWhole, type Clip } from './clipParts'
+import { MAX_RECOVERIES, StoppedEarly, asRenderError, stalledProblem, stoppedEarly } from '../media/recovery'
 import { traceRead, traceStart, traceStep, traceWritten } from './renderTrace'
 import type { ClipPlace } from './clips'
 import { framingAt, logoPop, placeFrame, planMotion } from './effects'
@@ -86,47 +85,9 @@ async function* fromStart(sink: CanvasSink, first: number, seconds: number): Asy
   for await (const frame of sink.canvases(first, first + seconds)) yield { ...frame, timestamp: frame.timestamp - first }
 }
 
-/** How many times one video may bring up a fresh decoder after the phone's
- *  gives up partway, before the failure is passed on. */
-const MAX_RECOVERIES = 4
-
-
 /** The most a quiet clip is lifted to meet his voice: more only brings up
  *  its hiss. */
 const CLIP_MAX_LIFT_DB = 12
-
-
-const UNREADABLE_FORMAT =
-  "This browser can't read this video's format. On a computer, open this page in Safari or Chrome; on a phone, update to the newest iOS."
-
-/** What every AAC encoder takes: 48kHz, at most stereo. Same rule as the
- *  plain cutter's. */
-const SAFE_SAMPLE_RATE = 48000
-const MAX_CHANNELS = 2
-
-async function audioConversionFor(
-  audioTrack: NonNullable<Awaited<ReturnType<Input['getPrimaryAudioTrack']>>>,
-): Promise<{ transform?: { sampleRate: number; numberOfChannels: number } }> {
-  const [sampleRate, channels] = await Promise.all([audioTrack.getSampleRate(), audioTrack.getNumberOfChannels()])
-  const numberOfChannels = Math.min(channels, MAX_CHANNELS)
-  if (numberOfChannels === channels && (await canEncodeAudio('aac', { sampleRate, numberOfChannels }))) return {}
-  if (await canEncodeAudio('aac', { sampleRate: SAFE_SAMPLE_RATE, numberOfChannels })) {
-    return { transform: { sampleRate: SAFE_SAMPLE_RATE, numberOfChannels } }
-  }
-  throw new SilenceCutError(
-    `This video's sound (${channels} channels at ${sampleRate} Hz) can't be re-encoded by this browser. Try Safari or Chrome.`,
-  )
-}
-
-function throttled(onProgress?: (fraction: number) => void): (fraction: number) => void {
-  let last = -1
-  return (fraction) => {
-    const capped = Math.max(0, Math.min(0.99, fraction))
-    if (!onProgress || capped - last < 0.01) return
-    last = capped
-    onProgress(capped)
-  }
-}
 
 export interface CampaignRenderInput {
   keep: Range[]
@@ -403,7 +364,7 @@ export async function renderCampaignCut(
       try {
         for (const { start, end } of keep) {
           for await (const sample of reader.range(start, end, await keyAt(audioPackets, start))) {
-            visit(planesOf(sample).planes)
+            visit(planesOf(sample))
             sample.close()
           }
         }
@@ -968,7 +929,7 @@ export async function renderCampaignCut(
         })(),
         (async () => {
           for await (const sample of audioReader.range(start, end, audioFrom)) {
-            const { planes } = planesOf(sample)
+            const planes = planesOf(sample)
             const [first, last] = insidePart(sample.timestamp, sample.numberOfFrames, sample.sampleRate, start, end)
             sample.close()
             if (last <= first) continue
@@ -1042,20 +1003,6 @@ export async function renderCampaignCut(
     }
   }
 }
-
-/** A sample's audio as one array per channel, all in one buffer that a new
- *  sample can be made from. */
-function planesOf(sample: AudioSample): { data: Float32Array; planes: Float32Array[] } {
-  const { numberOfChannels, numberOfFrames } = sample
-  const data = new Float32Array(numberOfFrames * numberOfChannels)
-  const planes = Array.from({ length: numberOfChannels }, (_, c) => {
-    const plane = data.subarray(c * numberOfFrames, (c + 1) * numberOfFrames)
-    sample.copyTo(plane, { planeIndex: c, format: 'f32-planar' })
-    return plane
-  })
-  return { data, planes }
-}
-
 
 /** A sound's first `seconds`, its last moment faded out so it ends without a
  *  click (a song he put on for part of the video). */

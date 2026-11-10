@@ -29,7 +29,7 @@ import {
 
 import { audioExtent, decodeAudio, throttled } from './audio'
 import { buildCaptionCues, type CaptionCue } from './captions'
-import { SilenceCutError } from './errors'
+import { SilenceCutError, UNREADABLE_FORMAT } from './errors'
 import {
   WHISPER_SAMPLE_RATE,
   alignToAudio,
@@ -41,7 +41,7 @@ import {
 import { contiguousAudio, forwardOnly } from './forwardOnly'
 import { createOutputSink } from './outputSink'
 import { RangeReader, inTimestampOrder } from './rangeReader'
-import { asRenderError, decoderGaveUp, encoderGaveUp, pause, visibleAgain } from './recovery'
+import { MAX_RECOVERIES, asRenderError, decoderGaveUp, encoderGaveUp, pause, visibleAgain } from './recovery'
 import {
   BALANCED_SETTINGS,
   findSilentRanges,
@@ -58,10 +58,6 @@ import { onEncodedPacketMatchingColour } from '../campaign/colourCheck'
 
 export { SilenceCutError }
 
-/** How many times a video's decoder giving up is picked up again before the
- *  cut fails - the campaign renders' number. */
-const MAX_RECOVERIES = 4
-
 /** The 10-bit HDR encoder said it could and then could not. Only this is
  *  worth a second go without HDR - any other failure would just fail again,
  *  after the whole cut had been made a second time. */
@@ -70,9 +66,6 @@ class HdrEncodeFailed extends Error {
     super(original instanceof Error ? original.message : String(original))
   }
 }
-
-const UNREADABLE_FORMAT =
-  "This browser can't read this video's format. On a computer, open this page in Safari or Chrome; on a phone, update to the newest iOS."
 
 /** True once this browser can actually decode and re-encode video and audio.
  *  Safari only gained AudioEncoder/AudioDecoder in Safari 26 (2026); older
@@ -110,16 +103,19 @@ async function findHdrCodec(width: number, height: number): Promise<string | nul
   return null
 }
 
-/** What every AAC encoder takes: 48kHz, at most stereo. */
-const SAFE_SAMPLE_RATE = 48000
-const MAX_CHANNELS = 2
+/** What every AAC encoder takes: 48kHz, at most stereo. The plain cut keeps
+ *  a video's own rate and channels when the encoder takes them
+ *  (audioConversionFor); the campaign renders write every video this way. */
+export const SAFE_SAMPLE_RATE = 48000
+export const MAX_CHANNELS = 2
 
 /** How the audio has to be converted before this device will encode it, if at
  *  all. AAC encoders only take a handful of sample rates - Chrome's refuses
  *  32kHz, which some apps and screen recordings use - and some take no more
  *  than two channels. Nothing is converted when the device can take the
- *  audio as it is, so a normal video comes out exactly as it always did. */
-async function audioConversionFor(
+ *  audio as it is, so a normal video comes out exactly as it always did.
+ *  The campaign render (render.ts) uses the same rule. */
+export async function audioConversionFor(
   audioTrack: NonNullable<Awaited<ReturnType<Input['getPrimaryAudioTrack']>>>,
 ): Promise<{ transform?: { sampleRate: number; numberOfChannels: number } }> {
   const [sampleRate, channels] = await Promise.all([audioTrack.getSampleRate(), audioTrack.getNumberOfChannels()])

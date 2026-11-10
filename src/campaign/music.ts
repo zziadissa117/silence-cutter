@@ -16,6 +16,7 @@
 // in a batch video only; in the rest it ends where the song ends - his call
 // (2026-10-29): "Don't loop it at all. Just stop it right there".
 
+import { dbToGain } from './sounds'
 import { LoudnessMeter } from './voice'
 
 /** A track this big is any song there is: anything bigger is a video, or a
@@ -44,8 +45,6 @@ export const MUSIC = {
   talkingWithinDb: 18,
 }
 
-const DB_TO_LN = Math.LN10 / 20
-const dbToGain = (db: number) => Math.exp(db * DB_TO_LN)
 const coefficient = (sampleRate: number, ms: number) => 1 - Math.exp(-1000 / (ms * sampleRate))
 
 /** The loudness of a track, in LUFS; -Infinity for silence. */

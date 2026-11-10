@@ -29,14 +29,17 @@ import {
 } from 'mediabunny'
 
 import { SilenceCutError } from '../media/errors'
+import { MAX_CHANNELS, SAFE_SAMPLE_RATE } from '../media/silenceCut'
 import { createOutputSink } from '../media/outputSink'
 import { eachSound, openClip, wholeOf } from './clipParts'
 import { MusicBed, musicGain, trackLoudness, type MusicLevel } from './music'
 import { mixInto, prepareMusic } from './sounds'
 import { Voice, measureLoudness, type WalkAudio } from './voice'
 
-const RATE = 48000
-const CHANNELS = 2
+/** Every video written at one rate, stereo - what every AAC encoder takes
+ *  (media/silenceCut.ts). */
+const RATE = SAFE_SAMPLE_RATE
+const CHANNELS = MAX_CHANNELS
 
 export interface MusicAdded {
   blob: Blob

@@ -24,6 +24,7 @@ import {
 } from 'mediabunny'
 
 import { SilenceCutError } from '../media/errors'
+import { SAFE_SAMPLE_RATE } from '../media/silenceCut'
 import { createOutputSink } from '../media/outputSink'
 import { onEncodedPacketMatchingColour } from './colourCheck'
 import { frameRateOf, videoQuality } from './quality'
@@ -31,7 +32,9 @@ import { liftMusic, musicTrack, soloMusicGain } from './montageRender'
 import { MusicBed, musicGain, trackLoudness } from './music'
 import { musicProblem, prepareMusic } from './sounds'
 
-const RATE = 48000
+/** Every video written at one rate - what every AAC encoder takes
+ *  (media/silenceCut.ts). */
+const RATE = SAFE_SAMPLE_RATE
 
 export interface SongSwapResult {
   blob: Blob

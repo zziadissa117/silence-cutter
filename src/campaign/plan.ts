@@ -11,7 +11,7 @@
 import { ALL_FORMATS, BlobSource, Input, UnsupportedInputFormatError } from 'mediabunny'
 
 import { audioExtent, decodeAudio } from '../media/audio'
-import { SilenceCutError } from '../media/errors'
+import { SilenceCutError, UNREADABLE_FORMAT } from '../media/errors'
 import {
   WHISPER_SAMPLE_RATE,
   alignToAudio,
@@ -37,9 +37,6 @@ import { pieceCuts, type HeardFiller, type TimedWord } from './align'
 import type { AlignMessage, AlignRequest } from './align.worker'
 import { ALIGNED_LATE_SEC, HEARD_LATE_SEC, captionWords, snapToOnsets, spokenWords, type CaptionWord } from './captions'
 import { LONG_SEC, TINY_SEC, cutNoise, loneSounds, peakDbIn, peaksOf, protectWords, type CutCheck, type WordSpan } from './noiseCuts'
-
-const UNREADABLE_FORMAT =
-  "This browser can't read this video's format. On a computer, open this page in Safari or Chrome; on a phone, update to the newest iOS."
 
 /** How long the letter model may go without a word before it is given up
  *  on, and the captions keep the speech model's own times. */

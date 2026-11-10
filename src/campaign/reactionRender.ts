@@ -27,7 +27,7 @@ import { SilenceCutError } from '../media/errors'
 import { forwardOnly } from '../media/forwardOnly'
 import { createOutputSink } from '../media/outputSink'
 import { RangeReader, inTimestampOrder } from '../media/rangeReader'
-import { isSilenceCutSupported } from '../media/silenceCut'
+import { MAX_CHANNELS, SAFE_SAMPLE_RATE, isSilenceCutSupported } from '../media/silenceCut'
 import type { Range } from '../media/silenceMath'
 import { CAPTION_LEAD, captionAt, drawStyledCaption, captionRanges, type CaptionPosition, type CaptionSize, type CaptionStyle, type CaptionWord, PHRASE_HOLD_SEC } from './captions'
 import { framingAt, planMotion, reactionZoom, zoomPlace } from './effects'
@@ -44,9 +44,9 @@ import { Voice, measureLoudness, type WalkAudio } from './voice'
 import { onEncodedPacketMatchingColour } from './colourCheck'
 
 /** Every reaction video is written at one rate, whatever its clips were
- *  filmed at: what every AAC encoder takes. */
-const RATE = 48000
-const CHANNELS = 2
+ *  filmed at: what every AAC encoder takes (media/silenceCut.ts). */
+const RATE = SAFE_SAMPLE_RATE
+const CHANNELS = MAX_CHANNELS
 /** The switch sound starts a hair before the cut, so its swell lands on it. */
 const SWITCH_LEAD_SEC = 0.12
 const SWITCH_GAIN_DB = -3

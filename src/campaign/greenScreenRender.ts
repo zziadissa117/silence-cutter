@@ -26,7 +26,8 @@ import {
 import { SilenceCutError } from '../media/errors'
 import { contiguousAudio, forwardOnly } from '../media/forwardOnly'
 import { createOutputSink } from '../media/outputSink'
-import { isSilenceCutSupported } from '../media/silenceCut'
+import { MAX_RECOVERIES } from '../media/recovery'
+import { MAX_CHANNELS, SAFE_SAMPLE_RATE, isSilenceCutSupported } from '../media/silenceCut'
 import { eachSound, openClip, usualFrame, wholeOf, writeWhole, type Clip } from './clipParts'
 import { onEncodedPacketMatchingColour } from './colourCheck'
 import { CUTOUT_HEIGHT, CUTOUT_WIDTH, greyToAlpha } from './cutout'
@@ -39,9 +40,10 @@ import { cover } from './reaction'
 import { Limiter, measureLoudness } from './voice'
 import { report as reportProblem } from '../report'
 
-const RATE = 48000
-const CHANNELS = 2
-const MAX_RECOVERIES = 4
+/** Every video written at one rate, stereo - what every AAC encoder takes
+ *  (media/silenceCut.ts). */
+const RATE = SAFE_SAMPLE_RATE
+const CHANNELS = MAX_CHANNELS
 
 export type CornerSide = 'left' | 'right'
 

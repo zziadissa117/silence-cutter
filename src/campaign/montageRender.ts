@@ -22,7 +22,8 @@ import { throttled } from '../media/audio'
 import { SilenceCutError } from '../media/errors'
 import { contiguousAudio, forwardOnly } from '../media/forwardOnly'
 import { createOutputSink } from '../media/outputSink'
-import { isSilenceCutSupported } from '../media/silenceCut'
+import { MAX_RECOVERIES } from '../media/recovery'
+import { MAX_CHANNELS, SAFE_SAMPLE_RATE, isSilenceCutSupported } from '../media/silenceCut'
 import { openClip, usualFrame, writeWhole, type Clip } from './clipParts'
 import { framingAt, planMotion, randomFrom, reactionZoom, zoomPlace } from './effects'
 import { ONLY_HOOK_ELSE } from './batch'
@@ -40,9 +41,10 @@ import { musicProblem, prepareMusic } from './sounds'
 import { report as reportProblem } from '../report'
 import { onEncodedPacketMatchingColour } from './colourCheck'
 
-const RATE = 48000
-const CHANNELS = 2
-const MAX_RECOVERIES = 4
+/** Every video written at one rate, stereo - what every AAC encoder takes
+ *  (media/silenceCut.ts). */
+const RATE = SAFE_SAMPLE_RATE
+const CHANNELS = MAX_CHANNELS
 /** With nothing else to hear, the music is the sound: every song is set to
  *  about where TikTok plays things - a loud master brought down, a quiet one
  *  brought up, its peaks held under a limiter so it never clips. A quiet

@@ -25,6 +25,8 @@
 // render can run it chunk by chunk as the video is written, and the tests can
 // run it without a browser.
 
+import { dbToGain } from './sounds'
+
 export const VOICE = {
   /** Where the finished voice lands, in LUFS. */
   targetLufs: -14,
@@ -41,12 +43,6 @@ export const VOICE = {
    *  5 ms, far too little to see against the lips. */
   limiter: { lookaheadMs: 5, releaseMs: 80 },
 } as const
-
-const DB_TO_LN = Math.LN10 / 20
-
-function dbToGain(db: number): number {
-  return Math.exp(db * DB_TO_LN)
-}
 
 // --- Filters ---------------------------------------------------------------
 

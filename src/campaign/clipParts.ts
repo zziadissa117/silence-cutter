@@ -150,8 +150,8 @@ export function wholeOf(clip: Clip): Range {
   return { start: clip.first, end: clip.duration }
 }
 
-/** A sample's audio, one array per channel. */
-function planesOf(sample: AudioSample): Float32Array[] {
+/** A sample's audio, one array per channel - here and in render.ts. */
+export function planesOf(sample: AudioSample): Float32Array[] {
   return Array.from({ length: sample.numberOfChannels }, (_, c) => {
     const plane = new Float32Array(sample.numberOfFrames)
     sample.copyTo(plane, { planeIndex: c, format: 'f32-planar' })

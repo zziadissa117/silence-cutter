@@ -4,6 +4,11 @@
 
 import { SilenceCutError } from './errors'
 
+/** How many times one video may bring up a fresh decoder after the phone's
+ *  gives up partway, before the failure is passed on - the plain cutter's
+ *  number and every campaign render's. */
+export const MAX_RECOVERIES = 4
+
 /** The phone's storage is full: the file being written could not grow. */
 function outOfStorage(error: unknown): boolean {
   return error instanceof DOMException && error.name === 'QuotaExceededError'

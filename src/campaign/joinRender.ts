@@ -26,15 +26,13 @@ import { SilenceCutError } from '../media/errors'
 import { contiguousAudio, forwardOnly } from '../media/forwardOnly'
 import { fadeAtCuts, nearCut } from './cutFades'
 import { createOutputSink } from '../media/outputSink'
-import { isSilenceCutSupported } from '../media/silenceCut'
+import { MAX_RECOVERIES } from '../media/recovery'
+import { MAX_CHANNELS, SAFE_SAMPLE_RATE, isSilenceCutSupported } from '../media/silenceCut'
 import { openClip, writeWhole, type Clip } from './clipParts'
 import { outputSize } from './overlay'
 import { makeSize } from './quality'
 import { cover } from './reaction'
 import { onEncodedPacketMatchingColour } from './colourCheck'
-
-const MAX_RECOVERIES = 4
-const SAFE_RATE = 48000
 
 export interface JoinedRecording {
   blob: Blob
@@ -60,9 +58,9 @@ export async function joinRecordings(files: Blob[], onProgress?: (fraction: numb
     // The first part's sound decides the rate and channels, when an AAC
     // encoder takes them; otherwise what every one does.
     const voiced = clips.find((c) => c.audio)?.audio ?? null
-    let rate = voiced ? await voiced.getSampleRate() : SAFE_RATE
-    const channels = voiced ? Math.min(2, await voiced.getNumberOfChannels()) : 2
-    if (!(await canEncodeAudio('aac', { sampleRate: rate, numberOfChannels: channels }))) rate = SAFE_RATE
+    let rate = voiced ? await voiced.getSampleRate() : SAFE_SAMPLE_RATE
+    const channels = voiced ? Math.min(MAX_CHANNELS, await voiced.getNumberOfChannels()) : MAX_CHANNELS
+    if (!(await canEncodeAudio('aac', { sampleRate: rate, numberOfChannels: channels }))) rate = SAFE_SAMPLE_RATE
     if (!(await canEncodeAudio('aac', { sampleRate: rate, numberOfChannels: channels }))) {
       throw new SilenceCutError("This browser can't write the video's sound. Try Safari or Chrome.")
     }
