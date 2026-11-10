@@ -564,6 +564,9 @@ export async function cutSilenceFromFile(
 ): Promise<SilenceCutResult> {
   const { keep, duration, silences, fillerWords, stutters, words } = await planCut(file, settings, options)
   const { blob, storedAs, recovered, shifts, outputDuration } = await cutSilence(file, keep, onProgress)
+  // Captions only when something was heard: an empty list read as captions
+  // present - a Captions button and an empty .srt to save.
+  const captionCues = options.detectCaptions ? buildCaptionCues(words, keep, shifts) : []
   return {
     blob,
     storedAs,
@@ -572,7 +575,7 @@ export async function cutSilenceFromFile(
     newDurationSec: outputDuration,
     cuts: silences,
     ...(options.detectFillerWords ? { fillerWords, stutters } : {}),
-    ...(options.detectCaptions ? { captionCues: buildCaptionCues(words, keep, shifts) } : {}),
+    ...(captionCues.length > 0 ? { captionCues } : {}),
   }
 }
 

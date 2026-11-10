@@ -5,6 +5,11 @@ import type { WordChunk } from './fillerWords'
 import type { Range } from './silenceMath'
 
 describe('buildCaptionCues', () => {
+  it('gives no cues when nothing was heard - the cut leaves captions out then, rather than offering an empty file', () => {
+    expect(buildCaptionCues([], [{ start: 0, end: 10 }])).toEqual([])
+    expect(buildCaptionCues([{ text: '  ', start: 1, end: 2 }], [{ start: 0, end: 10 }])).toEqual([])
+  })
+
   it('remaps a word onto the cut video timeline, not the original', () => {
     // Original: 0-2 kept, 2-5 cut (removed silence), 5-7 kept.
     // A word at original time 6 lands at output time 3 (2 + (6-5)).
