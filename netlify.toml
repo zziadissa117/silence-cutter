@@ -1,3 +1,22 @@
 [build]
   command = "npm run build"
   publish = "dist"
+
+[build.environment]
+  # The toolchain (Vite 8, Vitest 5, TypeScript 6) needs a recent Node; a
+  # change in Netlify's default would otherwise break the build with no hint
+  # anywhere in the repo.
+  NODE_VERSION = "22"
+  # The speech library pulls in Node-only packages (onnxruntime-node, sharp)
+  # the browser build never uses, and their install scripts download native
+  # binaries - which fails behind a firewall. Nothing here needs an install
+  # script to run.
+  NPM_FLAGS = "--ignore-scripts"
+
+# Hashed files never change, so they are cached for good. The pages, the
+# service worker and the manifest keep Netlify's default (checked on every
+# load), so an update is still seen at once.
+[[headers]]
+  for = "/assets/*"
+  [headers.values]
+    Cache-Control = "public, max-age=31536000, immutable"

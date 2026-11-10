@@ -14,7 +14,7 @@ self.addEventListener('push', (event) => {
     self.registration.showNotification(message.title || 'Campaign videos', {
       body: message.body || '',
       tag: message.tag || undefined,
-      icon: '/icon.svg',
+      icon: '/icon-192.png',
       data: { url: message.url || '/campaign.html#posts' },
     }),
   )

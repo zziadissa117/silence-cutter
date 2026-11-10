@@ -1,12 +1,49 @@
+import { execSync } from 'node:child_process'
+import { createHash } from 'node:crypto'
+import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 
 import react from '@vitejs/plugin-react'
-import { defineConfig } from 'vite'
+import { defineConfig, type Plugin } from 'vite'
 import { VitePWA } from 'vite-plugin-pwa'
 
-/** When this copy was built, in UTC. Shown on the page and in every error, so
- *  a screenshot from someone else's phone says which version it came from. */
-const BUILT = new Date().toISOString().slice(0, 16).replace('T', ' ')
+const here = (path: string) => fileURLToPath(new URL(path, import.meta.url))
+
+/** Which copy this is: the commit it was built from and that commit's date.
+ *  Shown on the page and in every error, so a screenshot from someone else's
+ *  phone says which version it came from. The same for every build of the
+ *  same code - a build stamped with the clock changed the shared chunk's
+ *  hash on every deploy, and every phone downloaded 1.2 MB again for
+ *  nothing. Netlify names the commit in COMMIT_REF; git knows the rest. */
+function version(): string {
+  const git = (args: string): string => {
+    try {
+      return execSync(`git ${args}`, { stdio: ['ignore', 'pipe', 'ignore'] }).toString().trim()
+    } catch {
+      return ''
+    }
+  }
+  const commit = (process.env.COMMIT_REF ?? git('rev-parse HEAD')).slice(0, 7)
+  const date = git('log -1 --format=%cs')
+  return commit ? `${commit}${date ? ` · ${date}` : ''}` : 'dev'
+}
+const BUILT = version()
+
+/** The notification handlers are a separate file pulled into the service
+ *  worker; a change to it has to make a new worker, which the version in its
+ *  address does - from the file's own contents, so nobody has to remember. */
+const PUSH_SW_VERSION = createHash('sha1').update(readFileSync(here('./public/push-sw.js'))).digest('hex').slice(0, 8)
+
+/** onnxruntime-web refers to its "asyncify" WebAssembly build by URL, so Vite
+ *  copies it into every build: 27 MB that nothing ever fetches, since the
+ *  workers point the runtime at the plain build on the CDN before it loads
+ *  (src/media/ort.ts). Left out of the bundle. */
+const dropUnusedRuntime: Plugin = {
+  name: 'drop-unused-ort-wasm',
+  generateBundle(_options, bundle) {
+    for (const name of Object.keys(bundle)) if (/ort-wasm.*\.wasm$/.test(name)) delete bundle[name]
+  },
+}
 
 export default defineConfig({
   define: { __APP_VERSION__: JSON.stringify(BUILT) },
@@ -19,8 +56,8 @@ export default defineConfig({
   build: {
     rollupOptions: {
       input: {
-        main: fileURLToPath(new URL('./index.html', import.meta.url)),
-        campaign: fileURLToPath(new URL('./campaign.html', import.meta.url)),
+        main: here('./index.html'),
+        campaign: here('./campaign.html'),
       },
       // The AAC encoder only the Cutter server needs (serverMode.ts), in a
       // file of its own that a phone never fetches or keeps.
@@ -31,6 +68,7 @@ export default defineConfig({
   },
   plugins: [
     react(),
+    dropUnusedRuntime,
     VitePWA({
       // Deliberately NOT autoUpdate. An auto-updating service worker reloads
       // the page out from under whoever is using it, and this tool's whole
@@ -48,7 +86,7 @@ export default defineConfig({
         clientsClaim: true,
         // The posting's notifications (public/push-sw.js). The version in
         // the address makes a change to that file a new service worker too.
-        importScripts: ['push-sw.js?v=1'],
+        importScripts: [`push-sw.js?v=${PUSH_SW_VERSION}`],
       },
       manifest: {
         name: 'Silence Cutter',

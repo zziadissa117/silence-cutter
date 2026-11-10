@@ -3,6 +3,62 @@
 Newest first. Every change says what it does, how to use it, and how it works
 underneath. Kept up to date with each commit.
 
+## Audit: the fixes that needed no asking
+App and server: run ./deploy.sh (the caption prompt changed - deploy.sh runs ./deploy-server.sh too).
+Needs deploying: run ./deploy-server.sh
+An audit of both pages (UI, every backend step, the build), done first on the five-week-old `main` and then
+brought over here, fix by fix, where it still applied. Nothing that changes how a feature behaves for him; the
+open questions are listed at the end.
+
+**What he will see**
+- Rows that need him open by themselves (failed, held, unsure), with the reason inside; the row's line says
+  "Failed", not the whole error twice. "Remove", "Share", "Share all", "Approve N", "Angle default: …", "Add…":
+  shorter words, and icons (`icons.tsx`) instead of ✕ − + ▶ glyphs in the batch tab, clip rows and rows.
+- A finished video not sent because no accounts are picked says so in one line with a **Pick accounts** button
+  that opens the campaign's Posting set-up.
+- The summary's **Check N** counts only the videos with talking in them and simply approves the reactions
+  (`checkAll`); the drop zone says "Listened to first, so you can check the captions" when captions are on.
+- The page opens on Day or One video next time, never inside a one-off flow (clips, joining).
+- The iPhone picker tip (Format → Current) under the main picker (`VideoPicker tip`), and every clip picker
+  tells the picker watch its files arrived, so a clip that came through is never reported as lost.
+- Posts: an "Open video" link when only Postiz's copy is there; the empty state checks whether any campaign has
+  accounts picked, not whether one has times saved.
+- The plain cutter's row says what a video went without (note), and the update banner's words are shorter.
+
+**Fixed underneath**
+- Sync: one shared item whose picture or sound cannot be fetched is left for next time and everything after it
+  still arrives (`cloud.pullAll`, `stuckAt`); before, it stopped every item behind it for ever. A new sign-in
+  counts no file as uploaded yet (`store.forgetUploads`). The General campaign a fresh phone makes keeps its own
+  `updatedAt` (`saveCampaign(asIs)`), so the first sign-in no longer pushes it over the friend's customised one.
+- A video is kept, video and all, when its campaign or angle was deleted (Remove it, or add it again); it
+  used to be forgotten with an error. A batch video whose copy for Postiz could not be kept stays in the list
+  with its file instead of vanishing. A video hidden mid-way goes back in line at most twice
+  (`MAX_INTERRUPTIONS`), then its failure counts.
+- Caption fixes are written to disk a second after each change, not only on Done (`captionSaveTimer`).
+- Disconnecting posting turns the notifications off too (`turnOffPush`); the screen follows the server saying the
+  profile is gone (`watchPosting`); an angle removed on the other phone is no longer the one new videos are
+  added for.
+- The plain cut after the look failed keeps the "um"s out as he asked (`plainCut(..., cleanSpeech)`) and
+  reports its real length; the music fades from the seconds left (`planDrift`), not the plan's; frames are
+  closed in `finally` in every renderer; the HDR retry only for encoder failures (`encoderGaveUp`); out-of-storage
+  told apart from a decoder giving up (`recovery.outOfStorage`).
+- One speech worker for both pages (`media/transcribe.worker.ts`; the campaign one is gone), one sound decoder
+  (`media/audio.ts`), one copy of the server's address and key (`config.ts`), one track-size limit
+  (`music.MAX_TRACK_MB`). The video is stored before its row (`persistJob`), so a row with no video behind it
+  never comes back to fail. Error reports go five at a time (`report.PER_SEND`): twenty came close to the 64 KB
+  keepalive cap.
+- The caption prompt marks the transcript and the headline as material, never instructions (`caption.ts`); his
+  note and the campaign's rules stay instructions, as they are.
+- Build: the version is the commit and its date (the same for every build of the same code, so phones stop
+  re-downloading an unchanged 1.2 MB chunk), `push-sw.js` is versioned by its own hash, and the 27 MB
+  "asyncify" WebAssembly nothing fetches is left out of `dist/` (`drop-unused-ort-wasm`). `/` loads the cutter's
+  code only when the page is staying (`main.tsx`). `netlify.toml` sets the headers; `.oxlintrc.json` the lint.
+- Tests: 1370 pass; `npx tsc -b` clean; `npm run lint` no new warnings; `npx vite build` 4.5 MB.
+
+**Not done - his call** (from the audit): page-driven service-worker swap instead of `skipWaiting`; a
+sound-alike matcher for words the model mishears; the pause rule; self-hosting the speech runtime; a
+better caption model; captions per video vs the toggle; the held wording ("stopped" now also means by him).
+
 ## Edit screen: playing no longer pulls the page down to the captions
 App only: run ./deploy.sh.
 **What he said (2026-11-10):** "when I play the video, it always goes onto the captions ... Sometimes I want to stay on

@@ -36,7 +36,7 @@ tables use Supabase Auth; this app's `cutter_*` tables do not).
 | Page | Entry | What |
 |---|---|---|
 | `/campaign.html` | `src/campaign/main.tsx` -> `LoginGate` -> `CampaignApp` | the real app: Videos, Posts, Batch, Campaigns, Pictures, Settings |
-| `/` | `src/main.tsx` -> `App.tsx` | the plain "Cut only" tool; redirects to campaign.html unless signed in (`opening.ts`) |
+| `/` | `src/main.tsx` -> `App.tsx` | the plain "Cut only" tool; redirects to campaign.html unless signed in (`opening.ts`); its code is only loaded once the page is staying |
 
 `ModeNav.tsx` switches between them; leaving a page stops its work, so it asks
 first when something would be lost.
@@ -100,7 +100,8 @@ first when something would be lost.
 raw video file(s)
   -> (join) joinRender.ts          two recordings -> one file
   -> listen  pipeline.ts / plan.ts silence curve (media/silenceMath.ts) + speech model
-             transcribe.worker.ts   words (+ align.ts re-times them to the voice)
+             media/transcribe.worker.ts  words - the one speech worker, shared with the plain
+                                    cutter (+ align.ts re-times them to the voice)
              media/fillerWords.ts   which "um"/stumbles to cut
   -> ask     CheckQuestions.tsx (what Captions opens first): where it goes, headline + its look,
              music (JobRow.VideoFields), the pictures it shows (JobRow.PictureToggles), captions on
@@ -710,8 +711,11 @@ src/campaign/                  the campaign app (CampaignApp.tsx is the 2.4k-lin
   *View.tsx, *Editor*.tsx      screens: Batch, Posts, Campaigns, Bank, Settings, New post
   pipeline/plan/render/...     see render pipeline; cloud.ts = shared-login sync + sign-in
   store.ts, outbox.ts          local storage + upload queue
-src/media/                     the plain cutter's engine, reused by campaign/
+src/media/                     the plain cutter's engine, reused by campaign/: audio.ts (decode to 16 kHz mono,
+                               levels), transcribe.worker.ts (the speech worker), ort.ts (its runtime from the CDN),
+                               recovery.ts (decoder/encoder/storage failures told apart), silenceMath.ts
 src/{report,leaving,opening,CrashGuard,UpdateBanner,VideoPicker,pick*}.ts(x)  shell helpers
+src/{config,words,share}.ts    the server's address + key; the words both pages use; the share sheet
 supabase/functions/cutter      login + shared-setup sync (Edge Function)
 supabase/functions/postiz      posting, captions, scheduler, push (Edge Function);
                                slots.ts times, window.ts random times (also imported by the phone's
@@ -773,7 +777,10 @@ engine/                        the engine on Railway (Python): engine/ its code,
 - Once a day the campaign page reports what it stores (`storageReport.ts`, `check`/`storage`). Safari's own
   errors ("EmptyRanges", "Script error.") are not reported as crashes (`report.safarisOwn`).
 - `render.ts` is a *sibling* of `media/silenceCut.ts`; the plain cutter must
-  keep working exactly as it did. Shared by both: `media/recovery.ts` (decoder
+  keep working exactly as it did. Shared by both: `media/audio.ts` (the sound,
+  decoded once), `media/transcribe.worker.ts` (one speech worker, `padQuiet` for
+  the campaign page's quiet padding), `UpdateBanner.safeToReloadWith` (when a
+  page may swap versions by itself), `media/recovery.ts` (decoder
   gave up -> fresh decoder from the last frame written, up to 4 times; waits for
   the page to be visible first). The plain cutter also cuts pauses-only when the
   speech model cannot start for memory (`App.tsx`, says so on the row).

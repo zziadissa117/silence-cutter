@@ -98,6 +98,7 @@ only, no Supabase); `./deploy-server.sh` ships the `postiz` and `cutter` functio
 - Recording in the Cutter (camera, flip, light, takes): `Recorder.tsx` (Videos -> Record a video); every take steadied after Done: `stabilize.ts`
 - Tabs: `TabBar.tsx` (Videos, Posts, Batch, Analytics, More), `MoreView.tsx` (Campaigns, Formats, Bank, Settings, Cut only - each with `BackToMore`)
 - Queue/storage: `store.ts`, `outbox.ts`; sync + login: `cloud.ts`, `SignIn.tsx`, `LoginGate.tsx`
+- Shared by both pages (edit once): `media/audio.ts` (decode to 16 kHz mono, levels, `audioExtent`), `media/transcribe.worker.ts` + `media/transcribe.ts` (the one speech worker; the campaign page asks for `padQuiet`), `media/ort.ts` (runtime from the CDN), `media/recovery.ts` (decoder vs encoder vs storage failures), `config.ts` (functions URL + publishable key - the only copy), `words.ts` (the words both pages use), `share.ts`, `UpdateBanner.safeToReloadWith`
 - Posting (phone): `posting.ts`, `PostsView.tsx`, `NewPost.tsx`, `BatchView.tsx`
 - Posting (server): `supabase/functions/postiz/*` (`slots.ts` times, `caption.ts`, `batch.ts`, `hand.ts`, `attach.ts`, `failed.ts` missed accounts,
   `channels.ts` accounts a campaign holds / `endPlan` for ending one - phone side `EndCampaign.tsx`)
