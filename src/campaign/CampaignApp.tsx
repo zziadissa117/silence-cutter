@@ -17,6 +17,7 @@ import { SilenceCutError, isSilenceCutSupported } from '../media/silenceCut'
 import { type Range, PRESETS, type PresetName } from '../media/silenceMath'
 import { pageLeaving } from '../leaving'
 import { within } from '../media/within'
+import { BUSY_ELSEWHERE, BUSY_RECHECK_MS, withWorkLock } from '../media/workLock'
 import { StallError, firstRestartFor } from './stallRestart'
 import { describeVideo, traceLine, traceReset, traceStarted } from './renderTrace'
 import { healthAdvice, healthLine, mediaHealth } from './mediaProbe'
@@ -24,7 +25,7 @@ import { lostPick, pickArrived, pickQuiet, pickSaved, whenPickGoesWrong } from '
 import { report } from '../report'
 import { typedBack } from './captionFixes'
 import { reportStorage } from './storageReport'
-import { UPDATE_READY_EVENT, UpdateBanner, updateDownloaded } from '../UpdateBanner'
+import { UPDATE_READY_EVENT, UpdateBanner, reloadIntoUpdate, updateDownloaded } from '../UpdateBanner'
 import { VideoPicker } from '../VideoPicker'
 import { BankView } from './BankView'
 import { MusicBankView } from './MusicBankView'
@@ -252,6 +253,8 @@ const LAST_KEY = 'campaign.last'
  *  stuck. Well past the slowest real step on a phone - a long window of
  *  listening, or finishing a big file. */
 const STALL_MS = 90_000
+/** How long Remove can be undone. */
+const UNDO_MS = 6000
 /** How often a video hidden mid-way goes back in line before a failure
  *  counts as one - the page is hidden every time he sends a video on, so
  *  without a cap a video that really fails loops for ever. */
@@ -777,7 +780,7 @@ export function CampaignApp() {
         return seconds ? { headlineSeconds: seconds } : {}
       })(),
       headlineText: job.headlineText,
-      captions: captionsRef.current ? drawnWords(captionsFor(job, plan), bareRef.current) : [],
+      captions: wantsCaptions(job) ? drawnWords(captionsFor(job, plan), bareRef.current) : [],
       voice: voiceRef.current,
       ...(job.day?.music ? { music: job.day.music } : {}),
       clips,
@@ -946,6 +949,12 @@ export function CampaignApp() {
   /** The captions burned into a video: every word he checked (or, if he
    *  never opened them, every word heard) said after the headline - or none,
    *  when he chose to make it without. */
+  /** Whether a video gets captions: the Settings toggle, unless he already
+   *  checked this video's captions - those are his work and go on whatever
+   *  the toggle says now. (A video he approved without captions says so in
+   *  its day, and captionsFor returns none for it.) */
+  const wantsCaptions = (job: Job): boolean => captionsRef.current || Boolean(job.day?.captions && !job.day.noCaptions)
+
   const captionsFor = (job: Job, plan: CampaignPlan): CaptionWord[] => {
     if (job.day?.noCaptions) return []
     const all = captionWordsFor(job, plan)
@@ -1255,7 +1264,7 @@ export function CampaignApp() {
       if (document.visibilityState !== 'visible' || typing || inEditor.current || inFlowRef.current) return void window.setTimeout(() => void go(), 2000)
       await pickQuiet()
       await within(Promise.allSettled([...persisting.current.values(), ...copying.current.values()]), 60_000, undefined)
-      window.location.reload()
+      reloadIntoUpdate()
     }
     // A moment for him to read why, and for the report to be kept.
     window.setTimeout(() => void go(), 2500)
@@ -1855,7 +1864,10 @@ export function CampaignApp() {
     // The video in hand, for falling back to the plain cut and for reports.
     let kept: File | null = null
 
-    void (async () => {
+    // One tab at a time (media/workLock.ts): another tab already on the
+    // videos is left to it, and this one looks again in a moment.
+    void withWorkLock(async () => {
+      setNotice((current) => (current === BUSY_ELSEWHERE ? null : current))
       try {
         // A stuck save never holds a video up: it is made from the copy in
         // hand either way.
@@ -2085,7 +2097,7 @@ export function CampaignApp() {
               jobAngle,
               next.headlineText,
               (p) => setPhase('cutting', p),
-              captionsRef.current && plan ? drawnWords(captionsFor(next, plan), bareRef.current) : [],
+              wantsCaptions(next) && plan ? drawnWords(captionsFor(next, plan), bareRef.current) : [],
               voiceRef.current,
               await musicFor(next),
               {
@@ -2114,7 +2126,7 @@ export function CampaignApp() {
             next.id,
             (p) => setPhase('cutting', p),
             next.retried === true,
-              captionsRef.current ? drawnWords(captionsFor(next, plan), bareRef.current) : [],
+              wantsCaptions(next) ? drawnWords(captionsFor(next, plan), bareRef.current) : [],
               voiceRef.current,
               await musicFor(next),
               await clipsFor(next),
@@ -2321,7 +2333,13 @@ export function CampaignApp() {
         processing.current = false
         setJobs((js) => [...js])
       }
-    })()
+    }).then((outcome) => {
+      if (outcome !== 'busy') return
+      document.removeEventListener('visibilitychange', onVisibility)
+      processing.current = false
+      setNotice(BUSY_ELSEWHERE)
+      window.setTimeout(() => setJobs((js) => [...js]), BUSY_RECHECK_MS)
+    })
   }, [jobs, campaigns, visible, reviewing, updateWaiting, talkDown])
 
   // The new version, once no video is being made (the queue starts none
@@ -2702,22 +2720,43 @@ export function CampaignApp() {
     })
   }, [])
 
+  // A removed video is only gone for good after a moment: Remove sits in the
+  // row and deletes the kept copy, so a wrong tap gets an Undo.
+  const [undo, setUndo] = useState<{ label: string; onUndo: () => void } | null>(null)
   const removeJob = useCallback((id: string) => {
-    setJobs((js) => {
-      const going = js.find((j) => j.id === id)
-      if (going?.url) URL.revokeObjectURL(going.url)
-      if (going?.result?.storedAs) {
-        const cut = going.result.storedAs
-        void (copying.current.get(id) ?? Promise.resolve()).finally(() => forgetCut(cut))
+    const all = jobsRef.current
+    const gone = withParts([id], all)
+    const going = all.filter((j) => gone.has(j.id))
+    if (going.length === 0) return
+    setJobs((js) => js.filter((j) => !gone.has(j.id)))
+    const forget = () => {
+      setUndo((current) => (current?.label === label ? null : current))
+      for (const job of going) {
+        if (job.url) URL.revokeObjectURL(job.url)
+        if (job.result?.storedAs) {
+          const cut = job.result.storedAs
+          void (copying.current.get(job.id) ?? Promise.resolve()).finally(() => forgetCut(cut))
+        }
+        if (job.joinedAs) void forgetCut(job.joinedAs)
+        if (job.onServer) void dropTalk(job.id)
       }
-      if (going?.joinedAs) void forgetCut(going.joinedAs)
-      if (going?.onServer) void dropTalk(id)
-      const gone = withParts([id], js)
-      return js.filter((j) => !gone.has(j.id))
+      void (persisting.current.get(id) ?? Promise.resolve())
+        .then(() => forgetJob(id))
+        .then(() => sweepBank())
+    }
+    const timer = window.setTimeout(forget, UNDO_MS)
+    const label = `Removed ${going.find((j) => j.id === id)?.name ?? 'the video'}.`
+    setUndo({
+      label,
+      onUndo: () => {
+        window.clearTimeout(timer)
+        setUndo(null)
+        setJobs((js) => {
+          const here = new Set(js.map((j) => j.id))
+          return [...js, ...going.filter((j) => !here.has(j.id))]
+        })
+      },
     })
-    void (persisting.current.get(id) ?? Promise.resolve())
-      .then(() => forgetJob(id))
-      .then(() => sweepBank())
   }, [])
 
   const clearFinished = useCallback(() => {
@@ -3650,6 +3689,14 @@ export function CampaignApp() {
           <span>{notice}</span>
           <button type="button" className="linkbtn" onClick={() => setNotice(null)}>
             Dismiss
+          </button>
+        </div>
+      ) : null}
+      {undo ? (
+        <div className="notice">
+          <span>{undo.label}</span>
+          <button type="button" className="linkbtn" onClick={undo.onUndo}>
+            Undo
           </button>
         </div>
       ) : null}

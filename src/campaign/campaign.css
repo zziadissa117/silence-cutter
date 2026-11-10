@@ -217,7 +217,7 @@ html, body { overscroll-behavior-y: none; }
 /* The list: a summary that stays in reach while scrolling, then one row per
    video, in the order they were added. */
 .summary {
-  position: sticky; top: 0; z-index: 5;
+  position: sticky; top: env(safe-area-inset-top); z-index: 5;
   display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 8px 12px;
   margin: 8px -16px 0; padding: calc(env(safe-area-inset-top) * 0 + 10px) 16px 10px;
   background: var(--ink);
@@ -274,7 +274,8 @@ html, body { overscroll-behavior-y: none; }
 .setting-text { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
 .seg.full, .seg.parts { display: flex; width: 100%; }
 .seg.full button, .seg.parts button { flex: 1; padding: 0 6px; }
-.seg.parts { position: sticky; top: 0; z-index: 5; background: var(--ink); }
+/* Below the status bar in the home-screen app, not under it. */
+.seg.parts { position: sticky; top: env(safe-area-inset-top); z-index: 5; background: var(--ink); }
 
 /* Editors: the preview small at the top, the parts one at a time, and Save
    always in reach at the bottom. */

@@ -37,12 +37,14 @@ import {
   type SilenceCutResult,
 } from './media/silenceCut'
 import { pageLeaving } from './leaving'
+import { MODEL_STALL_MS, STALL_MS, stallWatch } from './media/stallWatch'
 import { within } from './media/within'
+import { BUSY_ELSEWHERE, BUSY_RECHECK_MS, withWorkLock } from './media/workLock'
 import { keepScreenOn } from './campaign/wakeLock'
-import { lostPick, pickArrived, pickSaved, whenPickGoesWrong } from './pickWatch'
+import { lostPick, pickArrived, pickQuiet, pickSaved, whenPickGoesWrong } from './pickWatch'
 import { report } from './report'
 import { canShareFiles, shareFiles, type ShareOutcome } from './share'
-import { UpdateBanner, safeToReloadWith } from './UpdateBanner'
+import { UpdateBanner, reloadIntoUpdate, safeToReloadWith } from './UpdateBanner'
 import { VideoPicker, videoFilesFrom } from './VideoPicker'
 import { HELD_LINE, HELD_TEXT, PHASE, PHASE_DOING, count, heldNotice, pickedUpNotice } from './words'
 
@@ -146,6 +148,9 @@ function savePrefs(prefs: Prefs): void {
 }
 
 let nextId = 0
+
+/** How long Remove can be undone. */
+const UNDO_MS = 6000
 
 export function App() {
   const [supported, setSupported] = useState<boolean | null>(null)
@@ -251,8 +256,13 @@ export function App() {
     const patch = (fields: Partial<Job>) =>
       setJobs((js) => js.map((j) => (j.id === next.id ? { ...j, ...fields } : j)))
     let phase: Job['phase'] = 'reading'
+    const stall = stallWatch(
+      () => (phase === 'model' || phase === 'listening' ? MODEL_STALL_MS : STALL_MS),
+      () => PHASE_DOING[phase],
+    )
     const setPhase = (entered: Job['phase'], progress: number) => {
       phase = entered
+      stall.moved()
       patch({ status: 'working', phase, progress })
       // Written to disk, not just React state, so it survives the tab being
       // killed outright rather than only a graceful failure - see
@@ -263,7 +273,10 @@ export function App() {
     // The video in hand, for the report when it fails - a restored video
     // has none on its row.
     let loaded: File | null = null
-    void (async () => {
+    // One tab at a time (media/workLock.ts): another tab already on the
+    // videos is left to it, and this one looks again in a moment.
+    void withWorkLock(async () => {
+      setNotice((current) => (current === BUSY_ELSEWHERE ? null : current))
       try {
         // A stuck save never holds a video up: it is cut from the copy in
         // hand either way.
@@ -316,11 +329,8 @@ export function App() {
         // Reading the audio comes first whatever the options, and on a long
         // take it is minutes of the wait on its own.
         setPhase('reading', 0)
-        const result = await cutSilenceFromFile(
-          file,
-          (progress) => setPhase('cutting', progress),
-          next.settings,
-          {
+        const result = await stall.watched(
+          cutSilenceFromFile(file, (progress) => setPhase('cutting', progress), next.settings, {
             onAnalyseProgress: (progress) => setPhase('reading', progress),
             ...(wantsWords
               ? {
@@ -330,7 +340,7 @@ export function App() {
                   onTranscribeProgress: (progress) => setPhase('listening', progress),
                 }
               : {}),
-          },
+          }),
         )
         patch({ status: 'done', result, url: URL.createObjectURL(result.blob) })
         if (result.recovered) {
@@ -397,8 +407,25 @@ export function App() {
         // until something unrelated re-renders the list.
         setJobs((js) => [...js])
       }
-    })()
+    }).then((outcome) => {
+      if (outcome !== 'busy') return
+      processing.current = false
+      setNotice(BUSY_ELSEWHERE)
+      window.setTimeout(() => setJobs((js) => [...js]), BUSY_RECHECK_MS)
+    })
   }, [jobs])
+
+  /** Stops the video being cut. The page starts again - the only way to take
+   *  the phone's video maker off it - and the video comes back as failed,
+   *  with its copy kept, so Try again cuts it again. */
+  const stopJob = useCallback((id: string) => {
+    const job = jobsRef.current.find((j) => j.id === id)
+    if (!job || job.status !== 'working') return
+    void within(recordFailure(id, 'Stopped. Tap Try again to cut it again.'), 5000, false).then(() => {
+      setNotice('Stopped. The page starts again in a moment to free the phone.')
+      window.setTimeout(() => void pickQuiet().then(() => reloadIntoUpdate()), 1500)
+    })
+  }, [])
 
   const addFiles = useCallback(
     (incoming: Iterable<File> | null, fromPicker = false) => {
@@ -516,14 +543,29 @@ export function App() {
     })
   }, [])
 
+  // A removed video is only gone for good after a moment: Remove sits next
+  // to the row and deletes the kept copy, so a wrong tap gets an Undo.
+  const [undo, setUndo] = useState<{ label: string; onUndo: () => void } | null>(null)
   const removeJob = useCallback((id: string) => {
-    setJobs((js) => {
-      const going = js.find((j) => j.id === id)
-      if (going?.url) URL.revokeObjectURL(going.url)
-      if (going?.result?.storedAs) void forgetCut(going.result.storedAs)
-      return js.filter((j) => j.id !== id)
+    const going = jobsRef.current.find((j) => j.id === id)
+    if (!going) return
+    setJobs((js) => js.filter((j) => j.id !== id))
+    const forget = () => {
+      setUndo((current) => (current?.label === label ? null : current))
+      if (going.url) URL.revokeObjectURL(going.url)
+      if (going.result?.storedAs) void forgetCut(going.result.storedAs)
+      void (persisting.current.get(id) ?? Promise.resolve()).then(() => forgetJob(id))
+    }
+    const timer = window.setTimeout(forget, UNDO_MS)
+    const label = `Removed ${going.name}.`
+    setUndo({
+      label,
+      onUndo: () => {
+        window.clearTimeout(timer)
+        setUndo(null)
+        setJobs((js) => (js.some((j) => j.id === id) ? js : [...js, going]))
+      },
     })
-    void (persisting.current.get(id) ?? Promise.resolve()).then(() => forgetJob(id))
   }, [])
 
   const clearFinished = useCallback(() => {
@@ -576,6 +618,15 @@ export function App() {
       </header>
 
       <UpdateBanner safeToReload={safeToReloadWith(jobs)} />
+
+      {undo ? (
+        <div className="notice">
+          <span>{undo.label}</span>
+          <button type="button" className="linkbtn" onClick={undo.onUndo}>
+            Undo
+          </button>
+        </div>
+      ) : null}
 
       {supported === false ? (
         <div className="error">
@@ -715,7 +766,7 @@ export function App() {
 
               <div className="jobs">
                 {jobs.map((job) => (
-                  <JobCard key={job.id} job={job} onRetry={retry} onRemove={removeJob} />
+                  <JobCard key={job.id} job={job} onRetry={retry} onRemove={removeJob} onStop={stopJob} />
                 ))}
               </div>
             </>
@@ -816,10 +867,12 @@ function JobCard({
   job,
   onRetry,
   onRemove,
+  onStop,
 }: {
   job: Job
   onRetry: (id: string, dropSpeech?: boolean) => void
   onRemove: (id: string) => void
+  onStop: (id: string) => void
 }) {
   const file = useMemo(
     () => (job.result ? new File([job.result.blob], cutName(job.name), { type: 'video/mp4' }) : null),
@@ -844,7 +897,11 @@ function JobCard({
               {statusText}
             </span>
           )}
-          {working ? null : (
+          {working ? (
+            <button type="button" className="linkbtn" onClick={() => onStop(job.id)}>
+              Stop
+            </button>
+          ) : (
             <button type="button" className="linkbtn" onClick={() => onRemove(job.id)}>
               Remove
             </button>

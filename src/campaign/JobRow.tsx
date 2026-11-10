@@ -16,6 +16,7 @@ import type { PictureChoice } from './skipPictures'
 import { formatTime, outputName, type Job } from './jobs'
 import { hasShareSheet, shareVideo, useSharable } from './shareFile'
 import { clipsOf } from './noTalk'
+import { firstLineHeadline } from './sort'
 import { HEADLINE_STYLES, LIMITS, type Campaign, type HeadlineStyle } from './look'
 import { songFile, useMusicBank } from './musicBank'
 import { loadBankFile } from './store'
@@ -224,6 +225,12 @@ export function JobRow({
     ) : null
 
   const expandable = job.status !== 'working'
+  // A video is known by what he says in it, not by IMG_1256.mov: once it has
+  // been listened to, its first line is the title and the file name moves
+  // inside the row. A clip with no talking keeps its name.
+  const plan = job.day?.plan
+  const spokenTitle = plan && !job.day?.noSpeech ? firstLineHeadline(plan.spoken ?? plan.words) : ''
+  const title = spokenTitle || job.name
 
   return (
     <li className={`vrow${open ? ' open' : ''}`}>
@@ -237,7 +244,7 @@ export function JobRow({
         >
           <span className={`dot ${tone}`} aria-hidden />
           <span className="vrow-text">
-            <span className="vrow-name">{job.name}</span>
+            <span className="vrow-name">{title}</span>
             <span className={`vrow-line${tone === 'warn' ? ' warn' : tone === 'bad' ? ' bad' : ''}`}>{shownLine}</span>
           </span>
           {expandable ? (
@@ -402,6 +409,7 @@ export function JobRow({
             </>
           ) : null}
 
+          {title !== job.name ? <div className="hint">{job.name}</div> : null}
           {job.status === 'failed' || job.status === 'held' ? <div className="error">{job.error}</div> : null}
 
           {job.status === 'queued' || job.status === 'sorted' || job.status === 'held' || job.status === 'failed' || job.status === 'approved' ? (

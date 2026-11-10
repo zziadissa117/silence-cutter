@@ -82,11 +82,12 @@ export default defineConfig({
       workbox: {
         globPatterns: ['**/*.{js,css,html,svg,png,ico,woff2}'],
         globIgnores: ['**/server-aac-*.js'],
-        // Take over as soon as a new version downloads, instead of waiting
-        // for every open copy of the old page to close. iOS never closes a
-        // bookmarked web app, only freezes it, so waiting meant forever. The
-        // page itself still decides when to reload - see UpdateBanner.tsx.
-        skipWaiting: true,
+        // A new version waits until the page lets it in (UpdateBanner.tsx
+        // reloadIntoUpdate), at a moment nothing is lost. Taking over the
+        // moment it downloaded deleted the old files from the cache under a
+        // page still cutting, whose next worker then 404'd. The page never
+        // waits for ever either: it is the one asking.
+        skipWaiting: false,
         clientsClaim: true,
         // The posting's notifications (public/push-sw.js). The version in
         // the address makes a change to that file a new service worker too.
