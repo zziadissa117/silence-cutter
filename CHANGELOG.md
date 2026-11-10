@@ -50,7 +50,8 @@ open questions are listed at the end.
 - The caption prompt marks the transcript and the headline as material, never instructions (`caption.ts`); his
   note and the campaign's rules stay instructions, as they are.
 - Build: the version is the commit and its date (the same for every build of the same code, so phones stop
-  re-downloading an unchanged 1.2 MB chunk), `push-sw.js` is versioned by its own hash, and the 27 MB
+  re-downloading an unchanged 1.2 MB chunk; from Netlify's `COMMIT_REF`, Railway's `RAILWAY_GIT_COMMIT_SHA` for the
+  Cutter server's image, or git - the build date when none is there), `push-sw.js` is versioned by its own hash, and the 27 MB
   "asyncify" WebAssembly nothing fetches is left out of `dist/` (`drop-unused-ort-wasm`). `/` loads the cutter's
   code only when the page is staying (`main.tsx`). `netlify.toml` sets the headers; `.oxlintrc.json` the lint.
 - Tests: 1370 pass; `npx tsc -b` clean; `npm run lint` no new warnings; `npx vite build` 4.5 MB.

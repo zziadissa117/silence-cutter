@@ -23,9 +23,13 @@ function version(): string {
       return ''
     }
   }
-  const commit = (process.env.COMMIT_REF ?? git('rev-parse HEAD')).slice(0, 7)
+  // Netlify names the commit in COMMIT_REF, Railway (the Cutter server's
+  // image, built with no .git) in RAILWAY_GIT_COMMIT_SHA; git knows the rest.
+  const commit = (process.env.COMMIT_REF || process.env.RAILWAY_GIT_COMMIT_SHA || git('rev-parse HEAD')).slice(0, 7)
   const date = git('log -1 --format=%cs')
-  return commit ? `${commit}${date ? ` · ${date}` : ''}` : 'dev'
+  // Without any of those, at least when it was built.
+  if (!commit) return `dev · ${new Date().toISOString().slice(0, 16).replace('T', ' ')}`
+  return `${commit}${date ? ` · ${date}` : ''}`
 }
 const BUILT = version()
 
