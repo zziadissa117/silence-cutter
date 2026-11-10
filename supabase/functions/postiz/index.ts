@@ -131,6 +131,7 @@ import {
   type TrialAccounts,
 } from './trial.ts'
 import { attachMove, summarise, type AttachMove } from './attach.ts'
+import { createdAround, isCreatedAround, sentDate } from './created.ts'
 import { cleanMode, pickRecaption, recaptionMode } from './recaption.ts'
 import { cleanLimits, firstDayWithRoom, heldNote, releasable, split, usedOn, type Limits, type PostAccount } from './limits.ts'
 import { PENDING_STATUSES, channelReport, endPlan, isPending, splitStop, type EndPost, type Integration, type PendingPost } from './channels.ts'
@@ -1600,7 +1601,7 @@ async function releaseHeld(now: number): Promise<void> {
           // Another day: the same time of day.
           const at = day === baseDay ? new Date(soon) : zoned(day, timeOfDay, tz)
           const date = at.toISOString()
-          const found = await findCreated(keys.postiz, { ...owned, accounts }, date)
+          const found = await findCreated(keys.postiz, { ...owned, accounts }, at.getTime())
           const made =
             found ??
             (await postiz<{ postId: string; integration: string }[]>(keys.postiz, 'POST', '/posts', {
@@ -1693,7 +1694,7 @@ async function attachAccounts(profile: Profile, body: Record<string, unknown>): 
         const date = owned.post_at!
         // A run that stopped before it could record what it made is found
         // first, so the same account is never posted to twice.
-        const found = await findCreated(keys.postiz, { ...owned, accounts: extra }, date)
+        const found = await findCreated(keys.postiz, { ...owned, accounts: extra }, Date.parse(date))
         const title = finishTitle(owned.title ?? '', [owned.headline ?? '', owned.campaign_name])
         const made =
           found ??
@@ -2904,17 +2905,21 @@ async function schedule(start: Post): Promise<Post> {
     const has = (group: (typeof groups)[number]) => group.accounts.every((a) => made.some((ref) => ref.integration === a.id))
     if (post.creating_at) {
       for (const group of groups.filter((g) => !has(g))) {
-        const refs = await findCreated(keys.postiz, { ...post, accounts: group.accounts }, group.date)
+        const refs = await findCreated(keys.postiz, { ...post, accounts: group.accounts }, createdAround(group, post.creating_at))
         if (refs) made.push(...refs.map((ref) => (group.at ? { ...ref, at: group.at } : ref)))
       }
     }
     if (groups.every(has)) return withNote(made)
-    await update(post.id, { creating_at: new Date().toISOString() })
+    // The mark is also the date a post sent now goes in with (created.ts): a
+    // run stopped after creating it looked for it around its own, later
+    // "now", found nothing, and the same video went out twice.
+    const creatingAt = new Date().toISOString()
+    await update(post.id, { creating_at: creatingAt })
     const media = post.media!
     for (const group of groups.filter((g) => !has(g))) {
       const created = await postiz<{ postId: string; integration: string }[]>(keys.postiz, 'POST', '/posts', {
         type: group.type,
-        date: group.date,
+        date: sentDate(group, creatingAt),
         shortLink: false,
         tags: [],
         posts: group.accounts.map((account) => {
@@ -3030,19 +3035,12 @@ async function postsAround(key: string, from: number, to: number, need: PostizNe
   return result?.posts ?? []
 }
 
-/** Posts to these accounts at this time already in Postiz - made by a run
- *  that stopped before it could record them. */
-async function findCreated(key: string, post: Post, date: string): Promise<{ postId: string; integration: string }[] | null> {
-  const at = new Date(date).getTime()
+/** Posts to these accounts already in Postiz around `at` (created.ts says
+ *  where) - made by a run that stopped before it could record them. */
+async function findCreated(key: string, post: Post, at: number): Promise<{ postId: string; integration: string }[] | null> {
   const found = await postsAround(key, at - 60 * MINUTE, at + 60 * MINUTE, needOf(post))
   const ours = new Set(post.accounts.map((a) => a.id))
-  const matches = found.filter(
-    (p) =>
-      p.integration?.id &&
-      ours.has(p.integration.id) &&
-      p.publishDate &&
-      Math.abs(new Date(p.publishDate).getTime() - at) < 10 * MINUTE,
-  )
+  const matches = found.filter((p) => p.integration?.id && ours.has(p.integration.id) && isCreatedAround(p.publishDate, at))
   return matches.length > 0 ? matches.map((p) => ({ postId: p.id, integration: p.integration!.id! })) : null
 }
 
