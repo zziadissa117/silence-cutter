@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 
 import { RangeReader, inTimestampOrder } from './rangeReader'
 
@@ -161,6 +161,27 @@ describe('inTimestampOrder', () => {
 
   it('puts swapped neighbours back in order', async () => {
     expect(await collect([0, 2, 1, 3, 5, 4, 6])).toEqual([0, 1, 2, 3, 4, 5, 6])
+  })
+
+  it('puts a frame six places out of order back where it belongs - an iPhone B-frame pyramid', async () => {
+    // Held four deep, frame 2 came out after 4 and was stacked behind it.
+    expect(await collect([0, 1, 3, 4, 5, 6, 7, 8, 2, 9, 10])).toEqual([0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10])
+  })
+
+  it('drops a frame still further out of order than it can hold, with a warning, rather than handing it on behind a later one', async () => {
+    const warned = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    try {
+      FakeSample.open = 0
+      // Frame 2 arrives ten places late: too late with a buffer of 8.
+      const out = await collect([0, 1, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 2, 13])
+      expect(out).toEqual([0, 1, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13])
+      for (let i = 1; i < out.length; i++) expect(out[i]).toBeGreaterThan(out[i - 1])
+      expect(FakeSample.open).toBe(0)
+      expect(warned).toHaveBeenCalledTimes(1)
+      expect(warned.mock.calls[0][0]).toMatch(/out of order/)
+    } finally {
+      warned.mockRestore()
+    }
   })
 
   it('closes everything it was still holding when stopped early', async () => {

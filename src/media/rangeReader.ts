@@ -39,31 +39,49 @@ export interface TimedSample {
 }
 
 /** How many decoded frames may be held back to put them in order. Frames
- *  only ever arrive a frame or two out of place, and four 4K frames is a few
- *  tens of MB at most. */
-const REORDER_DEPTH = 4
+ *  usually arrive a frame or two out of place, but the B-frame pyramids of
+ *  an iPhone's footage can put one six or seven places out, and held four
+ *  deep such a frame went out behind a later one and was stacked half a
+ *  millisecond after it (forwardOnly). Eight 4K frames is a few tens of MB. */
+export const REORDER_DEPTH = 8
 
 /** Hands samples on in timestamp order. Chrome's decoders already do, but
  *  Safari on an iPhone passes frames on as some files store them - videos
  *  saved from TikTok arrive with neighbours swapped - and a frame written
  *  after a later one is exactly what the MP4 writer refuses. A few samples are
  *  held back and the earliest always goes first, so the picture comes out in
- *  its real order rather than with one frame jumping back. */
+ *  its real order rather than with one frame jumping back. A frame still
+ *  further out of place than the buffer is deep - earlier than one already
+ *  handed on - is dropped and counted, never handed on out of order: one
+ *  frame missing is a flicker at most, one out of order is a jump back. */
 export async function* inTimestampOrder<T extends TimedSample>(
   source: AsyncIterable<T>,
   depth = REORDER_DEPTH,
 ): AsyncGenerator<T> {
   const held: T[] = []
+  let lastOut = -Infinity
+  let dropped = 0
+  const handOn = (sample: T): T => {
+    lastOut = sample.timestamp
+    return sample
+  }
   try {
     for await (const sample of source) {
+      if (sample.timestamp < lastOut) {
+        if (dropped === 0) console.warn(`A frame at ${sample.timestamp.toFixed(3)} s came more than ${depth} frames out of order, after ${lastOut.toFixed(3)} s; dropped`)
+        dropped++
+        sample.close()
+        continue
+      }
       let at = held.length
       while (at > 0 && held[at - 1].timestamp > sample.timestamp) at--
       held.splice(at, 0, sample)
-      if (held.length > depth) yield held.shift()!
+      if (held.length > depth) yield handOn(held.shift()!)
     }
-    while (held.length > 0) yield held.shift()!
+    while (held.length > 0) yield handOn(held.shift()!)
   } finally {
     for (const sample of held) sample.close()
+    if (dropped > 1) console.warn(`${dropped} frames came too far out of order to put back and were dropped`)
   }
 }
 
