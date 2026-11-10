@@ -3,6 +3,60 @@
 Newest first. Every change says what it does, how to use it, and how it works
 underneath. Kept up to date with each commit.
 
+## Audit, round two: the open items
+App and server: run ./deploy.sh (it runs ./deploy-server.sh too).
+Needs deploying: run ./deploy-server.sh
+His word on the first round's open list: do everything that needs no approval, and decide the rest for the best
+experience (2026-11-10). Captions stay on Opus (he can't have bad captions); brand-name matching stays loose.
+
+**What he will see**
+- A new version no longer takes over while a video is being cut. It downloads, waits, and the page lets it in
+  at a safe moment (`UpdateBanner.reloadIntoUpdate`; `skipWaiting` is off). Before, the moment it downloaded
+  it deleted the old version's files from the cache under a page still cutting, and the next worker 404'd.
+- One tab works at a time (`media/workLock.ts`, a Web Lock): a second copy of the page, or Cut only beside
+  Campaign videos, says "Another Cutter tab is working on the videos" and looks again in ten seconds.
+- Cut only: a cut that stops moving fails with the reason instead of sitting at a percentage for ever
+  (`media/stallWatch.ts`, 90 s; 180 s while getting the speech model), with its copy kept for Try again; the
+  working row has **Stop** (the page restarts to free the phone's video maker, the video comes back as failed).
+- **Remove** can be undone for six seconds, on both pages (the row goes, an "Undo" notice stays).
+- A video whose captions he checked keeps them whatever the Settings toggle says now (`wantsCaptions`); one he
+  approved without captions gets none either way.
+- Rows are titled by the first line he says once a video is listened to (`sort.firstLineHeadline`); the file
+  name is inside the row. A clip with no talking keeps its name.
+- The sticky summary and parts bars sit below the iPhone's status bar in the home-screen app.
+- Captions, headline ideas and the other Claude calls run on `claude-opus-5-5`, the current Opus: same tier,
+  newer, $4/$20 per million tokens instead of $5/$25 (`postiz/index.ts` MODEL, `recheck.ts` prices).
+
+**Fixed underneath**
+- A post sent "now" by a run the platform cut off mid-way is found again in Postiz, not made twice: the Postiz
+  date is the moment the run marked it as going in (`creating_at`), and the next run looks there
+  (`postiz/created.ts`; before, it looked around its own "now", minutes later).
+- A try is counted before the video goes into Postiz, not after: a run killed mid-upload never reached
+  `failed()`, so a video too big to upload within a run was put in again every tick, for ever. After
+  MAX_ATTEMPTS such runs it comes back to him with the reason ("Putting the video into Postiz." is the note it
+  carries meanwhile).
+- Error reports: a signed-in phone's go in on sight (the token travels with them, `src/report.ts`); a
+  signed-out phone gets ten a minute per address, all or nothing (429, the phone keeps them for later). The
+  posting function's tick deletes reports older than 60 days, once a day (`sweepErrors`, cutter_config
+  `errors-swept`).
+- `reject` refuses a scheduled post whose time has passed, like `unschedule` does, instead of deleting a
+  post that may already be out.
+- Login tokens, video links and the sealed Postiz/Anthropic keys can each have a secret of their own
+  (`CUTTER_TOKEN_SECRET` on both functions, `CUTTER_SEAL_SECRET` on postiz). Until he sets them, the service
+  key is used as before, so nothing signs out and no sealed key is lost. Setting the token secret signs every
+  phone out once; setting the seal secret means entering the Postiz and Anthropic keys again in Settings.
+- `supabase/config.toml` now says `verify_jwt = false` for both functions, as deploy-server.sh always did.
+- `supabase/migrations/20260927000000_cutter_login_sync.sql` writes down the login and sync tables and the
+  `cutter-files` bucket as they were made by hand on the live project (read from the live schema; NOT applied
+  there, harmless if ever run). The by-hand revoke of anon/authenticated on the posting tables is still in no
+  migration file.
+
+**Decided, not done**
+- Self-hosting the speech model and its runtime: 55 MB more on every deploy for a problem the phone already
+  solves by caching the model after its first download. Skipped.
+- The review's remaining UI simplifications (per-sound dB panels, the campaign editor's confirm dialogs,
+  "Postiz" vs "Posting" naming) wait for the fresh audit of the real screens, running now.
+
 ## Audit: the fixes that needed no asking
 App and server: run ./deploy.sh (the caption prompt changed - deploy.sh runs ./deploy-server.sh too).
 Needs deploying: run ./deploy-server.sh

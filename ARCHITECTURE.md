@@ -75,7 +75,7 @@ first when something would be lost.
   `postiz-outbox` storage buckets are private with no policies.
 - Both functions are `verify_jwt = false`: the cutter login token (HMAC-signed
   with the service key, bound to the space + a piece of its password hash) is
-  checked inside. Open routes: `login`, `accept-invite` (a one-time code), `report` (insert-only, capped), signed
+  checked inside. Open routes: `login`, `accept-invite` (a one-time code), `report` (insert-only, capped; a signed-out phone gets ten a minute per address, a login's go in on sight), signed
   video GETs, `tick` (secret-gated cron), and `channels` (the planner's
   `planner-postiz` function, same project, gated by the project's service key
   in `x-planner-bridge`; read-only toward Postiz, returns which channels a
@@ -716,12 +716,14 @@ src/media/                     the plain cutter's engine, reused by campaign/: a
                                recovery.ts (decoder/encoder/storage failures told apart), silenceMath.ts
 src/{report,leaving,opening,CrashGuard,UpdateBanner,VideoPicker,pick*}.ts(x)  shell helpers
 src/{config,words,share}.ts    the server's address + key; the words both pages use; the share sheet
+src/media/{workLock,stallWatch}.ts  one tab works at a time (Web Lock); a cut that stops moving fails, not hangs
 supabase/functions/cutter      login + shared-setup sync (Edge Function)
 supabase/functions/postiz      posting, captions, scheduler, push (Edge Function);
                                slots.ts times, window.ts random times (also imported by the phone's
                                posting.ts/batch views), attach.ts late-account rules, batch.ts, hand.ts, caption.ts,
                                failed.ts (accounts a post missed: names, retry-accounts)
-supabase/migrations            SQL
+supabase/migrations            SQL (20260927 writes down the login/sync tables made by hand; not applied there)
+supabase/config.toml           verify_jwt = false for both functions (deploy-server.sh says the same)
 public/push-sw.js              service-worker push handler
 engine/                        the engine on Railway (Python): engine/ its code, plateau/ Ilyan's files, tests/
 ```
