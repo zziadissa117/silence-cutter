@@ -3238,6 +3238,10 @@ async function act(profile: Profile, action: string, body: Record<string, unknow
       return reply({ post: postView(await update(post.id, { ...fields, ready_at: new Date().toISOString(), error: null })) })
     }
     case 'reject': {
+      // One whose time has gone is out, or going this moment: taking it out
+      // of Postiz now would pull a published post - the same guard as
+      // unschedule. The phone checks this too before replacing a post.
+      if (post.status === 'scheduled' && post.post_at && new Date(post.post_at).getTime() < Date.now()) throw new Problem('It has already gone out.')
       // Out of Buffer first: a post there goes whatever Postiz does.
       if (post.buffer_ids) await dropFromBuffer(profile, post)
       let stopping: string | null = null
