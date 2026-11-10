@@ -41,6 +41,22 @@ experience (2026-11-10). Captions stay on Opus (he can't have bad captions); bra
   `errors-swept`).
 - `reject` refuses a scheduled post whose time has passed, like `unschedule` does, instead of deleting a
   post that may already be out.
+- Reaction videos: a decoder giving up mid-clip is picked up from the last frame written, up to a few times,
+  like every other render (`clipParts.withDecoderRecovery`, the retry loop written once; `writeWhole` uses it
+  too). Before, one "Decoder failure" failed the whole reaction.
+- A pause of exactly the minimum length is found (`findSilentRanges` counts the run's last window): on the
+  tight preset a 0.20-0.22 s pause was missed. A quiet word right after such a pause can lose ~20 ms of its
+  fade to the existing MAX_GROW rule, as it already did after a longer pause.
+- Speech windows of a pause-free stretch share half a second (`WINDOW_OVERLAP_SEC`), and a word heard in both
+  is kept once (`timedWords.addHeard`); the letter model gets each word's own sound (`partWindows`). Before,
+  the seam cut a word in two.
+- Cut only leaves captions out when nothing was heard (no empty .srt); the row already says so.
+- Frames out of order: the reorder buffer is 8 deep (`rangeReader.REORDER_DEPTH`; iPhone B-frame pyramids
+  need more than 4), and a frame still earlier than the last one written is dropped and counted rather than
+  stacked half a millisecond after it.
+- One home each for `dbToGain` (sounds.ts), `planesOf` (clipParts.ts), `MAX_RECOVERIES` (media/recovery.ts),
+  `UNREADABLE_FORMAT` (media/errors.ts), `SAFE_SAMPLE_RATE`/`audioConversionFor` (media/silenceCut.ts); the
+  renders import them instead of carrying copies that could drift.
 - Login tokens, video links and the sealed Postiz/Anthropic keys can each have a secret of their own
   (`CUTTER_TOKEN_SECRET` on both functions, `CUTTER_SEAL_SECRET` on postiz). Until he sets them, the service
   key is used as before, so nothing signs out and no sealed key is lost. Setting the token secret signs every
