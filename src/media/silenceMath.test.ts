@@ -57,6 +57,36 @@ describe('findSilentRanges', () => {
     expect(silences[1].start).toBeCloseTo(3.5, 1)
     expect(silences[2].start).toBeCloseTo(5, 1)
   })
+
+  it('finds a pause of exactly the minimum length, and not one a window shorter', () => {
+    // The tight preset's minimum is 0.2 s: ten 20 ms windows. The last
+    // window used to go uncounted, so a pause had to be 0.22-0.24 s.
+    const exactly = spans([
+      [0, 1, -12],
+      [1, 1.2, -70],
+      [1.2, 2.2, -12],
+    ])
+    const found = findSilentRanges(exactly, PRESETS.tight)
+    expect(found).toHaveLength(1)
+    expect(found[0].start).toBeCloseTo(1, 3)
+    expect(found[0].end).toBeCloseTo(1.2, 3)
+    const shorter = spans([
+      [0, 1, -12],
+      [1, 1.18, -70],
+      [1.18, 2.2, -12],
+    ])
+    expect(findSilentRanges(shorter, PRESETS.tight)).toHaveLength(0)
+  })
+
+  it('counts a pause of exactly the minimum at the end of the file too', () => {
+    const atEnd = spans([
+      [0, 1, -12],
+      [1, 1.2, -70],
+    ])
+    const found = findSilentRanges(atEnd, PRESETS.tight)
+    expect(found).toHaveLength(1)
+    expect(found[0].end).toBeCloseTo(1.2, 3)
+  })
 })
 
 describe('keepRanges', () => {
@@ -318,17 +348,18 @@ describe('room at the start and end', () => {
     }
   })
 
-  it('leaves a short silence at each end as it is when it is already about a breath long', () => {
+  it('leaves a short silence at each end as it is when it is shorter than the shortest pause worth cutting (one exactly that long now counts)', () => {
     const shortEnds = spans([
-      [0, 0.2, -70],
-      [0.2, 2, -12],
-      [2, 2.2, -70],
+      [0, 0.18, -70],
+      [0.18, 2, -12],
+      [2, 2.18, -70],
     ])
-    const keeps = keepRanges(findSilentRanges(shortEnds, PRESETS.tight), 2.2, PRESETS.tight.paddingSec)
-    // Shorter than the shortest pause worth cutting, so there is nothing to
-    // take - and it is only a few hundredths over the breath it would leave.
+    const keeps = keepRanges(findSilentRanges(shortEnds, PRESETS.tight), 2.18, PRESETS.tight.paddingSec)
+    // A window shorter than the shortest pause worth cutting, so there is
+    // nothing to take - and it is only a few hundredths over the breath it
+    // would leave.
     expect(keeps[0].start).toBe(0)
-    expect(keeps[keeps.length - 1].end).toBeCloseTo(2.2, 2)
+    expect(keeps[keeps.length - 1].end).toBeCloseTo(2.18, 2)
   })
 })
 
@@ -377,19 +408,25 @@ describe('quiet speech is not a pause', () => {
   // is the case that used to delete whole words: the transcript of the cut
   // read "make bank off of / if you aren't aware" where he had said "make
   // bank off of Trump. If you aren't aware."
+  //
+  // The small gap before the quiet word is a window shorter than the tightest
+  // preset's minimum: a pause exactly that long counts as a pause now, and a
+  // real pause next to a quiet word is allowed to take a few hundredths of
+  // its fade (MAX_GROW_SEC, given back by softenEnds) - which is not what
+  // these tests are about.
   const quietWord = spans([
     [0, 1.5, -20],
-    [1.5, 1.7, -46],
-    [1.7, 2.1, -37],
+    [1.5, 1.68, -46],
+    [1.68, 2.1, -37],
     [2.1, 3.6, -54],
     [3.6, 5, -20],
   ])
 
-  it('keeps a word that dips under the silence line', () => {
+  it('keeps a word that dips under the silence line (the gap before it a window under the tightest minimum)', () => {
     for (const settings of Object.values(PRESETS)) {
       const keeps = keepRanges(findSilentRanges(quietWord, settings), 5, settings.paddingSec)
-      // Nothing between 1.7 and 2.1 may be cut away.
-      const kept = keeps.some((k) => k.start <= 1.7 && k.end >= 2.1)
+      // Nothing between 1.68 and 2.1 may be cut away.
+      const kept = keeps.some((k) => k.start <= 1.68 && k.end >= 2.1)
       expect(kept).toBe(true)
     }
   })
@@ -404,7 +441,7 @@ describe('quiet speech is not a pause', () => {
     // Measured on a take with eight real pauses spliced in, the longest
     // stretch of quiet left in the cut was 0.18s. Much longer than that is
     // audible as "it did not cut".
-    const quietInTake = 0.2 + 1.5 // the small gap, and the pause itself
+    const quietInTake = 0.18 + 1.5 // the small gap, and the pause itself
     for (const settings of Object.values(PRESETS)) {
       const keeps = keepRanges(findSilentRanges(quietWord, settings), 5, settings.paddingSec)
       const quietLeft = quietInTake - (5 - totalDuration(keeps))

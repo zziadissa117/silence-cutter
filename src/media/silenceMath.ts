@@ -162,6 +162,10 @@ function softenEnds(silence: Range, levels: Level[], floorDb: number, paddingSec
   return end > start ? { start, end } : silence
 }
 
+/** Lengths here are sums of 20 ms windows, which never add up exactly in
+ *  floating point: a pause this much under the minimum is at it. */
+const LENGTH_SLACK_SEC = 1e-6
+
 /** Runs of consecutive `db < thresholdDb` levels lasting at least
  *  `minSilenceSec`, each pulled in to where the sound actually stops. */
 export function findSilentRanges(levels: Level[], settings: SilenceSettings): Range[] {
@@ -169,13 +173,19 @@ export function findSilentRanges(levels: Level[], settings: SilenceSettings): Ra
   let runStart: number | null = null
   let last: Level | null = null
   const lineDb = silenceLineDb(levels, settings)
+  const step = levels.length > 1 ? levels[1].time - levels[0].time : 0.02
+  // A run of quiet windows lasts from the first one's start to the last
+  // one's end - the last window counts, like every other. Measured to the
+  // last window's start, a pause had to be a window or two longer than the
+  // minimum to be found: on the tight preset one of exactly 0.2 s was not.
+  const longEnough = (from: number, lastQuiet: Level) => lastQuiet.time + step - from >= settings.minSilenceSec - LENGTH_SLACK_SEC
 
   for (const level of levels) {
     const quiet = level.db < lineDb
     if (quiet && runStart === null) {
       runStart = level.time
     } else if (!quiet && runStart !== null) {
-      if (last && last.time - runStart >= settings.minSilenceSec) {
+      if (last && longEnough(runStart, last)) {
         ranges.push({ start: runStart, end: level.time })
       }
       runStart = null
@@ -194,7 +204,6 @@ export function findSilentRanges(levels: Level[], settings: SilenceSettings): Ra
   // word said quietly holds its level instead of falling away, so it stops
   // the growth dead - without that, a quiet word sitting beside a pause was
   // swallowed by it, which is the same lost-word bug by another route.
-  const step = levels.length > 1 ? levels[1].time - levels[0].time : 0.02
   const grow = (range: Range): Range => {
     let { start, end } = range
     // Measured from where the pause was found, not from the edge as it
@@ -215,7 +224,7 @@ export function findSilentRanges(levels: Level[], settings: SilenceSettings): Ra
   }
 
   const audioEnd = last ? last.time + step : 0
-  if (runStart !== null && last && last.time - runStart >= settings.minSilenceSec) {
+  if (runStart !== null && last && longEnough(runStart, last)) {
     // Silence ran to the end of the file with no loud level to close it. It
     // ends where that last level's own window ends, not where the window
     // starts: a silence that stopped a grain short of the end used to read
