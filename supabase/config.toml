@@ -1,0 +1,15 @@
+# The Supabase CLI's settings for this project's functions.
+#
+# Both functions check the cutter's own login token inside (ARCHITECTURE.md,
+# "Security model"), so Supabase's JWT check stays off for them. deploy-server.sh
+# says the same with --no-verify-jwt on every deploy; this file says it in the
+# one place the CLI reads, so a deploy without the flag ships the same thing
+# and never puts a check in front that no phone could pass.
+
+project_id = "uykuoibqdxmpbbrsmyad"
+
+[functions.cutter]
+verify_jwt = false
+
+[functions.postiz]
+verify_jwt = false
