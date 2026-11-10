@@ -224,6 +224,12 @@ export function markChecked(key: string): void {
   }
 }
 
+/** Whether he is looking at the caption list: its top is in the upper part
+ *  of the screen. Scrolled up at the video, its top is below that. */
+export function captionsInView(list: Pick<DOMRect, 'top' | 'bottom'>, screen: number): boolean {
+  return list.bottom > 0 && list.top < screen * 0.6
+}
+
 export function CaptionReview({
   name,
   file,
@@ -424,6 +430,15 @@ export function CaptionReview({
   // and while it plays the list follows along.
   const currentRef = useRef(current)
   currentRef.current = current
+  /** The list follows the phrase playing only while he is down at the
+   *  captions: up at the video (and the timeline), playing leaves the page
+   *  where it is (his ask, 2026-11-10: "I don't always want to follow the
+   *  captions"). */
+  const follow = (k: number) => {
+    const el = list.current
+    if (!el || !captionsInView(el.getBoundingClientRect(), window.innerHeight)) return
+    el.children[k]?.scrollIntoView({ block: 'nearest', behavior: 'smooth' })
+  }
   const typingRef = useRef(typing)
   typingRef.current = typing
   useEffect(() => {
@@ -436,7 +451,7 @@ export function CaptionReview({
       for (let i = 0; i < starts.length; i++) if (starts[i] <= t + CAPTION_LEAD) k = i
       if (k < 0 || k === currentRef.current) return
       setCurrent(k)
-      if (isPlaying) list.current?.children[k]?.scrollIntoView({ block: 'nearest', behavior: 'smooth' })
+      if (isPlaying) follow(k)
     })
   }, [embedded])
   useEffect(() => embedded?.onTyping(typing), [embedded, typing])
@@ -482,7 +497,7 @@ export function CaptionReview({
       if (now !== following) {
         following = now
         setCurrent(now)
-        list.current?.children[now]?.scrollIntoView({ block: 'nearest', behavior: 'smooth' })
+        follow(now)
       }
       if (v.paused || v.ended) {
         setPlaying(false)

@@ -3,6 +3,14 @@
 Newest first. Every change says what it does, how to use it, and how it works
 underneath. Kept up to date with each commit.
 
+## Edit screen: playing no longer pulls the page down to the captions
+App only: run ./deploy.sh.
+**What he said (2026-11-10):** "when I play the video, it always goes onto the captions ... Sometimes I want to stay on
+top, looking at the video."
+- The caption list follows the phrase playing only while he is already down at the captions (the list in the top part
+  of the screen, `CaptionReview.captionsInView`). Up at the video and the timeline, Play leaves the page where it is.
+- Test: `captionsFollow.test.ts`.
+
 ## Edit screen like TikTok's: step 2, sounds
 App and server: run ./deploy.sh (it runs ./deploy-server.sh too - the sound effects bank needs the cutter function).
 Needs deploying: run ./deploy-server.sh
