@@ -18,6 +18,11 @@
 
 import { LoudnessMeter } from './voice'
 
+/** A track this big is any song there is: anything bigger is a video, or a
+ *  whole album, and would only fill the phone. The same limit wherever one
+ *  is picked (MusicRow, BatchView). */
+export const MAX_TRACK_MB = 30
+
 export type MusicLevel = 'low' | 'normal'
 
 export const MUSIC = {
@@ -106,14 +111,19 @@ export class MusicBed {
 
   /** Adds the music under the voice already in `planes`, which start at
    *  output frame `firstFrame`. */
-  mixInto(planes: Float32Array[], firstFrame: number): void {
+  /** `secondsLeft` is how much of the video is still to come from
+   *  `firstFrame`, when the caller knows: a cut runs a frame longer than
+   *  planned at every cut, and a fade-out timed from the plan alone ended a
+   *  second or two before the last sentence. */
+  mixInto(planes: Float32Array[], firstFrame: number, secondsLeft?: number): void {
     const trackLength = this.channels[0]?.length ?? 0
     if (trackLength === 0 || this.gain === 0) return
     const length = planes[0]?.length ?? 0
     const fadeIn = MUSIC.fadeInSec * this.sampleRate
     const fadeOut = MUSIC.fadeOutSec * this.sampleRate
     const seam = MUSIC.seamSec * this.sampleRate
-    const loops = this.loop && trackLength < this.totalFrames
+    const endFrame = secondsLeft === undefined ? this.totalFrames : firstFrame + secondsLeft * this.sampleRate
+    const loops = this.loop && trackLength < Math.max(this.totalFrames, endFrame)
     for (let i = 0; i < length; i++) {
       // How loud he is right now, from the voice itself.
       let loudest = 0
@@ -130,7 +140,7 @@ export class MusicBed {
       // The song is over and doesn't start again: silence from here.
       if (!this.loop && frame >= trackLength) continue
       const at = frame % trackLength
-      let shape = ease(frame / fadeIn) * ease((this.totalFrames - frame) / fadeOut)
+      let shape = ease(frame / fadeIn) * ease((endFrame - frame) / fadeOut)
       if (loops) shape *= ease(at / seam) * ease((trackLength - at) / seam)
       // Its last moment eased out, so it ends without a click.
       else if (!this.loop) shape *= ease((trackLength - frame) / seam)

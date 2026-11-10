@@ -101,6 +101,8 @@ export interface CampaignResult {
   /** A video of clips and music, no talking: how long each clip came out,
    *  the track under it, and why it went without one when it had to. */
   montage?: { seconds: number[]; music: string | null; musicFailed?: string }
+  /** A talking-head video made without its music, and why. */
+  musicFailed?: string
   /** A talking video: the name of the track under it, when there is one. */
   music?: string
   /** When a bank video popped up in the finished video. */
@@ -336,6 +338,7 @@ export async function make(
     headline: headlineText,
     notHeard: missed,
     recovered: rendered.recovered,
+    ...(rendered.musicFailed ? { musicFailed: rendered.musicFailed } : {}),
     said: captionWords(plan.spoken ?? plan.words, plan.keep, { rough: !plan.aligned })
       .map((w) => w.text.trim())
       .filter(Boolean)
@@ -587,20 +590,23 @@ export async function plainCut(
   settings: SilenceSettings,
   why: string,
   onProgress?: (fraction: number) => void,
+  /** Cut the "um"s too, as he asked for the video - the look failing is no
+   *  reason to put them back. */
+  cleanSpeech = false,
 ): Promise<CampaignResult> {
   const empty = { logoAt: [], picturesAt: [], headline: '', notHeard: [], lookFailed: why }
   if (plan) {
-    const { blob, storedAs } = await cutSilence(file, plan.keep, onProgress)
+    const { blob, storedAs, outputDuration } = await cutSilence(file, plan.keep, onProgress)
     return {
       blob,
       storedAs,
       originalDurationSec: plan.duration,
-      newDurationSec: totalDuration(plan.keep),
+      newDurationSec: outputDuration,
       cuts: plan.silences,
       ...empty,
     }
   }
-  const cut = await cutSilenceFromFile(file, onProgress, settings)
+  const cut = await cutSilenceFromFile(file, onProgress, settings, { detectFillerWords: cleanSpeech })
   return {
     blob: cut.blob,
     storedAs: cut.storedAs,

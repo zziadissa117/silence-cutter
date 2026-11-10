@@ -54,6 +54,7 @@ import { totalDuration, type Range } from '../media/silenceMath'
 import type { VideoLook } from './look'
 import { CAPTION_LEAD, captionAt, drawStyledCaption, captionRanges, type CaptionPosition, type CaptionSize, type CaptionStyle, type CaptionWord, PHRASE_HOLD_SEC } from './captions'
 import { decoderGaveUp, eachSound, firstShown, openClip, pause, visibleAgain, wholeOf, writeWhole, type Clip } from './clipParts'
+import { asRenderError } from '../media/recovery'
 import { StoppedEarly, stalledProblem, stoppedEarly } from '../media/recovery'
 import { traceRead, traceStart, traceStep, traceWritten } from './renderTrace'
 import type { ClipPlace } from './clips'
@@ -227,6 +228,8 @@ export interface CampaignRenderResult {
   popsLeftOut: number
   /** Videos he put on that couldn't be played here and were left out. */
   overlaysLeftOut: number
+  /** Why the music was left off, when it had to be. */
+  musicFailed?: string
 }
 
 export async function renderCampaignCut(
@@ -422,18 +425,25 @@ export async function renderCampaignCut(
     // The music, set under the voice as it will sound: where the boost lands
     // it, or as recorded. A track that can't be read leaves the video
     // without music rather than without a video.
+    // The kept audio's loudness, measured once however many things ask.
+    let keptLufsPromise: Promise<number> | null = null
+    const keptLufs = () => (keptLufsPromise ??= voice ? Promise.resolve(voice.lufs) : measureLoudness(sampleRate, channels, walkKeptAudio))
     let bed: MusicBed | null = null
+    let musicFailed: string | undefined
     traceStep('the music')
     if (music) {
       try {
         // Only as much of the track as the video uses is decoded (sounds.ts).
         const channelsNeeded = (await prepareMusic(music.audio, 'music', allSec, sampleRate)).channels
-        const voiceLufs = voice?.lufs ?? (await measureLoudness(sampleRate, channels, walkKeptAudio))
-        const gain = musicGain(trackLoudness(channelsNeeded, sampleRate), voiceLufs, music.level)
+        const voiceLufs = await keptLufs()
+        const trackLufs = trackLoudness(channelsNeeded, sampleRate)
+        const gain = musicGain(trackLufs, voiceLufs, music.level)
         if (gain > 0) bed = new MusicBed(channelsNeeded, sampleRate, Math.round(allSec * sampleRate), gain, voiceLufs, false)
+        else musicFailed = Number.isFinite(trackLufs) ? "the voice couldn't be measured" : 'the track is silent'
       } catch (error) {
         console.warn('The music could not be added, so the video is made without it:', error)
         reportProblem({ kind: 'fallback', phase: 'music', message: musicProblem(error, music.audio) })
+        musicFailed = error instanceof Error ? error.message : String(error)
         bed = null
       }
     }
@@ -448,7 +458,7 @@ export async function renderCampaignCut(
         const clipLufs = await measureLoudness(sampleRate, channels, (visit) =>
           eachSound(clip, [wholeOf(clip)], sampleRate, channels, visit),
         )
-        voiceLevel ??= voice?.lufs ?? (await measureLoudness(sampleRate, channels, walkKeptAudio))
+        voiceLevel ??= await keptLufs()
         if (!Number.isFinite(clipLufs) || !Number.isFinite(voiceLevel)) return 1
         return dbToGain(Math.min(CLIP_MAX_LIFT_DB, voiceLevel - clipLufs))
       } catch (error) {
@@ -645,6 +655,9 @@ export async function renderCampaignCut(
     const total = allSec
     let doneSoFar = 0
     let cursor = 0
+    // How far the file has run past the plan - a frame at every cut - so
+    // the music's fade-out is timed against what is really left.
+    let planDrift = 0
     const videoClock = forwardOnly()
     const audioClock = contiguousAudio()
 
@@ -670,9 +683,12 @@ export async function renderCampaignCut(
           ctx.fillRect(0, 0, width, height)
           sample.draw(ctx, place.x, place.y, place.width, place.height)
           const frame = new VideoSample(canvas, { timestamp, duration: sample.duration })
-          await videoSource.add(frame)
+          try {
+            await videoSource.add(frame)
+          } finally {
+            frame.close()
+          }
           traceWritten()
-          frame.close()
         },
         onSound: async (planes, timestamp) => {
           const length = planes[0].length
@@ -689,7 +705,7 @@ export async function renderCampaignCut(
             mixInto(dry, firstFrame, placed, !voice)
             await musicFree.add(dry, timestamp, sampleRate)
           }
-          bed?.mixInto(out, firstFrame)
+          bed?.mixInto(out, firstFrame, allSec - (timestamp - planDrift))
           mixInto(out, firstFrame, placed, !voice)
           if (voice) voice.limit(out)
           else for (const plane of out) for (let i = 0; i < plane.length; i++) plane[i] = Math.max(-1, Math.min(1, plane[i]))
@@ -732,7 +748,7 @@ export async function renderCampaignCut(
         mixInto(dry, firstFrame, placed, !voice)
         await musicFree.add(dry, timestamp, sampleRate)
       }
-      bed?.mixInto(planes, firstFrame)
+      bed?.mixInto(planes, firstFrame, allSec - (timestamp - planDrift))
       mixInto(planes, firstFrame, placed, !voice)
       if (voice) voice.limit(planes)
       else for (const plane of planes) for (let i = 0; i < plane.length; i++) plane[i] = Math.max(-1, Math.min(1, plane[i]))
@@ -743,6 +759,7 @@ export async function renderCampaignCut(
 
     for (let index = 0; index < keep.length; index++) {
       const { start, end } = keep[index]
+      planDrift = cursor - doneSoFar
       let videoShift: number | null = null
       let videoEnd = cursor
       // After a video joined on, his sound picks up where it ended.
@@ -917,9 +934,12 @@ export async function renderCampaignCut(
                 }
                 // The new sample copies the canvas, so one canvas does every frame.
                 const frame = new VideoSample(canvas, { timestamp, duration })
-                await videoSource.add(frame)
+                try {
+                  await videoSource.add(frame)
+                } finally {
+                  frame.close()
+                }
                 traceWritten()
-                frame.close()
                 lastWritten = sample.timestamp
               }
               // The frames ran out before the part's end, with no error: the
@@ -927,7 +947,7 @@ export async function renderCampaignCut(
               if (stoppedEarly(seen, from, end, videoLength)) throw new StoppedEarly(Math.max(seen, from))
               return
             } catch (error) {
-              if (!decoderGaveUp(error)) throw error
+              if (!decoderGaveUp(error)) throw asRenderError(error)
               await videoFrames?.dispose().catch(() => {})
               if (document.visibilityState !== 'visible') {
                 // Taken away because he left the app: not the video's fault,
@@ -988,16 +1008,20 @@ export async function renderCampaignCut(
     const voiceOnly = musicFree ? await musicFree.finish() : null
     finished = true
     onProgress?.(1)
+    // Only moments inside the finished video: a mention in a trailing part
+    // that was cut is placed past the end, where nothing is ever shown.
+    const shown = (times: readonly number[]) => times.filter((t) => t < cursor)
     return {
       blob,
       storedAs: sink.storedAs,
       ...(voiceOnly ? { voiceOnly } : {}),
-      logoAt: [...logoPlacer.times],
-      picturesAt: pictures.map((p) => [...p.placer.times]),
-      bankAt: bank.flatMap((b) => [...b.placer.times]).sort((a, b) => a - b),
+      logoAt: shown(logoPlacer.times),
+      picturesAt: pictures.map((p) => shown(p.placer.times)),
+      bankAt: shown(bank.flatMap((b) => [...b.placer.times])).sort((a, b) => a - b),
       recovered,
       clips: { beforeSec: talkStart, afterSec: afterClip ? cursor - afterStart : 0, leftOut, middleSec, middleLeftOut },
-      popsAt: popClips.flatMap((p) => [...p.placer.times]).sort((a, b) => a - b),
+      popsAt: shown(popClips.flatMap((p) => [...p.placer.times])).sort((a, b) => a - b),
+      ...(musicFailed ? { musicFailed } : {}),
       popsLeftOut,
       overlaysLeftOut,
     }

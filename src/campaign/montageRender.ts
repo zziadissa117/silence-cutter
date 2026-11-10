@@ -18,6 +18,7 @@ import {
   VideoSampleSource,
 } from 'mediabunny'
 
+import { throttled } from '../media/audio'
 import { SilenceCutError } from '../media/errors'
 import { contiguousAudio, forwardOnly } from '../media/forwardOnly'
 import { createOutputSink } from '../media/outputSink'
@@ -411,9 +412,10 @@ export async function renderMontage(
     const said = captions?.words.length ? captions.words.map((w) => ({ ...w, start: w.start - clips[0].first, end: w.end - clips[0].first })) : []
     const saidRanges = captions ? captionRanges(said, captions.style) : []
     const saidTimes = said.map((w) => w.start)
+    const report = throttled(onProgress)
     const frameAt = async (sample: VideoSample, i: number, t: number) => {
       const { fill, start, length } = stretches[i]
-      onProgress?.(Math.min(0.99, t / total))
+      report(t / total)
       ctx.fillStyle = '#000'
       ctx.fillRect(0, 0, width, height)
       // Under the formula, the reaction pushes in slowly for its whole
@@ -448,8 +450,11 @@ export async function renderMontage(
         if (word >= 0) drawStyledCaption(ctx, width, height, said, saidRanges, word, t + CAPTION_LEAD - saidTimes[word], false, captions.position, captions.size, captions.style)
       }
       const frame = new VideoSample(canvas, { timestamp: t, duration: 1 / FPS })
-      await videoSource.add(frame)
-      frame.close()
+      try {
+        await videoSource.add(frame)
+      } finally {
+        frame.close()
+      }
       // The music keeps up with the picture, in one piece.
       await soundTo(t + 1 / FPS - behind)
     }

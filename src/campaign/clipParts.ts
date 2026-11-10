@@ -22,7 +22,7 @@ import type { Range } from '../media/silenceMath'
 import { Resampler, fitChannels } from './reaction'
 
 export { decoderGaveUp, pause, visibleAgain } from '../media/recovery'
-import { StoppedEarly, decoderGaveUp, pause, stalledProblem, stoppedEarly, visibleAgain } from '../media/recovery'
+import { StoppedEarly, asRenderError, decoderGaveUp, pause, stalledProblem, stoppedEarly, visibleAgain } from '../media/recovery'
 
 export interface Clip {
   input: Input
@@ -222,6 +222,15 @@ export async function eachSound(
           }
           if (next.done) break
           const sample = next.value
+          // Sound that starts after the picture - a screen recording's often
+          // does - is placed where it belongs, silence before it, rather
+          // than pulled forward to the first frame.
+          const due = Math.min(needed, Math.round((Math.max(sample.timestamp, range.start) - range.start) * rate))
+          while (given < due) {
+            const length = Math.min(Math.round(rate / 10), due - given)
+            await visit(Array.from({ length: channels }, () => new Float32Array(length)))
+            given += length
+          }
           const sampleRate = sample.sampleRate
           const from = Math.max(0, Math.round((range.start - sample.timestamp) * sampleRate))
           const to = Math.min(sample.numberOfFrames, Math.round((range.end - sample.timestamp) * sampleRate))
@@ -331,20 +340,24 @@ export async function writeWhole(
               }
               origin ??= !onSound && sample.timestamp - whole.start > LATE_FIRST ? sample.timestamp : whole.start
               const timestamp = videoClock(at + Math.max(0, sample.timestamp - origin))
-              videoEnd = timestamp + sample.duration
-              done = sample.timestamp
+              const sourceTime = sample.timestamp
+              const sourceDuration = sample.duration
               try {
                 await onFrame(sample, timestamp)
               } finally {
                 sample.close()
               }
+              // Marked done only once it is written, so a frame the encoder
+              // refused is tried again rather than skipped.
+              videoEnd = timestamp + sourceDuration
+              done = sourceTime
             }
             // The frames ran out before the clip's end, with no error: the
             // decoder stopped - never held frozen, picked up again.
             if (stoppedEarly(seen, from, whole.end, await pictureEnd)) throw new StoppedEarly(Math.max(seen, from))
             return
           } catch (error) {
-            if (!decoderGaveUp(error)) throw error
+            if (!decoderGaveUp(error)) throw asRenderError(error)
             await frames.dispose().catch(() => {})
             if (document.visibilityState !== 'visible') await visibleAgain()
             else {

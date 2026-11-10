@@ -22,6 +22,7 @@ import {
   VideoSampleSource,
 } from 'mediabunny'
 
+import { throttled } from '../media/audio'
 import { SilenceCutError } from '../media/errors'
 import { forwardOnly } from '../media/forwardOnly'
 import { createOutputSink } from '../media/outputSink'
@@ -36,7 +37,7 @@ import type { BuiltInSound, VideoLook } from './look'
 import { MusicBed, musicGain, trackLoudness, type MusicLevel } from './music'
 import { drawHeadline, layoutHeadline, outputSize } from './overlay'
 import { frameRateOf, makeSize, videoQuality } from './quality'
-import { cover, layOut, productMoment, type Segment } from './reaction'
+import { cover, layOut, productMomentOrNext, type Segment } from './reaction'
 import { dbToGain, mixInto, musicProblem, prepareMusic, prepareSound, type PlacedSound } from './sounds'
 import { report as reportProblem } from '../report'
 import { Voice, measureLoudness, type WalkAudio } from './voice'
@@ -121,6 +122,7 @@ export async function renderReaction(
         console.warn('The voice could not be measured, so it is left as recorded:', error)
       }
     }
+    const report = throttled(onProgress)
     let bed: MusicBed | null = null
     if (music) {
       try {
@@ -142,7 +144,7 @@ export async function renderReaction(
     // Captions only where the product clip is kept, at their place on the
     // finished video.
     const shown = captions
-      .map((word) => ({ word, at: productMoment(segments, word.start) }))
+      .map((word) => ({ word, at: productMomentOrNext(segments, word.start) }))
       .filter((c): c is { word: CaptionWord; at: number } => c.at !== null)
     const captionWords = shown.map((c) => c.word)
     const captionTimes = shown.map((c) => c.at)
@@ -185,7 +187,7 @@ export async function renderReaction(
             for await (const sample of frames.range(segment.start, segment.end, await keyAt(segment.start))) {
               const timestamp = videoClock(segment.at + Math.max(0, sample.timestamp - segment.start))
               const duration = sample.duration
-              onProgress?.(Math.min(0.99, timestamp / total))
+              report(timestamp / total)
               if (part === 'reaction') {
                 // Always a slow push-in over the reaction (effects.reactionZoom),
                 // or the angle's own push-in where that is closer.
@@ -207,8 +209,11 @@ export async function renderReaction(
               }
               sample.close()
               const frame = new VideoSample(canvas, { timestamp, duration })
-              await videoSource.add(frame)
-              frame.close()
+              try {
+                await videoSource.add(frame)
+              } finally {
+                frame.close()
+              }
             }
           }
         })(),
@@ -229,6 +234,9 @@ export async function renderReaction(
           sample.close()
         }),
       ])
+      // Each clip's decoder let go before the next clip's starts: two 4K
+      // decoders at once is what brings a phone's GPU process down.
+      await frames.dispose().catch(() => {})
     }
 
     await output.finalize()

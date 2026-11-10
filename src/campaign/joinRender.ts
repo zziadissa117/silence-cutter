@@ -21,6 +21,7 @@ import {
   VideoSampleSource,
 } from 'mediabunny'
 
+import { throttled } from '../media/audio'
 import { SilenceCutError } from '../media/errors'
 import { contiguousAudio, forwardOnly } from '../media/forwardOnly'
 import { fadeAtCuts, nearCut } from './cutFades'
@@ -83,6 +84,7 @@ export async function joinRecordings(files: Blob[], onProgress?: (fraction: numb
     await output.start()
 
     const total = clips.reduce((sum, c) => sum + (c.duration - c.first), 0)
+    const report = throttled(onProgress)
     const videoClock = forwardOnly()
     const audioClock = contiguousAudio()
     const offsets: number[] = []
@@ -102,13 +104,16 @@ export async function joinRecordings(files: Blob[], onProgress?: (fraction: numb
         audioClock,
         maxRecoveries: MAX_RECOVERIES,
         onFrame: async (sample, timestamp) => {
-          onProgress?.(Math.min(0.99, timestamp / total))
+          report(timestamp / total)
           ctx.fillStyle = '#000'
           ctx.fillRect(0, 0, width, height)
           sample.draw(ctx, place.x, place.y, place.width, place.height)
           const frame = new VideoSample(canvas, { timestamp, duration: sample.duration })
-          await videoSource.add(frame)
-          frame.close()
+          try {
+            await videoSource.add(frame)
+          } finally {
+            frame.close()
+          }
         },
         onSound: async (planes, timestamp) => {
           const length = planes[0].length
