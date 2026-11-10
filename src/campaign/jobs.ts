@@ -122,6 +122,8 @@ export type Job = {
   /** Already had its one automatic second go after the phone's video
    *  decoder or encoder gave up. */
   retried?: boolean
+  /** How often it went back in line after the page was hidden mid-way. */
+  interruptions?: number
   /** Made for the next days: posted from tomorrow, not today. */
   later?: boolean
   /** When it was filmed (from the file) and how long it is. */

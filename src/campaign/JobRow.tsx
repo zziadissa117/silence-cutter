@@ -11,7 +11,7 @@
 import { useEffect, useMemo, useState, type ReactNode } from 'react'
 
 import { totalDuration } from '../media/silenceMath'
-import { ChevronDown } from './icons'
+import { ChevronDown, CloseIcon } from './icons'
 import type { PictureChoice } from './skipPictures'
 import { formatTime, outputName, type Job } from './jobs'
 import { hasShareSheet, shareVideo, useSharable } from './shareFile'
@@ -62,6 +62,7 @@ export function JobRow({
   onEditAgain,
   sendTo,
   postingNote,
+  onPickAccounts,
   clips,
   joinWith,
   onJoin,
@@ -106,6 +107,8 @@ export function JobRow({
   sendTo?: { campaigns: { id: string; name: string }[]; onSend: (campaignId: string) => void }
   /** Why a finished video was not sent to Postiz, when posting is set up. */
   postingNote?: string
+  /** Opens the campaign's posting set-up, where accounts are picked. */
+  onPickAccounts?: () => void
   /** What is joined onto a sorted video - its Add list. */
   clips?: ReactNode
   /** Other recordings this one can be joined with - it goes first. */
@@ -117,19 +120,20 @@ export function JobRow({
   parts?: { names: string[]; onSplit: () => void }
 }) {
   const unsure = job.status === 'sorted' && job.day?.guess?.sure === false
-  const [open, setOpen] = useState(unsure)
-  // Opens by itself the moment it turns out to need him - it was only a
-  // name waiting its turn when the row first appeared.
+  // A row that needs him opens by itself - unsure where it goes, or failed,
+  // with the reason inside - rather than waiting to be found.
+  const needsHim = unsure || job.status === 'failed' || job.status === 'held'
+  const [open, setOpen] = useState(needsHim)
   useEffect(() => {
-    if (unsure) setOpen(true)
-  }, [unsure])
+    if (needsHim) setOpen(true)
+  }, [needsHim])
   const [shareFailed, setShareFailed] = useState(false)
   const result = job.result
   const name = outputName(job.name, label)
   const file = useMemo(() => (result ? new File([result.blob], name, { type: 'video/mp4' }) : null), [result, name])
   const missed = result && result.notHeard.length > 0
   const plain = Boolean(result?.lookFailed)
-  const noMusic = Boolean(result?.montage?.musicFailed)
+  const noMusic = Boolean(result?.montage?.musicFailed || result?.musicFailed)
 
   const tone: Tone =
     job.status === 'done'
@@ -176,8 +180,8 @@ export function JobRow({
                 ? `${label} · ${formatTime(result.reaction.reactionSec)} reaction + ${formatTime(result.reaction.productSec)} product`
                 : `${label} · ${formatTime(result.originalDurationSec)} → ${formatTime(cutSec(result))}${joinedSec(result) ? ` · ${formatTime(result.newDurationSec)} with clips` : ''}${missed ? ` · didn't hear "${result.notHeard[0]}"` : ''}`
               : job.status === 'held'
-                ? 'Stopped the page twice - left alone'
-                : (job.error ?? 'Failed')
+                ? 'Stopped - left alone'
+                : 'Failed'
 
   const fine = job.status !== 'failed' && job.status !== 'held'
   // A wide clip he asked to only make 9:16 says so, so a video with its
@@ -251,8 +255,8 @@ export function JobRow({
           <button type="button" className="btn small" onClick={suggestJoin.onJoin}>
             Join them
           </button>
-          <button type="button" className="linkbtn" aria-label="Keep them apart" onClick={suggestJoin.onDismiss}>
-            ✕
+          <button type="button" className="iconbtn" aria-label="Keep them apart" onClick={suggestJoin.onDismiss}>
+            <CloseIcon />
           </button>
         </div>
       ) : null}
@@ -316,8 +320,8 @@ export function JobRow({
                 {result.clips?.middleSec ? ` · ${formatTime(result.clips.middleSec)} video in the middle` : ''}
               </div>
               )}
-              {result.montage?.musicFailed ? (
-                <div className="hint warn-text">Made without the music - {result.montage.musicFailed}.</div>
+              {result.montage?.musicFailed || result.musicFailed ? (
+                <div className="hint warn-text">Made without the music - {result.montage?.musicFailed ?? result.musicFailed}.</div>
               ) : null}
               {result.clips?.notSaid?.length ? (
                 <div className="hint">
@@ -351,7 +355,16 @@ export function JobRow({
                   {result.heardSample ? `It heard: "${result.heardSample}"` : 'It heard no words at all.'}
                 </div>
               ) : null}
-              {postingNote ? <div className="hint warn-text">{postingNote}</div> : null}
+              {postingNote ? (
+                <div className="hint warn-text">
+                  {postingNote}{' '}
+                  {onPickAccounts ? (
+                    <button type="button" className="linkbtn" onClick={onPickAccounts}>
+                      Pick accounts
+                    </button>
+                  ) : null}
+                </div>
+              ) : null}
               {onPost ? (
                 <button type="button" className="linkbtn" onClick={onPost}>
                   Send to Postiz
@@ -393,7 +406,7 @@ export function JobRow({
 
           {job.status === 'queued' || job.status === 'sorted' || job.status === 'held' || job.status === 'failed' || job.status === 'approved' ? (
             <button type="button" className="linkbtn" onClick={onRemove}>
-              Remove from the list
+              Remove
             </button>
           ) : null}
         </div>
@@ -709,7 +722,7 @@ export function VideoFields({
         <span className="label">Music</span>
         <div className="music-pick">
           <select value={job.day?.music ?? ''} onChange={(e) => onMusic(e.target.value)}>
-            <option value="">{angle?.music ? `The angle's: ${angle.music.name}${lengthOf(`${job.campaignId}:${job.angleId}`)}` : "The angle's: none"}</option>
+            <option value="">{angle?.music ? `Angle default: ${angle.music.name}${lengthOf(`${job.campaignId}:${job.angleId}`)}` : 'Angle default: no music'}</option>
             {songs.length > 0 ? (
               <optgroup label="Music bank">
                 {songs.map((song) => (

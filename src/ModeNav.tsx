@@ -48,8 +48,9 @@ export function ModeNav({ current, workToLose }: { current: Mode; workToLose?: (
  *  video is a row in its queue, and a finished one holds a Web Lock named
  *  after its file until it is cleared (see media/outputSink.ts). */
 export async function plainCutterWorkToLose(): Promise<string | null> {
-  const { loadPendingJobs } = await import('./media/jobStore')
-  const pending = (await loadPendingJobs()).length
+  const [{ loadPendingJobs }, { within }] = await Promise.all([import('./media/jobStore'), import('./media/within')])
+  // Storage that stops answering must not stop the tap - see media/within.ts.
+  const pending = (await within(loadPendingJobs(), 1500, [])).length
   let finished = 0
   if (navigator.locks) {
     const held = (await navigator.locks.query()).held ?? []

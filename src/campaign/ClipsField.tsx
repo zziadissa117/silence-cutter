@@ -5,6 +5,7 @@
 
 import { useEffect, useState } from 'react'
 
+import { pickArrived, pickSaved } from '../pickWatch'
 import { VideoPicker } from '../VideoPicker'
 import { CLIP_PLACES, clipFile, type AngleClips, type ClipInfo, type ClipPlace } from './clips'
 import { formatTime } from './jobs'
@@ -104,7 +105,7 @@ export function ClipsField({
           }}
         >
           <option value="" disabled hidden>
-            ＋ Add
+            Add…
           </option>
           {free.map((p) => (
             <option key={p} value={p}>
@@ -168,7 +169,7 @@ function ClipLine({
       {angleClip || others.length > 0 ? (
         <select value={pick ?? ''} aria-label={LABEL[place]} onChange={(e) => onPick(e.target.value)}>
           {angleClip ? (
-            <option value="">The angle's: {clipName(angleClip)}</option>
+            <option value="">Angle default: {clipName(angleClip)}</option>
           ) : (
             <option value="" disabled>
               Choose a clip
@@ -189,13 +190,20 @@ function ClipLine({
           className={nothingYet && others.length === 0 ? 'btn small primary' : 'btn small'}
           label={`A new ${LABEL[place].toLowerCase()} from your phone`}
           onFiles={(files) => {
+            const problem = pickArrived(files)
             const file = files[0]
-            if (!file) return
+            if (problem || !file) {
+              if (problem) setError(problem)
+              return
+            }
             setAdding(true)
             setError(null)
             onNew(file)
               .catch((e: unknown) => setError(e instanceof Error ? e.message : String(e)))
-              .finally(() => setAdding(false))
+              .finally(() => {
+                setAdding(false)
+                pickSaved()
+              })
           }}
         >
           {nothingYet && others.length === 0 ? 'Choose from phone' : 'New'}

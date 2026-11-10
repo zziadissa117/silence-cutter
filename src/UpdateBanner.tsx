@@ -19,6 +19,17 @@ import { pickQuiet } from './pickWatch'
  *  away. Otherwise it says a new version is ready and waits to be asked. It
  *  never reloads on its own while there is something to lose; a reload
  *  mid-cut is how the planner version lost videos. */
+/** Whether a page may swap to a new version by itself: only when everything
+ *  on it is also safe on disk. A held or failed video is, and so is one
+ *  sorted and waiting for approval - its plan, captions and cuts are written
+ *  as they change - unless he is in the middle of checking it, which lives
+ *  in this tab until he is done. A queued one may still be being copied, and
+ *  a running or finished one lives only in this tab's memory. One rule, used
+ *  by both pages. */
+export function safeToReloadWith(jobs: { status: string }[], checking = false): boolean {
+  return jobs.every((job) => job.status === 'held' || job.status === 'failed' || (job.status === 'sorted' && !checking))
+}
+
 /** Fired on window once a new version has downloaded and is waiting for the page to load it. */
 export const UPDATE_READY_EVENT = 'cutter:update-ready'
 let downloaded = false
@@ -90,10 +101,7 @@ export function UpdateBanner({ safeToReload, handled = false }: { safeToReload: 
 
   return (
     <div className="notice">
-      <span>
-        A new version is ready. It loads by itself once nothing is cutting and the finished videos
-        have been cleared. Updating now clears them.
-      </span>
+      <span>New version ready. Updating now clears the finished videos on this page.</span>
       <button type="button" className="linkbtn" onClick={() => window.location.reload()}>
         Update now
       </button>

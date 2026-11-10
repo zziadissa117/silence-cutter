@@ -91,7 +91,8 @@ import { ClipsMaker, type Montage } from './ClipsMaker'
 import { JoinPicker, type EditGoes } from './JoinPicker'
 import { filmingOf, joinSuggestions, type Filming } from './filming'
 import { joinRecordings } from './joinRender'
-import { joinPlans, type CampaignPlan } from './plan'
+import { joinCaptions, joinPlans, type CampaignPlan } from './plan'
+import { tidyParts } from './cuts'
 import { checkPhone } from './phoneCheck'
 import { PHASE_LABEL, canShareFiles, labelFor, labelOf, outputName, share, type Job } from './jobs'
 import {
@@ -158,9 +159,10 @@ import {
   type RedoMode,
   type LocalPosting,
   videoHeadline,
+  watchPosting,
 } from './posting'
 import { PostsView } from './PostsView'
-import { pushState, refreshPush, turnOnPush, type PushState } from './push'
+import { pushState, refreshPush, turnOffPush, turnOnPush, type PushState } from './push'
 import { BatchEdit } from './BatchEdit'
 import { isPicture, isSound, isText, isVideo, ownFile, type ManualPicture } from './manualPictures'
 import { headlinePlaceOf, rememberPlace } from './headlinePlace'
@@ -250,6 +252,10 @@ const LAST_KEY = 'campaign.last'
  *  stuck. Well past the slowest real step on a phone - a long window of
  *  listening, or finishing a big file. */
 const STALL_MS = 90_000
+/** How often a video hidden mid-way goes back in line before a failure
+ *  counts as one - the page is hidden every time he sends a video on, so
+ *  without a cap a video that really fails loops for ever. */
+const MAX_INTERRUPTIONS = 2
 /** The models say nothing while they load from the phone's storage, and
  *  the letter model has taken over a minute to on a phone that had just run
  *  the speech model (plan.ts ALIGN_LOADING_MS): more patience there, or a
@@ -316,7 +322,7 @@ type Mode = 'one' | 'day' | 'clips' | 'join'
 function rememberedMode(): Mode {
   try {
     const stored = localStorage.getItem(MODE_KEY)
-    return stored === 'one' || stored === 'clips' || stored === 'join' ? stored : 'day'
+    return stored === 'one' ? 'one' : 'day'
   } catch {
     return 'day'
   }
@@ -1087,14 +1093,15 @@ export function CampaignApp() {
         },
       },
       result.blob,
-    ).then(async (queuedAs) => {
+    ).then(async () => {
       // Its sound without the music, so the music can be changed later.
       if (result.voiceOnly) await keepVoiceOnly(postKeyOf(job.id, job.version), result.voiceOnly).catch(() => {})
-      return queuedAs
+      return true
     })).catch((error: unknown) => {
       const why = error instanceof Error ? error.message : String(error)
       report({ page: 'campaign', kind: 'failed', phase: 'posting', message: `Could not keep a copy to send: ${why}` })
       setNotice(`${job.name} is made but not on its way: a copy to send couldn't be kept (${why}). Open it and tap Send to Postiz to try again.`)
+      return false
     })
     copying.current.set(job.id, queued)
     void queued.finally(() => copying.current.delete(job.id))
@@ -1155,7 +1162,10 @@ export function CampaignApp() {
   const [outgoing, setOutgoing] = useState(sending)
   // Finished videos still being copied for Postiz: their cut stays until
   // the copy is made, whatever is cleared meanwhile.
-  const copying = useRef(new Map<string, Promise<unknown>>())
+  const copying = useRef(new Map<string, Promise<boolean>>())
+  // Caption fixes are written to disk a moment after each change - see the
+  // caption check below.
+  const captionSaveTimer = useRef(0)
   const [tab, setTab] = useState<Tab>(() => (window.location.hash === '#posts' ? 'posts' : 'videos'))
   // Posts is a tab of its own now (TabBar): opening it is going to it.
   const showPosts = tab === 'posts'
@@ -1185,6 +1195,9 @@ export function CampaignApp() {
   const [mode, setModeState] = useState<Mode>(rememberedMode)
   const setMode = (next: Mode) => {
     setModeState(next)
+    // Only the lasting choice is kept: a one-off flow - clips, joining - is
+    // not where the page should open tomorrow.
+    if (next !== 'one' && next !== 'day') return
     try {
       localStorage.setItem(MODE_KEY, next)
     } catch {
@@ -1276,6 +1289,11 @@ export function CampaignApp() {
     setHeadlineText(chosen?.headline.text ?? '')
     if (next) remember(next.id, chosen?.id ?? null)
   }, [])
+  // An angle the other phone removed: the angle and headline new videos are
+  // added for follow what is really there, not the deleted one's.
+  useEffect(() => {
+    if (campaign && angleId && !campaign.angles.some((a) => a.id === angleId)) select(campaign, campaign.angles[0] ?? null)
+  }, [campaign, angleId, select])
 
   /** Reads campaigns and the bank again - after the shared login brought
    *  changes - keeping what is selected when it still exists. */
@@ -1342,6 +1360,9 @@ export function CampaignApp() {
   // opening; the Posts screen opens from a notification.
   useEffect(() => startSending(), [])
   useEffect(() => watchSending(() => setOutgoing(sending())), [])
+  // The server can say the profile is gone from inside any call; the screen
+  // follows, instead of offering Send buttons that then fail.
+  useEffect(() => watchPosting(() => setPosting(postingHere())), [])
   useEffect(() => {
     void pushState().then(setPush)
     if (!postingHere()) return
@@ -1388,7 +1409,7 @@ export function CampaignApp() {
       // General is always there, for videos with no campaign in them.
       let loaded = stored
       if (!stored.some((c) => c.general)) {
-        const general = await saveCampaign(generalCampaign()).catch(() => generalCampaign())
+        const general = await saveCampaign(generalCampaign(), { asIs: true }).catch(() => generalCampaign())
         loaded = [...stored, general]
       }
       loaded = ordered(loaded)
@@ -1516,6 +1537,9 @@ export function CampaignApp() {
       ...(a.day!.guess ? { guess: { ...a.day!.guess, sure: true } } : {}),
       ...(a.day!.music ? { music: a.day!.music } : {}),
       ...(a.day!.clips ? { clips: a.day!.clips } : {}),
+      // What he already answered about the first part holds for the whole.
+      ...(a.day!.hookCaptions !== undefined ? { hookCaptions: a.day!.hookCaptions } : {}),
+      ...(a.day!.noCaptions ? { noCaptions: true } : {}),
       parts: [a.id, b.id],
     }
     const joined: Job = {
@@ -1645,7 +1669,18 @@ export function CampaignApp() {
         joined.offsets,
         joined.duration,
       )
-      const day = { ...next.day!, plan }
+      // Caption fixes made on a part come along; the joined video counts
+      // as checked only when every part was.
+      const captions = joinCaptions(
+        parts.map((p) => ({ captions: p!.day?.captions, plan: planFor(p!)! })),
+        joined.offsets,
+        joined.duration,
+      )
+      const day = {
+        ...next.day!,
+        plan,
+        ...(captions ? { captions, ...(parts.every((p) => p!.day?.checked) ? { checked: true } : {}) } : {}),
+      }
       setJobs((js) =>
         js.map((j) => (j.id === next.id ? { ...j, status: 'sorted' as const, file, day, progress: 0, joinedAs: joined.storedAs } : j)),
       )
@@ -1899,11 +1934,11 @@ export function CampaignApp() {
         const jobCampaign = campaignsRef.current.find((c) => c.id === next.campaignId)
         const ownAngle = jobCampaign?.angles.find((a) => a.id === next.angleId)
         if (!jobCampaign || !ownAngle) {
-          patch({
-            status: 'failed',
-            error: `The ${jobCampaign ? 'angle' : 'campaign'} this video was added for has been deleted.`,
-          })
-          await forgetJob(next.id)
+          // Kept, video and all: the campaign going - here or on the other
+          // phone - is no reason to lose the video.
+          const message = `The ${jobCampaign ? 'angle' : 'campaign'} this video was added for has been deleted. Remove it, or add it again for another campaign.`
+          patch({ status: 'failed', error: message })
+          await recordFailure(next.id, message)
           return
         }
         patch({ label: labelOf(jobCampaign, ownAngle) })
@@ -2162,7 +2197,13 @@ export function CampaignApp() {
           const copy = copying.current.get(next.id)
           if (copy) {
             const cut = result.storedAs
-            void copy.finally(() => {
+            void copy.then((ok) => {
+              // Still here, with its file, rather than gone without a word:
+              // the notice says to open it and send it by hand.
+              if (!ok) {
+                patch({ batch: undefined, error: "Couldn't keep a copy to send it. Send it to Postiz from here, or free some space and make the batch again." })
+                return
+              }
               if (cut) void forgetCut(cut)
               setJobs((js) => js.filter((j) => j.id !== next.id))
             })
@@ -2235,8 +2276,8 @@ export function CampaignApp() {
           report({ page: 'campaign', kind: 'failed', phase, message: said, video: kept })
           return
         }
-        if (!known && interrupted) {
-          patch({ status: next.status, progress: 0 })
+        if (!known && interrupted && (next.interruptions ?? 0) < MAX_INTERRUPTIONS) {
+          patch({ status: next.status, progress: 0, interruptions: (next.interruptions ?? 0) + 1 })
           await resetAttempts(next.id)
           report({ page: 'campaign', kind: 'interrupted', phase, message: why, video: kept })
           return
@@ -2254,7 +2295,9 @@ export function CampaignApp() {
         let plainWhy = ''
         if (!known && phase === 'cutting' && kept && !next.reaction && !next.montage) {
           try {
-            const result = await watched(plainCut(kept, planFor(next), next.settings, why, (p) => setPhase('cutting', p)))
+            const result = await watched(
+              plainCut(kept, planFor(next), next.settings, why, (p) => setPhase('cutting', p), next.cleanSpeech),
+            )
             patch({ status: 'done', result, url: URL.createObjectURL(result.blob) })
             report({ page: 'campaign', kind: 'fallback', phase, message: why, video: kept })
             // A format's take is kept all the same, marked as a plain cut.
@@ -2268,7 +2311,7 @@ export function CampaignApp() {
         }
         const message = known
           ? err.message
-          : `Something went wrong while ${PHASE_LABEL[phase]} (${why}).${plainWhy} Version ${__APP_VERSION__}.`
+          : `Something went wrong while ${PHASE_LABEL[phase]} (${why}).${plainWhy}`
         // Kept, video and all, so Try again works - even after a restart.
         patch({ status: 'failed', error: message })
         await recordFailure(next.id, message)
@@ -2679,20 +2722,20 @@ export function CampaignApp() {
 
   const clearFinished = useCallback(() => {
     setJobs((current) => {
+      // Batch and format videos are followed, and cleared, on their own tabs.
+      const finished = (j: Job) => (j.status === 'done' || j.status === 'failed') && !j.batch && !j.forFormat
       for (const j of current) {
-        if ((j.status === 'done' || j.status === 'failed') && j.url) URL.revokeObjectURL(j.url)
+        if (!finished(j)) continue
+        if (j.url) URL.revokeObjectURL(j.url)
         if (j.status === 'done' && j.result?.storedAs) {
           const cut = j.result.storedAs
           void (copying.current.get(j.id) ?? Promise.resolve()).finally(() => forgetCut(cut))
         }
         // A failed video is kept for Try again until it is cleared.
         if (j.status === 'failed') void forgetJob(j.id)
-        if ((j.status === 'done' || j.status === 'failed') && j.joinedAs) void forgetCut(j.joinedAs)
+        if (j.joinedAs) void forgetCut(j.joinedAs)
       }
-      const gone = withParts(
-        current.filter((j) => j.status === 'done' || j.status === 'failed').map((j) => j.id),
-        current,
-      )
+      const gone = withParts(current.filter(finished).map((j) => j.id), current)
       return current.filter((j) => !gone.has(j.id))
     })
   }, [])
@@ -3558,11 +3601,11 @@ export function CampaignApp() {
     listed.length > 0 && !dragging ? (
       // With a list to look at, adding more is one button, not half the
       // screen.
-      <VideoPicker className="btn add-more" label={label} onFiles={onFiles}>
+      <VideoPicker className="btn add-more" label={label} tip onFiles={onFiles}>
         <UploadIcon /> {label === "Add today's videos" ? 'Add more videos' : label}
       </VideoPicker>
     ) : (
-      <VideoPicker className={dragging ? 'drop over' : 'drop'} label={label} onFiles={onFiles}>
+      <VideoPicker className={dragging ? 'drop over' : 'drop'} label={label} tip onFiles={onFiles}>
         <span className="icon">
           <UploadIcon />
         </span>
@@ -3747,7 +3790,7 @@ export function CampaignApp() {
               aria-label="Headline for these videos"
               value={headlineText}
               maxLength={LIMITS.headlineChars}
-              placeholder={isReaction(campaign) ? 'Headline on the reaction (none)' : 'Headline for these videos (none)'}
+              placeholder={isReaction(campaign) ? 'Headline on the reaction, if any' : 'Headline for these videos, if any'}
               onChange={(e) => setHeadlineText(e.target.value)}
             />
           )}
@@ -3772,7 +3815,10 @@ export function CampaignApp() {
               )}
             </>
           ) : (
-            dropZone(`Add videos for ${labelOf(campaign, angle)}`, 'Made straight away, one at a time')
+            dropZone(
+              `Add videos for ${labelOf(campaign, angle)}`,
+              captionsOn ? 'Listened to first, so you can check the captions' : 'Made straight away, one at a time',
+            )
           )}
         </div>
       )}
@@ -3783,13 +3829,13 @@ export function CampaignApp() {
             <span className="hint">{summary}</span>
             <div className="summary-actions">
               {sorted.length > 1 ? (
-                captionsOn ? (
-                  <button type="button" className="btn small primary" onClick={() => startCheck(sorted.map((j) => j.id))}>
-                    Check {sorted.length}
+                captionsOn && sorted.some(talkingIn) ? (
+                  <button type="button" className="btn small primary" onClick={() => checkAll()}>
+                    Check {sorted.filter(talkingIn).length}
                   </button>
                 ) : (
                   <button type="button" className="btn small primary" onClick={() => approve(sorted.map((j) => j.id))}>
-                    Approve {sorted.length} sorted
+                    Approve {sorted.length}
                   </button>
                 )
               ) : null}
@@ -3799,7 +3845,7 @@ export function CampaignApp() {
                   className="btn small primary"
                   onClick={() => void share(shareAll).then((ok) => !ok && setShareAllFailed(true))}
                 >
-                  Send all {shareAll.length}
+                  Share all {shareAll.length}
                 </button>
               ) : null}
             </div>
@@ -3848,9 +3894,13 @@ export function CampaignApp() {
                 onStop={() => void stopJob(job.id)}
                 onReaction={(fields) => setReaction(job.id, fields)}
                 onPost={postByHand(job)}
-                postingNote={
+                postingNote={unsent.includes(job) ? 'Not sent to Postiz: no accounts are picked for this campaign.' : undefined}
+                onPickAccounts={
                   unsent.includes(job)
-                    ? 'Not sent to Postiz: no accounts are picked for this campaign. Pick them in Campaigns, then Posting - then this video gets a Send to Postiz button.'
+                    ? () => {
+                        const owner = campaigns?.find((c) => c.id === job.campaignId)
+                        if (owner) setEditing({ kind: 'posting', campaign: owner })
+                      }
                     : undefined
                 }
                 onEditAgain={wentNowhere(job) && editable[job.id] ? () => void editMade(job.id) : undefined}
@@ -3865,7 +3915,7 @@ export function CampaignApp() {
               />
             ))}
           </ul>
-          {jobs.some((j) => j.status === 'done' || j.status === 'failed') ? (
+          {listed.some((j) => j.status === 'done' || j.status === 'failed') ? (
             <button type="button" className="linkbtn" onClick={clearFinished}>
               Clear finished
             </button>
@@ -3914,6 +3964,15 @@ export function CampaignApp() {
 
   const reviewJob = reviewing ? jobs.find((j) => j.id === reviewing[0] && j.day?.plan) : undefined
   const cutsJob = cutting ? jobs.find((j) => j.id === cutting.id && j.day?.plan) : undefined
+  // The words along the cuts timeline, worked out once per video opened -
+  // not again on every render while listening carries on behind the editor.
+  const cutsWords = useMemo(
+    () =>
+      cutsJob
+        ? captionWords(cutsJob.day!.plan!.spoken ?? cutsJob.day!.plan!.words, [{ start: 0, end: cutsJob.day!.plan!.duration }])
+        : [],
+    [cutsJob?.id], // eslint-disable-line react-hooks/exhaustive-deps
+  )
   // The recording on screen - for checking captions or fixing cuts - read
   // from storage once per video opened.
   const openJob = cutsJob ?? reviewJob
@@ -4198,9 +4257,11 @@ export function CampaignApp() {
   }
 
   /** The kept parts as he fixed them, or none when they are the plan's own. */
-  const keepCuts = (id: string, keep: Range[], overlays: ManualPicture[] = [], files: Map<string, Blob> = new Map()) => {
+  const keepCuts = (id: string, fixed: Range[], overlays: ManualPicture[] = [], files: Map<string, Blob> = new Map()) => {
     const job = jobs.find((j) => j.id === id)
     if (!job?.day?.plan) return
+    // Touching parts (a Split never followed by Delete) are one part again.
+    const keep = tidyParts(fixed)
     const same = JSON.stringify(keep) === JSON.stringify(job.day.plan.keep)
     // Pictures picked from the phone are kept under this video; ones he took
     // off are let go.
@@ -4280,6 +4341,15 @@ export function CampaignApp() {
   /** Checks these videos' captions - first asking where each goes, its
    *  headline and music, and whether the hook gets captions (CheckQuestions). */
   const startCheck = (ids: string[]) => setAsking(ids)
+
+  /** The summary's Check: the videos with talking in them are checked, the
+   *  rest - reactions he does not talk over - are simply approved. */
+  const checkAll = () => {
+    const talking = sorted.filter(talkingIn)
+    const quiet = sorted.filter((j) => !talkingIn(j))
+    if (quiet.length > 0) approve(quiet.map((j) => j.id))
+    if (talking.length > 0) startCheck(talking.map((j) => j.id))
+  }
 
   /** Keeps the hook answer on each video, when it was asked, then goes on to
    *  check them. */
@@ -4419,7 +4489,7 @@ export function CampaignApp() {
         checks={cutsJob.day!.plan!.checks}
         peaks={cutsJob.day!.plan!.peaks}
         noiseNote={cutsJob.day!.plan!.noiseNote}
-        words={captionWords(cutsJob.day!.plan!.spoken ?? cutsJob.day!.plan!.words, [{ start: 0, end: cutsJob.day!.plan!.duration }])}
+        words={cutsWords}
         overlays={cutsJob.day!.overlays}
         bank={bankRef.current}
         defaults={angleBankDefaults(cutsJob)}
@@ -4490,8 +4560,19 @@ export function CampaignApp() {
         onChange={(words) => {
           const all = review.merge(words)
           setJobs((js) => js.map((j) => (j.id === reviewJob.id && j.day ? { ...j, day: { ...j.day, captions: all } } : j)))
+          // Written to disk a moment later, not only on Done: checking
+          // captions with the player up is when the phone is most likely to
+          // discard the page, and every fix was lost with it.
+          window.clearTimeout(captionSaveTimer.current)
+          captionSaveTimer.current = window.setTimeout(() => {
+            const job = jobsRef.current.find((j) => j.id === reviewJob.id)
+            if (job?.day) void recordDay(job.id, { ...job.day, captions: all }, { campaignId: job.campaignId, angleId: job.angleId, headlineText: job.headlineText })
+          }, 1000)
         }}
         onFinish={(how, cuts, words) => {
+          // Done writes the whole edit itself: a save still pending from the
+          // last change must not land after it with older words.
+          window.clearTimeout(captionSaveTimer.current)
           const plan = planFor(reviewJob)!
           let captions = review.merge(words)
           // Cuts changed in the last moment, before the captions followed them.
@@ -4690,6 +4771,8 @@ export function CampaignApp() {
             .catch((error: unknown) => setNotice(`Notifications could not be turned on (${error instanceof Error ? error.message : String(error)}).`))
         }}
         onDisconnectPosting={() => {
+          // And no more notifications for a profile this phone no longer posts.
+          void turnOffPush().then(() => pushState().then(setPush))
           disconnectPosting()
           setPosting(null)
         }}

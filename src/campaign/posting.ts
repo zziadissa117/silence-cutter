@@ -17,11 +17,12 @@ import { hoursOn, type BestHours } from '../../supabase/functions/postiz/bestHou
 import type { CampaignHooks } from '../../supabase/functions/postiz/hookInsights.ts'
 import type { DeadAccount } from '../../supabase/functions/postiz/deadAccounts.ts'
 import type { TrialAccounts, TrialRead } from '../../supabase/functions/postiz/trial.ts'
-import { PUBLISHABLE_KEY, currentSession } from './cloud'
+import { FUNCTIONS_URL, PUBLISHABLE_KEY } from '../config'
+import { currentSession } from './cloud'
 import type { Campaign, CampaignPosting } from './look'
 import { dayTimes, spreadPick } from './batch'
 
-const FUNCTION_URL = 'https://uykuoibqdxmpbbrsmyad.supabase.co/functions/v1/postiz'
+const FUNCTION_URL = `${FUNCTIONS_URL}/postiz`
 const LOCAL_KEY = 'cutter.posting'
 
 export interface PostizAccount {
@@ -169,6 +170,15 @@ export function postingHere(): LocalPosting | null {
   }
 }
 
+const postingListeners = new Set<() => void>()
+
+/** Told whenever this phone's posting set-up changes - including the server
+ *  saying the profile is gone, from inside any call. */
+export function watchPosting(listener: () => void): () => void {
+  postingListeners.add(listener)
+  return () => postingListeners.delete(listener)
+}
+
 export function keepPosting(local: LocalPosting | null): void {
   try {
     if (local) localStorage.setItem(LOCAL_KEY, JSON.stringify(local))
@@ -176,6 +186,7 @@ export function keepPosting(local: LocalPosting | null): void {
   } catch {
     // Storage blocked: posting set up for this visit only.
   }
+  for (const listener of postingListeners) listener()
 }
 
 export class PostingError extends Error {
@@ -974,6 +985,11 @@ export async function putPart(url: string, part: Blob): Promise<void> {
 
 export async function savePushSubscription(subscription: PushSubscriptionJSON): Promise<void> {
   await call('push', { profile: profileId(), subscription })
+}
+
+/** The server forgets this phone's notification address. */
+export async function dropPushSubscription(endpoint: string): Promise<void> {
+  await call('unpush', { endpoint })
 }
 
 // --- Words --------------------------------------------------------------------

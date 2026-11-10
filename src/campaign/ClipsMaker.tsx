@@ -7,6 +7,7 @@
 import { useEffect, useRef, useState } from 'react'
 
 import { VideoPicker } from '../VideoPicker'
+import { ArrowDownIcon, ArrowUpIcon, CloseIcon } from './icons'
 import { pickArrived, pickSaved } from '../pickWatch'
 import { filmingOf } from './filming'
 import { musicTracks } from './JobRow'
@@ -153,7 +154,7 @@ export function ClipsMaker({
                 </span>
               </span>
               <button type="button" className="btn small icon-btn" aria-label={`Move ${clip.file.name} up`} disabled={i === 0} onClick={() => move(i, i - 1)}>
-                ↑
+                <ArrowUpIcon />
               </button>
               <button
                 type="button"
@@ -162,10 +163,10 @@ export function ClipsMaker({
                 disabled={i === clips.length - 1}
                 onClick={() => move(i, i + 1)}
               >
-                ↓
+                <ArrowDownIcon />
               </button>
               <button type="button" className="btn small icon-btn" aria-label={`Take out ${clip.file.name}`} onClick={() => remove(clip.key)}>
-                ✕
+                <CloseIcon />
               </button>
             </li>
           ))}
@@ -180,7 +181,7 @@ export function ClipsMaker({
         aria-label="Headline on the first clip"
         value={headline}
         maxLength={LIMITS.headlineChars}
-        placeholder="Headline on the first clip (none)"
+        placeholder="Headline on the first clip, if any"
         onChange={(e) => onHeadline(e.target.value)}
       />
 

@@ -20,6 +20,7 @@ import {
   cacheFile,
   cachedFile,
   enqueueEverything,
+  forgetUploads,
   getMeta,
   markSent,
   markUploaded,
@@ -31,11 +32,10 @@ import {
   type StoredRow,
 } from './store'
 import { SERVER_MODE } from './serverFlag'
+import { FUNCTIONS_URL, PUBLISHABLE_KEY } from '../config'
+import { report } from '../report'
 
-const FUNCTION_URL = 'https://uykuoibqdxmpbbrsmyad.supabase.co/functions/v1/cutter'
-/** The project's publishable key - public by design; the function checks the
- *  login itself. */
-export const PUBLISHABLE_KEY = 'sb_publishable_UhAfC6SJRmnDOR5Y10CmPg_DFepNyVA'
+const FUNCTION_URL = `${FUNCTIONS_URL}/cutter`
 
 const SESSION_KEY = 'cutter.session'
 /** Fired on window whenever the signed-in state changes, so the login gate
@@ -121,6 +121,9 @@ export async function signIn(name: string, password: string): Promise<Session> {
   const session: Session = { name: signedAs, token, ...(only === 'trial' ? { only: 'trial' as const } : {}) }
   keepSession(session)
   await setMeta(LAST_PULL, null)
+  // A login has its own storage: nothing is there yet, whatever was sent
+  // under another.
+  await forgetUploads()
   await enqueueEverything()
   return session
 }
@@ -416,6 +419,8 @@ export function readTo(since: string | null, until: string | null): string | nul
 async function pullAll(token: string): Promise<boolean> {
   let since = await getMeta(LAST_PULL)
   let changed = false
+  // Where the next pull picks up when an item could not be taken: see below.
+  let stuckAt: string | null = null
   // Only the first page looks back; the pages after it carry straight on.
   let ask = pullFrom(since)
   for (;;) {
@@ -424,16 +429,28 @@ async function pullAll(token: string): Promise<boolean> {
       until: string | null
     }>('pull', { token, since: ask })
     for (const item of items) {
-      const updatedAt = Number(item.updated_at)
-      if (item.deleted || item.data === null) {
-        changed = (await applyRemote(item.kind, item.id, updatedAt, null)) || changed
-        continue
+      try {
+        const updatedAt = Number(item.updated_at)
+        if (item.deleted || item.data === null) {
+          changed = (await applyRemote(item.kind, item.id, updatedAt, null)) || changed
+          continue
+        }
+        const files = await download(token, refsIn(item.data))
+        const row = fromWire(item.data, files) as StoredRow
+        changed = (await applyRemote(item.kind, item.id, updatedAt, row)) || changed
+      } catch (error) {
+        // An item whose picture or sound could not be fetched is left for
+        // next time: the pull picks up just before it, while everything
+        // after it still arrives now. One such item used to stop every item
+        // behind it, for ever - "Not synced" on the screen and the friend's
+        // changes never coming.
+        if (!(error instanceof CloudError)) throw error
+        const at = Date.parse(item.server_at)
+        stuckAt ??= Number.isFinite(at) ? new Date(at - 1).toISOString() : since
+        report({ page: 'campaign', kind: 'failed', phase: 'sync', message: `A shared ${item.kind} was left for next time: ${error.message}` })
       }
-      const files = await download(token, refsIn(item.data))
-      const row = fromWire(item.data, files) as StoredRow
-      changed = (await applyRemote(item.kind, item.id, updatedAt, row)) || changed
     }
-    const next = readTo(since, until)
+    const next = readTo(since, stuckAt ?? until)
     if (next && next !== since) await setMeta(LAST_PULL, next)
     since = next
     if (items.length < 1000) break

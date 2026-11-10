@@ -1,16 +1,17 @@
 // Silence Cutter, on its own and laid out like the desktop tool it came from:
-// same header, same pacing card, same fine-tune sliders, same dotted drop
-// zone, same job list. The two things the desktop version could do that a web
-// page cannot are the two that changed - there is no "Open output folder" on
-// a phone, so finished videos go to the share sheet instead, and cutting
-// "um"s needs a speech model the desktop version never had, so that is an
-// option rather than the default.
+// same header, same pacing card, same fine-tune sliders, same drop zone, same
+// job list. The two things the desktop version could do that a web page
+// cannot are the two that changed - there is no "Open output folder" on a
+// phone, so finished videos go to the share sheet instead, and cutting "um"s
+// needs a speech model the desktop version never had, so that is an option
+// rather than the default.
 //
 // No account and no server. The videos are read, cut and handed back on this
 // device, which is why there is nothing to sign in to.
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
+import { CloseIcon, UploadIcon } from './campaign/icons'
 import { cuesToSrt, type CaptionCue } from './media/captions'
 import { isFillerWordDetectionSupported } from './media/fillerWords'
 import {
@@ -22,8 +23,10 @@ import {
   loadPendingJobs,
   persistJob,
   spaceOnDevice,
+  recordFailure,
   recordPhase,
   resetAttempts,
+  updateJobOptions,
 } from './media/jobStore'
 import { forgetCut } from './media/outputSink'
 import { PRESETS, type PresetName, type SilenceSettings } from './media/silenceMath'
@@ -35,10 +38,13 @@ import {
 } from './media/silenceCut'
 import { pageLeaving } from './leaving'
 import { within } from './media/within'
+import { keepScreenOn } from './campaign/wakeLock'
 import { lostPick, pickArrived, pickSaved, whenPickGoesWrong } from './pickWatch'
 import { report } from './report'
-import { UpdateBanner } from './UpdateBanner'
-import { VideoPicker } from './VideoPicker'
+import { canShareFiles, shareFiles, type ShareOutcome } from './share'
+import { UpdateBanner, safeToReloadWith } from './UpdateBanner'
+import { VideoPicker, videoFilesFrom } from './VideoPicker'
+import { HELD_LINE, HELD_TEXT, PHASE, PHASE_DOING, count, heldNotice, pickedUpNotice } from './words'
 
 const PRESET_ORDER: PresetName[] = ['natural', 'balanced', 'tight']
 const PRESET_LABEL: Record<PresetName, string> = {
@@ -71,28 +77,15 @@ type Job = {
   result?: SilenceCutResult
   url?: string
   error?: string
-  /** Said on a finished video that was cut without what was asked for. */
-  note?: string
   /** The phase this video was last seen entering, for a `held` video only -
    *  see recordPhase's own comment for why this exists and where it comes
    *  from. Undefined for a video that has never been tried. */
   lastPhase?: Job['phase']
-}
-
-const PHASE_LABEL: Record<Job['phase'], string> = {
-  reading: 'reading the audio',
-  model: 'getting the speech model',
-  listening: 'listening for words',
-  cutting: 'cutting',
-}
-
-function phaseLabel(job: Job): string {
-  if (job.phase === 'reading') return 'Reading the audio'
-  if (job.phase === 'model') return 'Getting the speech model'
-  if (job.phase === 'cutting') return 'Cutting'
-  if (job.cleanSpeech && job.wantCaptions) return 'Listening for "um"s and writing captions'
-  if (job.wantCaptions) return 'Writing captions'
-  return 'Listening for "um"s'
+  /** Its row - and copy, unless let go to make room - is in the queue
+   *  store, so Try again can read it back even with no file in hand. */
+  kept?: boolean
+  /** Said on a finished video that was cut without what was asked for. */
+  note?: string
 }
 
 function formatTime(seconds: number): string {
@@ -110,34 +103,66 @@ function srtName(originalName: string): string {
   return `${base || 'video'}_captions.srt`
 }
 
-function canShareFiles(files: File[]): boolean {
-  if (typeof navigator === 'undefined' || !navigator.canShare) return false
+// --- What he set last time ------------------------------------------------------
+//
+// Pacing, the sliders and the two switches are kept on this phone, so a
+// visit starts where the last one left off rather than back on Balanced with
+// everything off.
+
+const PREFS_KEY = 'cut.prefs'
+
+interface Prefs {
+  settings: Settings
+  cleanSpeech: boolean
+  wantCaptions: boolean
+}
+
+const DEFAULT_PREFS: Prefs = { settings: { ...PRESETS.balanced, preset: 'balanced' }, cleanSpeech: false, wantCaptions: false }
+
+function loadPrefs(): Prefs {
   try {
-    return navigator.canShare({ files })
+    const raw = localStorage.getItem(PREFS_KEY)
+    if (!raw) return DEFAULT_PREFS
+    const stored = JSON.parse(raw) as Partial<Prefs>
+    const s = stored.settings
+    const numbers = s && [s.thresholdDb, s.minSilenceSec, s.paddingSec].every((n) => typeof n === 'number' && Number.isFinite(n))
+    const preset: Settings['preset'] = s?.preset && s.preset in PRESETS ? s.preset : 'custom'
+    return {
+      settings: numbers ? { thresholdDb: s.thresholdDb, minSilenceSec: s.minSilenceSec, paddingSec: s.paddingSec, preset } : DEFAULT_PREFS.settings,
+      cleanSpeech: stored.cleanSpeech === true,
+      wantCaptions: stored.wantCaptions === true,
+    }
   } catch {
-    return false
+    return DEFAULT_PREFS
   }
 }
 
-const VIDEO_PATTERN = /\.(mov|mp4|m4v|mkv|avi|webm|mts|3gp)$/i
-
-function videoFilesFrom(list: Iterable<File>): File[] {
-  return Array.from(list).filter((f) => f.type.startsWith('video/') || VIDEO_PATTERN.test(f.name))
+function savePrefs(prefs: Prefs): void {
+  try {
+    localStorage.setItem(PREFS_KEY, JSON.stringify(prefs))
+  } catch {
+    // Private mode or storage blocked: just not remembered.
+  }
 }
 
 let nextId = 0
 
 export function App() {
   const [supported, setSupported] = useState<boolean | null>(null)
-  const [settings, setSettings] = useState<Settings>({ ...PRESETS.balanced, preset: 'balanced' })
+  const [prefs] = useState(loadPrefs)
+  const [settings, setSettings] = useState<Settings>(prefs.settings)
   // Off by default. It pulls down a speech model and roughly doubles the work
   // per video; the plain silence cut is the thing that already works well.
-  const [cleanSpeech, setCleanSpeech] = useState(false)
+  const [cleanSpeech, setCleanSpeech] = useState(prefs.cleanSpeech)
   // Also off by default, and also transcribes - same memory cost as above.
   // Independent of cleanSpeech: asking for either turns on transcription
   // once, and either or both can be on for a given video.
-  const [wantCaptions, setWantCaptions] = useState(false)
+  const [wantCaptions, setWantCaptions] = useState(prefs.wantCaptions)
   const [jobs, setJobs] = useState<Job[]>([])
+  const jobsRef = useRef(jobs)
+  useEffect(() => {
+    jobsRef.current = jobs
+  }, [jobs])
   const [notice, setNotice] = useState<string | null>(null)
   const [dragging, setDragging] = useState(false)
   const processing = useRef(false)
@@ -147,6 +172,19 @@ export function App() {
   // finished video back to run again on the next visit.
   const persisting = useRef(new Map<string, Promise<unknown>>())
   const speechSupported = useMemo(() => isFillerWordDetectionSupported(), [])
+
+  useEffect(() => {
+    savePrefs({ settings, cleanSpeech, wantCaptions })
+  }, [settings, cleanSpeech, wantCaptions])
+
+  // The screen stays on while there is work to do - an iPhone stops a page's
+  // work the moment the screen locks, and a long cut outlasts auto-lock. The
+  // campaign page has done this all along; this page lost cuts to it.
+  const busy = jobs.some((j) => j.status === 'working' || j.status === 'queued')
+  useEffect(() => {
+    keepScreenOn(busy)
+    return () => keepScreenOn(false)
+  }, [busy])
 
   useEffect(() => {
     let cancelled = false
@@ -173,25 +211,29 @@ export function App() {
     let cancelled = false
     void loadPendingJobs().then((pending) => {
       if (cancelled || pending.length === 0) return
-      const restored: Job[] = pending.map((p) => ({
-        id: p.id,
-        name: p.fileName,
-        file: null,
-        settings: p.settings,
-        cleanSpeech: p.cleanSpeech,
-        wantCaptions: p.wantCaptions,
-        status: p.attempts >= MAX_ATTEMPTS ? ('held' as const) : ('queued' as const),
-        phase: 'cutting' as const,
-        progress: 0,
-        lastPhase: p.lastPhase,
-      }))
+      const restored: Job[] = pending.map((p) => {
+        const held = p.attempts >= MAX_ATTEMPTS
+        return {
+          id: p.id,
+          name: p.fileName,
+          file: null,
+          settings: p.settings,
+          cleanSpeech: p.cleanSpeech,
+          wantCaptions: p.wantCaptions,
+          status: p.failed ? ('failed' as const) : held ? ('held' as const) : ('queued' as const),
+          phase: 'cutting' as const,
+          progress: 0,
+          lastPhase: p.lastPhase,
+          kept: p.hasVideo,
+          ...(p.failed ? { error: p.failed } : held ? { error: HELD_TEXT } : {}),
+        }
+      })
       setJobs((current) => [...restored, ...current])
       const held = restored.filter((j) => j.status === 'held').length
-      setNotice(
-        held > 0
-          ? `${held} video${held === 1 ? '' : 's'} stopped this page more than once, so ${held === 1 ? 'it has' : 'they have'} been left alone. Start it by hand, or remove it. Turning off "um"s or captions uses far less memory.`
-          : `Picked up ${restored.length} video${restored.length === 1 ? '' : 's'} that hadn't finished.`,
-      )
+      const back = restored.filter((j) => j.status !== 'failed').length
+      const note = held > 0 ? heldNotice(held) : back > 0 ? pickedUpNotice(back) : ''
+      // Alongside anything already said - a video lost mid-pick - not over it.
+      if (note) setNotice((current) => (current ? `${current} ${note}` : note))
     })
     return () => {
       cancelled = true
@@ -218,8 +260,9 @@ export function App() {
       if (progress === 0) void recordPhase(next.id, phase)
     }
 
-    // The video in hand, once read, for cutting it without the speech model.
-    let source: Blob | null = null
+    // The video in hand, for the report when it fails - a restored video
+    // has none on its row.
+    let loaded: File | null = null
     void (async () => {
       try {
         // A stuck save never holds a video up: it is cut from the copy in
@@ -230,31 +273,39 @@ export function App() {
         // remembers it tried.
         const allowed = await claimAttempt(next.id)
         if (!allowed) {
-          patch({
-            status: 'held',
-            error: 'This one stopped the page twice, so it has been left alone.',
-          })
+          patch({ status: 'held', error: HELD_TEXT })
           return
         }
 
         const file = next.file ?? (await loadJobFile(next.id))
+        loaded = file
         if (!file) {
-          patch({ status: 'failed', error: 'That video is no longer available on this device.' })
-          await forgetJob(next.id)
+          // A video brought back from a previous visit whose copy was never
+          // kept - too big for the space left, or let go so the cut would
+          // fit - and the page closed before it was done.
+          patch({
+            status: 'failed',
+            error: 'The page closed while this was being cut and no copy of it was kept. Add it again.',
+          })
+          // Storage stalling on the delete never holds the queue - see within.ts.
+          await within(forgetJob(next.id), 5000, undefined)
           return
         }
-        source = file
 
         // The cut is written into the space this site is allowed on the
         // phone, and a long video's cut is nearly as big as the video. Short
         // of room, the write fails deep inside the encoder with nothing that
         // reads as "out of space", so it is checked here and said plainly.
-        // The kept copy of the video goes first when the picker's own copy
-        // is in hand. A video brought back after a restart has no other
-        // copy: deleting it here deleted the file mid-read.
-        if (next.file) await forgetFile(next.id)
-        const { free } = await spaceOnDevice()
+        // The kept copy of the video is only let go when the cut would not
+        // fit otherwise - with it kept, a tab killed mid-cut brings the video
+        // back for its second go. A video brought back after a restart has
+        // no other copy: deleting it here deleted the file mid-read.
+        let { free } = await spaceOnDevice()
         const needed = file.size * 1.2
+        if (next.file && free !== null && free < needed) {
+          await within(forgetFile(next.id), 5000, undefined)
+          free += file.size
+        }
         if (free !== null && free < needed) {
           throw new SilenceCutError(
             `This video needs about ${Math.ceil(needed / 1e6)} MB of space to cut and this phone will only give the app ${Math.floor(free / 1e6)} MB. Clear some space, or cut it in two halves.`,
@@ -288,10 +339,10 @@ export function App() {
             kind: 'retried',
             phase: 'cutting',
             message: `Decoder gave up ${result.recovered} time(s) mid-video; carried on from the last frame and finished`,
-            video: next.file,
+            video: loaded ?? next.file,
           })
         }
-        await forgetJob(next.id)
+        await within(forgetJob(next.id), 5000, undefined)
       } catch (err) {
         // Cut short by the page going away: it comes back on the next load.
         if (pageLeaving()) return
@@ -304,10 +355,10 @@ export function App() {
         // second - twelve in a row. So the video is cut anyway, pauses only,
         // and says what it went without.
         let plainWhy = ''
-        if (source && /speech model/i.test(why) && /out of memory/i.test(why)) {
+        if (loaded && /speech model/i.test(why) && /out of memory/i.test(why)) {
           try {
             setPhase('reading', 0)
-            const result = await cutSilenceFromFile(source, (progress) => setPhase('cutting', progress), next.settings, {
+            const result = await cutSilenceFromFile(loaded, (progress) => setPhase('cutting', progress), next.settings, {
               onAnalyseProgress: (progress) => setPhase('reading', progress),
             })
             const without = [next.cleanSpeech ? '"um"s were left in' : '', next.wantCaptions ? 'no captions were written' : '']
@@ -319,8 +370,8 @@ export function App() {
               url: URL.createObjectURL(result.blob),
               note: `The phone had no memory left for the speech model, so only the pauses were cut${without ? ` - ${without}` : ''}. Close other apps, reload this page and add it again to try with it.`,
             })
-            report({ page: 'cut', kind: 'fallback', phase: failedIn, message: why, video: next.file })
-            await forgetJob(next.id)
+            report({ page: 'cut', kind: 'fallback', phase: failedIn, message: why, video: loaded })
+            await within(forgetJob(next.id), 5000, undefined)
             return
           } catch (plainErr) {
             if (pageLeaving()) return
@@ -329,21 +380,21 @@ export function App() {
         }
         // The real reason, not just "something went wrong" - it is the only
         // way to know what failed on a phone nobody can attach a debugger to.
-        const message =
-          err instanceof SilenceCutError
-            ? err.message
-            : `Something went wrong while ${PHASE_LABEL[failedIn]} (${why}).${plainWhy} Version ${__APP_VERSION__}.`
-        patch({ status: 'failed', error: message })
-        report({ page: 'cut', kind: 'failed', phase: failedIn, message, video: next.file })
-        await forgetJob(next.id)
+        // The version goes with the report, not into the sentence.
+        const message = err instanceof SilenceCutError ? err.message : `Something went wrong while ${PHASE_DOING[failedIn]} (${why}).${plainWhy}`
+        // Kept, row and copy, so Try again works - even after a restart. A
+        // passing failure used to take the only copy of a restored video.
+        const kept = await within(recordFailure(next.id, message), 5000, false)
+        patch({ status: 'failed', error: message, kept })
+        report({ page: 'cut', kind: 'failed', phase: failedIn, message, video: loaded ?? next.file })
       } finally {
         processing.current = false
         // And then ask for another look. This effect only goes hunting for
         // work when `jobs` changes, and every change this run made - marking
         // the video done, held or failed - happened while the flag above was
         // still set, so each of them was turned away. Without this nudge the
-        // queue moves exactly one video per drop: the rest sit at "waiting in
-        // line" until something unrelated re-renders the list.
+        // queue moves exactly one video per drop: the rest sit at "Waiting"
+        // until something unrelated re-renders the list.
         setJobs((js) => [...js])
       }
     })()
@@ -431,12 +482,37 @@ export function App() {
     }
   }, [addFiles])
 
-  const startHeld = useCallback((id: string) => {
+  /** Tries a held or failed video again - without the speech options too,
+   *  when asked, since those are what runs a phone out of memory. */
+  const retry = useCallback((id: string, dropSpeech = false) => {
+    const job = jobsRef.current.find((j) => j.id === id)
+    if (!job) return
+    const cleanSpeech = dropSpeech ? false : job.cleanSpeech
+    const wantCaptions = dropSpeech ? false : job.wantCaptions
     // The count goes back to zero because he asked for this one specifically.
     // Without that it would claim an attempt already spent and hold straight
     // back, and the button would do nothing.
     void resetAttempts(id).finally(() => {
-      setJobs((js) => js.map((j) => (j.id === id ? { ...j, status: 'queued', error: undefined } : j)))
+      if (job.status === 'failed' && job.file && !job.kept) {
+        // A failed video with no row any more is kept again for the new go.
+        persisting.current.set(
+          id,
+          persistJob({
+            id,
+            fileBlob: job.file,
+            fileName: job.name,
+            fileType: job.file.type,
+            settings: job.settings,
+            cleanSpeech,
+            wantCaptions,
+          }).catch(() => {}),
+        )
+      } else if (dropSpeech) {
+        void updateJobOptions(id, { cleanSpeech, wantCaptions })
+      }
+      setJobs((js) =>
+        js.map((j) => (j.id === id ? { ...j, status: 'queued', error: undefined, progress: 0, cleanSpeech, wantCaptions } : j)),
+      )
     })
   }, [])
 
@@ -455,12 +531,14 @@ export function App() {
       for (const j of current) {
         if ((j.status === 'done' || j.status === 'failed') && j.url) URL.revokeObjectURL(j.url)
         if (j.status === 'done' && j.result?.storedAs) void forgetCut(j.result.storedAs)
+        if (j.status === 'failed' && j.kept) void forgetJob(j.id)
       }
       return current.filter((j) => j.status !== 'done' && j.status !== 'failed')
     })
   }, [])
 
   const finished = useMemo(() => jobs.filter((j) => j.status === 'done' && j.result), [jobs])
+  const anyFinished = jobs.some((j) => j.status === 'done' || j.status === 'failed')
 
   const summary = useMemo(() => {
     if (jobs.length === 0) return ''
@@ -471,7 +549,7 @@ export function App() {
     )
     let text = `${finished.length} of ${jobs.length} done`
     if (failed > 0) text += ` · ${failed} failed`
-    if (saved > 0) text += ` · ${formatTime(saved)} of dead air removed`
+    if (saved >= 0.5) text += ` · ${formatTime(saved)} of dead air removed`
     return text
   }, [finished, jobs])
 
@@ -484,20 +562,20 @@ export function App() {
     [shareAll],
   )
 
+  const onPicked = (picked: File[]) => {
+    const problem = pickArrived(picked)
+    if (problem) setNotice(problem)
+    else addFiles(picked, true)
+  }
+
   return (
     <main>
       <header>
         <h1>Silence Cutter</h1>
-        <span className="hint">Runs on this device - videos never leave it. Version {__APP_VERSION__}</span>
+        <span className="hint">Runs on this phone. Videos never leave it.</span>
       </header>
-      <p className="sub">
-        Drop in your raw videos and get back copies with the dead air removed, ready for your editor.
-      </p>
 
-      {/* Only held videos are certainly on disk. A queued one may still be
-          being copied there - a reload then lost it, leaving an empty list -
-          and a running cut or a finished one is only in this tab's memory. */}
-      <UpdateBanner safeToReload={jobs.every((j) => j.status === 'held')} />
+      <UpdateBanner safeToReload={safeToReloadWith(jobs)} />
 
       {supported === false ? (
         <div className="error">
@@ -521,11 +599,12 @@ export function App() {
                 <div className="label">Pacing</div>
                 <div className="hint">{PRESET_HINT[settings.preset]}</div>
               </div>
-              <div className="seg">
+              <div className="seg" role="group" aria-label="Pacing">
                 {PRESET_ORDER.map((preset) => (
                   <button
                     key={preset}
                     type="button"
+                    aria-pressed={settings.preset === preset}
                     className={settings.preset === preset ? 'active' : ''}
                     onClick={() => setSettings({ ...PRESETS[preset], preset })}
                   >
@@ -566,9 +645,8 @@ export function App() {
                   onChange={(v) => setSettings((s) => ({ ...s, paddingSec: v, preset: 'custom' }))}
                 />
                 <div className="hint">
-                  Silence level: if words are getting cut, lower it (e.g. −45). If a noisy room
-                  isn't getting cut, raise it (e.g. −28). Changes apply to videos you add after
-                  changing them.
+                  Words getting clipped? Lower the silence level. A noisy room not being cut? Raise it. Applies
+                  to videos you add next.
                 </div>
               </div>
             </details>
@@ -582,9 +660,9 @@ export function App() {
                     onChange={(e) => setCleanSpeech(e.target.checked)}
                   />
                   <span>
-                    <span className="label">Also cut "um"s and stumbles</span>
-                    <span className="hint" style={{ display: 'block' }}>
-                      Takes out "um", "uh" and "I-I-I" - and leaves one in rather than risk a word.
+                    <span className="label">Cut "um"s and stumbles</span>
+                    <span className="hint">
+                      English only. Leaves one in rather than clip a word.
                     </span>
                   </span>
                 </label>
@@ -595,71 +673,57 @@ export function App() {
                     onChange={(e) => setWantCaptions(e.target.checked)}
                   />
                   <span>
-                    <span className="label">Also write captions (.srt)</span>
-                    <span className="hint" style={{ display: 'block' }}>
-                      An editable caption file timed to the cut video. Some words will be wrong -
-                      check them before you import.
+                    <span className="label">Write captions (.srt)</span>
+                    <span className="hint">
+                      English only. Check the words before you import them.
                     </span>
                   </span>
                 </label>
-                <div className="hint">
-                  Both are English only, listen on this device, download a speech model the first
-                  time and use more memory - if a video keeps stopping the page, turn them off.
-                </div>
               </>
             ) : null}
           </section>
 
-          <VideoPicker
-            className={dragging ? 'drop over' : 'drop'}
-            label="Add videos"
-            onFiles={(picked) => {
-              const problem = pickArrived(picked)
-              if (problem) setNotice(problem)
-              else addFiles(picked, true)
-            }}
-          >
-            {/* The planner's line icons, not an emoji: colour is for state. */}
-            <svg
-              className="icon"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth={1.5}
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              aria-hidden
-            >
-              <path d="M12 15V4.5M7.75 8.5L12 4.25l4.25 4.25" />
-              <path d="M4.5 14.5v2.75a2.25 2.25 0 0 0 2.25 2.25h10.5a2.25 2.25 0 0 0 2.25-2.25V14.5" />
-            </svg>
-            <div className="big">{dragging ? 'Drop them anywhere' : 'Drop videos here'}</div>
-            <div className="hint">
-              or tap to choose files · MP4, MOV and more · as many as you want
-            </div>
-          </VideoPicker>
+          {jobs.length > 0 && !dragging ? (
+            // With a list to look at, adding more is one button, not half the
+            // screen.
+            <VideoPicker className="btn add-more" label="Add videos" tip onFiles={onPicked}>
+              <UploadIcon /> Add videos
+            </VideoPicker>
+          ) : (
+            <VideoPicker className={dragging ? 'drop over' : 'drop'} label="Add videos" tip onFiles={onPicked}>
+              <span className="icon">
+                <UploadIcon />
+              </span>
+              <span className="big">{dragging ? 'Drop them anywhere' : 'Add videos'}</span>
+              <span className="hint">MP4, MOV and more</span>
+            </VideoPicker>
+          )}
 
-          <div className="toolbar">
-            <div className="hint">{summary}</div>
-            <div style={{ display: 'flex', gap: 8 }}>
-              <button type="button" className="btn" onClick={clearFinished}>
-                Clear finished
-              </button>
-              {canShareAll ? <SendAll files={shareAll} /> : null}
-            </div>
-          </div>
+          {jobs.length > 0 ? (
+            <>
+              <div className="toolbar">
+                <div className="hint">{summary}</div>
+                <div className="actions">
+                  {anyFinished ? (
+                    <button type="button" className="btn" onClick={clearFinished}>
+                      Clear finished
+                    </button>
+                  ) : null}
+                  {canShareAll ? <SendAll files={shareAll} /> : null}
+                </div>
+              </div>
 
-          <div className="jobs">
-            {jobs.length === 0 ? (
-              <div className="empty">No videos yet.</div>
-            ) : (
-              jobs.map((job) => (
-                <JobCard key={job.id} job={job} onStart={startHeld} onRemove={removeJob} />
-              ))
-            )}
-          </div>
+              <div className="jobs">
+                {jobs.map((job) => (
+                  <JobCard key={job.id} job={job} onRetry={retry} onRemove={removeJob} />
+                ))}
+              </div>
+            </>
+          ) : null}
         </>
       )}
+
+      <p className="footnote">Version {__APP_VERSION__}</p>
     </main>
   )
 }
@@ -690,6 +754,7 @@ function Slider({
         max={max}
         step={step}
         value={value}
+        aria-valuetext={format(value)}
         onChange={(e) => onChange(Number(e.target.value))}
       />
       <output>{format(value)}</output>
@@ -697,98 +762,126 @@ function Slider({
   )
 }
 
+/** A Send button that says when the sheet did not open and should be tapped
+ *  again, and gives way to a plain download only when sharing is not on. */
+function SendButton({
+  files,
+  label,
+  primary = true,
+  fallback,
+  onShared,
+}: {
+  files: File[]
+  label: string
+  primary?: boolean
+  /** The download link shown when this browser cannot share the files. */
+  fallback: { href: string; download: string; label: string } | null
+  onShared?: () => void
+}) {
+  const [outcome, setOutcome] = useState<ShareOutcome>('shared')
+  const [busy, setBusy] = useState(false)
+  const canSend = useMemo(() => canShareFiles(files), [files])
+  if (!canSend || outcome === 'unsupported') {
+    return fallback ? (
+      <a className="btn" href={fallback.href} download={fallback.download}>
+        {fallback.label}
+      </a>
+    ) : null
+  }
+  const send = async () => {
+    if (busy) return
+    setBusy(true)
+    const result = await shareFiles(files)
+    setBusy(false)
+    setOutcome(result)
+    if (result === 'shared') onShared?.()
+  }
+  return (
+    <span className="send">
+      <button type="button" className={primary ? 'btn primary' : 'btn'} disabled={busy} onClick={() => void send()}>
+        {label}
+      </button>
+      {outcome === 'retry' ? <span className="hint">Tap again</span> : null}
+    </span>
+  )
+}
+
 /** The desktop tool's "Open output folder", in the only form a web page has:
  *  the share sheet, with the whole finished batch in it at once. */
 function SendAll({ files }: { files: File[] }) {
-  const [failed, setFailed] = useState(false)
-  if (failed) return null
-  const send = async () => {
-    try {
-      await navigator.share({ files })
-    } catch (err) {
-      if (err instanceof Error && err.name === 'AbortError') return
-      setFailed(true)
-    }
-  }
-  return (
-    <button type="button" className="btn primary" onClick={() => void send()}>
-      Send all {files.length}
-    </button>
-  )
+  return <SendButton files={files} label={`Share all ${files.length}`} fallback={null} />
 }
 
 function JobCard({
   job,
-  onStart,
+  onRetry,
   onRemove,
 }: {
   job: Job
-  onStart: (id: string) => void
+  onRetry: (id: string, dropSpeech?: boolean) => void
   onRemove: (id: string) => void
 }) {
-  const [shareFailed, setShareFailed] = useState(false)
   const file = useMemo(
     () => (job.result ? new File([job.result.blob], cutName(job.name), { type: 'video/mp4' }) : null),
     [job.name, job.result],
   )
-  const canSend = useMemo(() => (file ? canShareFiles([file]) : false), [file])
-
-  const send = async () => {
-    if (!file) return
-    try {
-      await navigator.share({ files: [file] })
-    } catch (err) {
-      if (err instanceof Error && err.name === 'AbortError') return
-      setShareFailed(true)
-    }
-  }
+  const working = job.status === 'working'
+  const usesSpeech = job.cleanSpeech || job.wantCaptions
+  const hasCaptions = (job.result?.captionCues?.length ?? 0) > 0
 
   const statusText =
-    job.status === 'queued'
-      ? 'Waiting in line'
-      : job.status === 'held'
-        ? 'Held back'
-        : job.status === 'working'
-          ? `${phaseLabel(job)}… ${Math.round(job.progress * 100)}%`
-          : job.status === 'done'
-            ? 'Done'
-            : 'Failed'
+    job.status === 'queued' ? 'Waiting' : job.status === 'held' ? HELD_LINE : job.status === 'done' ? 'Done' : 'Failed'
 
   return (
     <div className="job">
       <div className="job-top">
         <div className="name">{job.name}</div>
         <div className="right">
-          <span
-            className={`status${job.status === 'done' ? ' done' : job.status === 'failed' ? ' failed' : ''}`}
-          >
-            {statusText}
-          </span>
-          {job.status === 'queued' || job.status === 'held' ? (
+          {working ? null : (
+            <span
+              className={`status${job.status === 'done' ? ' done' : job.status === 'failed' || job.status === 'held' ? ' failed' : ''}`}
+            >
+              {statusText}
+            </span>
+          )}
+          {working ? null : (
             <button type="button" className="linkbtn" onClick={() => onRemove(job.id)}>
               Remove
             </button>
-          ) : null}
+          )}
         </div>
       </div>
 
-      {job.status === 'working' ? (
-        <div className="bar">
-          <div style={{ width: `${Math.round(job.progress * 100)}%` }} />
-        </div>
+      {working ? (
+        <>
+          <div className="working">
+            <span className="status">{PHASE[job.phase]}</span>
+            <span className="status">{Math.round(job.progress * 100)}%</span>
+          </div>
+          <div className="bar">
+            <div style={{ width: `${Math.round(job.progress * 100)}%` }} />
+          </div>
+        </>
       ) : null}
 
       {job.status === 'held' ? (
         <>
           <div className="error">
-            {job.error}
-            {job.lastPhase ? ` It last got as far as: ${PHASE_LABEL[job.lastPhase]}.` : ''}
+            {job.error ?? HELD_TEXT}
+            {job.lastPhase ? ` It got as far as ${PHASE_DOING[job.lastPhase]}.` : ''}
           </div>
           <div className="result">
-            <span className="hint">Turning off "um"s or captions makes it far more likely to get through.</span>
-            <button type="button" className="btn" onClick={() => onStart(job.id)}>
-              Try this one again
-            </button>
+            <span className="hint">{usesSpeech ? 'Without "um"s and captions it needs far less memory.' : ''}</span>
+            <div className="actions">
+              <button type="button" className="btn" onClick={() => onRetry(job.id)}>
+                Try again
+              </button>
+              {usesSpeech ? (
+                <button type="button" className="btn" onClick={() => onRetry(job.id, true)}>
+                  Try without "um"s and captions
+                </button>
+              ) : null}
+            </div>
           </div>
         </>
       ) : null}
@@ -798,37 +891,46 @@ function JobCard({
           <div className="result">
             <span className="pill">
               {formatTime(job.result.originalDurationSec)} → {formatTime(job.result.newDurationSec)} ·{' '}
-              {job.result.cuts} pause{job.result.cuts === 1 ? '' : 's'}
-              {job.result.fillerWords ? ` · ${job.result.fillerWords} "um"` : ''}
-              {job.result.stutters ? ` · ${job.result.stutters} stumble` : ''} removed
+              {count(job.result.cuts, 'pause')}
+              {job.result.fillerWords ? `, ${count(job.result.fillerWords, '"um"', '"um"s')}` : ''}
+              {job.result.stutters ? `, ${count(job.result.stutters, 'stumble')}` : ''} removed
             </span>
             {job.note ? <span className="hint">{job.note}</span> : null}
-            {job.result.captionCues ? null : canSend && !shareFailed ? (
-              <button type="button" className="btn primary" onClick={() => void send()}>
-                Send
-              </button>
-            ) : (
-              <a className="btn" href={job.url} download={cutName(job.name)}>
-                Save {cutName(job.name)}
-              </a>
+            {hasCaptions || !file ? null : (
+              <SendButton files={[file]} label="Share" fallback={{ href: job.url, download: cutName(job.name), label: 'Save video' }} />
             )}
           </div>
-          {job.result.captionCues ? (
-            <CaptionsEditor
-              cues={job.result.captionCues}
-              videoName={job.name}
-              videoFile={file}
-              videoUrl={job.url}
-            />
+          {job.wantCaptions && !hasCaptions ? (
+            <div className="hint">No words were heard, so there are no captions.</div>
+          ) : null}
+          {hasCaptions && file ? (
+            <CaptionsEditor cues={job.result.captionCues!} videoName={job.name} videoFile={file} videoUrl={job.url} />
           ) : null}
         </>
       ) : null}
 
       {job.status === 'failed' ? (
-        <div className="error">
-          {job.error}
-          {job.lastPhase ? ` Before the page reloaded, it last got as far as: ${PHASE_LABEL[job.lastPhase]}.` : ''}
-        </div>
+        <>
+          <div className="error">
+            {job.error}
+            {job.lastPhase ? ` Before the page reloaded, it got as far as ${PHASE_DOING[job.lastPhase]}.` : ''}
+          </div>
+          {job.file || job.kept ? (
+            <div className="result">
+              <span className="hint">{usesSpeech ? 'Without "um"s and captions it needs far less memory.' : ''}</span>
+              <div className="actions">
+                <button type="button" className="btn" onClick={() => onRetry(job.id)}>
+                  Try again
+                </button>
+                {usesSpeech ? (
+                  <button type="button" className="btn" onClick={() => onRetry(job.id, true)}>
+                    Try without "um"s and captions
+                  </button>
+                ) : null}
+              </div>
+            </div>
+          ) : null}
+        </>
       ) : null}
     </div>
   )
@@ -846,13 +948,11 @@ function CaptionsEditor({
 }: {
   cues: CaptionCue[]
   videoName: string
-  videoFile: File | null
+  videoFile: File
   videoUrl: string
 }) {
   const [cues, setCues] = useState(initialCues)
   const [captionsSaved, setCaptionsSaved] = useState(false)
-  const [captionShareFailed, setCaptionShareFailed] = useState(false)
-  const [videoShareFailed, setVideoShareFailed] = useState(false)
   const [srtUrl, setSrtUrl] = useState<string | null>(null)
   const fileName = srtName(videoName)
 
@@ -867,8 +967,8 @@ function CaptionsEditor({
   // Shared as plain text: the share sheet only takes a short list of file
   // types, and .srt is not on it. The name still ends in .srt.
   const srtFile = useMemo(() => new File([srtText], fileName, { type: 'text/plain' }), [srtText, fileName])
-  const canShareCaptions = useMemo(() => canShareFiles([srtFile]), [srtFile])
-  const canShareVideo = useMemo(() => (videoFile ? canShareFiles([videoFile]) : false), [videoFile])
+  const srtFiles = useMemo(() => [srtFile], [srtFile])
+  const videoFiles = useMemo(() => [videoFile], [videoFile])
 
   const updateText = (i: number, text: string) => {
     setCues((cs) => cs.map((c, idx) => (idx === i ? { ...c, text } : c)))
@@ -880,93 +980,48 @@ function CaptionsEditor({
   }
 
   // No page can hand a file to a named app, and one share goes to one place,
-  // so this is two shares: captions first (to Files), because the video goes
-  // to the editor and opening it leaves this page behind.
-  const shareCaptions = async () => {
-    try {
-      await navigator.share({ files: [srtFile] })
-      setCaptionsSaved(true)
-    } catch (err) {
-      if (err instanceof Error && err.name === 'AbortError') return
-      setCaptionShareFailed(true)
-    }
-  }
-  const shareVideo = async () => {
-    if (!videoFile) return
-    try {
-      await navigator.share({ files: [videoFile] })
-    } catch (err) {
-      if (err instanceof Error && err.name === 'AbortError') return
-      setVideoShareFailed(true)
-    }
-  }
-
-  const captionsLabel = captionsSaved ? '✓ Captions saved' : '1. Save captions to Files'
-
+  // so the captions and the video are two shares: the captions to Files, the
+  // video to the editor.
   return (
     <div className="captions">
       <details>
         <summary>
-          {cues.length} caption line{cues.length === 1 ? '' : 's'} - check and edit before saving
+          {count(cues.length, 'caption line')} - check them before saving
         </summary>
         <div className="caption-list">
-        {cues.map((cue, i) => (
-          <div className="caption-row" key={i}>
-            <span className="caption-time">
-              {formatTime(cue.start)}–{formatTime(cue.end)}
-            </span>
-            <input type="text" value={cue.text} onChange={(e) => updateText(i, e.target.value)} />
-            <button
-              type="button"
-              className="linkbtn"
-              aria-label="Remove this line"
-              onClick={() => removeCue(i)}
-            >
-              ✕
-            </button>
-          </div>
-        ))}
+          {cues.map((cue, i) => (
+            <div className="caption-row" key={i}>
+              <span className="caption-time">
+                {formatTime(cue.start)}–{formatTime(cue.end)}
+              </span>
+              <input
+                type="text"
+                value={cue.text}
+                aria-label={`Caption ${i + 1}`}
+                onChange={(e) => updateText(i, e.target.value)}
+              />
+              <button type="button" className="iconbtn" aria-label="Remove this line" onClick={() => removeCue(i)}>
+                <CloseIcon />
+              </button>
+            </div>
+          ))}
         </div>
       </details>
       <div className="steps">
-        {canShareCaptions && !captionShareFailed ? (
-          <button
-            type="button"
-            className={captionsSaved ? 'btn' : 'btn primary'}
-            onClick={() => void shareCaptions()}
-          >
-            {captionsLabel}
-          </button>
-        ) : srtUrl ? (
-          <a
-            className={captionsSaved ? 'btn' : 'btn primary'}
-            href={srtUrl}
-            download={fileName}
-            onClick={() => setCaptionsSaved(true)}
-          >
-            {captionsSaved ? '✓ Captions saved' : `1. Save ${fileName}`}
-          </a>
-        ) : null}
-        {canShareVideo && !videoShareFailed ? (
-          <button
-            type="button"
-            className={captionsSaved ? 'btn primary' : 'btn'}
-            onClick={() => void shareVideo()}
-          >
-            2. Send the video
-          </button>
-        ) : (
-          <a className={captionsSaved ? 'btn primary' : 'btn'} href={videoUrl} download={cutName(videoName)}>
-            2. Save {cutName(videoName)}
-          </a>
-        )}
+        <SendButton
+          files={srtFiles}
+          label={captionsSaved ? 'Captions saved' : 'Save captions'}
+          primary={!captionsSaved}
+          fallback={srtUrl ? { href: srtUrl, download: fileName, label: captionsSaved ? 'Captions saved' : 'Save captions' } : null}
+          onShared={() => setCaptionsSaved(true)}
+        />
+        <SendButton
+          files={videoFiles}
+          label="Share video"
+          primary={captionsSaved}
+          fallback={{ href: videoUrl, download: cutName(videoName), label: 'Save video' }}
+        />
       </div>
-      {canShareCaptions || canShareVideo ? (
-        <div className="hint">
-          Each opens the share sheet: pick "Save to Files" for the captions, then your editor for
-          the video.
-        </div>
-      ) : null}
     </div>
   )
 }

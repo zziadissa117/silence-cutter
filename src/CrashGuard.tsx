@@ -23,9 +23,13 @@ export class CrashGuard extends Component<{ children: ReactNode }, { crashed: st
     return (
       <main>
         <div className="error">
-          Something went wrong on this page ({this.state.crashed}). The details were sent so it can be fixed. Your
-          videos that were waiting come back when you reload.
+          Something went wrong on this page. The details were sent so it can be fixed. Reload to carry on - videos
+          that were waiting come back.
         </div>
+        <details className="crash-details">
+          <summary>Details</summary>
+          <code>{this.state.crashed}</code>
+        </details>
         <button type="button" className="btn primary" style={{ marginTop: 16 }} onClick={() => window.location.reload()}>
           Reload
         </button>

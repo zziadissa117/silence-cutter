@@ -7,12 +7,11 @@ import { useEffect, useRef, useState } from 'react'
 
 import { play, type Playing } from './listen'
 import type { AngleMusic } from './look'
-import type { MusicLevel } from './music'
+import { MAX_TRACK_MB, type MusicLevel } from './music'
 import { songFile, songName, useMusicBank } from './musicBank'
 import { TrackName } from './TrackPlayer'
 
 /** Big enough for any song; small enough to share with the other phone. */
-const MAX_MB = 30
 
 const LEVELS: { value: MusicLevel; label: string }[] = [
   { value: 'normal', label: 'Background' },
@@ -63,8 +62,8 @@ export function MusicRow({ music, onChange }: { music: AngleMusic | null; onChan
           const file = e.target.files?.[0]
           e.target.value = ''
           if (!file) return
-          if (file.size > MAX_MB * 1e6) {
-            setError(`That track is over ${MAX_MB} MB - pick a shorter one or an MP3.`)
+          if (file.size > MAX_TRACK_MB * 1e6) {
+            setError(`That track is over ${MAX_TRACK_MB} MB - pick a shorter one or an MP3.`)
             return
           }
           stop()

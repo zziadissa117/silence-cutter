@@ -4,9 +4,11 @@
 
 import { useEffect, useState, type ReactNode } from 'react'
 
+import { pickArrived, pickSaved } from '../pickWatch'
 import { VideoPicker } from '../VideoPicker'
 import { clipFile, type ClipInfo, type ClipPlace } from './clips'
 import { clipName } from './ClipsField'
+import { PlayIcon } from './icons'
 
 const TITLE: Record<ClipPlace, string> = { before: 'Video before', after: 'Video after' }
 const NONE: Record<ClipPlace, string> = {
@@ -64,14 +66,23 @@ export function ClipRow({
   }
 
   const pick = (files: File[]) => {
+    // Told like every pick, or the picker watch takes a clip that arrived
+    // fine for one the iPhone never handed over.
+    const problem = pickArrived(files)
     const file = files[0]
-    if (!file) return
+    if (problem || !file) {
+      if (problem) setError(problem)
+      return
+    }
     setAdding(true)
     setError(null)
     onAdd(file)
       .then((added) => onChange(added.id))
       .catch((e: unknown) => setError(e instanceof Error ? e.message : String(e)))
-      .finally(() => setAdding(false))
+      .finally(() => {
+        setAdding(false)
+        pickSaved()
+      })
   }
 
   return (
@@ -82,7 +93,7 @@ export function ClipRow({
         <>
           <div className="music-track">
             <button type="button" className="btn play" aria-label="Watch the clip" onClick={() => void watch()}>
-              ▶
+              <PlayIcon />
             </button>
             <span className="music-name">{clipName(clip)}</span>
           </div>

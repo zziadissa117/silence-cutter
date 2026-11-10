@@ -595,8 +595,12 @@ export async function loadCampaigns(): Promise<Campaign[]> {
   return rows.map(fromStored).map(withGeneralAngle)
 }
 
-export async function saveCampaign(campaign: Campaign): Promise<Campaign> {
-  const saved = { ...campaign, updatedAt: Date.now() }
+/** Keeps a campaign. `asIs` keeps its own updatedAt too - for the General
+ *  campaign a fresh phone makes for itself, which is nobody's work yet: were
+ *  it stamped with now, the first sign-in would push it over the friend's
+ *  customised General, newer by the clock and emptier. */
+export async function saveCampaign(campaign: Campaign, { asIs = false } = {}): Promise<Campaign> {
+  const saved = asIs ? { ...campaign } : { ...campaign, updatedAt: Date.now() }
   await db.looks.put(await toStored(saved))
   await enqueue('campaign', saved.id, saved.updatedAt, false)
   return saved
@@ -699,6 +703,12 @@ export async function cacheFile(file: CachedFile): Promise<void> {
 
 export async function markUploaded(sha: string): Promise<void> {
   await db.files.update(sha, { uploaded: true })
+}
+
+/** Every cached file counts as not uploaded again - for a new sign-in,
+ *  whose login has its own storage and none of them yet. */
+export async function forgetUploads(): Promise<void> {
+  await db.files.toCollection().modify({ uploaded: false })
 }
 
 export async function getMeta(key: string): Promise<string | null> {
@@ -841,10 +851,12 @@ export async function spaceOnDevice(): Promise<{ free: number | null }> {
 export async function persistJob(job: Omit<StoredJob, 'addedAt' | 'attempts'> & { fileBlob: Blob }): Promise<boolean> {
   const { fileBlob, ...meta } = job
   try {
-    await db.jobs.put({ ...meta, attempts: 0, addedAt: Date.now() })
     const free = await freeSpace()
     if (free !== null && free <= fileBlob.size * 2.5) return false
+    // The video first, the row last - see media/jobStore.ts: a row with no
+    // video behind it only comes back after a reload to fail.
     await db.videos.put({ id: job.id, blob: fileBlob })
+    await db.jobs.put({ ...meta, attempts: 0, addedAt: Date.now() })
     return true
   } catch {
     return false

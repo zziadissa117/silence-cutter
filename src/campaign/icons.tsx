@@ -182,3 +182,35 @@ export const ScheduledIcon = () => (
     </svg>
   </span>
 )
+
+/** Row controls: a cross, plus, minus and the two arrows - line icons in
+ *  place of the glyphs (✕ ＋ − ↑ ↓) the rows used to draw. */
+export const CloseIcon = () => (
+  <Icon size={18}>
+    <path d="M6.5 6.5l11 11M17.5 6.5l-11 11" />
+  </Icon>
+)
+
+export const PlusIcon = () => (
+  <Icon size={18}>
+    <path d="M12 5.5v13M5.5 12h13" />
+  </Icon>
+)
+
+export const ArrowUpIcon = () => (
+  <Icon size={18}>
+    <path d="M12 18.5v-13M6.5 11l5.5-5.5 5.5 5.5" />
+  </Icon>
+)
+
+export const ArrowDownIcon = () => (
+  <Icon size={18}>
+    <path d="M12 5.5v13M6.5 13l5.5 5.5 5.5-5.5" />
+  </Icon>
+)
+
+export const MinusIcon = () => (
+  <Icon size={18}>
+    <path d="M5.5 12h13" />
+  </Icon>
+)

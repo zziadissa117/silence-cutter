@@ -1,11 +1,4 @@
-import { StrictMode } from 'react'
-import { createRoot } from 'react-dom/client'
-
-import { App } from './App'
-import { currentSession } from './campaign/cloud'
-import { CrashGuard } from './CrashGuard'
 import { applyTheme, followPhone } from './theme'
-import { ModeNav, plainCutterWorkToLose } from './ModeNav'
 import { CUT_ONLY_HASH, staysOnCutOnly } from './opening'
 import './index.css'
 import './modes.css'
@@ -14,21 +7,36 @@ import './modes.css'
 applyTheme()
 followPhone()
 
-void staysOnCutOnly().then((stay) => {
+// Decided before anything else is loaded: "/" usually moves straight on to
+// Campaign videos (see opening.ts), so the cutter's code - React, the media
+// library, the queue - is only fetched and run when the page is staying.
+// Written without JSX on purpose: JSX would pull React in up front.
+void staysOnCutOnly().then(async (stay) => {
+  if (!stay) {
+    window.location.replace('/campaign.html')
+    return
+  }
   // Signed out, this page does not open at all: the sign-in page is
   // campaign.html's, and there is only one front door.
-  if (!stay || currentSession() === null) {
+  const { currentSession } = await import('./campaign/cloud')
+  if (currentSession() === null) {
     window.location.replace('/campaign.html')
     return
   }
   // Kept on Cut only by a waiting video: a reload keeps it here too.
   if (window.location.hash !== CUT_ONLY_HASH) history.replaceState(null, '', `/${CUT_ONLY_HASH}`)
+  const [{ StrictMode, createElement }, { createRoot }, { App }, { CrashGuard }, { ModeNav, plainCutterWorkToLose }] =
+    await Promise.all([import('react'), import('react-dom/client'), import('./App'), import('./CrashGuard'), import('./ModeNav')])
   createRoot(document.getElementById('root')!).render(
-    <StrictMode>
-      <CrashGuard>
-        <ModeNav current="cut" workToLose={plainCutterWorkToLose} />
-        <App />
-      </CrashGuard>
-    </StrictMode>,
+    createElement(
+      StrictMode,
+      null,
+      createElement(
+        CrashGuard,
+        null,
+        createElement(ModeNav, { current: 'cut', workToLose: plainCutterWorkToLose }),
+        createElement(App),
+      ),
+    ),
   )
 })

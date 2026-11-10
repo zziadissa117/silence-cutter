@@ -14,7 +14,7 @@ import { type ReactNode, useCallback, useEffect, useMemo, useState } from 'react
 
 import { dayLabel } from './batch'
 import { hasShareSheet, shareVideo, useSharable } from './shareFile'
-import { ChevronLeft, ScheduledIcon } from './icons'
+import { ChevronLeft, PlusIcon, ScheduledIcon } from './icons'
 import type { Campaign } from './look'
 import { NewPost } from './NewPost'
 import { StopPicker } from './StopPicker'
@@ -32,6 +32,7 @@ import {
   lastPosts,
   listPosts,
   localInput,
+  placeFor,
   postAction,
   postingHere,
   redoCaptions,
@@ -150,7 +151,7 @@ function SaveVideo({ post, primary = false }: { post: ServerPost; primary?: bool
   if (!href) return null
   return (
     <a className={className} href={href} download={videoName(post)} target={url ? undefined : '_blank'} rel="noreferrer">
-      Save video
+      {url ? 'Save video' : 'Open video'}
     </a>
   )
 }
@@ -908,6 +909,9 @@ export function PostsView({
   }
 
   const nothing = posts.length === 0 && sendingNow.length === 0
+  // Accounts picked somewhere - not just a campaign with times saved.
+  const profileNow = postingHere()?.profile
+  const anyAccounts = Boolean(profileNow) && campaigns.some((c) => placeFor(profileNow!, c.id).accounts.length > 0)
   const canStop = stoppable(posts)
 
   return (
@@ -932,7 +936,7 @@ export function PostsView({
           ) : null}
           {profile && newPost && !making && !stopping ? (
             <button type="button" className="btn small" onClick={() => setMaking(true)}>
-              + New post
+              <PlusIcon /> New post
             </button>
           ) : null}
         </div>
@@ -989,7 +993,7 @@ export function PostsView({
 
       {nothing ? (
         <p className="empty">
-          {Object.keys(postingHere()?.profile.settings.campaigns ?? {}).length === 0
+          {!anyAccounts
             ? 'No campaign has accounts picked yet, so nothing is sent. Pick them in Campaigns - open a campaign, then Posting.'
             : 'Nothing yet. Finished videos show up here on their way to Postiz.'}
         </p>

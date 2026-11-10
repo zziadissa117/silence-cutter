@@ -76,6 +76,8 @@ import {
 import { fingerprint, skippedNotice } from './fingerprint'
 import { formatTime, labelOf, type Job } from './jobs'
 import type { Angle, Campaign } from './look'
+import { CloseIcon, MinusIcon, PlusIcon } from './icons'
+import { MAX_TRACK_MB } from './music'
 import { copySong, useMusicBank } from './musicBank'
 import {
   accountLabel,
@@ -134,8 +136,6 @@ import { serverConnected } from './serverFlag'
 import { lastServerStatus, linkProblem, roomProblem, sendingLine, serverCommand, serverMaking, SERVER_LINK_EVENT, type LinkEvent } from './serverLink'
 
 const LAST_KEY = 'batch.campaign'
-/** A track this big is any song there is. */
-const MAX_SONG_MB = 30
 
 export type { BatchVideo } from './batchRun'
 
@@ -501,7 +501,7 @@ export function BatchView({
     const mine = new Set<string>()
     try {
       for (const [i, file] of files.entries()) {
-        if (kind === 'music' && file.size > MAX_SONG_MB * 1e6) throw new Error(`${file.name} is over ${MAX_SONG_MB} MB - pick a shorter one or an MP3.`)
+        if (kind === 'music' && file.size > MAX_TRACK_MB * 1e6) throw new Error(`${file.name} is over ${MAX_TRACK_MB} MB - pick a shorter one or an MP3.`)
         // The same recording is never kept twice: by what is in it, and for
         // files kept before fingerprints existed, by name and size.
         const fp = await fingerprint(file)
@@ -1173,7 +1173,7 @@ export function BatchView({
               </button>
               <span className="hint">{[file.seconds ? formatTime(file.seconds) : '', mb(file.size)].filter(Boolean).join(' · ')}</span>
               <button type="button" className="btn small icon-btn" aria-label={`Take out ${file.name}`} onClick={() => takeOutOfStep(step.id, file)}>
-                ✕
+                <CloseIcon />
               </button>
             </li>
           ))}
@@ -1410,7 +1410,7 @@ export function BatchView({
               ) : null}
               {formatId && (file.formats?.length ?? 0) > 1 ? <span className="hint">shared</span> : null}
               <button type="button" className="btn small icon-btn" aria-label={`Take out ${file.name}`} onClick={() => takeOut(kind, file, formatId)}>
-                ✕
+                <CloseIcon />
               </button>
             </li>
           ))}
@@ -1828,7 +1828,7 @@ export function BatchView({
                   disabled={perDay <= 0}
                   onClick={() => setPerDay(perDay - 1)}
                 >
-                  −
+                  <MinusIcon />
                 </button>
                 <input
                   type="number"
@@ -1857,7 +1857,7 @@ export function BatchView({
                   disabled={perDay >= MOST_A_DAY}
                   onClick={() => setPerDay(perDay + 1)}
                 >
-                  +
+                  <PlusIcon />
                 </button>
               </div>
               {perDay >= MOST_A_DAY ? (
@@ -1883,7 +1883,7 @@ export function BatchView({
               <span className="label">More each day</span>
               <div className="stepper">
                 <button type="button" className="btn small icon-btn" aria-label="Less more each day" disabled={growth <= 0} onClick={() => setGrowth(growth - 1)}>
-                  −
+                  <MinusIcon />
                 </button>
                 <input
                   type="number"
@@ -1912,7 +1912,7 @@ export function BatchView({
                   disabled={growth >= MAX_GROWTH || perDay === 0}
                   onClick={() => setGrowth(growth + 1)}
                 >
-                  +
+                  <PlusIcon />
                 </button>
               </div>
               {growthLine ? (
@@ -2313,11 +2313,11 @@ function HookLooks({
             <li key={look} className="look-share">
               <span className="look-share-name">{LOOK_LABEL[look]}</span>
               <button type="button" className="btn small icon-btn" aria-label={`Less ${LOOK_LABEL[look]}`} disabled={parts <= 1} onClick={() => change(look, parts - 1)}>
-                −
+                <MinusIcon />
               </button>
               <span className="look-share-pct">{Math.round((parts / all) * 100)}%</span>
               <button type="button" className="btn small icon-btn" aria-label={`More ${LOOK_LABEL[look]}`} disabled={parts >= 9} onClick={() => change(look, parts + 1)}>
-                +
+                <PlusIcon />
               </button>
             </li>
           ))}
