@@ -174,6 +174,11 @@ const PART_BYTES = 8 * 1024 * 1024
 const MAX_BYTES = 2 * 1024 * 1024 * 1024
 /** Tries before a post that keeps failing on its own is left for him. */
 const MAX_ATTEMPTS = 6
+/** On a post while its video is being put into Postiz (schedule). Written as
+ *  the try is counted, replaced by whatever the run ends with - so a post
+ *  still saying it was stopped mid-upload: the platform ended the run before
+ *  the video was in. */
+const UPLOADING = 'Putting the video into Postiz.'
 /** After MAX_ATTEMPTS quick tries, how many half-hourly ones an approved post
  *  gets for a passing problem before it comes back to him: about a day. */
 const LATER_GIVE_UP = MAX_ATTEMPTS + 48
@@ -2896,6 +2901,20 @@ async function schedule(start: Post): Promise<Post> {
     scheduled({ postiz_ids: refs, ...(youtubeNote ? { error: [heldNote(held), youtubeNote].filter(Boolean).join(' ') } : {}) })
 
   try {
+    if (!post.media) {
+      // The tries before that ended this way - the note still on the post -
+      // were the platform stopping the run mid-upload, a video too big to go
+      // in within a run's time. After MAX_ATTEMPTS of those it is not going
+      // to: back to him with the reason, like any other failure.
+      if (post.error === UPLOADING && post.attempts >= MAX_ATTEMPTS) {
+        throw new Problem(`The video could not be put into Postiz in ${post.attempts} tries - the upload never finished. It may be too big.`)
+      }
+      // This try is counted before the upload, not after it: a run stopped
+      // mid-upload never reached failed(), so it was never counted, and the
+      // same video was put into Postiz again every tick, for ever (audit B3).
+      // failed() adds one to the post as this run claimed it - this number.
+      post = await update(post.id, { attempts: post.attempts + 1, error: UPLOADING })
+    }
     // The server keeps its copy while Buffer may still fetch it (an account
     // handed to Buffer, or one Buffer backs up).
     if (!post.media) post = await mediaInPostiz(keys.postiz, post, Boolean(post.buffer_ids) || toPostiz.some((a) => backupFor(profile)[a.id]))
@@ -2974,8 +2993,9 @@ async function schedule(start: Post): Promise<Post> {
     // A backed-up account still to go - its Buffer channel full, or Buffer
     // turned it down - stays approved and is tried again shortly (Postiz
     // first, then Buffer): never sent back to him for being full, only once
-    // Buffer has turned it down MAX_ATTEMPTS times.
-    const attempts = handed.problems.length > 0 ? post.attempts + 1 : post.attempts
+    // Buffer has turned it down MAX_ATTEMPTS times. One try a run: from the
+    // post as this run found it, not the count the upload wrote above.
+    const attempts = handed.problems.length > 0 ? start.attempts + 1 : start.attempts
     if (covered.some((a) => !post.buffer_ids?.[a.id]) && attempts < MAX_ATTEMPTS) {
       return update(post.id, { error: note, retry_at: new Date(Date.now() + 10 * MINUTE).toISOString(), attempts, creating_at: null })
     }
