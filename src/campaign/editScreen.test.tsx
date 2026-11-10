@@ -52,26 +52,31 @@ function show(fields: { onKeep?: () => void; onChange?: () => void; onFinish?: (
   )
 }
 
-const button = (text: string) => [...host.querySelectorAll('button')].find((b) => b.textContent?.trim() === text)
+const button = (text: string) => [...host.querySelectorAll('button')].find((b) => b.textContent?.trim() === text || b.getAttribute('aria-label') === text)
+/** Taps clip `n` of the timeline: its tools come up along the bottom. */
+const tapClip = (n: number) => act(() => host.querySelectorAll<HTMLElement>('.tl-clip')[n].click())
 
 describe('the edit screen', () => {
   it('has the cuts and the captions on one page, in the timeline editor', () => {
     show()
     act(() => button('Timeline editor')!.click())
     expect(host.querySelector('.cuts.quick')).toBeNull()
+    tapClip(0)
     expect(button('Split')).toBeTruthy()
     expect(button('Delete')).toBeTruthy()
     const phrases = [...host.querySelectorAll<HTMLTextAreaElement>('.phrases textarea')].map((t) => t.value)
     expect(phrases).toEqual(['This app rocks.', 'Link in bio.'])
     expect(button('Approve')).toBeTruthy()
-    // No second video, and no going back and forth.
-    expect(button('Captions')).toBeUndefined()
+    // No second video, and no going back and forth: the captions are on
+    // this page (the toolbar's Captions only scrolls down to them).
+    expect(host.querySelector('.review-head')?.textContent).not.toContain('Captions')
     expect(button('Cuts')).toBeUndefined()
   })
 
   it('tells the captions to follow a change to the cuts once it settles', () => {
     const onKeep = vi.fn()
     show({ onKeep })
+    tapClip(0)
     act(() => button('Delete')!.click())
     expect(onKeep).not.toHaveBeenCalled()
     act(() => vi.advanceTimersByTime(500))
@@ -81,6 +86,7 @@ describe('the edit screen', () => {
   it('approves with the cuts and the captions as he left them', () => {
     const onFinish = vi.fn()
     show({ onFinish })
+    tapClip(0)
     act(() => button('Delete')!.click())
     act(() => button('Approve')!.click())
     expect(onFinish).toHaveBeenCalledTimes(1)
@@ -162,6 +168,7 @@ describe('the timeline editor', () => {
     show({ onKeep })
     act(() => button('Timeline editor')!.click())
     expect(arrow('Undo').disabled).toBe(true)
+    tapClip(0)
     act(() => button('Delete')!.click())
     expect(arrow('Undo').disabled).toBe(false)
     act(() => arrow('Undo').click())
@@ -177,7 +184,7 @@ describe('the timeline editor', () => {
     show()
     act(() => button('Timeline editor')!.click())
     expect(arrow('Zoom in')).toBeNull()
-    expect(host.textContent).toContain('Pinch the timeline to zoom')
+    expect(host.textContent).toContain('pinch it to zoom')
   })
 
   it('opens full screen from the top', () => {

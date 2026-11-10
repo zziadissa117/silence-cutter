@@ -3,6 +3,29 @@
 Newest first. Every change says what it does, how to use it, and how it works
 underneath. Kept up to date with each commit.
 
+## Edit screen like TikTok's: step 1, the timeline
+App only: run ./deploy.sh.
+**What he said (2026-11-10):** "make it more similar to this [TikTok's editor] ... there's a timeline ... I can adjust it
+with my hands using some sort of arrows". His picks: the cut bits hidden like TikTok, frames + his words on the clip
+bar, dark like TikTok; clip tools Split, Delete, Speed; a sound row (music bank, built-in effects, his phone, a sound
+effects bank). This step is the screen and the timeline; Sound and Speed come next.
+- Dark, like TikTok, whatever the phone's setting: round back button and a red arrow (Done) at the top, the video
+  big, then the time, Play, Undo/Redo and full screen in one row.
+- The timeline shows only what plays: the kept parts back to back as clips of little frames of the video, his words
+  written small under them. Slide it to move, pinch it to zoom (as before).
+- Tap a clip: a white frame with an arrow at each end. Drag an arrow inward to trim; outward brings back what was
+  cut there, up to the next clip's footage. The start's arrow stays under the finger while dragging; the clips close
+  up when it lets go, and the playhead lands on the new edge. The tools along the bottom become Back, Split (at the
+  playhead, on that clip), Delete.
+- Under the clips, a row of bars: the headline and each text, picture or video put on. Tap one to edit it (the same
+  panel as before); hold its middle to move it along the video, drag its ends to change when it starts and how long it
+  stays.
+- Nothing tapped, the tools along the bottom are Text, Overlay, Captions (scrolls down to them), Headline and, when
+  there are sounds to check, Check.
+- The quick caption check (the first screen) is dark too; otherwise unchanged.
+- Tests: `cutsTimeline.test.ts`; the editor tests now tap a clip before Split/Delete. Checked here in Chrome: trimming
+  both ways, undo, moving and stretching a bar.
+
 ## Batch: one video, new songs
 App only: run ./deploy.sh (the Cutter server rebuilds by itself).
 **What he said (2026-11-09):** "a batch for just one single video and variations of that same exact video ... it's the

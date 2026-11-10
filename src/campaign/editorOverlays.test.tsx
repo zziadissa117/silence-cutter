@@ -1,6 +1,6 @@
 // The edit screen as TikTok's editor: the headline on the video to drag and
-// size, words of his own (+ Text), and a picture or video over him
-// (+ Overlay) - each kept on the video when he is done.
+// size, words of his own (Text), and a picture or video over him
+// (Overlay) - each kept on the video when he is done.
 
 import { act } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
@@ -93,7 +93,7 @@ const pointer = (target: Element, type: string, x: number, y: number, id = 1) =>
 describe('words of his own', () => {
   it('go on at the playhead in the middle, in the headline look, as he types them', async () => {
     const { onDone } = await open()
-    await act(async () => button('+ Text').click())
+    await act(async () => button('Text').click())
     const box = host.querySelector('.pic-edit input[aria-label="Your words"]') as HTMLInputElement
     expect(box).not.toBeNull()
     expect(document.activeElement).toBe(box)
@@ -110,7 +110,7 @@ describe('words of his own', () => {
 
   it('are dropped when nothing was typed in them', async () => {
     const { onDone } = await open()
-    await act(async () => button('+ Text').click())
+    await act(async () => button('Text').click())
     await act(async () => (host.querySelector('.pic-edit .linkbtn') as HTMLButtonElement).click())
     expect(done(onDone)).toEqual([])
   })
@@ -165,7 +165,7 @@ describe('the headline on the video', () => {
 describe('an overlay', () => {
   it('can be a video from the video bank, up for its own length, muted', async () => {
     const { onDone } = await open()
-    await act(async () => button('+ Overlay').click())
+    await act(async () => button('Overlay').click())
     expect(host.querySelector('.pic-picker')?.textContent).toContain('A photo or video from my phone')
     const cell = [...host.querySelectorAll('.pic-cell')].find((c) => c.textContent?.includes('Screen recording')) as HTMLButtonElement
     await act(async () => cell.click())

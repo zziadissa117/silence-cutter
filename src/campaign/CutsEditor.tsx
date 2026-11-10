@@ -1,29 +1,32 @@
-// Fixing a video's cuts by hand before it is made: a timeline of the whole
-// recording with the kept parts lit and the cut-out parts dimmed, the words
-// he says written along it so the bad bit is easy to find, and a playhead
-// fixed in the middle - scroll the timeline to move through the video, the
-// way every phone editor works.
+// Fixing a video before it is made, the way TikTok's editor works (his ask,
+// 2026-11-10: "make it pretty similar to the TikTok one"): dark, the video big
+// at the top, the time and play under it, then the timeline of what plays -
+// the kept parts back to back as clips of small frames (filmstrip.ts), the
+// cut bits hidden, his words written small under them - and a row of bars
+// for the headline and each thing put on. A playhead fixed in the middle:
+// slide the timeline to move through the video, pinch it to zoom.
 //
-// Split, delete, bring a cut-out part back, and drag a part's edges to trim
-// it. Pinch (or - and +) zooms from the whole take down to half a
-// millisecond a pixel, with marks along the top to read the time by, and
-// the timer shows milliseconds. Edges snap to the gaps between words only
-// within a finger's width, so zoomed in a cut lands exactly where he puts
-// it. Play runs only the kept parts, exactly as the video will be. Nothing
-// is made until he is done, and the recording itself is never changed - see
-// cuts.ts.
+// Tap a clip: a white frame with an arrow at each end. Drag an arrow inward
+// to trim, outward to bring back what was cut there (never past the next
+// clip's footage); the clip tools come up along the bottom (Split at the
+// playhead, Delete). Tap a bar: its middle moves it along the video, its
+// ends change when it comes up and how long it stays. Nothing tapped, the
+// toolbar puts things on: Text, Overlay, and the captions and checks below.
+// Edges snap to the gaps between words only within a few pixels. Play runs
+// only the kept parts, exactly as the video will be. Nothing is made until he
+// is done, and the recording itself is never changed - see cuts.ts.
 //
 // Over the video, as in TikTok's editor: the headline is where it will be -
-// drag it to move it, pinch it to size it - and + Text and + Overlay put his
-// own words, a picture or a video (from his phone or the banks) on at the
-// playhead, each dragged and pinched the same way, for as long as he sets.
-// Words and the headline are drawn by the render's own code (overlay.ts).
+// drag it to move it, pinch it to size it - and Text and Overlay put his own
+// words, a picture or a video (from his phone or the banks) on at the
+// playhead, each dragged and pinched the same way. Words and the headline
+// are drawn by the render's own code (overlay.ts).
 //
 // Smooth on a phone because little moves while he scrolls: the timeline is
-// drawn once and only redrawn when the cuts or the zoom change; the timer
-// and buttons follow at most once a frame; and the video is asked for one
-// frame at a time - always the latest place - instead of a new jump on every
-// scroll event, which is what left the phone's decoder behind.
+// laid out only around what is on screen and only again when the cuts, the
+// zoom or that stretch change; the timer and buttons follow at most once a
+// frame; and the video is asked for one frame at a time - always the latest
+// place - instead of a new jump on every scroll event.
 
 import {
   memo,
@@ -47,13 +50,14 @@ import {
   outputTime,
   partAt,
   playableFrom,
-  removeAt,
-  restoreAt,
   rulerSteps,
   snapTo,
+  clipsOf,
+  sourceAt,
   splitAt,
   trimPart,
 } from './cuts'
+import { frameAt, THUMB, useFilmstrip, type Filmstrip } from './filmstrip'
 import { headlineFontReady } from './headlineFont'
 import { ChevronLeft, FullIcon, PauseIcon, PlayIcon, RedoIcon, UndoIcon } from './icons'
 import { HeadlineLook } from './JobRow'
@@ -80,19 +84,22 @@ const START_PX = 110
 const ZOOMS = [40, 110, 300, 800, 2000]
 const MIN_PX = ZOOMS[0]
 const MAX_PX = ZOOMS[ZOOMS.length - 1]
-/** Lines the words are laid on, so fast speech doesn't pile them up. */
-const WORD_LINES = 3
-/** Roughly how wide a letter of the labels is. */
-const LETTER_PX = 7.5
+/** Lines the words are laid on under the frames, so fast speech doesn't
+ *  pile them up. */
+const WORD_LINES = 2
+/** Roughly how wide a letter of the words is. */
+const LETTER_PX = 6.5
 /** How near a word's edge a trim has to come to land on it: right on it -
  *  at 10 px (a fingertip) a trim jumped to the next word when he meant
  *  between them (2026-11-02). */
 const SNAP_PX = 4
-/** Where the parts start below the time marks, how tall they are, and where
- *  the words start under them. */
-const PART_TOP = 22
-const PART_H = 64
-const WORD_TOP = PART_TOP + PART_H + 8
+/** The timeline from the top, as in TikTok: the time marks, the clips (its
+ *  frames), his words under them, then a row for each thing put on. */
+const CLIP_TOP = 24
+const CLIP_H = THUMB.height
+const WORD_TOP = CLIP_TOP + CLIP_H + 6
+const ROWS_TOP = WORD_TOP + WORD_LINES * 16 + 8
+const ROW_H = 30
 
 const clampPx = (px: number) => Math.min(MAX_PX, Math.max(MIN_PX, px))
 
@@ -190,29 +197,41 @@ export interface CutsControl {
   cut(range: Range): void
 }
 
-/** Which line each word goes on: the first where it clears the word before
- *  it on that line, or the one that ends earliest when none does. */
-function wordLines(words: readonly CaptionWord[], px: number): number[] {
+/** Which line each word goes on, from where it starts on the timeline: the
+ *  first where it clears the word before it on that line, or the one that
+ *  ends earliest when none does. */
+function wordLines(words: readonly { x: number; text: string }[]): number[] {
   const ends = Array.from({ length: WORD_LINES }, () => -Infinity)
   return words.map((w) => {
-    const left = w.start * px
-    let line = ends.findIndex((end) => end + 6 <= left)
+    let line = ends.findIndex((end) => end + 6 <= w.x)
     if (line < 0) line = ends.indexOf(Math.min(...ends))
-    ends[line] = left + w.text.length * LETTER_PX
+    ends[line] = w.x + w.text.length * LETTER_PX
     return line
   })
 }
 
-/** The kept parts and the words: redrawn only when the cuts, the zoom or
- *  the selected part change - never just because he scrolled. */
+/** A trim of a clip's start being dragged: that clip and the ones after it
+ *  stay where the finger has them until it lets go, so the arrow stays
+ *  under the finger - then they close up, as in TikTok. */
+export interface ClipShift {
+  from: number
+  px: number
+}
+
+/** The clips as TikTok shows them - what plays, back to back, the cut bits
+ *  hidden - each a row of small frames with his words under it; the one
+ *  he tapped framed in white with an arrow at each end to drag. Only the
+ *  frames around what is on screen are laid out. */
 const Track = memo(function Track({
   keep,
   px,
   selected,
   words,
   checks,
-  peaks,
-  duration,
+  strip,
+  shift,
+  from,
+  to,
   focus,
   onFlag,
   onSelect,
@@ -223,82 +242,159 @@ const Track = memo(function Track({
   selected: number | null
   words: CaptionWord[]
   checks: CutCheck[]
-  peaks: number[] | undefined
-  duration: number
+  strip: Filmstrip
+  shift: ClipShift | null
+  /** What is on screen, in seconds of the video. */
+  from: number
+  to: number
   focus: number | null
   onFlag: (i: number) => void
   onSelect: (i: number | null) => void
   onHandleDown: (i: number, edge: 'start' | 'end', down: ReactPointerEvent<HTMLSpanElement>) => void
 }) {
-  const lines = useMemo(() => wordLines(words, px), [words, px])
-  const wave = useMemo(() => {
-    if (!peaks || peaks.length === 0) return null
-    // One bar per tenth of a second, mirrored about the middle, as a single path.
-    return peaks.map((v, i) => `M${i} ${50 - v * 48}h1v${Math.max(2, v * 96)}h-1z`).join('')
-  }, [peaks])
+  const clips = useMemo(() => clipsOf(keep), [keep])
+  const left = (i: number) => clips[i].at * px + (shift && i >= shift.from ? shift.px : 0)
+  const said = useMemo(() => {
+    const kept = words.filter((w) => partAt(keep, (w.start + w.end) / 2) >= 0).map((w) => ({ text: w.text, x: outputTime(keep, w.start) * px }))
+    const lines = wordLines(kept)
+    return kept.map((w, i) => ({ ...w, line: lines[i] }))
+  }, [words, keep, px])
+  const tile = THUMB.width
   return (
     <>
-      {wave ? (
-        <svg
-          className="cuts-wave"
-          aria-hidden
-          style={{ left: 0, top: PART_TOP, width: duration * px, height: PART_H }}
-          viewBox={`0 0 ${peaks!.length} 100`}
-          preserveAspectRatio="none"
-        >
-          <path d={wave} />
-        </svg>
-      ) : null}
-      {keep.map((part, i) => (
-        <div
-          // By place, not by times: a part being trimmed keeps its element, and
-          // with it the finger on its handle.
-          key={i}
-          className={`cuts-part${selected === i ? ' on' : ''}`}
-          style={{ left: part.start * px, width: (part.end - part.start) * px }}
-          onClick={(e) => {
-            e.stopPropagation()
-            onSelect(i)
-          }}
-        >
-          {selected === i ? (
-            <>
-              <span className="cuts-handle start" aria-label="Trim the start" onPointerDown={(e) => onHandleDown(i, 'start', e)} />
-              <span className="cuts-handle end" aria-label="Trim the end" onPointerDown={(e) => onHandleDown(i, 'end', e)} />
-            </>
-          ) : null}
-        </div>
-      ))}
+      {keep.map((part, i) => {
+        const clip = clips[i]
+        const width = clip.length * px
+        // The frames of this clip that are on screen.
+        const first = Math.max(0, Math.floor(((from - clip.at) * px) / tile))
+        const last = Math.min(Math.ceil(width / tile) - 1, Math.floor(((to - clip.at) * px) / tile))
+        const tiles: { k: number; src: string | null }[] = []
+        for (let k = first; k <= last; k++) tiles.push({ k, src: frameAt(strip, part.start + (k * tile + tile / 2) / px) })
+        return (
+          <div
+            // By place, not by times: a clip being trimmed keeps its element,
+            // and with it the finger on its arrow.
+            key={i}
+            className={`tl-clip${selected === i ? ' on' : ''}`}
+            style={{ left: left(i), width, top: CLIP_TOP, height: CLIP_H }}
+            onClick={(e) => {
+              e.stopPropagation()
+              onSelect(selected === i ? null : i)
+            }}
+          >
+            <div className="tl-frames">
+              {tiles.map(({ k, src }) =>
+                src ? <img key={k} alt="" src={src} draggable={false} style={{ left: k * tile }} /> : <span key={k} className="tl-frame-empty" style={{ left: k * tile }} />,
+              )}
+            </div>
+            {selected === i ? (
+              <>
+                <span className="tl-handle start" role="slider" aria-label="Drag to trim the start" onClick={(e) => e.stopPropagation()} onPointerDown={(e) => onHandleDown(i, 'start', e)}>
+                  <svg viewBox="0 0 10 16" aria-hidden>
+                    <path d="M7 2 2 8l5 6" />
+                  </svg>
+                </span>
+                <span className="tl-handle end" role="slider" aria-label="Drag to trim the end" onClick={(e) => e.stopPropagation()} onPointerDown={(e) => onHandleDown(i, 'end', e)}>
+                  <svg viewBox="0 0 10 16" aria-hidden>
+                    <path d="m3 2 5 6-5 6" />
+                  </svg>
+                </span>
+              </>
+            ) : null}
+          </div>
+        )
+      })}
       {checks.map((c, i) => {
-        const isCut = partAt(keep, (c.start + c.end) / 2) < 0
+        // Only the ones in the video: a cut one is in the list under it.
+        if (partAt(keep, (c.start + c.end) / 2) < 0 || c.kind === 'noise') return null
         return (
           <button
             key={`flag-${i}`}
             type="button"
-            aria-label={`Check at ${formatPrecise(c.start)}`}
-            className={`cuts-flag ${c.kind}${isCut ? ' cut' : ' back'}${focus === i ? ' on' : ''}`}
-            style={{ left: c.start * px, width: Math.max(14, (c.end - c.start) * px), top: PART_TOP - 8, height: PART_H + 16 }}
+            aria-label={`Check at ${formatPrecise(outputTime(keep, c.start))}`}
+            className={`tl-flag${focus === i ? ' on' : ''}`}
+            style={{ left: outputTime(keep, c.start) * px, width: Math.max(10, (c.end - c.start) * px), top: CLIP_TOP - 6 }}
             onClick={(e) => {
               e.stopPropagation()
               onFlag(i)
             }}
-          >
-            {c.kind === 'noise' ? '' : '?'}
-          </button>
+          />
         )
       })}
-      {words.map((w, i) => (
-        <span
-          key={`${w.start}-${i}`}
-          className={`cuts-word${partAt(keep, w.start + 0.05) < 0 ? ' gone' : ''}`}
-          style={{ left: w.start * px, top: WORD_TOP + lines[i] * 18 }}
-        >
-          {w.text}
-        </span>
-      ))}
+      {said.map((w, i) =>
+        w.x < from * px - 200 || w.x > to * px + 200 ? null : (
+          <span key={`${w.x}-${i}`} className="tl-word" style={{ left: w.x, top: WORD_TOP + w.line * 16 }}>
+            {w.text}
+          </span>
+        ),
+      )}
     </>
   )
 })
+
+/** One thing on the timeline's rows: words, a picture or a video he put on,
+ *  or the headline - where it comes up in the video and for how long. */
+export interface Bar {
+  id: string
+  at: number
+  seconds: number
+  kind: 'words' | 'picture' | 'video' | 'headline'
+  label: string
+  thumb?: string
+}
+
+/** What a finger on a bar does: moves it, or drags one of its ends. */
+export type BarGrip = 'move' | 'start' | 'end'
+
+/** The rows under the clips, as in TikTok: one bar for each thing put on the
+ *  video, in the first row free at its time. The one he tapped has an arrow
+ *  at each end; holding its middle moves it. */
+function Bars({
+  bars,
+  px,
+  selected,
+  onSelect,
+  onGrip,
+}: {
+  bars: Bar[]
+  px: number
+  selected: string | null
+  onSelect: (id: string) => void
+  onGrip: (id: string, grip: BarGrip, down: ReactPointerEvent<HTMLElement>) => void
+}) {
+  const { row } = overlayRows(bars)
+  return (
+    <>
+      {bars.map((b) => {
+        const on = b.id === selected
+        const movable = on && b.kind !== 'headline'
+        return (
+          <div
+            key={b.id}
+            role="button"
+            aria-label={`${b.label} at ${formatPrecise(b.at)}`}
+            className={`tl-bar ${b.kind}${on ? ' on' : ''}`}
+            style={{ left: b.at * px, width: Math.max(28, b.seconds * px), top: ROWS_TOP + (row.get(b.id) ?? 0) * ROW_H }}
+            onClick={(e) => {
+              e.stopPropagation()
+              onSelect(b.id)
+            }}
+            onPointerDown={movable ? (e) => onGrip(b.id, 'move', e) : undefined}
+          >
+            {b.thumb ? <img alt="" src={b.thumb} draggable={false} /> : null}
+            <span className="tl-bar-label">{b.label}</span>
+            {movable ? (
+              <>
+                <span className="tl-bar-end start" aria-label="Drag to change when it starts" onPointerDown={(e) => onGrip(b.id, 'start', e)} />
+                <span className="tl-bar-end end" aria-label="Drag to change how long it stays" onPointerDown={(e) => onGrip(b.id, 'end', e)} />
+              </>
+            ) : null}
+          </div>
+        )
+      })}
+    </>
+  )
+}
 
 /** The time marks along the top, only around what is on screen: zoomed all
  *  the way in, the whole take would be tens of thousands of them. */
@@ -385,6 +481,19 @@ function Thumb({ o, url }: { o: ManualPicture; url?: string }) {
   return url ? <img alt="" src={url} /> : <span className="pic-missing">?</span>
 }
 
+/** A button of the toolbar along the bottom: an icon over its word, as in
+ *  TikTok's editor. */
+function ToolButton({ label, icon, onClick, disabled = false, active = false }: { label: string; icon: ReactNode; onClick: () => void; disabled?: boolean; active?: boolean }) {
+  return (
+    <button type="button" className={`tl-tool${active ? ' on' : ''}`} aria-label={label} disabled={disabled} onClick={onClick}>
+      <svg viewBox="0 0 24 24" aria-hidden>
+        {icon}
+      </svg>
+      <span>{label}</span>
+    </button>
+  )
+}
+
 export function CutsEditor({
   name,
   file,
@@ -393,7 +502,6 @@ export function CutsEditor({
   initial,
   words,
   checks = [],
-  peaks,
   noiseNote,
   overlays: initialOverlays = [],
   bank = NO_PICTURES,
@@ -424,7 +532,7 @@ export function CutsEditor({
   words: CaptionWord[]
   /** Sounds that were cut (or left) that are worth a listen - see noiseCuts.ts. */
   checks?: CutCheck[]
-  /** The sound's loudness over the recording, for drawing under the timeline. */
+  /** The sound's loudness over the recording (the timeline shows frames now; kept for callers). */
   peaks?: number[]
   noiseNote?: string
   /** Pictures already put on this video by hand. */
@@ -483,6 +591,7 @@ export function CutsEditor({
   const [t, setT] = useState(initial[0]?.start ?? 0)
   const [px, setPx] = useState(START_PX)
   const [selected, setSelected] = useState<number | null>(null)
+  const [shift, setShift] = useState<ClipShift | null>(null)
   const [playing, setPlaying] = useState(false)
   const [aspect, setAspect] = useState(9 / 16)
   const [url, setUrl] = useState<string | null>(null)
@@ -618,6 +727,12 @@ export function CutsEditor({
 
   useEffect(() => () => cancelAnimationFrame(frame.current), [])
 
+  // Dark behind it too, like TikTok's editor, whatever the phone's setting.
+  useEffect(() => {
+    document.documentElement.classList.add('editor-dark')
+    return () => document.documentElement.classList.remove('editor-dark')
+  }, [])
+
   // Opened from a row lower down the list, the page would still be scrolled
   // there - the top of the timeline tucked under the video. From the top.
   useLayoutEffect(() => {
@@ -634,6 +749,7 @@ export function CutsEditor({
   }, [])
 
   const edges = useMemo(() => words.flatMap((w) => [w.start, w.end]), [words])
+  const film = useFilmstrip(file, duration)
   const inPart = partAt(keep, t)
   const total = totalDuration(keep)
 
@@ -720,10 +836,11 @@ export function CutsEditor({
     onState?.(keep, withWords(overlays), newFiles.current)
   }, [keep, overlays]) // eslint-disable-line react-hooks/exhaustive-deps
 
-  /** Puts `to` under the playhead by scrolling the timeline there. */
+  /** Puts raw moment `to` under the playhead by scrolling the timeline
+   *  there - the timeline shows only what plays, so where it is in the video. */
   const scrollTo = useCallback((to: number) => {
     const s = strip.current
-    if (s) s.scrollLeft = to * pxRef.current
+    if (s) s.scrollLeft = outputTime(keepRef.current, to) * pxRef.current
   }, [])
 
   // Where the timeline starts: the first kept part under the playhead.
@@ -749,7 +866,10 @@ export function CutsEditor({
     if (playingRef.current) return
     const s = strip.current
     if (!s) return
-    const to = Math.min(duration, Math.max(0, s.scrollLeft / pxRef.current))
+    const k = keepRef.current
+    let to = sourceAt(k, Math.max(0, s.scrollLeft / pxRef.current))
+    // Past the last frame: on it.
+    if (partAt(k, to) < 0 && k.length > 0) to = Math.max(k[k.length - 1].start, k[k.length - 1].end - 0.001)
     followTime(to)
     scrub(to)
   }
@@ -995,7 +1115,6 @@ export function CutsEditor({
         ...(headlineOn && headlineLayout ? [{ id: HEADLINE, layout: headlineLayout }] : []),
       ].map(({ id, layout }) => ({ id, box: fingerSized(boxOfText(layout, frameSize.width, frameSize.height), frameSize.width, frameSize.height) }))
     : []
-  const rows = useMemo(() => overlayRows(overlays), [overlays])
 
   // The videos he put on play along with the video, on its clock, and sit
   // on their frame while he scrolls.
@@ -1263,7 +1382,8 @@ export function CutsEditor({
   const takeOverRef = useRef(takeOver)
   takeOverRef.current = takeOver
 
-  /** Drags one edge of the selected part. */
+  /** Drags one end of the selected clip - inward trims it, outward brings
+   *  back what was cut there, never past the next clip's footage. */
   const handleDown = useRef<(i: number, edge: 'start' | 'end', down: ReactPointerEvent<HTMLSpanElement>) => void>(() => {})
   handleDown.current = (i, edge, down) => {
     down.preventDefault()
@@ -1275,23 +1395,19 @@ export function CutsEditor({
     const beforeOverlays = overlaysRef.current
     let last = before
     let drawn = 0
-    // Where on the edge the finger landed: the edge keeps that distance from
-    // the finger, so it doesn't jump to the finger's middle on the first move
-    // - that jump, a quarter of a second at the usual zoom, was "it trims
-    // too much" (2026-11-02).
-    const box0 = ruler.current?.getBoundingClientRect()
+    const x0 = down.clientX
     const at0 = edge === 'start' ? before[i].start : before[i].end
-    const grab = box0 ? (down.clientX - box0.left) / pxRef.current - at0 : 0
     const move = (event: PointerEvent) => {
-      const box = ruler.current?.getBoundingClientRect()
-      if (!box) return
       const scale = pxRef.current
-      const to = snapTo((event.clientX - box.left) / scale - grab, edges, SNAP_PX / scale)
+      const to = snapTo(at0 + (event.clientX - x0) / scale, edges, SNAP_PX / scale)
       last = trimPart(before, i, edge, to, duration)
       if (!drawn) {
         drawn = requestAnimationFrame(() => {
           drawn = 0
+          keepRef.current = last
           setKeep(last)
+          // The start's arrow stays under the finger until it lets go.
+          setShift(edge === 'start' ? { from: i, px: (last[i].start - before[i].start) * pxRef.current } : null)
         })
       }
       scrub(edge === 'start' ? last[i].start : last[i].end - 0.001)
@@ -1301,8 +1417,17 @@ export function CutsEditor({
       handle.removeEventListener('pointerup', up)
       handle.removeEventListener('pointercancel', up)
       cancelAnimationFrame(drawn)
+      keepRef.current = last
       setKeep(last)
+      setShift(null)
       if (last !== before) record({ keep: before, overlays: beforeOverlays })
+      // The playhead on the end he moved, as TikTok leaves it.
+      const at = edge === 'start' ? last[i].start : Math.max(last[i].start, last[i].end - 0.001)
+      requestAnimationFrame(() => {
+        scrollTo(at)
+        followTime(at)
+        seek(at)
+      })
     }
     handle.addEventListener('pointermove', move)
     handle.addEventListener('pointerup', up)
@@ -1312,6 +1437,55 @@ export function CutsEditor({
     (i: number, edge: 'start' | 'end', down: ReactPointerEvent<HTMLSpanElement>) => handleDown.current(i, edge, down),
     [],
   )
+
+  /** A finger on a bar of the rows: its middle moves it along the video, its
+   *  ends change when it comes up and how long it stays. */
+  /** When a bar was last let go of after a drag: that letting go isn't a tap. */
+  const gripped = useRef(0)
+  const onGrip = (id: string, grip: BarGrip, down: ReactPointerEvent<HTMLElement>) => {
+    const o = overlaysRef.current.find((x) => x.id === id)
+    if (!o) return
+    down.preventDefault()
+    down.stopPropagation()
+    takeOver()
+    const el = down.currentTarget
+    el.setPointerCapture?.(down.pointerId)
+    const k = keepRef.current
+    const total = totalDuration(k)
+    const before = now()
+    const out0 = outputTime(k, o.at)
+    const x0 = down.clientX
+    let moved = false
+    const move = (event: PointerEvent) => {
+      const dx = (event.clientX - x0) / pxRef.current
+      if (!moved && Math.abs(event.clientX - x0) < 4) return
+      moved = true
+      const longest = longestFor(o)
+      let out = out0
+      let seconds = o.seconds
+      if (grip === 'move') out = Math.min(Math.max(0, out0 + dx), Math.max(0, total - 0.1))
+      else if (grip === 'end') seconds = Math.min(longest, Math.max(PICTURE_SECONDS.min, o.seconds + dx))
+      else {
+        out = Math.min(Math.max(0, out0 + dx), out0 + o.seconds - PICTURE_SECONDS.min)
+        seconds = Math.min(longest, o.seconds - (out - out0))
+      }
+      const at = Math.round(sourceAt(k, out) * 100) / 100
+      const next = { ...o, at, seconds: Math.round(seconds * 10) / 10 }
+      setOverlays((list) => list.map((x) => (x.id === id ? next : x)).sort((a, b) => a.at - b.at))
+    }
+    const up = () => {
+      el.removeEventListener('pointermove', move)
+      el.removeEventListener('pointerup', up)
+      el.removeEventListener('pointercancel', up)
+      if (moved) {
+        record(before)
+        gripped.current = performance.now()
+      }
+    }
+    el.addEventListener('pointermove', move)
+    el.addEventListener('pointerup', up)
+    el.addEventListener('pointercancel', up)
+  }
 
   // Pinching the timeline zooms it, around the playhead. Safari says how far
   // the fingers have spread. While the fingers move, the timeline is only
@@ -1374,50 +1548,66 @@ export function CutsEditor({
   }, [])
 
 
-  // The marks around what is on screen, in steps of half a screen, so they
-  // are redrawn only as he moves on - not on every scroll.
+  // The marks and frames around what is on screen, in steps of half a
+  // screen, so they are laid out again only as he moves on - not on every
+  // scroll. In seconds of the video, as the timeline shows it.
   const chunk = Math.max(viewWidth / 2 / px, 0.01)
-  const around = Math.floor(t / chunk)
+  const around = Math.floor(outT / chunk)
   const marksFrom = Math.max(0, (around - 2) * chunk)
-  const marksTo = Math.min(duration, (around + 3) * chunk)
+  const marksTo = Math.min(total, (around + 3) * chunk)
+  // The rows: the headline, then each thing he put on, where it comes up.
+  const bars: Bar[] = [
+    ...(headlineLayout && headline ? [{ id: HEADLINE, at: 0, seconds: Math.min(total, headline.seconds), kind: 'headline' as const, label: headline.look.text.trim() || 'Headline' }] : []),
+    ...overlays.map((o): Bar => ({
+      id: o.id,
+      at: outputTime(keep, o.at),
+      seconds: o.seconds,
+      kind: isText(o) ? 'words' : isVideo(o) ? 'video' : 'picture',
+      label: o.source.kind === 'text' ? o.source.text.trim() || 'Aa' : isVideo(o) ? 'Video' : 'Picture',
+      ...(urls[o.id] && !isText(o) && !isVideo(o) ? { thumb: urls[o.id] } : {}),
+    })),
+  ]
+  const rowCount = overlayRows(bars).rows
+  // The toolbar along the bottom: what can be done to the clip he tapped, to
+  // the thing he tapped, or - nothing tapped - what can be put on.
+  const clipTapped = selected !== null && selected < keep.length ? selected : null
+  const done = () => onDone(keep, withWords(overlays), newFiles.current)
+  const belowRef = useRef<HTMLDivElement>(null)
+  const checksRef = useRef<HTMLDivElement>(null)
+  const toView = (el: HTMLElement | null) => el?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+  const asking = checks.filter((c) => c.kind !== 'noise').length
 
   return (
-    <section className={`screen cuts${typing ? ' typing' : ''}${quick ? ' quick' : ''}${full ? ' full' : ''}`} aria-label={`Cuts for ${name}`}>
+    <section className={`screen cuts tiktok${typing ? ' typing' : ''}${quick ? ' quick' : ''}${full ? ' full' : ''}`} aria-label={`Cuts for ${name}`}>
       <div className="review-top" ref={top}>
         <div className="review-head">
-          <button type="button" className="back" onClick={onCancel}>
-            <ChevronLeft /> Back
+          <button type="button" className="tl-round" aria-label="Back" onClick={onCancel}>
+            <ChevronLeft />
           </button>
           <div className="cuts-head-actions">
-            {quick ? null : (
-              <>
-                <button type="button" className="icon-btn" aria-label="Undo" disabled={past.length === 0} onClick={undo}>
-                  <UndoIcon />
-                </button>
-                <button type="button" className="icon-btn" aria-label="Redo" disabled={future.length === 0} onClick={redo}>
-                  <RedoIcon />
-                </button>
-              </>
-            )}
-            <button
-              type="button"
-              className="icon-btn"
-              aria-label="Full screen"
-              onClick={() => {
-                setFull(true)
-                if (!playingRef.current) play()
-              }}
-            >
-              <FullIcon />
-            </button>
+            {quick ? (
+              <button
+                type="button"
+                className="icon-btn"
+                aria-label="Full screen"
+                onClick={() => {
+                  setFull(true)
+                  if (!playingRef.current) play()
+                }}
+              >
+                <FullIcon />
+              </button>
+            ) : null}
             {headActions !== undefined ? headActions : onCaptions ? (
               <button type="button" className="btn small" onClick={() => onCaptions(keep, withWords(overlays), newFiles.current)}>
                 Captions
               </button>
             ) : null}
             {headActions !== undefined ? null : (
-              <button type="button" className="btn small primary" onClick={() => onDone(keep, withWords(overlays), newFiles.current)}>
-                Done
+              <button type="button" className="tl-round tl-next" aria-label="Done" onClick={done}>
+                <svg viewBox="0 0 24 24" aria-hidden>
+                  <path d="M5 12h13M13 6l6 6-6 6" />
+                </svg>
               </button>
             )}
           </div>
@@ -1550,77 +1740,157 @@ export function CutsEditor({
         </div>
       </div>
 
+      <div className="tl-bar-row">
+        <span className="review-count cuts-timer" ref={timer}>
+          {formatPrecise(outputTime(keep, t))} / {formatPrecise(total)}
+        </span>
+        <button type="button" className="tl-play" aria-label={playing ? 'Pause' : 'Play'} onClick={play}>
+          {playing ? <PauseIcon /> : <PlayIcon />}
+        </button>
+        <span className="tl-bar-tools">
+          <button type="button" className="icon-btn" aria-label="Undo" disabled={past.length === 0} onClick={undo}>
+            <UndoIcon />
+          </button>
+          <button type="button" className="icon-btn" aria-label="Redo" disabled={future.length === 0} onClick={redo}>
+            <RedoIcon />
+          </button>
+          <button
+            type="button"
+            className="icon-btn"
+            aria-label="Full screen"
+            onClick={() => {
+              setFull(true)
+              if (!playingRef.current) play()
+            }}
+          >
+            <FullIcon />
+          </button>
+        </span>
+      </div>
+
       <div className="cuts-strip-wrap">
         <div className="cuts-strip" ref={strip} onScroll={onScroll} onTouchStart={takeOver} onWheel={takeOver}>
           <div className="cuts-track" ref={track}>
-            <div className="cuts-ruler" ref={ruler} style={{ width: duration * px, height: 164 + rows.rows * 24 }} onClick={() => setSelected(null)}>
+            <div
+              className="cuts-ruler"
+              ref={ruler}
+              style={{ width: Math.max(1, total * px), height: ROWS_TOP + rowCount * ROW_H + 8 }}
+              onClick={() => {
+                setSelected(null)
+                setSelectedPic(null)
+              }}
+            >
               <Marks px={px} from={marksFrom} to={marksTo} />
               <Track
                 keep={keep}
                 px={px}
-                selected={selected}
+                selected={clipTapped}
                 words={words}
                 checks={checks}
-                peaks={peaks}
-                duration={duration}
+                strip={film}
+                shift={shift}
+                from={marksFrom}
+                to={marksTo}
                 focus={focus}
                 onFlag={goTo}
-                onSelect={setSelected}
+                onSelect={(i) => {
+                  setSelectedPic(null)
+                  setSelected(i)
+                }}
                 onHandleDown={onHandleDown}
               />
-              {overlays.map((o) => (
-                <button
-                  key={o.id}
-                  type="button"
-                  aria-label={`${kindOf(o)} at ${formatPrecise(o.at)}`}
-                  className={`cuts-pic${selectedPic === o.id ? ' on' : ''}${isText(o) ? ' words' : ''}`}
-                  style={{ left: o.at * px, width: Math.max(24, o.seconds * px), top: 162 + (rows.row.get(o.id) ?? 0) * 24 }}
-                  onClick={(e) => {
-                    e.stopPropagation()
-                    goToPicture(o)
-                  }}
-                >
-                  <Thumb o={o} url={urls[o.id]} />
-                </button>
-              ))}
+              <Bars
+                bars={bars}
+                px={px}
+                selected={selectedPic}
+                onSelect={(id) => {
+                  if (performance.now() - gripped.current < 400) return
+                  setSelected(null)
+                  const o = overlays.find((x) => x.id === id)
+                  if (id === HEADLINE) goToHeadline()
+                  else if (o) goToPicture(o)
+                }}
+                onGrip={onGrip}
+              />
             </div>
           </div>
         </div>
         <span className="cuts-playhead" aria-hidden />
       </div>
 
-      <div className="cuts-zoom">
-        <span className="review-count cuts-timer" ref={timer}>
-          {formatPrecise(outputTime(keep, t))} / {formatPrecise(total)}
-        </span>
-        <span className="hint cuts-pinch">Pinch the timeline to zoom</span>
-      </div>
-
-      <div className="cuts-controls">
-        {inPart >= 0 ? (
+      <nav className="tl-tools" aria-label={clipTapped !== null ? 'This clip' : selectedPic ? 'What you tapped' : 'Add to the video'}>
+        {clipTapped !== null ? (
           <>
-            <button type="button" className="btn" onClick={() => change(splitAt(keep, tRef.current))}>
-              Split
-            </button>
-            <button type="button" className="btn" disabled={keep.length === 1} onClick={() => change(removeAt(keep, tRef.current))}>
-              Delete
-            </button>
+            <ToolButton label="Back" onClick={() => setSelected(null)} icon={<path d="M15 5l-7 7 7 7" />} />
+            <ToolButton
+              label="Split"
+              // At the playhead, which has to be on the clip he tapped.
+              disabled={partAt(keep, t) !== clipTapped}
+              onClick={() => change(splitAt(keep, tRef.current))}
+              icon={
+                <>
+                  <circle cx="6" cy="18" r="2.5" />
+                  <circle cx="6" cy="6" r="2.5" />
+                  <path d="M8 7.5 20 17M8 16.5 20 7" />
+                </>
+              }
+            />
+            <ToolButton
+              label="Delete"
+              disabled={keep.length === 1}
+              onClick={() => change(keep.filter((_, k) => k !== clipTapped))}
+              icon={<path d="M5 7h14M10 7V5h4v2M7 7l1 12h8l1-12" />}
+            />
+          </>
+        ) : selectedPic ? (
+          <>
+            <ToolButton label="Done" onClick={() => setSelectedPic(null)} icon={<path d="M5 12l5 5 9-10" />} />
+            {selectedPic !== HEADLINE ? (
+              <ToolButton label="Delete" onClick={() => removePicture(selectedPic)} icon={<path d="M5 7h14M10 7V5h4v2M7 7l1 12h8l1-12" />} />
+            ) : null}
           </>
         ) : (
-          <button type="button" className="btn" onClick={() => change(restoreAt(keep, tRef.current, duration))}>
-            Keep this part
-          </button>
+          <>
+            <ToolButton label="Text" onClick={addText} icon={<text x="3" y="17" fontSize="14" fontWeight="600" fill="currentColor" stroke="none">Aa</text>} />
+            <ToolButton
+              label="Overlay"
+              active={picking}
+              onClick={togglePicker}
+              icon={
+                <>
+                  <rect x="4" y="4" width="12" height="12" rx="2" />
+                  <path d="M20 9v9a2 2 0 0 1-2 2H9" />
+                </>
+              }
+            />
+            {below ? (
+              <ToolButton
+                label="Captions"
+                onClick={() => toView(belowRef.current)}
+                icon={
+                  <>
+                    <rect x="3" y="5" width="18" height="14" rx="2" />
+                    <path d="M7 12h4M13 12h4M7 15h10" />
+                  </>
+                }
+              />
+            ) : null}
+            {headlineLayout ? <ToolButton label="Headline" onClick={goToHeadline} icon={<path d="M6 5v14M18 5v14M6 12h12" />} /> : null}
+            {asking > 0 ? (
+              <ToolButton
+                label={`Check ${asking}`}
+                onClick={() => toView(checksRef.current)}
+                icon={
+                  <>
+                    <circle cx="12" cy="12" r="9" />
+                    <path d="M12 7v6M12 16.5v.5" />
+                  </>
+                }
+              />
+            ) : null}
+          </>
         )}
-
-      </div>
-      <div className="cuts-add">
-        <button type="button" className="btn" onClick={addText}>
-          + Text
-        </button>
-        <button type="button" className={`btn${picking ? ' primary' : ''}`} aria-expanded={picking} onClick={togglePicker}>
-          + Overlay
-        </button>
-      </div>
+      </nav>
 
       {selectedPic === HEADLINE && headline ? (
         <div className="pic-edit" aria-label="The headline">
@@ -1662,7 +1932,7 @@ export function CutsEditor({
           <div className="pic-edit-head">
             {isText(selectedPicture) ? null : <Thumb o={selectedPicture} url={urls[selectedPicture.id]} />}
             <span className="pic-row-title">
-              {kindOf(selectedPicture)} at {formatPrecise(selectedPicture.at)}
+              {kindOf(selectedPicture)} at {formatPrecise(outputTime(keep, selectedPicture.at))}
             </span>
             <button type="button" className="linkbtn" onClick={() => setSelectedPic(null)}>
               Done
@@ -1753,22 +2023,6 @@ export function CutsEditor({
           </div>
         </div>
       ) : null}
-      {overlays.length > 0 || headlineLayout ? (
-        <div className="pic-chips" aria-label="On this video">
-          {headlineLayout ? (
-            <button type="button" aria-label="Headline" className={`pic-chip${selectedPic === HEADLINE ? ' on' : ''}`} onClick={goToHeadline}>
-              <span className="pic-glyph">H</span>
-              <span>Headline</span>
-            </button>
-          ) : null}
-          {overlays.map((o) => (
-            <button key={o.id} type="button" className={`pic-chip${selectedPic === o.id ? ' on' : ''}`} onClick={() => goToPicture(o)}>
-              <Thumb o={o} url={urls[o.id]} />
-              <span>{formatPrecise(o.at)}</span>
-            </button>
-          ))}
-        </div>
-      ) : null}
       {picNote ? (
         <p className="hint warn-text" ref={notePanel}>
           {picNote}
@@ -1776,7 +2030,7 @@ export function CutsEditor({
       ) : null}
       {picking ? (
         <div className="pic-picker" ref={picPanel}>
-          <div className="group-title">Put on at {formatPrecise(t)}</div>
+          <div className="group-title">Put on at {formatPrecise(outT)}</div>
           <button type="button" className="btn wide pic-phone" onClick={() => phonePicker.current?.click()}>
             A photo or video from my phone
           </button>
@@ -1829,17 +2083,14 @@ export function CutsEditor({
         </div>
       ) : null}
 
-      {below}
+      {below ? <div ref={belowRef}>{below}</div> : null}
 
-      <div className="cuts-legend" aria-hidden>
-        <span><i className="swatch kept" /> kept</span>
-        <span><i className="swatch gone" /> cut out</span>
-        {checks.length > 0 ? <span><i className="swatch check" /> check this</span> : null}
-      </div>
-      <p className="hint cuts-hint tip">Scroll to move through the video and pinch to zoom. Tap a part, then drag its edges to trim it.</p>
+      <p className="hint cuts-hint tip">
+        Slide the timeline to move through the video, pinch it to zoom. Tap a clip, then drag its arrows: inward to trim, outward to bring back what was cut.
+      </p>
       {noiseNote ? <p className="hint warn-text">{noiseNote}</p> : null}
       {checks.length > 0 ? (
-        <div className="cuts-checks">
+        <div className="cuts-checks" ref={checksRef}>
           <div className="group-title">
             Check these <span className="bank-count">{checks.filter((c) => c.kind !== 'noise').length}</span>
           </div>

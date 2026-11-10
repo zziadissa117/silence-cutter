@@ -745,6 +745,15 @@ engine/                        the engine on Railway (Python): engine/ its code,
   (the cuts editor's), the captions drawn on it through `paintOver`, the phrases seeking and playing it through
   `CutsControl`. A cut change settles for 0.4 s, then the captions follow (`CampaignApp.followCuts`,
   `captions.withRestored`); leaving keeps cuts and captions in one write (`keepEdit`).
+- The timeline editor is laid out like TikTok's (`.cuts.tiktok`, dark whatever the phone's setting via
+  `html.editor-dark`): its timeline is in seconds of the finished video - the kept parts back to back
+  (`cuts.clipsOf`), the cut bits hidden; `scrollTo` and `onScroll` go between that and the recording's own clock
+  with `outputTime`/`cuts.sourceAt`. Each clip is small frames (`filmstrip.useFilmstrip`, mediabunny `CanvasSink`
+  once on open, JPEG data URLs) with his words under it; a tapped clip gets white arrows that call `trimPart`
+  (outward brings cut footage back; a start being dragged holds the clips still - `ClipShift` - until the finger
+  lets go). Bars (`Bars`) under it for the headline and each thing put on: its middle moves it, its ends change
+  when it comes up and how long it stays (`onGrip`). The toolbar along the bottom (`ToolButton`) changes with what
+  is tapped: clip -> Split/Delete; a bar -> Done/Delete; nothing -> Text, Overlay, Captions, Headline, Check.
 - CutsEditor and CaptionReview hold only their head row and the video at the top (`.review-top`, sticky);
   anything else there (the caption look, the headline, the picture picker) left no room on a phone.
 - A change to a render function must keep preview and real frames on the same code.

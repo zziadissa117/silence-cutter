@@ -136,3 +136,29 @@ export function markLabel(t: number, major: number): string {
   const fraction = Math.round((t - whole) * 10 ** decimals)
   return `${m}:${s}.${String(fraction).padStart(decimals, '0')}`
 }
+
+/** The raw moment playing at moment `out` of the finished video - the other
+ *  way round from outputTime, for the timeline that shows only what plays
+ *  (his pick, 2026-11-10: "like TikTok", the cut bits hidden). Where two
+ *  parts meet, the later one's start; past the end, the last part's end. */
+export function sourceAt(keep: readonly Range[], out: number): number {
+  let at = 0
+  for (const r of keep) {
+    const length = r.end - r.start
+    if (out < at + length) return r.start + Math.max(0, out - at)
+    at += length
+  }
+  const last = keep[keep.length - 1]
+  return last ? last.end : 0
+}
+
+/** Each kept part where it sits on that timeline: from `at` seconds of the
+ *  finished video, `length` long. */
+export function clipsOf(keep: readonly Range[]): { at: number; length: number }[] {
+  let at = 0
+  return keep.map((r) => {
+    const clip = { at, length: r.end - r.start }
+    at += clip.length
+    return clip
+  })
+}

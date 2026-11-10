@@ -61,7 +61,7 @@ describe('a picture on a video, in the cuts editor', () => {
   it('opens under the video when picked, and can be made longer and shorter', async () => {
     const onDone = await open()
     expect(host.querySelector('.pic-edit')).toBeNull()
-    await act(async () => (host.querySelector('.pic-chip') as HTMLButtonElement).click())
+    await act(async () => (host.querySelector('.tl-bar.picture') as HTMLElement).click())
     expect(host.querySelector('.pic-edit')?.textContent).toContain('3.0 s')
     await act(async () => button('Longer').click())
     await act(async () => button('Longer').click())
@@ -74,7 +74,7 @@ describe('a picture on a video, in the cuts editor', () => {
 
   it('is made bigger or smaller with the slider', async () => {
     const onDone = await open()
-    await act(async () => (host.querySelector('.pic-chip') as HTMLButtonElement).click())
+    await act(async () => (host.querySelector('.tl-bar.picture') as HTMLElement).click())
     const slider = host.querySelector('[aria-label="How big the picture is"]') as HTMLInputElement
     const set = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!
     await act(async () => {
@@ -88,7 +88,7 @@ describe('a picture on a video, in the cuts editor', () => {
 
   it('is dragged to a spot of its own', async () => {
     const onDone = await open()
-    await act(async () => (host.querySelector('.pic-chip') as HTMLButtonElement).click())
+    await act(async () => (host.querySelector('.tl-bar.picture') as HTMLElement).click())
     const frame = host.querySelector('.review-frame') as HTMLElement
     frame.getBoundingClientRect = () => ({ left: 0, top: 0, width: 200, height: 400, right: 200, bottom: 400, x: 0, y: 0, toJSON: () => ({}) })
     const img = host.querySelector('.cuts-pic-preview.editing') as HTMLImageElement
@@ -110,10 +110,10 @@ describe('a picture on a video, in the cuts editor', () => {
 
   it('is deleted', async () => {
     const onDone = await open()
-    await act(async () => (host.querySelector('.pic-chip') as HTMLButtonElement).click())
+    await act(async () => (host.querySelector('.tl-bar.picture') as HTMLElement).click())
     await act(async () => button('Delete picture').click())
     expect(host.querySelector('.pic-edit')).toBeNull()
-    expect(host.querySelector('.pic-chip')).toBeNull()
+    expect(host.querySelector('.tl-bar.picture')).toBeNull()
     expect(done(onDone)).toEqual([])
   })
 })
