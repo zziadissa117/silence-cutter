@@ -156,6 +156,16 @@ import {
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!
 const SERVICE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
+/** What login tokens (signed by the cutter function) and video links are
+ *  checked and signed with, and what the Postiz and Anthropic keys in
+ *  cutter_profile_secrets are sealed with. Each its own secret when set
+ *  (`supabase secrets set CUTTER_TOKEN_SECRET=... CUTTER_SEAL_SECRET=...`;
+ *  the token one on both functions), until then the service key as it always
+ *  was - so this ships without signing anyone out or losing a sealed key.
+ *  Setting the seal secret later means entering the Postiz and Anthropic
+ *  keys again in Settings; setting the token one signs every phone out once. */
+const TOKEN_SECRET = Deno.env.get('CUTTER_TOKEN_SECRET') || SERVICE_KEY
+const SEAL_SECRET = Deno.env.get('CUTTER_SEAL_SECRET') || SERVICE_KEY
 /** Where Postiz fetches the video from - the public address, whatever the
  *  runtime calls itself inside. */
 const PUBLIC_URL = 'https://uykuoibqdxmpbbrsmyad.supabase.co/functions/v1/postiz'
@@ -248,7 +258,7 @@ function hex(bytes: ArrayBuffer | Uint8Array): string {
 }
 
 async function hmacKey(): Promise<CryptoKey> {
-  return crypto.subtle.importKey('raw', encoder.encode(SERVICE_KEY), { name: 'HMAC', hash: 'SHA-256' }, false, ['sign', 'verify'])
+  return crypto.subtle.importKey('raw', encoder.encode(TOKEN_SECRET), { name: 'HMAC', hash: 'SHA-256' }, false, ['sign', 'verify'])
 }
 
 /** The oldest space: the owner's, the one login there was before links. */
@@ -301,7 +311,7 @@ async function sha256(text: string): Promise<string> {
 let sealingKey: Promise<CryptoKey> | null = null
 function sealKey(): Promise<CryptoKey> {
   sealingKey ??= crypto.subtle
-    .digest('SHA-256', encoder.encode(`${SERVICE_KEY}:cutter-profile-secrets`))
+    .digest('SHA-256', encoder.encode(`${SEAL_SECRET}:cutter-profile-secrets`))
     .then((raw) => crypto.subtle.importKey('raw', raw, 'AES-GCM', false, ['encrypt', 'decrypt']))
   return sealingKey
 }

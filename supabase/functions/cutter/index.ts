@@ -69,6 +69,12 @@ import webpush from 'npm:web-push@3.6.7'
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!
 const SERVICE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
+/** What login tokens are signed with - here, and checked with in the posting
+ *  function, so both read the same secret. Its own secret when one is set
+ *  (`supabase secrets set CUTTER_TOKEN_SECRET=<long random string>` for both
+ *  functions); until then the service key, as it always was, so nothing
+ *  signs out when this ships. Setting it later signs every phone out once. */
+const TOKEN_SECRET = Deno.env.get('CUTTER_TOKEN_SECRET') || SERVICE_KEY
 const BUCKET = 'cutter-files'
 
 const MIN_PASSWORD = 6
@@ -124,7 +130,7 @@ function same(a: string, b: string): boolean {
 }
 
 async function signingKey(): Promise<CryptoKey> {
-  return crypto.subtle.importKey('raw', encoder.encode(SERVICE_KEY), { name: 'HMAC', hash: 'SHA-256' }, false, [
+  return crypto.subtle.importKey('raw', encoder.encode(TOKEN_SECRET), { name: 'HMAC', hash: 'SHA-256' }, false, [
     'sign',
     'verify',
   ])
