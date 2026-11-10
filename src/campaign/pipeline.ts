@@ -41,6 +41,7 @@ import { renderMontage } from './montageRender'
 import { talksIn } from './reaction'
 import { renderReaction } from './reactionRender'
 import { renderCampaignCut } from './render'
+import type { MotionSound } from './motion/sfx'
 import { firstLineHeadline } from './sort'
 
 export interface CampaignResult {
@@ -224,7 +225,12 @@ export async function make(
   pop: PopSettings = NO_POPS,
   /** Words and videos he put on this video by hand in the edit screen -
    *  each video with its file. */
-  byHand: { texts?: readonly ManualPicture[]; videos?: readonly { picture: ManualPicture; file: Blob }[] } = {},
+  byHand: {
+    texts?: readonly ManualPicture[]
+    videos?: readonly { picture: ManualPicture; file: Blob }[]
+    /** His sounds, each with its file - none for one of the Cutter's own effects. */
+    sounds?: readonly { picture: ManualPicture; file: Blob | null }[]
+  } = {},
 ): Promise<CampaignResult> {
   refuseBroken(campaign, angle)
   const base = videoLook(campaign, angle, bank, defaults, skipPictures, pop.videos)
@@ -286,6 +292,13 @@ export async function make(
       overlays: (byHand.videos ?? [])
         .filter((v) => isVideo(v.picture))
         .map(({ picture, file }) => ({ file, at: picture.at, seconds: picture.seconds, position: picture.position, widthPct: picture.widthPct, center: picture.center })),
+      sounds: (byHand.sounds ?? []).flatMap(({ picture, file }) => {
+        const source = picture.source
+        if (source.kind !== 'sound') return []
+        const effect = source.from === 'effect' ? (source.ref as MotionSound) : undefined
+        if (!effect && !file) return []
+        return [{ file, ...(effect ? { effect } : {}), name: source.name, at: picture.at, seconds: picture.seconds, volumeDb: source.volumeDb }]
+      }),
     },
     onRenderProgress,
   )

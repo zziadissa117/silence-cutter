@@ -23,7 +23,10 @@ import { deleteBankFile, getMeta, loadBankFile, saveBankFile, setMeta } from './
 
 /** A song in the bank. With `sha` it is shared: on the server, under what is
  *  in it, and on every phone. */
-export type Song = BankFile & { sha?: string }
+export type Song = BankFile & { sha?: string; sfx?: true }
+
+/** A sound effect, not a song: the sound row's bank, never a video's music. */
+export const isEffect = (song: Pick<Song, 'sfx'>): boolean => song.sfx === true
 
 const KEY = 'music:bank'
 /** Renames and takings-out still to tell the server. */
@@ -70,19 +73,21 @@ async function readJson<T>(key: string, fallback: T): Promise<T> {
   }
 }
 
-/** The bank, kept up to date while the screen is open. */
-export function useMusicBank(): BankFile[] {
-  const [bank, setBank] = useState<BankFile[]>([])
+/** The bank, kept up to date while the screen is open: its songs (the
+ *  music pickers'), its sound effects (the edit screen's sound row), or both. */
+export function useMusicBank(kind: 'songs' | 'effects' | 'all' = 'songs'): Song[] {
+  const [bank, setBank] = useState<Song[]>([])
   useEffect(() => {
     let alive = true
-    void loadMusicBank().then((b) => alive && setBank(b))
-    const listener = (b: BankFile[]) => setBank(b)
+    const pick = (b: Song[]) => (kind === 'all' ? b : b.filter((s) => isEffect(s) === (kind === 'effects')))
+    void loadMusicBank().then((b) => alive && setBank(pick(b)))
+    const listener = (b: BankFile[]) => setBank(pick(b as Song[]))
     listeners.add(listener)
     return () => {
       alive = false
       listeners.delete(listener)
     }
-  }, [])
+  }, [kind])
   return bank
 }
 
@@ -125,6 +130,7 @@ export async function soundOf(file: File): Promise<File> {
 export async function addSongs(
   files: File[],
   onStep?: (message: string) => void,
+  { sfx = false }: { sfx?: boolean } = {},
 ): Promise<{ added: BankFile[]; skipped: string[]; failed: string[] }> {
   const bank = await loadMusicBank()
   const added: BankFile[] = []
@@ -146,7 +152,7 @@ export async function addSongs(
       const song = video ? await soundOf(file) : file
       const id = crypto.randomUUID()
       await saveBankFile(id, song)
-      added.push({ id, name: songName(file.name), type: song.type || 'audio/mpeg', size: song.size, fp })
+      added.push({ id, name: songName(file.name), type: song.type || 'audio/mpeg', size: song.size, fp, ...(sfx ? { sfx: true as const } : {}) })
     } catch (error) {
       failed.push(`${file.name} (${error instanceof Error ? error.message : String(error)})`)
     }
@@ -229,6 +235,7 @@ interface SharedSong {
   fp?: string
   sha: string
   addedAt: number
+  sfx?: true
 }
 
 /** Puts a song's file where the server said. One already there is the
@@ -280,7 +287,7 @@ async function shareSongs(): Promise<void> {
       const upload = await askShared<{ url: string | null }>('song-upload', { sha })
       if (upload?.url) await putSong(upload.url, file)
       kept = await askShared<{ song: SharedSong }>('add-song', {
-        song: { id: song.id, name: song.name, type: song.type || 'audio/mpeg', size: song.size, sha, ...(song.fp ? { fp: song.fp } : {}) },
+        song: { id: song.id, name: song.name, type: song.type || 'audio/mpeg', size: song.size, sha, ...(song.fp ? { fp: song.fp } : {}), ...(song.sfx ? { sfx: true } : {}) },
       })
     } catch {
       continue
@@ -295,7 +302,7 @@ async function shareSongs(): Promise<void> {
     const aliases = await readJson<Record<string, string>>(ALIASES_KEY, {})
     await setMeta(ALIASES_KEY, JSON.stringify({ ...aliases, [song.id]: kept.song.id }))
     if (!bank.some((s) => s.id === kept.song.id)) await saveBankFile(kept.song.id, file)
-    const shared: Song = { id: kept.song.id, name: kept.song.name, type: kept.song.type, size: kept.song.size, sha: kept.song.sha, ...(kept.song.fp ? { fp: kept.song.fp } : {}) }
+    const shared: Song = { id: kept.song.id, name: kept.song.name, type: kept.song.type, size: kept.song.size, sha: kept.song.sha, ...(kept.song.fp ? { fp: kept.song.fp } : {}), ...(kept.song.sfx || song.sfx ? { sfx: true as const } : {}) }
     const next = bank.some((s) => s.id === kept.song.id) ? bank.filter((s) => s.id !== song.id) : bank.map((s) => (s.id === song.id ? shared : s))
     await saveMusicBank(next)
     await deleteBankFile(song.id).catch(() => {})
@@ -332,7 +339,7 @@ export function mergeSongs(bank: readonly Song[], shared: readonly SharedSong[],
   const known = new Set(bank.map((s) => s.id))
   for (const s of shared) {
     if (known.has(s.id) || removing.has(s.id)) continue
-    kept.push({ id: s.id, name: s.name, type: s.type, size: s.size, sha: s.sha, ...(s.fp ? { fp: s.fp } : {}) })
+    kept.push({ id: s.id, name: s.name, type: s.type, size: s.size, sha: s.sha, ...(s.fp ? { fp: s.fp } : {}), ...(s.sfx ? { sfx: true as const } : {}) })
   }
   return kept
 }

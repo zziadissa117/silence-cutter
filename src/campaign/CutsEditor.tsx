@@ -68,15 +68,19 @@ import {
   TEXT_BASE_PCT,
   TEXT_START,
   centerOf,
+  isSound,
   isText,
   isVideo,
   longestFor,
+  SOUND_DB,
   newPictureId,
   previewBoxes,
   textHeadline,
   type ManualPicture,
 } from './manualPictures'
 import { drawHeadline, layoutHeadline, type HeadlineLayout } from './overlay'
+import { effectFile, SoundPicker, type PickedSound } from './SoundPicker'
+import type { MotionSound } from './motion/sfx'
 
 /** How much timeline a second takes at first: room enough to read the words. */
 const START_PX = 110
@@ -338,7 +342,7 @@ export interface Bar {
   id: string
   at: number
   seconds: number
-  kind: 'words' | 'picture' | 'video' | 'headline'
+  kind: 'words' | 'picture' | 'video' | 'headline' | 'sound'
   label: string
   thumb?: string
 }
@@ -352,12 +356,15 @@ export type BarGrip = 'move' | 'start' | 'end'
 function Bars({
   bars,
   px,
+  top,
   selected,
   onSelect,
   onGrip,
 }: {
   bars: Bar[]
   px: number
+  /** Where its first row is. */
+  top: number
   selected: string | null
   onSelect: (id: string) => void
   onGrip: (id: string, grip: BarGrip, down: ReactPointerEvent<HTMLElement>) => void
@@ -374,7 +381,7 @@ function Bars({
             role="button"
             aria-label={`${b.label} at ${formatPrecise(b.at)}`}
             className={`tl-bar ${b.kind}${on ? ' on' : ''}`}
-            style={{ left: b.at * px, width: Math.max(28, b.seconds * px), top: ROWS_TOP + (row.get(b.id) ?? 0) * ROW_H }}
+            style={{ left: b.at * px, width: Math.max(28, b.seconds * px), top: top + (row.get(b.id) ?? 0) * ROW_H }}
             onClick={(e) => {
               e.stopPropagation()
               onSelect(b.id)
@@ -469,8 +476,8 @@ function CheckRow({
 const withWords = (list: ManualPicture[]) => list.filter((o) => o.source.kind !== 'text' || o.source.text.trim())
 
 /** What a thing put on the video is, in a word. */
-function kindOf(o: ManualPicture): 'Words' | 'Video' | 'Picture' {
-  return isText(o) ? 'Words' : isVideo(o) ? 'Video' : 'Picture'
+function kindOf(o: ManualPicture): 'Words' | 'Video' | 'Picture' | 'Sound' {
+  return isText(o) ? 'Words' : isSound(o) ? 'Sound' : isVideo(o) ? 'Video' : 'Picture'
 }
 
 /** A small look at a thing put on the video: a picture's image, a sign for
@@ -478,6 +485,7 @@ function kindOf(o: ManualPicture): 'Words' | 'Video' | 'Picture' {
 function Thumb({ o, url }: { o: ManualPicture; url?: string }) {
   if (o.source.kind === 'text') return <span className="pic-glyph words">{o.source.text.trim().slice(0, 12) || 'Aa'}</span>
   if (isVideo(o)) return <span className="pic-glyph">▶</span>
+  if (isSound(o)) return <span className="pic-glyph">♪</span>
   return url ? <img alt="" src={url} /> : <span className="pic-missing">?</span>
 }
 
@@ -509,6 +517,7 @@ export function CutsEditor({
   loadImage,
   videoBank = NO_VIDEOS,
   loadVideo,
+  loadSound,
   headline,
   onDone,
   onCaptions,
@@ -547,6 +556,9 @@ export function CutsEditor({
   videoBank?: { id: string; name: string; seconds: number; loadStill: () => Promise<Blob | null> }[]
   /** A bank video's file, to show it on the video once it is put on. */
   loadVideo?: (videoId: string) => Promise<Blob | null>
+  /** A sound's file, to hear it while playing: from the music bank, or kept
+   *  with the video. */
+  loadSound?: (sound: ManualPicture) => Promise<Blob | null>
   /** The headline as it will be made, drawn on the video where it will be,
    *  to drag and pinch. Absent when there is none to move. */
   headline?: {
@@ -599,6 +611,9 @@ export function CutsEditor({
   const [focus, setFocus] = useState<number | null>(null)
   const [overlays, setOverlays] = useState<ManualPicture[]>(initialOverlays)
   const [picking, setPicking] = useState(false)
+  /** Add sound's picker open. */
+  const [soundPicking, setSoundPicking] = useState(false)
+  const soundEls = useRef(new Map<string, HTMLAudioElement>())
   const [selectedPic, setSelectedPic] = useState<string | null>(null)
   const [picNote, setPicNote] = useState<string | null>(null)
   /** Each picture's and video's width over height, once it has loaded - for
@@ -888,6 +903,8 @@ export function CutsEditor({
         let blob: Blob | null | undefined = null
         const source = o.source
         if (source.kind === 'bank') blob = bank.find((b) => b.id === source.pictureId)?.image
+        else if (source.kind === 'sound')
+          blob = source.from === 'effect' ? effectFile(source.ref as MotionSound) : (newFiles.current.get(o.id) ?? (await loadSound?.(o).catch(() => null)))
         else if (source.kind === 'video') blob = newFiles.current.get(o.id) ?? (await loadVideo?.(source.videoId).catch(() => null))
         else blob = newFiles.current.get(o.id) ?? (await loadImage?.(o).catch(() => null))
         if (blob) {
@@ -901,7 +918,7 @@ export function CutsEditor({
     return () => {
       alive = false
     }
-  }, [overlays, bank, loadImage, loadVideo, urls])
+  }, [overlays, bank, loadImage, loadVideo, loadSound, urls])
   useEffect(
     () => () => {
       for (const url of made.current) URL.revokeObjectURL(url)
@@ -1018,6 +1035,29 @@ export function CutsEditor({
     setPicNote(null)
   }
 
+  /** A sound at the playhead: an effect for its own length, a song or a file
+   *  of his to the end of the video (or of itself). */
+  const addSound = ({ source, length, file }: PickedSound) => {
+    const id = newPictureId()
+    if (file) newFiles.current.set(id, file)
+    const left = Math.max(PICTURE_SECONDS.min, totalDuration(keepRef.current) - outputTime(keepRef.current, tRef.current))
+    const own = length ?? 10
+    const sound: ManualPicture = {
+      id,
+      source,
+      at: Math.round(tRef.current * 100) / 100,
+      seconds: Math.round(Math.max(PICTURE_SECONDS.min, source.from === 'effect' ? own : Math.min(own, left)) * 10) / 10,
+      position: 'middle',
+      widthPct: 0,
+      ...(length ? { length } : {}),
+    }
+    record(now())
+    setOverlays((list) => [...list, sound].sort((a, b) => a.at - b.at))
+    setSelectedPic(id)
+    setSoundPicking(false)
+    setPicking(false)
+  }
+
   const updatePicture = (id: string, patch: Partial<ManualPicture>) => {
     record(now())
     setOverlays((list) => list.map((o) => (o.id === id ? { ...o, ...patch } : o)).sort((a, b) => a.at - b.at))
@@ -1060,7 +1100,7 @@ export function CutsEditor({
     const from = outputTime(keep, o.at)
     return outT >= from && outT < from + o.seconds
   }
-  const shown = overlays.filter((o) => !isText(o) && (upAt(o) || o.id === selectedPic))
+  const shown = overlays.filter((o) => !isText(o) && !isSound(o) && (upAt(o) || o.id === selectedPic))
   // Pictures laid out as the render lays them out (side by side when they
   // come up together); each video in its own box.
   const boxes: Record<string, { left: number; top: number; width: number; height: number }> = {
@@ -1140,6 +1180,26 @@ export function CutsEditor({
       }
     }
   }, [outT, playing, overlays, keep, selectedPic])
+
+  // His sounds play along while the video plays, each from its moment, at
+  // its volume; still, they are quiet.
+  useEffect(() => {
+    for (const o of overlays) {
+      if (!isSound(o)) continue
+      const el = soundEls.current.get(o.id)
+      if (!el) continue
+      el.volume = Math.min(1, 10 ** (o.source.volumeDb / 20))
+      const local = outT - outputTime(keep, o.at)
+      if (!playing || local < 0 || local >= o.seconds) {
+        if (!el.paused) el.pause()
+        continue
+      }
+      if (el.paused) {
+        el.currentTime = local
+        void el.play().catch(() => {})
+      } else if (Math.abs(el.currentTime - local) > 0.3) el.currentTime = local
+    }
+  }, [outT, playing, overlays, keep])
 
   /** Two fingers' middle and spread, in the frame's pixels. */
   const fingers = (points: Map<number, { x: number; y: number }>) => {
@@ -1558,16 +1618,29 @@ export function CutsEditor({
   // The rows: the headline, then each thing he put on, where it comes up.
   const bars: Bar[] = [
     ...(headlineLayout && headline ? [{ id: HEADLINE, at: 0, seconds: Math.min(total, headline.seconds), kind: 'headline' as const, label: headline.look.text.trim() || 'Headline' }] : []),
-    ...overlays.map((o): Bar => ({
-      id: o.id,
-      at: outputTime(keep, o.at),
-      seconds: o.seconds,
-      kind: isText(o) ? 'words' : isVideo(o) ? 'video' : 'picture',
-      label: o.source.kind === 'text' ? o.source.text.trim() || 'Aa' : isVideo(o) ? 'Video' : 'Picture',
-      ...(urls[o.id] && !isText(o) && !isVideo(o) ? { thumb: urls[o.id] } : {}),
-    })),
+    ...overlays
+      .filter((o) => !isSound(o))
+      .map((o): Bar => ({
+        id: o.id,
+        at: outputTime(keep, o.at),
+        seconds: o.seconds,
+        kind: isText(o) ? 'words' : isVideo(o) ? 'video' : 'picture',
+        label: o.source.kind === 'text' ? o.source.text.trim() || 'Aa' : isVideo(o) ? 'Video' : 'Picture',
+        ...(urls[o.id] && !isText(o) && !isVideo(o) ? { thumb: urls[o.id] } : {}),
+      })),
   ]
-  const rowCount = overlayRows(bars).rows
+  // The sounds in their own lane right under the clips, as TikTok has its
+  // "Add sound" there.
+  const soundBars = overlays.filter(isSound).map((o): Bar => ({ id: o.id, at: outputTime(keep, o.at), seconds: o.seconds, kind: 'sound', label: `♪ ${o.source.name}` }))
+  const soundRows = overlayRows(soundBars).rows
+  const rowCount = soundRows + overlayRows(bars).rows
+  const openSounds = () => {
+    stop()
+    setSelected(null)
+    setSelectedPic(null)
+    setPicking(false)
+    setSoundPicking((on) => !on)
+  }
   // The toolbar along the bottom: what can be done to the clip he tapped, to
   // the thing he tapped, or - nothing tapped - what can be put on.
   const clipTapped = selected !== null && selected < keep.length ? selected : null
@@ -1800,8 +1873,35 @@ export function CutsEditor({
                 onHandleDown={onHandleDown}
               />
               <Bars
+                bars={soundBars}
+                px={px}
+                top={ROWS_TOP}
+                selected={selectedPic}
+                onSelect={(id) => {
+                  if (performance.now() - gripped.current < 400) return
+                  setSelected(null)
+                  const o = overlays.find((x) => x.id === id)
+                  if (o) goToPicture(o)
+                }}
+                onGrip={onGrip}
+              />
+              {soundBars.length === 0 ? (
+                <button
+                  type="button"
+                  className="tl-add-sound"
+                  style={{ top: ROWS_TOP }}
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    openSounds()
+                  }}
+                >
+                  ♪ Add sound
+                </button>
+              ) : null}
+              <Bars
                 bars={bars}
                 px={px}
+                top={ROWS_TOP + soundRows * ROW_H}
                 selected={selectedPic}
                 onSelect={(id) => {
                   if (performance.now() - gripped.current < 400) return
@@ -1860,6 +1960,18 @@ export function CutsEditor({
                 <>
                   <rect x="4" y="4" width="12" height="12" rx="2" />
                   <path d="M20 9v9a2 2 0 0 1-2 2H9" />
+                </>
+              }
+            />
+            <ToolButton
+              label="Sound"
+              active={soundPicking}
+              onClick={openSounds}
+              icon={
+                <>
+                  <path d="M9 18V6l10-2v12" />
+                  <circle cx="6.5" cy="18" r="2.5" />
+                  <circle cx="16.5" cy="16" r="2.5" />
                 </>
               }
             />
@@ -1958,7 +2070,7 @@ export function CutsEditor({
             </>
           ) : null}
           <div className="pic-edit-row">
-            <span className="label">On screen for</span>
+            <span className="label">{isSound(selectedPicture) ? 'Plays for' : 'On screen for'}</span>
             <div className="stepper">
               <button
                 type="button"
@@ -1983,23 +2095,48 @@ export function CutsEditor({
               </button>
             </div>
           </div>
-          <label className="slider">
-            <span>Size</span>
-            <input
-              type="range"
-              min={isText(selectedPicture) ? TEXT_WIDTH.min : PICTURE_WIDTH.min}
-              max={isText(selectedPicture) ? TEXT_WIDTH.max : PICTURE_WIDTH.max}
-              step={1}
-              value={selectedPicture.widthPct}
-              aria-label={`How big the ${kindOf(selectedPicture).toLowerCase()} is`}
-              onChange={(e) => updatePicture(selectedPicture.id, { widthPct: Number(e.target.value) })}
-            />
-            <output>{isText(selectedPicture) ? Math.round((selectedPicture.widthPct / TEXT_BASE_PCT) * 100) : selectedPicture.widthPct}%</output>
-          </label>
-          <p className="hint">
-            {isText(selectedPicture) ? 'Drag them' : 'Drag it'} on the video to move {isText(selectedPicture) ? 'them' : 'it'}, pinch to make{' '}
-            {isText(selectedPicture) ? 'them' : 'it'} bigger or smaller.{isVideo(selectedPicture) ? ' Plays without its sound.' : ''}
-          </p>
+          {isSound(selectedPicture) ? (
+            <>
+              <label className="slider">
+                <span>Volume</span>
+                <input
+                  type="range"
+                  min={SOUND_DB.min}
+                  max={SOUND_DB.max}
+                  step={1}
+                  value={selectedPicture.source.volumeDb}
+                  aria-label="How loud the sound is"
+                  onChange={(e) => {
+                    const volumeDb = Number(e.target.value)
+                    const source = selectedPicture.source
+                    if (source.kind === 'sound') updatePicture(selectedPicture.id, { source: { ...source, volumeDb } })
+                  }}
+                />
+                <output>{selectedPicture.source.volumeDb > 0 ? '+' : ''}{selectedPicture.source.volumeDb} dB</output>
+              </label>
+              <p className="hint">Plays over your voice from where its bar starts. Drag the bar to move it, its ends to make it shorter or longer.</p>
+            </>
+          ) : (
+            <>
+            <label className="slider">
+              <span>Size</span>
+              <input
+                type="range"
+                min={isText(selectedPicture) ? TEXT_WIDTH.min : PICTURE_WIDTH.min}
+                max={isText(selectedPicture) ? TEXT_WIDTH.max : PICTURE_WIDTH.max}
+                step={1}
+                value={selectedPicture.widthPct}
+                aria-label={`How big the ${kindOf(selectedPicture).toLowerCase()} is`}
+                onChange={(e) => updatePicture(selectedPicture.id, { widthPct: Number(e.target.value) })}
+              />
+              <output>{isText(selectedPicture) ? Math.round((selectedPicture.widthPct / TEXT_BASE_PCT) * 100) : selectedPicture.widthPct}%</output>
+            </label>
+            <p className="hint">
+              {isText(selectedPicture) ? 'Drag them' : 'Drag it'} on the video to move {isText(selectedPicture) ? 'them' : 'it'}, pinch to make{' '}
+              {isText(selectedPicture) ? 'them' : 'it'} bigger or smaller.{isVideo(selectedPicture) ? ' Plays without its sound.' : ''}
+            </p>
+            </>
+          )}
           <div className="actions-row">
             <button
               type="button"
@@ -2023,6 +2160,21 @@ export function CutsEditor({
           </div>
         </div>
       ) : null}
+      {soundPicking ? <SoundPicker at={formatPrecise(outT)} onPick={addSound} onClose={() => setSoundPicking(false)} /> : null}
+      {overlays.filter(isSound).map((o) =>
+        urls[o.id] ? (
+          <audio
+            key={o.id}
+            ref={(el) => {
+              if (el) soundEls.current.set(o.id, el)
+              else soundEls.current.delete(o.id)
+            }}
+            src={urls[o.id]}
+            preload="auto"
+            hidden
+          />
+        ) : null,
+      )}
       {picNote ? (
         <p className="hint warn-text" ref={notePanel}>
           {picNote}

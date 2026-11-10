@@ -24,6 +24,9 @@ export interface SharedSong {
   /** SHA-256 of the file: where it is kept. */
   sha: string
   addedAt: number
+  /** A sound effect (a whoosh, a ding), not a song: in the edit screen's
+   *  sound row, never picked as a video's music. */
+  sfx?: true
 }
 
 const SHA = /^[0-9a-f]{64}$/
@@ -41,7 +44,7 @@ export function cleanSong(value: unknown, now = Date.now()): SharedSong | null {
   const fp = typeof v.fp === 'string' && v.fp.length > 0 && v.fp.length <= 200 ? v.fp : undefined
   if (!id || !name || !type || !sha || !Number.isInteger(size) || size <= 0 || size > MAX_SONG_BYTES) return null
   const addedAt = Number(v.addedAt)
-  return { id, name, type, size, sha, ...(fp ? { fp } : {}), addedAt: Number.isFinite(addedAt) && addedAt > 0 ? addedAt : now }
+  return { id, name, type, size, sha, ...(fp ? { fp } : {}), addedAt: Number.isFinite(addedAt) && addedAt > 0 ? addedAt : now, ...(v.sfx === true ? { sfx: true as const } : {}) }
 }
 
 /** The song already in the bank that is this one: the same file, or the

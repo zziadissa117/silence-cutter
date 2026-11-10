@@ -65,7 +65,9 @@ export interface MakeOrder {
   captionSize: CaptionSize
   captionStyle: CaptionStyle
   pops: { videos: PopCue[]; files: Record<string, string>; sizePct: number; position: PopPosition }
-  byHand: { texts: ManualPicture[]; videos: { picture: ManualPicture; fileId: string }[] }
+  /** Words, videos and sounds put on by hand; a sound with no fileId is one
+   *  of the Cutter's own effects, made there. Orders from before sounds have none. */
+  byHand: { texts: ManualPicture[]; videos: { picture: ManualPicture; fileId: string }[]; sounds?: { picture: ManualPicture; fileId?: string }[] }
   /** How the made video goes to Postiz: the same key the phone would send it
    *  with, so it is one post whoever sends it. */
   send: {
@@ -91,7 +93,7 @@ export interface TalkSummary {
 }
 
 /** File ids on the server: [A-Za-z0-9_-], at most 80 (server/main.mjs safeId). */
-export const talkFileId = (kind: 't' | 'clip' | 'ov' | 'vb', ...parts: string[]): string =>
+export const talkFileId = (kind: 't' | 'clip' | 'ov' | 'vb' | 'snd', ...parts: string[]): string =>
   `${kind}-${parts.join('-')}`.replace(/[^A-Za-z0-9_-]/g, '_').slice(0, 80)
 
 /** The bank videos worth sending for a video: only those it says the words

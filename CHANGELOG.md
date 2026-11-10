@@ -3,6 +3,22 @@
 Newest first. Every change says what it does, how to use it, and how it works
 underneath. Kept up to date with each commit.
 
+## Edit screen like TikTok's: step 2, sounds
+App and server: run ./deploy.sh (it runs ./deploy-server.sh too - the sound effects bank needs the cutter function).
+Needs deploying: run ./deploy-server.sh
+- In the edit screen, Sound (in the toolbar, or "Add sound" in its lane under the clips) puts a sound on at the
+  playhead: one from the sound effects bank, one of the Cutter's own (Whoosh, Pop, Ding, Click, Boom, Camera, Swish),
+  a song from the music bank, or a sound file from the phone (a video's sound is taken out of it). ▶ plays it first.
+- Each sound is a teal bar in the sound lane: hold its middle to move it, drag its ends to make it shorter or longer
+  (never past its own length). Tapped, it has Volume (-30 to +6 dB) and how long it plays, and Delete. It plays along
+  when the video is played in the editor, and is mixed into the finished video over the voice (also when the video is
+  made on the Cutter server).
+- Music -> a new **Sound effects** list under the songs: add whooshes, dings, a TikTok sound once, shared with every
+  phone like the songs. Effects never show up as a video's music; "+ Add to the bank" in the sound picker adds one
+  and puts it on at once.
+- Checked here in Chrome for Testing: a Boom at 0.5 s and a song at 2.5 s of the recording (with a cut between) came
+  out at 0.5-1.2 s and 2.0-3.0 s of the video, the song faded out at its end. Test: `editSounds.test.ts`.
+
 ## Edit screen like TikTok's: step 1, the timeline
 App only: run ./deploy.sh.
 **What he said (2026-11-10):** "make it more similar to this [TikTok's editor] ... there's a timeline ... I can adjust it

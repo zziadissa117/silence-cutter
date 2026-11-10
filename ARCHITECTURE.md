@@ -754,6 +754,16 @@ engine/                        the engine on Railway (Python): engine/ its code,
   lets go). Bars (`Bars`) under it for the headline and each thing put on: its middle moves it, its ends change
   when it comes up and how long it stays (`onGrip`). The toolbar along the bottom (`ToolButton`) changes with what
   is tapped: clip -> Split/Delete; a bar -> Done/Delete; nothing -> Text, Overlay, Captions, Headline, Check.
+- Sounds (the edit screen's Sound tool, `SoundPicker.tsx`): a `ManualPicture` with source `kind: 'sound'`
+  (`manualPictures.SoundSource`: `from` bank - a music-bank song or sound effect by id, effect - one of
+  `motion/sfx.makeSound`'s, phone - a file kept with the video like a picture of his, `ownFile`), so it is saved,
+  undone and sent with the rest of `day.overlays`; `isPicture` leaves sounds out. In the editor: their own lane
+  under the clips ("Add sound" when empty), heard while playing through hidden `<audio>` (`loadSound`). Made by
+  `render.ts` `sounds` (placed like the motion graphics' sounds, `MomentPlacer`, cut to their seconds by
+  `playedFor`), passed from `pipeline` `byHand.sounds` (`CampaignApp.byHandFor`/`soundFileOf`), and to the Cutter
+  server in the talk order (`byHand.sounds`, files `snd-<song id>` / `ov-<job>-<id>`, `serverTalk`). The sound
+  effects bank is the music bank's songs marked `sfx` (shared through the cutter function's `songs.ts`);
+  `useMusicBank('songs' | 'effects')` keeps them out of every music picker.
 - CutsEditor and CaptionReview hold only their head row and the video at the top (`.review-top`, sticky);
   anything else there (the caption look, the headline, the picture picker) left no room on a phone.
 - A change to a render function must keep preview and real frames on the same code.

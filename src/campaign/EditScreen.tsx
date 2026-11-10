@@ -55,7 +55,7 @@ export function EditScreen({
   /** The timeline: everything the cuts editor shows. */
   cuts: Pick<
     CutsProps,
-    'duration' | 'initial' | 'words' | 'checks' | 'peaks' | 'noiseNote' | 'overlays' | 'bank' | 'defaults' | 'loadImage' | 'videoBank' | 'loadVideo' | 'headline'
+    'duration' | 'initial' | 'words' | 'checks' | 'peaks' | 'noiseNote' | 'overlays' | 'bank' | 'defaults' | 'loadImage' | 'videoBank' | 'loadVideo' | 'loadSound' | 'headline'
   >
   /** The captions he checks, through the cut as it is now. */
   shown: CaptionWord[]
@@ -168,6 +168,7 @@ export function EditScreen({
       loadImage={cuts.loadImage}
       videoBank={cuts.videoBank}
       loadVideo={cuts.loadVideo}
+      loadSound={cuts.loadSound}
       headline={cuts.headline}
       onDone={() => finish(false, words.current)}
       onCancel={() => finish(false, words.current)}

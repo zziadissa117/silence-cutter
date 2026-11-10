@@ -120,6 +120,7 @@ async function runMake(order: MakeOrder): Promise<void> {
     if (image) manual.push({ picture: m.picture, image })
   }
   const videos = await Promise.all(order.byHand.videos.map(async (v) => ({ picture: v.picture, file: await fileOf(v.fileId).catch(() => null) })))
+  const sounds = await Promise.all((order.byHand.sounds ?? []).map(async (v) => ({ picture: v.picture, file: v.fileId ? await fileOf(v.fileId).catch(() => null) : null })))
   const result = await make(
     file,
     order.plan,
@@ -147,7 +148,11 @@ async function runMake(order: MakeOrder): Promise<void> {
       position: order.pops.position,
       load: async (id) => (order.pops.files[id] ? fileOf(order.pops.files[id]).catch(() => null) : null),
     },
-    { texts: order.byHand.texts, videos: videos.filter((v): v is { picture: typeof v.picture; file: File } => v.file !== null) },
+    {
+      texts: order.byHand.texts,
+      videos: videos.filter((v): v is { picture: typeof v.picture; file: File } => v.file !== null),
+      sounds: sounds.filter((v) => v.file !== null || (v.picture.source.kind === 'sound' && v.picture.source.from === 'effect')),
+    },
   )
   // The look didn't go on: the phone makes it itself, where he sees why.
   if (result.lookFailed) throw new SilenceCutError(result.lookFailed)

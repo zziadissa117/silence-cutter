@@ -184,6 +184,11 @@ export interface CampaignRenderInput {
   /** Videos he put over himself in the edit screen: muted, each in its box
    *  (laid out as a picture is), from `at` for `seconds` or to its end. */
   overlays?: { file: Blob; at: number; seconds: number; position: LogoPosition; widthPct: number; center?: { x: number; y: number } }[]
+  /** Sounds he put on in the edit screen's sound row (manualPictures
+   *  SoundSource): a file (a song, a sound effect of his) or one of the
+   *  Cutter's own effects, from `at` on the raw video for `seconds`, over his
+   *  voice at `volumeDb`. One that can't be read is left out. */
+  sounds?: { file: Blob | null; effect?: MotionSound; name: string; at: number; seconds: number; volumeDb: number }[]
   /** Motion graphics (More -> Motion graphics): the storyboard, and the
    *  words its numbers point at, on the raw video's timeline. While a scene
    *  is up his face moves down under the board (motion/draw.ts). */
@@ -249,6 +254,7 @@ export async function renderCampaignCut(
     pops,
     texts: handTexts = [],
     overlays: handVideos = [],
+    sounds: handSounds = [],
     motion: graphics,
   }: CampaignRenderInput,
   onProgress?: (fraction: number) => void,
@@ -330,6 +336,22 @@ export async function renderCampaignCut(
         prepared.push(await prepareSound(sound.source, sampleRate))
       } catch (error) {
         throw new SilenceCutError(error instanceof Error ? `${error.message[0].toUpperCase()}${error.message.slice(1)}.` : String(error))
+      }
+    }
+    // His own sounds (the edit screen's sound row): only as much of each as
+    // plays, ended with a short fade so a song cut off doesn't click.
+    const ownSounds: { prepared: PreparedSound; placer: MomentPlacer; gain: number }[] = []
+    for (const sound of handSounds) {
+      try {
+        const channels = sound.effect
+          ? [makeSound(sound.effect, sampleRate)]
+          : sound.file
+            ? (await prepareMusic(sound.file, sound.name, sound.seconds, sampleRate)).channels
+            : null
+        if (!channels) continue
+        ownSounds.push({ prepared: { channels: playedFor(channels, sound.seconds, sampleRate) }, placer: new MomentPlacer([sound.at], keep), gain: dbToGain(sound.volumeDb) })
+      } catch (error) {
+        reportProblem({ kind: 'fallback', phase: 'sound put on by hand', message: error instanceof Error ? error.message : String(error) })
       }
     }
     // The clips joined on are opened here too - but one that can't be read
@@ -590,7 +612,7 @@ export async function renderCampaignCut(
       gain: dbToGain(sound.volumeDb),
     }))
     const placeSounds = (index: number, shift: number) => {
-      for (const sound of motionSounds) {
+      for (const sound of [...motionSounds, ...ownSounds]) {
         const before = sound.placer.times.length
         sound.placer.enterRange(index, shift)
         for (const t of sound.placer.times.slice(before)) placed.push({ ...sound.prepared, startFrame: Math.round(t * sampleRate), gain: sound.gain })
@@ -1010,3 +1032,16 @@ function planesOf(sample: AudioSample): { data: Float32Array; planes: Float32Arr
   return { data, planes }
 }
 
+
+/** A sound's first `seconds`, its last moment faded out so it ends without a
+ *  click (a song he put on for part of the video). */
+export function playedFor(channels: Float32Array[], seconds: number, sampleRate: number): Float32Array[] {
+  const length = Math.max(1, Math.round(seconds * sampleRate))
+  const fade = Math.round(0.04 * sampleRate)
+  return channels.map((c) => {
+    if (c.length <= length) return c
+    const out = c.slice(0, length)
+    for (let i = 0; i < Math.min(fade, length); i++) out[length - 1 - i] *= i / fade
+    return out
+  })
+}

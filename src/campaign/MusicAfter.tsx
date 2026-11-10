@@ -7,7 +7,7 @@ import { useEffect, useState } from 'react'
 
 import type { Campaign } from './look'
 import { loadBankFile, loadBatchBank } from './store'
-import { loadMusicBank, songFile } from './musicBank'
+import { loadMusicBank, isEffect, songFile } from './musicBank'
 import { PlayButton } from './TrackPlayer'
 import { canChangeMusic, sendWithMusic } from './musicAfterSend'
 import type { ServerPost } from './posting'
@@ -62,7 +62,7 @@ export function MusicAfter({
         names.add(o.name)
         found.push(o)
       }
-      for (const song of await loadMusicBank()) add({ id: `bank:${song.id}`, name: song.name, load: () => songFile(song) })
+      for (const song of (await loadMusicBank()).filter((x) => !isEffect(x))) add({ id: `bank:${song.id}`, name: song.name, load: () => songFile(song) })
       for (const c of campaigns) {
         for (const a of c.angles) {
           const track = a.music

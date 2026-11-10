@@ -162,7 +162,7 @@ import {
 import { PostsView } from './PostsView'
 import { pushState, refreshPush, turnOnPush, type PushState } from './push'
 import { BatchEdit } from './BatchEdit'
-import { isPicture, isText, isVideo, type ManualPicture } from './manualPictures'
+import { isPicture, isSound, isText, isVideo, ownFile, type ManualPicture } from './manualPictures'
 import { headlinePlaceOf, rememberPlace } from './headlinePlace'
 import { WideAsk } from './WideAsk'
 import { defaultEffects } from './defaultEffects'
@@ -736,6 +736,18 @@ export function CampaignApp() {
             : null
       if (fileId) handVideos.push({ picture, fileId })
     }
+    const handSounds: MakeOrder['byHand']['sounds'] = []
+    for (const picture of (job.day?.overlays ?? []).filter(isSound)) {
+      const source = picture.source
+      if (source.kind !== 'sound') continue
+      if (source.from === 'effect') {
+        handSounds.push({ picture })
+        continue
+      }
+      const id = source.from === 'bank' ? talkFileId('snd', source.ref) : talkFileId('ov', job.id, picture.id)
+      const fileId = await up(id, await soundFileOf(job.id, picture), source.name)
+      if (fileId) handSounds.push({ picture, fileId })
+    }
     // Only the bank videos it says the words of: the others never come up.
     const pops = popsFor(job)
     const said = popsSaid(pops.videos, plan.words)
@@ -771,7 +783,7 @@ export function CampaignApp() {
       captionSize: job.day?.captionSize ?? defaultCaptionSize(),
       captionStyle: job.day?.captionStyle ?? defaultCaptionStyle(),
       pops: { videos: said.filter((c) => popFiles[c.id]), files: popFiles, sizePct: pops.sizePct, position: pops.position },
-      byHand: { texts: [...(job.day?.overlays ?? []).filter(isText), ...reactionTexts(job)], videos: handVideos },
+      byHand: { texts: [...(job.day?.overlays ?? []).filter(isText), ...reactionTexts(job)], videos: handVideos, sounds: handSounds },
       send: {
         key: postKeyOf(job.id, job.version),
         profileId: local.profile.id,
@@ -3978,11 +3990,24 @@ export function CampaignApp() {
     return found
   }
 
+  /** The file of a sound he put on: from the music bank, or kept with the
+   *  video; null for one of the Cutter's own effects, or one that is gone. */
+  async function soundFileOf(jobId: string, picture: ManualPicture): Promise<Blob | null> {
+    const source = picture.source
+    if (source.kind !== 'sound') return null
+    if (source.from === 'bank') {
+      const song = await findSong(source.ref).catch(() => null)
+      return song ? await songFile(song).catch(() => null) : null
+    }
+    if (source.from === 'phone') return loadOverlayFile(jobId, picture.id, source.type ?? 'audio/mp4').catch(() => null)
+    return null
+  }
+
   /** The words and videos he put on this video by hand in the edit screen,
    *  each video with its file: one from the video bank from the bank, one
    *  from his phone from storage. A video that is gone is left off - and he
    *  is told. */
-  async function byHandFor(job: Job): Promise<{ texts: ManualPicture[]; videos: { picture: ManualPicture; file: Blob }[] }> {
+  async function byHandFor(job: Job): Promise<{ texts: ManualPicture[]; videos: { picture: ManualPicture; file: Blob }[]; sounds: { picture: ManualPicture; file: Blob | null }[] }> {
     const overlays = job.day?.overlays ?? []
     const videos: { picture: ManualPicture; file: Blob }[] = []
     let lost = 0
@@ -3998,7 +4023,17 @@ export function CampaignApp() {
       else lost++
     }
     if (lost > 0) setNotice(`${lost} video${lost === 1 ? '' : 's'} you put on this video could not be found, so ${lost === 1 ? 'it was' : 'they were'} left off.`)
-    return { texts: [...overlays.filter(isText), ...reactionTexts(job)], videos }
+    // His sounds: a song or effect from the music bank (fetched if this phone
+    // hasn't it yet), a file of his, or one of the Cutter's own effects.
+    const sounds: { picture: ManualPicture; file: Blob | null }[] = []
+    let silent = 0
+    for (const picture of overlays.filter(isSound)) {
+      const file = await soundFileOf(job.id, picture)
+      if (file || picture.source.kind === 'sound' && picture.source.from === 'effect') sounds.push({ picture, file })
+      else silent++
+    }
+    if (silent > 0) setNotice(`${silent} sound${silent === 1 ? '' : 's'} you put on this video could not be found, so ${silent === 1 ? 'it was' : 'they were'} left off.`)
+    return { texts: [...overlays.filter(isText), ...reactionTexts(job)], videos, sounds }
   }
 
   /** A talking video's headline on the edit screen: as it will be made, at
@@ -4171,7 +4206,7 @@ export function CampaignApp() {
     // off are let go.
     const kept = new Set(overlays.map((o) => o.id))
     for (const [pictureId, blob] of files) if (kept.has(pictureId)) void saveOverlayFile(id, pictureId, blob).catch(() => {})
-    for (const old of job.day.overlays ?? []) if (old.source.kind === 'phone' && !kept.has(old.id)) void deleteOverlayFile(id, old.id).catch(() => {})
+    for (const old of job.day.overlays ?? []) if (ownFile(old) && !kept.has(old.id)) void deleteOverlayFile(id, old.id).catch(() => {})
     const day = { ...job.day, keep: same ? undefined : keep, overlays: overlays.length > 0 ? overlays : undefined }
     setJobs((js) => js.map((j) => (j.id === id ? { ...j, day } : j)))
     void recordDay(id, day, { campaignId: job.campaignId, angleId: job.angleId, headlineText: job.headlineText })
@@ -4199,7 +4234,7 @@ export function CampaignApp() {
     const same = JSON.stringify(cuts.keep) === JSON.stringify(job.day.plan.keep)
     const kept = new Set(cuts.overlays.map((o) => o.id))
     for (const [pictureId, blob] of cuts.files) if (kept.has(pictureId)) void saveOverlayFile(id, pictureId, blob).catch(() => {})
-    for (const old of job.day.overlays ?? []) if (old.source.kind === 'phone' && !kept.has(old.id)) void deleteOverlayFile(id, old.id).catch(() => {})
+    for (const old of job.day.overlays ?? []) if (ownFile(old) && !kept.has(old.id)) void deleteOverlayFile(id, old.id).catch(() => {})
     const day = {
       ...job.day,
       keep: same ? undefined : cuts.keep,
@@ -4388,7 +4423,8 @@ export function CampaignApp() {
         overlays={cutsJob.day!.overlays}
         bank={bankRef.current}
         defaults={angleBankDefaults(cutsJob)}
-        loadImage={(m) => (m.source.kind === 'phone' ? loadOverlayFile(cutsJob.id, m.id, m.source.type) : Promise.resolve(null))}
+        loadImage={(m) => (ownFile(m) ? loadOverlayFile(cutsJob.id, m.id, ownFile(m)!) : Promise.resolve(null))}
+        loadSound={(m) => soundFileOf(cutsJob.id, m)}
         videoBank={videoBankChoices}
         loadVideo={bankVideoFile}
         headline={headlineEditFor(cutsJob)}
@@ -4443,7 +4479,8 @@ export function CampaignApp() {
           overlays: reviewJob.day!.overlays,
           bank: bankRef.current,
           defaults: angleBankDefaults(reviewJob),
-          loadImage: (m) => (m.source.kind === 'phone' ? loadOverlayFile(reviewJob.id, m.id, m.source.type) : Promise.resolve(null)),
+          loadImage: (m) => (ownFile(m) ? loadOverlayFile(reviewJob.id, m.id, ownFile(m)!) : Promise.resolve(null)),
+          loadSound: (m) => soundFileOf(reviewJob.id, m),
           videoBank: videoBankChoices,
           loadVideo: bankVideoFile,
           headline: headlineEditFor(reviewJob),

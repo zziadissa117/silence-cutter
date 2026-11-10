@@ -19,6 +19,7 @@ export interface ManualPicture {
     | { kind: 'phone'; name: string; type: string }
     | { kind: 'video'; videoId: string }
     | { kind: 'text'; text: string; style: HeadlineStyle }
+    | SoundSource
   /** When it comes up, in seconds on the raw recording. */
   at: number
   /** How long it stays up. */
@@ -34,10 +35,32 @@ export interface ManualPicture {
   length?: number
 }
 
+/** A sound he put on in the edit screen's sound row (his ask, 2026-11-10:
+ *  "Add sound, but sound can be a sfx"): a song or sound effect from the
+ *  music bank (`bank`, by its id - musicBank.findSong), one of the Cutter's
+ *  own effects (`effect`, by name - motion/sfx.makeSound), or a file from his
+ *  phone (`phone`, kept with the video like a picture of his). It plays from
+ *  `at` for `seconds` (never past its own `length`), at `volumeDb`, over his
+ *  voice; never seen. */
+export interface SoundSource {
+  kind: 'sound'
+  from: 'bank' | 'effect' | 'phone'
+  ref: string
+  name: string
+  /** A file from his phone: its type. */
+  type?: string
+  volumeDb: number
+}
+
+/** How loud a sound starts: a little under his voice. */
+export const SOUND_DB = { start: -6, min: -30, max: 6 } as const
+
 /** How long a picture or words can stay up, and the step + and - take. */
 export const PICTURE_SECONDS = { min: 0.5, max: 20, step: 0.5 } as const
 /** A video plays to its end, up to this long. */
 export const VIDEO_SECONDS_MAX = 60
+/** A sound plays to its end, up to this long: a song under a whole video. */
+export const SOUND_SECONDS_MAX = 600
 /** How small and big a picture can be made, % of the width. */
 export const PICTURE_WIDTH = { min: 8, max: 100 } as const
 /** The size words start at: a medium headline's. */
@@ -47,10 +70,18 @@ export const TEXT_START = { x: 0.5, y: 0.42 } as const
 
 export const isText = (m: ManualPicture): m is ManualPicture & { source: { kind: 'text' } } => m.source.kind === 'text'
 export const isVideo = (m: ManualPicture): boolean => m.source.kind === 'video' || (m.source.kind === 'phone' && m.source.type.startsWith('video/'))
-export const isPicture = (m: ManualPicture): boolean => !isText(m) && !isVideo(m)
+export const isSound = (m: ManualPicture): m is ManualPicture & { source: SoundSource } => m.source.kind === 'sound'
+export const isPicture = (m: ManualPicture): boolean => !isText(m) && !isVideo(m) && !isSound(m)
+/** Seen on the video: a picture, a video or words - not a sound. */
+export const isSeen = (m: ManualPicture): boolean => !isSound(m)
+/** Kept with this video on the phone (picked from it): its file is saved and
+ *  let go with the video's - a picture or video of his, or a sound file. */
+export const ownFile = (m: ManualPicture): string | null =>
+  m.source.kind === 'phone' ? m.source.type : m.source.kind === 'sound' && m.source.from === 'phone' ? (m.source.type ?? 'audio/mp4') : null
 
-/** The longest a thing can stay up: a video its own length. */
+/** The longest a thing can stay up: a video or a sound its own length. */
 export function longestFor(m: ManualPicture): number {
+  if (isSound(m)) return Math.max(PICTURE_SECONDS.min, Math.min(SOUND_SECONDS_MAX, m.length ?? SOUND_SECONDS_MAX))
   if (!isVideo(m)) return PICTURE_SECONDS.max
   return Math.max(PICTURE_SECONDS.min, Math.min(VIDEO_SECONDS_MAX, m.length ?? VIDEO_SECONDS_MAX))
 }

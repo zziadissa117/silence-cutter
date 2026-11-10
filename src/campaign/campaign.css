@@ -1302,3 +1302,17 @@ html.editor-dark, html.editor-dark body { background: #000; }
 .tl-tool.on { background: #fe2c55; }
 .tl-tool:disabled { color: #555; }
 .cuts.quick .tl-bar-row, .cuts.quick .tl-tools { display: none !important; }
+/* Sounds: their own lane under the clips, TikTok's "Add sound" when empty. */
+.tl-bar.sound { background: #0f9d8a; }
+.tl-add-sound {
+  position: absolute; left: 0; height: 24px; display: flex; align-items: center; gap: 6px;
+  padding: 0 12px; border: 0; border-radius: 5px; background: #2c2c2e; color: #fff;
+  font: inherit; font-size: 13px; font-weight: 600; cursor: pointer; white-space: nowrap;
+}
+.sound-picker-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.sound-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 4px; }
+.sound-pick { display: flex; align-items: center; gap: 8px; min-height: 44px; }
+.sound-pick-name {
+  flex: 1; min-width: 0; text-align: left; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  padding: 0; border: 0; background: none; color: inherit; font: inherit; font-size: 15px; cursor: pointer;
+}
