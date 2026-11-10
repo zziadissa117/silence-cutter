@@ -4144,6 +4144,7 @@ async function tick(): Promise<void> {
   await unpostHanded().catch((error) => console.error('taking handed-over posts out of Postiz failed', error))
   await remindReposts(now)
   await remind(now)
+  await sweepErrors(now).catch((error) => console.error('deleting old error reports failed', error))
   await refreshViews(now).catch((error) => console.error('reading views failed', error))
   await refreshPostViews(now).catch((error) => console.error('reading post views failed', error))
 
@@ -4212,6 +4213,25 @@ async function dailySummary(now: number): Promise<void> {
     const text = summaryText(posts, most)
     if (text) await notify(profile.id, { ...text, tag: `summary-${today}` })
   }
+}
+
+/** Phone error reports (cutter_errors, the cutter function's `report`) are
+ *  read to fix something, not kept: older than this they go. */
+const ERRORS_KEPT_DAYS = 60
+
+/** Once a day, the reports past ERRORS_KEPT_DAYS are deleted. The day it was
+ *  done is kept in cutter_config `errors-swept`, like the summary's, so a tick
+ *  does it once - and marked first, so a run that stops leaves it for tomorrow. */
+async function sweepErrors(now: number): Promise<void> {
+  const today = new Date(now).toISOString().slice(0, 10)
+  const { data: swept } = await db.from('cutter_config').select('value').eq('key', 'errors-swept').maybeSingle()
+  if (swept?.value === today) return
+  await db.from('cutter_config').upsert({ key: 'errors-swept', value: today }, { onConflict: 'key' })
+  const { error } = await db
+    .from('cutter_errors')
+    .delete()
+    .lt('received_at', new Date(now - ERRORS_KEPT_DAYS * 24 * 60 * MINUTE).toISOString())
+  if (error) throw new Error(error.message)
 }
 
 /** Posts still waiting for his OK whose time has gone: moved on an hour, and

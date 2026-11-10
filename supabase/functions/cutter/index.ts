@@ -51,11 +51,15 @@
 //   rename-song    { token, id, name }          -> { song }
 //   remove-song    { token, id }                -> { removed }
 //   song-urls      { token, shas }              -> { urls: { [sha]: url } }
-//   report         { reports: [...] }            -> { stored }
+//   report         { reports: [...], token? }    -> { stored }
 //
-// "report" needs no login: it is how a phone says a video failed, and a
-// phone that is not signed in fails too. It only ever inserts, into a table
-// nothing can read back through this function, and every field is capped.
+// "report" is how a phone says a video failed - and a phone that is not
+// signed in fails too, so it takes a login's reports as they come and a
+// signed-out phone's a few a minute from one address (UNSIGNED_REPORTS_PER_MINUTE):
+// enough for a sign-in page falling over, not enough to fill the table from
+// outside. It only ever inserts, into a table nothing can read back through
+// this function, and every field is capped; the posting function's tick
+// deletes reports older than two months (postiz sweepErrors).
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 
@@ -686,6 +690,26 @@ async function songUrls(spaceId: string, body: Record<string, unknown>): Promise
 
 const KINDS = new Set(['failed', 'retried', 'fallback', 'interrupted', 'lost-pick', 'empty-pick', 'check', 'crash'])
 const MAX_REPORTS = 20
+/** Reports from a phone that is not signed in: this many a minute from one
+ *  address, counted in this instance alone - instances are short-lived, and
+ *  that is as much memory as it needs. A login's reports are not counted. */
+const UNSIGNED_REPORTS_PER_MINUTE = 10
+const unsignedReports = new Map<string, { minute: number; count: number }>()
+
+/** Takes `wanted` reports from a signed-out phone's address this minute, or
+ *  none of them: all or nothing, so the phone keeps what it has for a later
+ *  try - signed in by then, with luck. */
+function unsignedRoom(req: Request, wanted: number): boolean {
+  const address = req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() || 'unknown'
+  const minute = Math.floor(Date.now() / 60_000)
+  const seen = unsignedReports.get(address)
+  const used = seen?.minute === minute ? seen.count : 0
+  if (used + wanted > UNSIGNED_REPORTS_PER_MINUTE) return false
+  // Earlier minutes go, so this never holds more than a minute's addresses.
+  if (unsignedReports.size >= 1000) for (const [key, entry] of unsignedReports) if (entry.minute !== minute) unsignedReports.delete(key)
+  unsignedReports.set(address, { minute, count: used + wanted })
+  return true
+}
 
 function text(value: unknown, max: number): string | null {
   return typeof value === 'string' && value.trim() ? value.slice(0, max) : null
@@ -698,7 +722,7 @@ function smallObject(value: unknown): Record<string, unknown> | null {
   return json.length <= 2000 ? (value as Record<string, unknown>) : null
 }
 
-async function report(body: Record<string, unknown>): Promise<Response> {
+async function report(body: Record<string, unknown>, req: Request): Promise<Response> {
   const incoming = Array.isArray(body.reports) ? body.reports.slice(0, MAX_REPORTS) : []
   const rows = incoming
     .filter((r): r is Record<string, unknown> => !!r && typeof r === 'object')
@@ -714,6 +738,10 @@ async function report(body: Record<string, unknown>): Promise<Response> {
       video: smallObject(r.video),
     }))
   if (rows.length === 0) return reply({ stored: 0 })
+  // A login's reports go in as they come; a signed-out phone's, a few a minute.
+  if (!(await spaceFor(body.token)) && !unsignedRoom(req, rows.length)) {
+    return reply({ error: 'Too many reports from a phone that is not signed in - try again in a minute.' }, 429)
+  }
   const { error } = await db.from('cutter_errors').insert(rows)
   if (error) return reply({ error: 'Could not store the report.' }, 500)
   return reply({ stored: rows.length })
@@ -730,7 +758,7 @@ Deno.serve(async (req) => {
   }
   if (body.action === 'login') return login(body)
   if (body.action === 'accept-invite') return acceptInvite(body)
-  if (body.action === 'report') return report(body)
+  if (body.action === 'report') return report(body, req)
 
   const spaceId = await spaceFor(body.token)
   if (!spaceId) return reply({ error: 'signed-out' }, 401)

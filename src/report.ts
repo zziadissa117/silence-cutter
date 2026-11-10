@@ -46,15 +46,16 @@ function keep(list: Waiting[]): void {
   }
 }
 
-/** The shared login's name, when signed in, so his reports and his
- *  friend's can be told apart. Read directly: cloud.ts belongs to the
- *  campaign page. */
-function loginName(): string | null {
+/** The login, when signed in: its name, so his reports and his friend's can
+ *  be told apart, and its token, which the server takes a report on sight
+ *  with - a phone that is not signed in gets a few a minute. Read directly:
+ *  cloud.ts belongs to the campaign page. */
+function session(): { name: string | null; token: string | null } {
   try {
-    const session = JSON.parse(localStorage.getItem('cutter.session') ?? 'null') as { name?: string } | null
-    return session?.name ?? null
+    const stored = JSON.parse(localStorage.getItem('cutter.session') ?? 'null') as { name?: string; token?: string } | null
+    return { name: stored?.name ?? null, token: stored?.token ?? null }
   } catch {
-    return null
+    return { name: null, token: null }
   }
 }
 
@@ -76,7 +77,9 @@ export async function sendReports(): Promise<void> {
     const response = await fetch(FUNCTION_URL, {
       method: 'POST',
       headers: { 'content-type': 'application/json', apikey: PUBLISHABLE_KEY },
-      body: JSON.stringify({ action: 'report', reports: list }),
+      // The token as it is now, not as it was when the report was written:
+      // one kept from before signing in goes with the login too.
+      body: JSON.stringify({ action: 'report', reports: list, token: session().token }),
       keepalive: true,
     })
     if (response.ok) {
@@ -141,7 +144,7 @@ function record({ page = thisPage(), kind, message, phase, video }: Report, stor
         phase,
         message: message.slice(0, 2000),
         version: __APP_VERSION__,
-        login: loginName(),
+        login: session().name,
         device: {
           agent: navigator.userAgent,
           screen: `${screen.width}x${screen.height}@${window.devicePixelRatio}`,
