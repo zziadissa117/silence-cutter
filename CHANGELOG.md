@@ -3,6 +3,20 @@
 Newest first. Every change says what it does, how to use it, and how it works
 underneath. Kept up to date with each commit.
 
+## Warm-ups: an account forgotten for a day gets one
+App only: run ./deploy.sh.
+- His ask: "whenever there's a day I maybe sometimes forget to post on certain campaigns ... a warm-up video ... so it
+  keeps my account warm."
+- Every account of every posting campaign (not Trial reels), checked when the app opens and every half hour while
+  it is open: nothing posted on it for 24 hours and nothing going out on it in the next 12 -> one of his filmed
+  warm-ups goes to THAT account only (the best one that campaign hasn't had the idea of), at its next best hour,
+  on top of everything else. Like every warm-up it waits for his OK in Posts, with a notification. At most one per
+  account per quiet day; paused accounts are left alone; an account new to the Cutter waits a day first (so nothing
+  fires in the first 24 h after this update). Works whether or not warm-ups are turned on for that campaign.
+- Needs warm-ups filmed (More -> Warm-ups) and the app opened now and then - the videos are on the phone.
+- Underneath: `warmupPlan.quietAccounts`, `warmupSend` (after the weekly plan; `warmups:seen`, `warmups:quiet` on the
+  phone), `sendExtraWarmup` with `only`. Tests: `warmupPlan.test.ts`.
+
 ## Trial reels: copies of different lengths
 App only: run ./deploy.sh.
 - His ask: "mostly keep it at 8, but sometimes make it 7 or 6" - Instagram takes the copies for the same video.

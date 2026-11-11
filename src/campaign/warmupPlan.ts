@@ -135,3 +135,48 @@ export function planExtra({
   const from = now.getTime() + SOONEST_MS
   return { made: pick, campaignId: campaign.id, at: atBestHour(from, bestHour(new Date(from)), `${campaign.id}${pick.id}`) }
 }
+
+/** An account with nothing posted for this long gets a warm-up. */
+export const QUIET_MS = 24 * 3600_000
+/** ...unless something is going out on it soon anyway. */
+const COMING_MS = 12 * 3600_000
+
+/** The accounts that have gone a day with nothing posted and nothing coming
+ *  (his ask, 2026-11-11: "whenever there's a day I maybe sometimes forget to
+ *  post on certain campaigns ... a warm-up video ... so it keeps my account
+ *  warm"): each with the campaign it posts for, the first that holds it. An
+ *  account that has never had a post from the Cutter counts only once it
+ *  has been in a campaign a day - so `since` (when it was first seen). */
+export function quietAccounts({
+  campaigns,
+  posts,
+  now = new Date(),
+  since,
+}: {
+  /** Each campaign and its accounts. */
+  campaigns: readonly { id: string; accounts: readonly string[] }[]
+  posts: readonly Pick<ServerPost, 'campaignId' | 'postAt' | 'status' | 'accounts'>[]
+  now?: Date
+  /** When the Cutter first saw an account in a campaign. */
+  since: (accountId: string) => number
+}): { campaignId: string; accountId: string }[] {
+  const t = now.getTime()
+  const busy = new Set<string>()
+  for (const p of posts) {
+    if (GONE.has(p.status) || !p.postAt) continue
+    const at = Date.parse(p.postAt)
+    if (!(at > t - QUIET_MS && at < t + COMING_MS)) continue
+    for (const a of p.accounts) busy.add(a.id)
+  }
+  const out: { campaignId: string; accountId: string }[] = []
+  const taken = new Set<string>()
+  for (const c of campaigns) {
+    for (const accountId of c.accounts) {
+      if (taken.has(accountId) || busy.has(accountId)) continue
+      if (t - since(accountId) < QUIET_MS) continue
+      taken.add(accountId)
+      out.push({ campaignId: c.id, accountId })
+    }
+  }
+  return out
+}

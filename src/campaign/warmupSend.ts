@@ -6,7 +6,7 @@
 import { NO_POSTING, type Campaign } from './look'
 import { queueSend } from './outbox'
 import { hoursHere, lastPosts, listPosts, placeFor, postingHere } from './posting'
-import { bestOf, planExtra, planWarmups, type PlannedWarmup } from './warmupPlan'
+import { QUIET_MS, bestOf, planExtra, planWarmups, quietAccounts, type PlannedWarmup } from './warmupPlan'
 import { loadMade, madeFile, saveMade, type MadeWarmup } from './warmups'
 
 let running: Promise<number> | null = null
@@ -24,18 +24,79 @@ export function sendDueWarmups(campaigns: readonly Campaign[]): Promise<number> 
 async function sendNow(campaigns: readonly Campaign[]): Promise<number> {
   const local = postingHere()
   if (!local) return 0
-  const on = campaigns.filter((c) => c.warmups && c.warmups.perWeek > 0 && !c.general && placeFor(local.profile, c.id).accounts.length > 0)
-  if (on.length === 0) return 0
+  const posting = campaigns.filter((c) => !c.general && !c.trial && placeFor(local.profile, c.id).accounts.length > 0)
+  if (posting.length === 0) return 0
+  const firstSeen = seenAccounts(posting.flatMap((c) => placeFor(local.profile, c.id).accounts))
   const made = await loadMade()
   if (!made.some((m) => !m.posted)) return 0
   const posts = await listPosts(true).catch(() => lastPosts())
+  const on = posting.filter((c) => c.warmups && c.warmups.perWeek > 0)
   const plan = planWarmups({ campaigns: on, made, posts, bestHour: (_, date) => bestOf(hoursHere(dayOf(date))) })
   let sent = 0
   for (const p of plan) {
     const campaign = on.find((c) => c.id === p.campaignId)
     if (campaign && (await sendOne(local.profile.id, campaign, p))) sent++
   }
+  // An account he forgot for a day: a warm-up on it, on top of the rest.
+  const paused = local.profile.settings.limits?.accounts ?? {}
+  const covered = coveredAccounts()
+  const quiet = quietAccounts({
+    campaigns: posting.map((c) => ({ id: c.id, accounts: placeFor(local.profile, c.id).accounts.filter((a) => !paused[a]?.paused) })),
+    posts,
+    since: (id) => firstSeen[id] ?? Date.now(),
+  }).filter((q) => !covered[q.accountId] || Date.now() - covered[q.accountId] > QUIET_MS)
+  for (const q of quiet) {
+    const campaign = posting.find((c) => c.id === q.campaignId)
+    if (!campaign) continue
+    const went = await sendExtraWarmup(campaign, q.accountId).catch(() => null)
+    if (!went) continue
+    markCovered(q.accountId)
+    sent++
+  }
   return sent
+}
+
+// Kept on this phone: when each account was first seen in a campaign (one
+// new to the Cutter waits a day before it counts as forgotten), and when a
+// forgotten one last got a warm-up (never two for the same quiet day).
+const SEEN_KEY = 'warmups:seen'
+const COVERED_KEY = 'warmups:quiet'
+
+function readMap(key: string): Record<string, number> {
+  try {
+    const got = JSON.parse(localStorage.getItem(key) ?? '{}') as unknown
+    return got && typeof got === 'object' ? (got as Record<string, number>) : {}
+  } catch {
+    return {}
+  }
+}
+
+function writeMap(key: string, map: Record<string, number>): void {
+  try {
+    localStorage.setItem(key, JSON.stringify(map))
+  } catch {
+    // Worked out again next time.
+  }
+}
+
+function seenAccounts(ids: readonly string[]): Record<string, number> {
+  const seen = readMap(SEEN_KEY)
+  let changed = false
+  for (const id of ids) {
+    if (seen[id]) continue
+    seen[id] = Date.now()
+    changed = true
+  }
+  if (changed) writeMap(SEEN_KEY, seen)
+  return seen
+}
+
+function coveredAccounts(): Record<string, number> {
+  return readMap(COVERED_KEY)
+}
+
+function markCovered(accountId: string): void {
+  writeMap(COVERED_KEY, { ...readMap(COVERED_KEY), [accountId]: Date.now() })
 }
 
 /** One warm-up to the server, then marked gone out - never again (his

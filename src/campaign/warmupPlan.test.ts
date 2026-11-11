@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { atBestHour, bestOf, ideaOfKey, ideaViews, planExtra, planWarmups } from './warmupPlan'
+import { atBestHour, bestOf, ideaOfKey, ideaViews, planExtra, planWarmups, quietAccounts } from './warmupPlan'
 import type { MadeWarmup } from './warmups'
 
 const made = (id: string, ideaId: string, category = 'training', fields: Partial<MadeWarmup> = {}): MadeWarmup => ({
@@ -96,5 +96,31 @@ describe('an extra warm-up for a cold account', () => {
   })
   it('none when nothing filmed can go there', () => {
     expect(planExtra({ campaign: { id: 'c1' }, made: [], posts: [], bestHour: hour, now })).toBeNull()
+  })
+})
+
+describe('an account forgotten for a day gets a warm-up (his ask, 2026-11-11)', () => {
+  const at = (h: number) => new Date(now.getTime() + h * 3600_000).toISOString()
+  const post = (account: string, h: number, status = 'posted') => ({ campaignId: 'c1', postAt: at(h), status, accounts: [{ id: account, name: account, platform: 'instagram' }] }) as never
+  const long = () => now.getTime() - 5 * 24 * 3600_000
+
+  it('nothing posted for a day and nothing coming: that account', () => {
+    const quiet = quietAccounts({
+      campaigns: [{ id: 'c1', accounts: ['a', 'b', 'c'] }],
+      posts: [post('a', -30), post('b', -5), post('c', 6, 'scheduled')],
+      now,
+      since: long,
+    })
+    expect(quiet).toEqual([{ campaignId: 'c1', accountId: 'a' }])
+  })
+
+  it('a post refused or taken out does not count as posted', () => {
+    expect(quietAccounts({ campaigns: [{ id: 'c1', accounts: ['a'] }], posts: [post('a', -2, 'failed')], now, since: long })).toHaveLength(1)
+  })
+
+  it('an account new to the Cutter waits a day; one in two campaigns gets one warm-up', () => {
+    expect(quietAccounts({ campaigns: [{ id: 'c1', accounts: ['a'] }], posts: [], now, since: () => now.getTime() - 3600_000 })).toEqual([])
+    const both = quietAccounts({ campaigns: [{ id: 'c1', accounts: ['a'] }, { id: 'c2', accounts: ['a'] }], posts: [], now, since: long })
+    expect(both).toEqual([{ campaignId: 'c1', accountId: 'a' }])
   })
 })
