@@ -472,6 +472,8 @@ export async function makeMontage(
     voiceAll?: boolean
     /** Per clip: words over it in the headline's look (a step's name). */
     titles?: (string | null)[]
+    /** Product steps' own words where he put them (batch.StepText). */
+    stepTexts?: Parameters<typeof renderMontage>[0]['stepTexts']
     /** A Trial loop's video: a touch brighter (above 0) or darker, its
      *  words kept on the viral reel's lines. */
     brightness?: number
@@ -496,6 +498,7 @@ export async function makeMontage(
       voice: extra.voice,
       voiceAll: extra.voiceAll,
       titles: extra.titles,
+      stepTexts: extra.stepTexts,
       brightness: extra.brightness,
       keepLines: extra.keepLines,
       keepShape: extra.keepShape,

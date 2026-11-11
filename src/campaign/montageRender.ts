@@ -164,6 +164,9 @@ export interface MontageRenderInput {
    *  batch's product step, its name (batch.stepTitle); null or absent for
    *  none. */
   titles?: (string | null)[]
+  /** Per clip, in order: a product step's own words, each where he put it
+   *  (batch.StepText) - in place of `titles` for that clip when given. */
+  stepTexts?: ({ text: string; place?: { x: number; y: number; scale: number }; style?: 'outline' | 'box' | 'snap' }[] | null)[]
   /** A Trial loop's video (trialLoop.ts): white (above 0) or black (below)
    *  this strong over every frame, under the words - a touch brighter or
    *  darker. 0 or absent: the frame as it is. */
@@ -277,7 +280,7 @@ export function liftMusic(channels: Float32Array[], gain: number, sampleRate: nu
 }
 
 export async function renderMontage(
-  { clips: files, look, headlineText, music, seed = '', formula = null, windows = [], reactionFirst = false, titles = [], voice = false, voiceAll = false, brightness = 0, keepLines = false, keepShape = false, shorterBy = 0, captions = null }: MontageRenderInput,
+  { clips: files, look, headlineText, music, seed = '', formula = null, windows = [], reactionFirst = false, titles = [], stepTexts = [], voice = false, voiceAll = false, brightness = 0, keepLines = false, keepShape = false, shorterBy = 0, captions = null }: MontageRenderInput,
   onProgress?: (fraction: number) => void,
 ): Promise<MontageRenderResult> {
   if (files.length === 0) throw new SilenceCutError('Add at least one clip.')
@@ -366,9 +369,20 @@ export async function renderMontage(
     )
     // Each step's name over its clip, laid out once - always in the outline
     // look: Snapchat (and the white box) is for the hook alone.
-    const titleLayouts = clips.map((_, i) =>
-      place(titles[i]?.trim() ? layoutHeadline(ctx, width, height, { ...look.headline, style: ONLY_HOOK_ELSE, text: titles[i]! }) : null),
-    )
+    const titleLayouts = clips.map((_, i) => {
+      // His own words for the step, each where he put it: drawn exactly there.
+      const own = stepTexts[i]
+      if (own) {
+        return own
+          .map((w) => {
+            const laid = layoutHeadline(ctx, width, height, { ...look.headline, style: w.style ?? ONLY_HOOK_ELSE, text: w.text, place: w.place ?? null })
+            return w.place ? laid : place(laid)
+          })
+          .filter((l): l is HeadlineLayout => l !== null)
+      }
+      const laid = place(titles[i]?.trim() ? layoutHeadline(ctx, width, height, { ...look.headline, style: ONLY_HOOK_ELSE, text: titles[i]! }) : null)
+      return laid ? [laid] : []
+    })
     // The formula's logos, decoded once for every frame.
     const decode = async (blob: Blob | null) => {
       if (!blob) return null
@@ -451,8 +465,7 @@ export async function renderMontage(
         ctx.fillRect(0, 0, width, height)
       }
       if (i === 0 && headline) drawHeadline(ctx, headline)
-      const title = titleLayouts[i]
-      if (title) drawHeadline(ctx, title)
+      for (const title of titleLayouts[i] ?? []) drawHeadline(ctx, title)
       if (i === 0 && formulaLayout && logos) drawFormula(ctx, formulaLayout, logos)
       // What he says, on top of everything, while his clip plays.
       if (i === 0 && captions && said.length > 0) {

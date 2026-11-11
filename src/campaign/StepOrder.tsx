@@ -45,6 +45,8 @@ export function StepOrder({
     const byId = new Map(steps.map((s) => [s.id, s]))
     onSave(
       drafts.map((d, i) => ({
+        // Everything else the step has (its formats, its words) stays.
+        ...byId.get(d.id),
         id: d.id,
         name: d.name.trim() || `Step ${i + 1}`,
         files: byId.get(d.id)?.files ?? [],

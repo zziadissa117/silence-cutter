@@ -43,7 +43,7 @@ import { TrialView } from './TrialView'
 import { MotionView } from './MotionView'
 import { afterMixing, daysLine, mixesOf, spreadOver } from './formats'
 import type { ViewsByAccount } from './analytics'
-import { bareName, filesOf, formatOfReaction, formatTalks, stepTitle, styleFor, stylesOf, type BankFile, type BatchBank } from './batch'
+import { bareName, filesOf, formatOfReaction, formatTalks, stepTexts, stepTitle, styleFor, stylesOf, type BankFile, type BatchBank } from './batch'
 import { followFavour } from './batchFavour'
 import { playsWhole } from './stepPiece'
 import { CampaignsView } from './CampaignsView'
@@ -2053,6 +2053,9 @@ export function CampaignApp() {
           const known = stepped ? (batchBank ?? (await loadBatchBank(next.campaignId).catch(() => null))) : null
           const stepOf = (s: NonNullable<typeof stepped>[number]) => known?.steps?.find((k) => k.files.some((f) => f.id === s.file.id))
           const titles = stepped ? [null, ...stepped.map((s) => stepTitle(s.name ?? stepOf(s)?.name) || null)] : undefined
+          // A step's own words, each where he put it on the phone screen
+          // (StepTexts.tsx) - as the step is set now.
+          const ownTexts = stepped ? [null, ...stepped.map((s) => (stepOf(s)?.texts ? stepTexts(stepOf(s)) : null))] : undefined
           const hook = next.montage.bank?.formula
           const formula = hook
             ? {
@@ -2092,6 +2095,7 @@ export function CampaignApp() {
               voiceAll: keepsVoice,
               windows: stepped && !keepsVoice ? [false, ...stepped.map((s) => !playsWhole(stepOf(s)))] : undefined,
               titles,
+              stepTexts: ownTexts,
             }),
           )
         } else if (next.reaction) {

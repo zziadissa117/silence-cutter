@@ -3,6 +3,20 @@
 Newest first. Every change says what it does, how to use it, and how it works
 underneath. Kept up to date with each commit.
 
+## Product steps: your own words, anywhere on the clip
+App only: run ./deploy.sh.
+- His ask: "an example of a phone screen ... click on the phone screen and put, let's say, a text on top and a text
+  at the bottom ... really personalize the way text is put on those product tabs."
+- Batch tab -> a format's product step -> **Words**: a phone screen with the step's own clip playing. Tap anywhere to
+  put words there (or "+ Text at the top" / "+ Text at the bottom"), type them, drag them, make them bigger or
+  smaller, pick Outline / White box / Snapchat - as many as you like. Save: every video's clip of that step gets
+  exactly those words, there. "Back to its name at the top" undoes it.
+- The preview is drawn with the videos' own text code and the campaign's headline look, so what you see is what is
+  made. Videos not made yet take the step's words as they are when made.
+- A step never opened in Words keeps its name at the top, as before. Green screen steps have no words (as before).
+- Underneath: `BatchStep.texts` (`StepText`), `batch.stepTexts`, `StepTexts.tsx`, `montageRender` `stepTexts`
+  (CampaignApp passes them per clip); Set order keeps a step's words. Tests: `stepTexts.test.tsx`.
+
 ## Fields you can see
 App only: run ./deploy.sh.
 - His report: on the new warm-up idea form "I don't even see any outlines ... I wouldn't know that this is a text

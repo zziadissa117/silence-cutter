@@ -291,6 +291,29 @@ export interface BatchStep {
   files: BankFile[]
   /** The formats whose product it is (BatchFormat ids). */
   formats?: string[]
+  /** The words over this step's clip, each where he put it on the phone
+   *  screen (StepTexts.tsx) - as many as he likes, top, bottom, anywhere
+   *  (his ask, 2026-11-11). Absent: the step's name at the top, as before
+   *  (stepTitle); empty: no words. */
+  texts?: StepText[]
+}
+
+/** One of a step's words on its clip. */
+export interface StepText {
+  id: string
+  text: string
+  /** Its middle, as fractions of the frame, and how much bigger or smaller. */
+  place: { x: number; y: number; scale: number }
+  /** Its look; the step names' outline when not set. */
+  style?: 'outline' | 'box' | 'snap'
+}
+
+/** The words a step puts over its clip: his own, or its name at the top. */
+export function stepTexts(step: Pick<BatchStep, 'name' | 'texts'> | undefined): { text: string; place?: StepText['place']; style?: StepText['style'] }[] {
+  if (!step) return []
+  if (step.texts) return step.texts.filter((t) => t.text.trim())
+  const name = stepTitle(step.name)
+  return name ? [{ text: name }] : []
 }
 
 /** The look of every word on a batch video but its headline hook: the step

@@ -46,6 +46,7 @@ import {
   type BatchStep,
 } from './batch'
 import { StepOrder } from './StepOrder'
+import { StepTexts } from './StepTexts'
 import { BatchStatus } from './BatchStatus'
 import { batchState, lastReadyAt, statusDays } from './batchNow'
 import { ClipViewer } from './ClipViewer'
@@ -317,6 +318,8 @@ export function BatchView({
   /** The Set order sheet is open. */
   /** The format whose product steps are being set (StepOrder). */
   const [ordering, setOrdering] = useState<string | null>(null)
+  // The product step whose words are being placed on its phone screen (StepTexts.tsx).
+  const [wordsFor, setWordsFor] = useState<string | null>(null)
   /** The format open below its card; "+ Add a format" choosing a kind. */
   const [openFormat, setOpenFormat] = useState<string | null>(null)
   const [choosingKind, setChoosingKind] = useState(false)
@@ -1155,6 +1158,9 @@ export function BatchView({
         <span className="group-title">
           {index + 1}. {step.name} <span className="bank-count">{step.files.length}</span>
         </span>
+        <button type="button" className="btn small" aria-expanded={wordsFor === step.id} onClick={() => setWordsFor(wordsFor === step.id ? null : step.id)}>
+          Words
+        </button>
         <VideoPicker className="btn small" label={`Add clips for ${step.name}`} onFiles={(files) => void add({ step: step.id }, files)}>
           + Add
         </VideoPicker>
@@ -1163,7 +1169,26 @@ export function BatchView({
         {talking
           ? `One of these in every video, played whole with its own sound - your voice saying what to do - the music low under it${stepTitle(step.name) ? `, "${stepTitle(step.name)}" written over it` : ''}. Edit them before: cut to length, you talking over them.`
           : `One of these in every video: the moment something happens in it, or all of it when it's short${stepTitle(step.name) ? `, with "${stepTitle(step.name)}" written over it` : ''}.`}
+        {step.texts ? ` Your words on it: ${step.texts.length === 0 ? 'none' : step.texts.map((t) => `"${t.text}"`).join(', ')}.` : ' Tap Words to put your own anywhere on it.'}
       </p>
+      {wordsFor === step.id ? (
+        <StepTexts
+          step={step}
+          look={angle.headline}
+          onSave={(texts) => {
+            if (!bank) return
+            keep({
+              ...bank,
+              steps: (bank.steps ?? []).map((st) => {
+                if (st.id !== step.id) return st
+                const { texts: _old, ...rest } = st
+                return texts ? { ...rest, texts } : rest
+              }),
+            })
+          }}
+          onClose={() => setWordsFor(null)}
+        />
+      ) : null}
       {step.files.length > 0 ? (
         <ul className="bank-list">
           {step.files.map((file) => (
