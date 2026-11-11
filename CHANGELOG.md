@@ -3,6 +3,26 @@
 Newest first. Every change says what it does, how to use it, and how it works
 underneath. Kept up to date with each commit.
 
+## The new look, step 2: the screens themselves
+App only: run ./deploy.sh.
+- His word on step 1: "that was lazy ... inspiration, not a 1:1 copy ... it does not have a premium feel, and you
+  didn't change much". This time each screen was rebuilt and checked on screenshots of the real app, dark and light.
+- Videos tab (`HomeTop.tsx`):
+  - a header with his initial, a greeting and whether his work is shared (tap -> Settings);
+  - "Today": one big number of videos going out today, then pills for out / scheduled / to approve / failed
+    (tap -> Posts);
+  - Record and Add videos as two big tiles side by side;
+  - his campaigns as a row of brand badges (logo, or the first letter on a colour of its own) -> Campaigns.
+- Analytics (`Overview.tsx`): the last 7 days' views as a big number with a bar for each day's videos out, then the
+  week's videos by where they stand (posted, scheduled, to approve, failed) and the share that went out. From the
+  posts list the phone already has - no new request to the server.
+- Posts: the time as a pill, views of what went out as a pill on each row.
+- More: each row with an icon on its own colour, one short line under each.
+- Campaigns: each campaign's letter on its own colour, the same as on the Videos tab.
+- Batch: the long explanations under each part are now tips (Settings -> Show tips) - the screen is a third shorter.
+- Cards with a soft light from the top corner, a glow behind the top of each tab, big numbers in a light gradient.
+- Tests: `homeCounts.test.ts` (today's counts, the week's counts, a name's colour).
+
 ## The new look, step 1: dark, rounded, purple, a floating tab bar
 App only: run ./deploy.sh.
 - His ask: make the Cutter look like the apps in his screenshots ("the cutter just looks like an old app").

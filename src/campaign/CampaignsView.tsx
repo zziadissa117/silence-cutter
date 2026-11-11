@@ -9,6 +9,7 @@ import { BackToMore } from './MoreView'
 import { EndCampaign } from './EndCampaign'
 import type { Profile } from './posting'
 import { describeAngle, type Angle, type Campaign } from './look'
+import { hueOf } from './HomeTop'
 
 function useObjectUrl(blob: Blob | null): string | null {
   const [url, setUrl] = useState<string | null>(null)
@@ -29,7 +30,7 @@ function Mark({ campaign }: { campaign: Campaign }) {
   return url ? (
     <img className="mark" src={url} alt="" />
   ) : (
-    <span className="mark letter" aria-hidden>
+    <span className="mark letter" aria-hidden style={{ ['--hue' as string]: String(hueOf(campaign.name || '?')) }}>
       {(campaign.name.trim()[0] ?? '?').toUpperCase()}
     </span>
   )

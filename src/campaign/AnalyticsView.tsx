@@ -23,6 +23,7 @@ import { perDayOn, withPerDay } from './batchRun'
 import type { Campaign } from './look'
 import { placeFor, type Insights, type Profile } from './posting'
 import { loadBatchBank, saveBatchBank } from './store'
+import { Overview } from './Overview'
 import { BestHoursCard, TroubleCard, WhatWorks } from './WhatWorks'
 
 export interface CampaignRow {
@@ -128,6 +129,8 @@ export function AnalyticsView({
       <div className="screen-head">
         <h1>Analytics</h1>
       </div>
+
+      <Overview />
 
       {onPauseAccount ? (
         <TroubleCard

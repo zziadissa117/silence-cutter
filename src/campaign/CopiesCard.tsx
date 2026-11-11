@@ -36,7 +36,7 @@ export function CopiesCard({
           + Add
         </VideoPicker>
       </div>
-      <p className="hint bank-hint">
+      <p className="hint tip bank-hint">
         A video that did well, posted again: the picture exactly as it is, each copy with another of the songs above. If you
         talk in it, your voice stays and the song goes quietly under it. The copies take the batch's next free times.
       </p>

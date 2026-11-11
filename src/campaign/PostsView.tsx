@@ -12,6 +12,7 @@
 
 import { type ReactNode, useCallback, useEffect, useMemo, useState } from 'react'
 
+import { shortNumber } from './analytics'
 import { dayLabel } from './batch'
 import { hasShareSheet, shareVideo, useSharable } from './shareFile'
 import { ChevronLeft, PlusIcon, ScheduledIcon } from './icons'
@@ -415,6 +416,8 @@ function OtherPost({
               ? post.error ?? 'Writing the caption…'
               : 'Sending…'
   const links = Object.entries(post.links)
+  // Its views, once the server has read them (postiz/views.ts).
+  const views = post.status === 'posted' && post.views ? Object.values(post.views).reduce((n, v) => n + (Number(v) || 0), 0) : null
   return (
     <li className="post">
       <button type="button" className="post-head as-button" onClick={() => setOpen((o) => !o)} aria-expanded={open}>
@@ -422,7 +425,10 @@ function OtherPost({
         <span className="post-title">{post.campaignName}</span>
         <span className={`post-when${waitingForTime(post) ? ' scheduled' : ''}`}>{post.status === 'failed' ? 'Not posted' : whenLabel(post.postAt)}</span>
       </button>
-      <div className={`post-line${tone === 'bad' ? ' bad' : tone === 'warn' ? ' warn' : ''}`}>{line}</div>
+      <div className={`post-line${tone === 'bad' ? ' bad' : tone === 'warn' ? ' warn' : ''}`}>
+        {line}
+        {views !== null ? <span className="views-pill">{shortNumber(views)} views</span> : null}
+      </div>
       {open ? (
         <>
           {post.caption ? <div className="post-caption-read">{post.caption}</div> : null}

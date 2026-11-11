@@ -1397,73 +1397,254 @@ html.editor-dark, html.editor-dark body { background: #000; }
 .voice-read p { margin: 0 0 6px; } .voice-pause { color: var(--accent); font-size: 14px; font-weight: 600; white-space: nowrap; } .voice-list .warmup-chips { margin: 6px 0; }
 
 /* =========================================================================
-   The new look (his ask, 2026-11-11, with screenshots of the apps he likes):
-   pure black, soft dark cards with big rounded corners and a hairline edge,
-   pill buttons and chips, large bold titles, one purple for what to do next,
-   and a floating pill tab bar of icons. Last in the file, so it is what shows;
-   the colours are the tokens in index.css. The TikTok edit screen keeps its own.
+   The look (his ask, 2026-11-11: "it does not have a premium feel"). Apps he
+   showed for inspiration, not to copy: depth instead of flat boxes, a soft
+   purple glow behind each screen's top, small letter-spaced labels over big
+   clean numbers, glass bars, buttons that feel pressable. Last in the file,
+   so it is what shows; colours are the tokens in index.css. The TikTok edit
+   screen keeps its own.
    ========================================================================= */
+:root {
+  --hairline: rgb(255 255 255 / 0.07);
+  --hairline-strong: rgb(255 255 255 / 0.12);
+  --card-sheen: linear-gradient(180deg, rgb(255 255 255 / 0.045), rgb(255 255 255 / 0.012) 60%);
+  --lift: inset 0 1px 0 rgb(255 255 255 / 0.05), 0 1px 2px rgb(0 0 0 / 0.4);
+  --accent-2: #6a52f5;
+  --accent-grad: linear-gradient(180deg, #a294ff 0%, #8b7cf6 45%, #6f5cf0 100%);
+  --sky: #5ac8fa;
+}
+:root[data-theme='light'] {
+  --hairline: rgb(0 0 0 / 0.07);
+  --hairline-strong: rgb(0 0 0 / 0.12);
+  --card-sheen: none;
+  --lift: 0 1px 2px rgb(0 0 0 / 0.06), 0 8px 24px rgb(0 0 0 / 0.04);
+  --accent-grad: linear-gradient(180deg, #8070f0, #5f4be0);
+}
+.visually-hidden { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
 
-/* Titles: big and bold, like the apps he showed. */
-.screen-head h1 { font-size: 38px; font-weight: 800; letter-spacing: -0.035em; line-height: 1.05; }
-.screen-head h2 { font-size: 26px; font-weight: 700; letter-spacing: -0.02em; }
-.list-title { font-size: 21px; font-weight: 700; letter-spacing: -0.015em; color: var(--text); text-transform: none; margin: 14px 2px 6px; }
-.group-title { font-size: 19px; font-weight: 700; letter-spacing: -0.01em; }
-.lede { color: var(--dim); }
+/* A soft glow behind the top of every tab. */
+main.tabbed { position: relative; }
+main.tabbed::before {
+  content: ''; position: absolute; z-index: 0; top: 0; left: 0; right: 0; height: 420px; pointer-events: none;
+  background:
+    radial-gradient(90% 60% at 15% -10%, color-mix(in srgb, var(--accent) 30%, transparent), transparent 70%),
+    radial-gradient(70% 50% at 100% 0%, color-mix(in srgb, var(--sky) 12%, transparent), transparent 70%);
+}
+main.tabbed > * { position: relative; z-index: 1; }
 
-/* Cards: rounded, soft, a hairline edge - each part of a screen on its own. */
-.group, .card-group, .callout, .setting, .rows, .vlist, .posts-list, .effect, .warmup-card, .screen > .toggle, .screen > .bank-list {
+/* Type: big titles, small labels over big numbers. */
+.screen-head h1 { font-size: 34px; font-weight: 800; letter-spacing: -0.035em; line-height: 1.05; }
+.screen-head h2 { font-size: 26px; font-weight: 750; letter-spacing: -0.02em; }
+.eyebrow { font-size: 12px; font-weight: 700; letter-spacing: 0.14em; text-transform: uppercase; color: var(--muted); }
+.hero-number {
+  font-size: 64px; font-weight: 800; letter-spacing: -0.05em; line-height: 0.92; font-variant-numeric: tabular-nums;
+  background: linear-gradient(180deg, var(--text) 30%, color-mix(in srgb, var(--accent) 55%, var(--text)));
+  -webkit-background-clip: text; background-clip: text; color: transparent;
+}
+.list-title, .section-title { font-size: 21px; font-weight: 750; letter-spacing: -0.02em; color: var(--text); text-transform: none; margin: 18px 2px 8px; }
+.group-title { font-size: 18px; font-weight: 700; letter-spacing: -0.012em; }
+.hint { color: var(--muted); }
+
+/* Cards with depth: a sheen from the top, a hairline edge, a lit top line. */
+.group, .card-group, .callout, .setting, .rows, .vlist, .posts-list, .effect, .warmup-card, .screen > .toggle, .screen > .bank-list, .today-card, .action-tile.add {
   border-radius: 24px;
-  background: var(--surface);
-  border: 1px solid var(--edge);
+  border: 1px solid var(--hairline);
+  background: var(--card-sheen), var(--surface);
+  box-shadow: var(--lift);
 }
 .group { padding: 18px; }
 .card-group > .setting, .card-group > .toggle, .card-group > .field, .card-group > .rows,
 .group .group, .group .setting, .group .callout, .group .rows, .group .bank-list, .review-look .group,
-.card-group .card-group, .setting .setting {
-  border: 0;
+.card-group .card-group, .setting .setting, .group .card-group {
+  border: 0; box-shadow: none; background: none;
 }
-.group .group, .review-look .group { background: none; border-radius: 0; padding: 0; }
+.group .group, .review-look .group { border-radius: 0; padding: 0; }
+.card-group > * + * { background-image: linear-gradient(var(--hairline), var(--hairline)); }
 
-/* Buttons: pills. The one to press is purple; the rest a soft tint. */
-.btn { border-radius: 999px; min-height: 44px; padding: 0 20px; font-weight: 650; letter-spacing: -0.005em; }
-.btn.small { min-height: 36px; padding: 0 14px; font-size: 15px; }
-.btn.primary { background: var(--accent); border-color: var(--accent); color: var(--on-accent); box-shadow: 0 6px 20px color-mix(in srgb, var(--accent) 35%, transparent); }
-.btn.wide { min-height: 52px; font-size: 17px; }
-.btn:not(.primary):not(.danger):not(:disabled) { background: color-mix(in srgb, var(--text) 8%, transparent); color: var(--text); }
+/* Buttons: pills that feel pressable. */
+.btn { border-radius: 999px; min-height: 44px; padding: 0 20px; font-weight: 650; letter-spacing: -0.01em; transition: transform 160ms var(--ease-press), filter 160ms, background-color 160ms; }
+.btn:active:not(:disabled) { transform: scale(0.97); }
+.btn.small { min-height: 36px; padding: 0 15px; font-size: 15px; }
+.btn.wide { min-height: 54px; font-size: 17px; }
+.btn.primary { background: var(--accent-grad); border-color: transparent; color: #fff; box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.25), 0 8px 24px color-mix(in srgb, var(--accent) 35%, transparent); }
+.btn:not(.primary):not(.danger):not(:disabled) { background: color-mix(in srgb, var(--text) 8%, transparent); border: 1px solid var(--hairline); color: var(--text); }
+.btn.danger { border-radius: 999px; }
 .btn.icon-btn, .icon-btn { border-radius: 50%; }
 .stepper .icon-btn { border-radius: 14px; }
+.linkbtn { color: var(--accent); text-decoration: none; font-weight: 600; }
 
-/* Chips and the segmented control: pills, the chosen one lit purple. */
-.seg { border-radius: 999px; padding: 4px; background: var(--seg-track); }
+/* Segmented controls and chips: pills, the chosen one lit. */
+.seg { border-radius: 999px; padding: 4px; background: var(--seg-track); border: 1px solid var(--hairline); }
 .seg button { border-radius: 999px; }
-.seg button.active { background: color-mix(in srgb, var(--accent) 24%, var(--surface)); color: var(--text); box-shadow: inset 0 0 0 1.5px var(--accent); }
-.chip, .warmup-chips .chip { border-radius: 999px; padding: 8px 14px; border: 1px solid var(--edge); background: var(--surface-raised); color: var(--text); }
-.chip.on, .warmup-chips .chip.on { background: color-mix(in srgb, var(--accent) 24%, var(--surface)); border-color: var(--accent); color: var(--text); }
+.seg button.active { background: color-mix(in srgb, var(--accent) 26%, var(--surface)); color: var(--text); box-shadow: inset 0 0 0 1.5px color-mix(in srgb, var(--accent) 80%, transparent); }
+.chip, .warmup-chips .chip { border-radius: 999px; padding: 8px 14px; border: 1px solid var(--hairline-strong); background: color-mix(in srgb, var(--text) 5%, transparent); color: var(--text); }
+.chip.on, .warmup-chips .chip.on { background: color-mix(in srgb, var(--accent) 26%, var(--surface)); border-color: var(--accent); color: var(--text); }
 
-/* Fields: rounded, on the card's raised colour. */
+/* Fields: rounded, raised. */
 .field :is(input[type=text], input[type=password], input[type=url], input[type=email], input[type=number], textarea, select) { border-radius: 16px; }
+.screen > .field :is(input[type=text], input[type=password], textarea, select) { background-color: var(--surface); border-color: var(--hairline-strong); }
 
-/* The tab bar: a floating pill of icons, the tab you're on lit purple. */
+/* The tab bar: floating glass, the tab you're on in a lit pill. */
 .tabbar {
   left: 14px; right: 14px; bottom: calc(env(safe-area-inset-bottom) + 10px);
-  padding: 7px; gap: 4px;
-  border-radius: 999px;
-  border: 1px solid var(--edge);
-  background: var(--bar-bg);
-  -webkit-backdrop-filter: saturate(180%) blur(24px);
-  backdrop-filter: saturate(180%) blur(24px);
-  box-shadow: var(--shadow);
+  padding: 7px; gap: 4px; border-radius: 999px;
+  border: 1px solid var(--hairline-strong);
+  background: color-mix(in srgb, var(--surface) 72%, transparent);
+  -webkit-backdrop-filter: saturate(180%) blur(28px); backdrop-filter: saturate(180%) blur(28px);
+  box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.06), 0 16px 40px rgb(0 0 0 / 0.5);
 }
-.tabbar button { min-height: 56px; padding: 0; gap: 0; border-radius: 999px; color: var(--dim); justify-content: center; }
+.tabbar button { min-height: 56px; padding: 0; gap: 0; border-radius: 999px; color: var(--muted); justify-content: center; }
 .tabbar button .tab-label { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
-.tabbar button .tab-icon svg { width: 30px; height: 30px; stroke-width: 1.9; }
-.tabbar button.active { color: var(--accent); background: color-mix(in srgb, var(--accent) 20%, transparent); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent) 45%, transparent); }
-.tab-count { background: var(--accent); color: var(--on-accent); }
+.tabbar button .tab-icon svg { width: 28px; height: 28px; stroke-width: 1.8; }
+.tabbar button.active { color: #fff; background: var(--accent-grad); box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.25), 0 6px 18px color-mix(in srgb, var(--accent) 40%, transparent); }
+.tab-count { background: var(--bad); color: #fff; box-shadow: 0 0 0 2px var(--surface); }
 
-/* Rows inside cards: hairlines between, more room. */
-.vrow, .row-link, .post { padding-top: 14px; padding-bottom: 14px; }
+/* --- Videos: the top (HomeTop.tsx) ------------------------------------ */
+.screen.home { gap: 16px; }
+.home-head { display: flex; align-items: center; gap: 12px; padding-top: 6px; }
+.home-avatar {
+  flex: none; width: 50px; height: 50px; border-radius: 50%; display: grid; place-items: center;
+  font-size: 21px; font-weight: 800; color: #fff;
+  background: linear-gradient(140deg, hsl(var(--hue) 75% 62%), hsl(calc(var(--hue) + 50) 70% 42%));
+  box-shadow: 0 0 0 2px var(--ink), 0 0 0 3.5px color-mix(in srgb, var(--accent) 70%, transparent);
+}
+.home-hello { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.home-name { font-size: 25px; font-weight: 800; letter-spacing: -0.03em; line-height: 1.1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sync-chip {
+  flex: none; display: inline-flex; align-items: center; gap: 7px; min-height: 34px; padding: 0 13px;
+  border-radius: 999px; border: 1px solid var(--hairline-strong); background: color-mix(in srgb, var(--text) 6%, transparent);
+  color: var(--dim); font: inherit; font-size: 13px; font-weight: 600; cursor: pointer;
+}
+.sync-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--ok); box-shadow: 0 0 8px var(--ok); }
+.sync-chip.warn .sync-dot { background: var(--warn); box-shadow: 0 0 8px var(--warn); }
+
+.today-card {
+  display: flex; flex-direction: column; gap: 14px; width: 100%; padding: 20px; text-align: left;
+  border-radius: 28px; color: var(--text); font: inherit; cursor: pointer;
+  background:
+    radial-gradient(120% 90% at 100% 0%, color-mix(in srgb, var(--accent) 26%, transparent), transparent 60%),
+    var(--card-sheen), var(--surface);
+}
+.today-big { display: flex; align-items: baseline; gap: 10px; }
+.today-unit { font-size: 17px; font-weight: 600; color: var(--dim); }
+.stat-row { display: flex; flex-wrap: wrap; gap: 8px; }
+.stat-pill {
+  display: inline-flex; align-items: center; gap: 7px; min-height: 32px; padding: 0 12px; border-radius: 999px;
+  background: color-mix(in srgb, var(--text) 6%, transparent); border: 1px solid var(--hairline);
+  font-size: 13.5px; font-weight: 600; color: var(--dim); font-variant-numeric: tabular-nums;
+}
+.stat-pill.lit { color: var(--text); border-color: color-mix(in srgb, var(--accent) 60%, transparent); background: color-mix(in srgb, var(--accent) 18%, transparent); }
+.stat-pill.bad { color: var(--bad); border-color: color-mix(in srgb, var(--bad) 45%, transparent); }
+.stat-dot { width: 7px; height: 7px; border-radius: 50%; }
+.stat-dot.posted { background: var(--ok); }
+.stat-dot.scheduled { background: var(--sky); }
+.stat-dot.waiting { background: var(--accent); }
+.stat-dot.failed { background: var(--bad); }
+
+.action-tiles { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.action-tile {
+  position: relative; display: flex; flex-direction: column; align-items: flex-start; justify-content: flex-end; gap: 4px;
+  min-height: 138px; padding: 16px; border-radius: 26px; text-align: left; color: var(--text); font: inherit; cursor: pointer; overflow: hidden;
+  transition: transform 160ms var(--ease-press);
+}
+.action-tile:active { transform: scale(0.97); }
+.action-tile.record {
+  border: 0; color: #fff;
+  background: radial-gradient(120% 100% at 0% 0%, rgb(255 255 255 / 0.22), transparent 55%), linear-gradient(150deg, #9f90ff, #6a52f5 70%, #5b3fe6);
+  box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.3), 0 14px 34px color-mix(in srgb, var(--accent) 38%, transparent);
+}
+.tile-icon {
+  position: absolute; top: 16px; left: 16px; width: 44px; height: 44px; border-radius: 50%; display: grid; place-items: center;
+  background: color-mix(in srgb, var(--accent) 22%, transparent); color: var(--accent);
+}
+.action-tile.record .tile-icon { background: rgb(255 255 255 / 0.2); }
+.tile-icon .record-dot { width: 16px; height: 16px; border-radius: 50%; background: #ff3b30; box-shadow: 0 0 0 3px rgb(255 255 255 / 0.9); margin: 0; }
+.tile-icon svg { width: 22px; height: 22px; }
+.tile-title { font-size: 19px; font-weight: 750; letter-spacing: -0.02em; }
+.tile-sub { font-size: 13px; opacity: 0.72; }
+
+.home-section { display: flex; flex-direction: column; gap: 4px; }
+.section-head { display: flex; align-items: baseline; justify-content: space-between; }
+.section-head .section-title { margin: 6px 2px 8px; }
+.see-all { background: none; border: 0; padding: 4px 2px; color: var(--accent); font: inherit; font-size: 15px; font-weight: 650; cursor: pointer; }
+.brand-row {
+  /* Edge to edge, with room for the badges' shadows (a scroller clips them). */
+  display: flex; gap: 12px; overflow-x: auto; scroll-snap-type: x mandatory; scrollbar-width: none;
+  margin: -6px -16px -8px; padding: 6px 16px 14px; scroll-padding-inline: 16px;
+}
+.brand-row::-webkit-scrollbar { display: none; }
+.brand-item { flex: none; width: 74px; display: flex; flex-direction: column; align-items: center; gap: 8px; background: none; border: 0; padding: 0; color: var(--text); font: inherit; cursor: pointer; scroll-snap-align: start; }
+.brand-badge {
+  width: 66px; height: 66px; border-radius: 22px; display: grid; place-items: center; overflow: hidden;
+  font-size: 26px; font-weight: 800; color: #fff;
+  background: linear-gradient(145deg, hsl(var(--hue) 70% 58%), hsl(calc(var(--hue) + 35) 72% 38%));
+  box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.25), 0 6px 18px rgb(0 0 0 / 0.35);
+}
+.brand-badge img { width: 100%; height: 100%; object-fit: cover; background: #fff; }
+:root[data-theme='light'] .brand-badge { box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.3), 0 4px 12px rgb(40 30 120 / 0.16); }
+.brand-name { max-width: 100%; font-size: 12.5px; font-weight: 600; color: var(--dim); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+.under-drop-links { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-start; gap: 8px; margin-top: 2px; }
+.under-drop-title { width: 100%; font-size: 12px; font-weight: 700; letter-spacing: 0.14em; text-transform: uppercase; color: var(--muted); margin: 6px 2px 2px; }
+.callout.voice-ask {
+  border-color: color-mix(in srgb, var(--accent) 35%, transparent);
+  background: linear-gradient(100deg, color-mix(in srgb, var(--accent) 20%, transparent), transparent 70%), var(--surface);
+  font-size: 15px; line-height: 1.35;
+}
 
 @media (prefers-reduced-motion: reduce) {
-  .btn, .tabbar button { transition: none; }
+  .btn, .tabbar button, .action-tile { transition: none; }
+  .btn:active:not(:disabled), .action-tile:active { transform: none; }
 }
+
+/* --- Analytics: the week at a glance (Overview.tsx) ------------------- */
+.overview-card {
+  display: flex; flex-direction: column; gap: 14px; padding: 20px; border-radius: 28px;
+  border: 1px solid var(--hairline); box-shadow: var(--lift);
+  background: radial-gradient(120% 90% at 0% 0%, color-mix(in srgb, var(--sky) 14%, transparent), transparent 60%), var(--card-sheen), var(--surface);
+}
+.overview-card.split { flex-direction: row; align-items: center; gap: 18px; background: var(--card-sheen), var(--surface); }
+.week-bars { display: grid; grid-template-columns: repeat(7, 1fr); gap: 8px; height: 110px; align-items: end; }
+.week-bar { display: flex; flex-direction: column; align-items: center; justify-content: flex-end; gap: 6px; height: 100%; }
+.week-bar-fill { width: 100%; max-width: 30px; border-radius: 9px; background: var(--accent-grad); box-shadow: 0 6px 16px color-mix(in srgb, var(--accent) 30%, transparent); }
+.week-bar-fill[data-empty] { background: color-mix(in srgb, var(--text) 8%, transparent); box-shadow: none; }
+.week-bar-label { font-size: 12px; font-weight: 600; color: var(--muted); }
+.overview-total { flex: 1; display: flex; flex-direction: column; align-items: flex-start; gap: 4px; }
+.hero-number.small { font-size: 52px; }
+.rate-pill { margin-top: 6px; padding: 5px 10px; border-radius: 999px; font-size: 13px; font-weight: 700; color: var(--ok); background: color-mix(in srgb, var(--ok) 16%, transparent); }
+.rate-pill.low { color: var(--warn); background: color-mix(in srgb, var(--warn) 16%, transparent); }
+.overview-rows { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 10px; min-width: 150px; }
+.overview-rows li { display: grid; grid-template-columns: 4px 34px 1fr; align-items: center; gap: 10px; }
+.overview-rows .tick { width: 4px; height: 20px; border-radius: 2px; }
+.tick.posted { background: var(--ok); } .tick.scheduled { background: var(--sky); } .tick.waiting { background: var(--accent); } .tick.failed { background: var(--bad); }
+.overview-n { font-size: 20px; font-weight: 750; font-variant-numeric: tabular-nums; }
+.screen .empty { padding: 28px 18px; border-radius: 24px; border: 1px dashed var(--hairline-strong); color: var(--muted); text-align: center; font-size: 15px; line-height: 1.45; }
+
+/* --- Posts ------------------------------------------------------------ */
+.post-title { font-size: 17px; font-weight: 700; letter-spacing: -0.01em; }
+.post-when { padding: 4px 10px; border-radius: 999px; background: color-mix(in srgb, var(--text) 6%, transparent); color: var(--dim); font-size: 13px; font-weight: 600; white-space: nowrap; }
+.post-when.scheduled { color: var(--text); background: color-mix(in srgb, var(--sky) 18%, transparent); }
+.post-line { font-size: 14px; }
+.post-caption { min-height: 64px; border-radius: 16px; background: color-mix(in srgb, var(--text) 5%, transparent); border: 1px solid var(--hairline); }
+.post-actions { gap: 8px; }
+
+/* --- More: coloured icon tiles, a lighter list ------------------------- */
+.more-icon {
+  width: 40px; height: 40px; border-radius: 12px; color: #fff;
+  background: linear-gradient(145deg, hsl(var(--hue, 258) 75% 62%), hsl(calc(var(--hue, 258) + 30) 70% 44%));
+  box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.25);
+}
+.more-icon svg { width: 22px; height: 22px; stroke-width: 1.8; }
+.more-rows .row-link { min-height: 64px; padding: 12px 0; gap: 14px; }
+.more-rows .row-name { font-size: 17px; font-weight: 650; }
+.more-rows .row-line { font-size: 14px; }
+.brand-line { padding: 14px 16px; border-radius: 24px; border: 1px solid var(--hairline); background: var(--card-sheen), var(--surface); box-shadow: var(--lift); }
+.brand-line img { border-radius: 12px; }
+.views-pill { display: inline-block; margin-left: 8px; padding: 2px 9px; border-radius: 999px; font-size: 12.5px; font-weight: 700; color: var(--text); background: color-mix(in srgb, var(--accent) 22%, transparent); vertical-align: 1px; }
+/* Campaign marks: the brand-badge colours, as on the Videos tab. */
+.mark.letter {
+  border: 0; border-radius: 14px; color: #fff; font-weight: 800;
+  background: linear-gradient(145deg, hsl(var(--hue, 258) 70% 58%), hsl(calc(var(--hue, 258) + 35) 72% 38%));
+  box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.25);
+}
+img.mark { border-radius: 14px; }

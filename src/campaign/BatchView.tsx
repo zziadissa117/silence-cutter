@@ -1165,7 +1165,7 @@ export function BatchView({
           + Add
         </VideoPicker>
       </div>
-      <p className="hint bank-hint">
+      <p className="hint tip bank-hint">
         {talking
           ? `One of these in every video, played whole with its own sound - your voice saying what to do - the music low under it${stepTitle(step.name) ? `, "${stepTitle(step.name)}" written over it` : ''}. Edit them before: cut to length, you talking over them.`
           : green
@@ -1260,7 +1260,7 @@ export function BatchView({
               <span className="label">Name</span>
               <input type="text" value={f.name} maxLength={60} aria-label="Format name" onChange={(e) => changeFormat(f.id, { name: e.target.value })} />
             </label>
-            <p className="hint">{kind.hint}</p>
+            <p className="hint tip">{kind.hint}</p>
             {list(
               'reactions',
               f.kind === 'talking' ? 'You talking - the hook' : 'You',
@@ -1388,7 +1388,7 @@ export function BatchView({
           </VideoPicker>
         )}
       </div>
-      <p className="hint bank-hint">{hint}</p>
+      <p className="hint tip bank-hint">{hint}</p>
       {kind === 'music' && bank && songs.length > 0 ? (
         <label className="field">
           <span className="label">From the music bank</span>
@@ -1622,7 +1622,7 @@ export function BatchView({
                   </button>
                 ) : null}
               </div>
-              <p className="hint">
+              <p className="hint tip">
                 Every kind of video this account posts, in this one batch. They take turns in your {perDay > 0 ? `${perDay} a day` : 'videos'}, each from its own
                 clips - evenly at first, then more of the ones whose videos get more views. The headlines and music below are for all of them.
               </p>
@@ -1773,7 +1773,7 @@ export function BatchView({
                 Headlines <span className="bank-count">{bank.headlines.length}</span>
               </span>
             </div>
-            <p className="hint bank-hint">
+            <p className="hint tip bank-hint">
               {green
                 ? 'Optional - none and the videos have no headline. One a line.'
                 : onEngine
@@ -1904,7 +1904,7 @@ export function BatchView({
                       : `At ${times.map(timeLabel).join(', ')}.`}
                 </span>
               )}
-              {running ? <span className="hint">Change it any time - the days ahead follow at once, up or down.</span> : null}
+              {running ? <span className="hint tip">Change it any time - the days ahead follow at once, up or down.</span> : null}
             </div>
             <div className="field">
               <span className="label">More each day</span>
@@ -1945,7 +1945,7 @@ export function BatchView({
               {growthLine ? (
                 <span className={`hint${growthLine.tight ? ' warn-text' : ''}`}>{growthLine.text}</span>
               ) : (
-                <span className="hint">0: the same number every day. +1: one more video each day than the day before.</span>
+                <span className="hint tip">0: the same number every day. +1: one more video each day than the day before.</span>
               )}
             </div>
           </div>
@@ -2156,7 +2156,7 @@ function HookResults({
   return (
     <div className="group hook-results" id="hook-results">
       <div className="group-title">How each hook is doing</div>
-      <p className="hint bank-hint">
+      <p className="hint tip bank-hint">
         Views are read a day, three days and a week after a video goes out. Stop a hook that does badly, or change its
         words: its videos not out yet come out and the batch makes others in their place. Change a look to another: its
         videos not out yet are made again in the new look, same days and times, and the rest stay as they are.
@@ -2278,7 +2278,7 @@ function HookResults({
         <input type="checkbox" checked={bank.dropWeakHooks ?? false} disabled={onServer} onChange={(e) => onAuto(e.target.checked)} />
         <span>
           <span className="label">Drop a hook that does badly by itself</span>
-          <span className="hint" style={{ display: 'block' }}>
+          <span className="hint tip" style={{ display: 'block' }}>
             Once {WEAK_AFTER} of its videos have their views read, a hook averaging under half of what the other hooks get is stopped
             and its videos not out yet are made again with the others. It says so here.
           </span>
@@ -2350,7 +2350,7 @@ function HookLooks({
           ))}
         </ul>
       ) : null}
-      <p className="hint bank-hint">
+      <p className="hint tip bank-hint">
         {looks.length > 1
           ? `The videos take turns in these shares${headlineLooks > 1 ? ', the same headlines in each look' : ''}.`
           : 'Tap more than one and the videos take turns between them.'}

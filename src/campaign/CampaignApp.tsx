@@ -55,6 +55,7 @@ import type { PictureReview, PopReview } from './CaptionReview'
 import { CutsEditor } from './CutsEditor'
 import { EditScreen, type EditedCuts } from './EditScreen'
 import { VoiceSetup, voiceReminder } from './VoiceSetup'
+import { ActionTiles, CampaignRow, HomeHeader, TodayCard } from './HomeTop'
 import { CheckQuestions } from './CheckQuestions'
 import { keptWords, talkWords } from './talkCaptions'
 import {
@@ -3752,15 +3753,18 @@ export function CampaignApp() {
   const behindLine = !making ? null : making.batch ? 'after the batch video being made' : making.forFormat ? 'after the format video being made' : `after ${making.name}`
 
   const videos = (
-    <section className="screen">
-      <div className="screen-head">
-        <h1>Videos</h1>
-        <button type="button" className={`status-link${syncState.kind === 'waiting' ? ' warn-text' : ''}`} onClick={() => setTab('settings')}>
-          {session ? (syncState.kind === 'waiting' ? 'Not synced' : syncState.kind === 'syncing' ? 'Syncing…' : 'Shared') : 'Not shared'}
-        </button>
-      </div>
+    <section className="screen home">
+      <h1 className="visually-hidden">Videos</h1>
+      <HomeHeader
+        name={session?.name ?? ''}
+        sync={session ? (syncState.kind === 'waiting' ? 'Not synced' : syncState.kind === 'syncing' ? 'Syncing' : 'Shared') : 'Not shared'}
+        warn={!session || syncState.kind === 'waiting'}
+        onSync={() => setTab('settings')}
+      />
 
       {notices}
+
+      {posting && mode === 'day' ? <TodayCard toApprove={toApprove} onPosts={() => setTab('posts')} /> : null}
 
       {/* Posts has its own tab, with how many wait to be approved on it: here
           only what is still going up, or can't. */}
@@ -3822,7 +3826,7 @@ export function CampaignApp() {
             <div className="callout voice-ask">
               <span>
                 {voiceAsk === 'none'
-                  ? 'Set up your voice - 45 seconds, once - so the cutter knows how you talk and never cuts your words.'
+                  ? 'Set up your voice - 45 seconds, once, so cuts never touch your words.'
                   : 'Your last videos sound like none of your voices - another mic? Add it as a voice (45 s), or pin one in Settings.'}
               </span>
               <button type="button" className="btn small primary" onClick={() => setVoiceOpen(true)}>
@@ -3830,13 +3834,26 @@ export function CampaignApp() {
               </button>
             </div>
           ) : null}
-          <button type="button" className="btn primary wide record-btn" onClick={() => setRecordingOpen(true)}>
-            <span className="record-dot" aria-hidden /> Record a video
-          </button>
-          {dropZone("Add today's videos", "Each is sorted into its campaign - you approve before anything's made")}
+          {dragging ? (
+            dropZone("Add today's videos", "Each is sorted into its campaign - you approve before anything's made")
+          ) : (
+            <ActionTiles
+              onRecord={() => setRecordingOpen(true)}
+              add={
+                <VideoPicker className="action-tile add" label="Add today's videos" tip onFiles={onPicked}>
+                  <span className="tile-icon" aria-hidden>
+                    <UploadIcon />
+                  </span>
+                  <span className="tile-title">Add videos</span>
+                  <span className="tile-sub">Sorted into campaigns</span>
+                </VideoPicker>
+              }
+            />
+          )}
+          <CampaignRow campaigns={ownCampaigns} onOpen={() => setTab('campaigns')} onAll={() => setTab('campaigns')} />
           {campaign && angle ? (
             <div className="under-drop-links">
-              <span className="under-drop-title">Other kinds of video</span>
+              <span className="under-drop-title">More ways to make one</span>
               {reactionCampaigns.length > 0 ? (
                 <button
                   type="button"

@@ -10,6 +10,8 @@ import type { Tab } from './TabBar'
 interface Row {
   tab: Tab
   icon: ReactNode
+  /** Its icon tile's colour. */
+  hue: number
   name: string
   line: string
 }
@@ -29,15 +31,13 @@ export function MoreView({
   workToLose: () => Promise<string | null>
 }) {
   const rows: Row[] = [
-    { tab: 'campaigns', icon: <CampaignsIcon />, name: 'Campaigns', line: `${campaigns} campaign${campaigns === 1 ? '' : 's'} - brand, logo, angles, accounts and posting times` },
-    { tab: 'formats', icon: <FormatsIcon />, name: 'Formats', line: 'A script you film again and again, mixed into many videos' },
-    { tab: 'motion', icon: <MotionIcon />, name: 'Motion graphics', line: 'Drop in a talking video - Claude plans graphics around what you say' },
-    ...(trialReels
-      ? [{ tab: 'trial' as const, icon: <BatchIcon />, name: 'Trial reels', line: 'A viral reel made again and again, posted as Instagram Trial Reels' }]
-      : []),
-    { tab: 'warmups', icon: <VideosIcon />, name: 'Warm-ups', line: 'Short set posts to film in seconds, between the batch videos' },
-    { tab: 'pictures', icon: <PicturesIcon />, name: 'Bank', line: 'Pictures, videos and songs your videos use' },
-    { tab: 'settings', icon: <SettingsIcon />, name: 'Settings', line: 'Posting, sign-in, people, the server, video defaults' },
+    { tab: 'campaigns', icon: <CampaignsIcon />, hue: 258, name: 'Campaigns', line: `${campaigns} campaign${campaigns === 1 ? '' : 's'} · brands, accounts, times` },
+    { tab: 'formats', icon: <FormatsIcon />, hue: 200, name: 'Formats', line: 'One script, mixed into many videos' },
+    { tab: 'motion', icon: <MotionIcon />, hue: 320, name: 'Motion graphics', line: 'Claude plans graphics around you' },
+    ...(trialReels ? [{ tab: 'trial' as const, icon: <BatchIcon />, hue: 25, name: 'Trial reels', line: 'Viral reels for people who don’t follow you' }] : []),
+    { tab: 'warmups', icon: <VideosIcon />, hue: 150, name: 'Warm-ups', line: 'Quick posts that keep accounts warm' },
+    { tab: 'pictures', icon: <PicturesIcon />, hue: 45, name: 'Bank', line: 'Pictures, videos and songs' },
+    { tab: 'settings', icon: <SettingsIcon />, hue: 230, name: 'Settings', line: 'Posting, people, server, defaults' },
   ]
   const leave = async () => {
     const warning = await workToLose().catch(() => null)
@@ -60,7 +60,9 @@ export function MoreView({
         {rows.map((r) => (
           <li key={r.tab}>
             <button type="button" className="row-link" onClick={() => onOpen(r.tab)}>
-              <span className="more-icon">{r.icon}</span>
+              <span className="more-icon" style={{ ['--hue' as string]: String(r.hue) }}>
+                {r.icon}
+              </span>
               <span className="row-text">
                 <span className="row-name">{r.name}</span>
                 <span className="row-line">{r.line}</span>
@@ -73,12 +75,12 @@ export function MoreView({
       <ul className="rows group more-rows">
         <li>
           <button type="button" className="row-link" onClick={() => void leave()}>
-            <span className="more-icon">
+            <span className="more-icon" style={{ ['--hue' as string]: '0' }}>
               <VideosIcon />
             </span>
             <span className="row-text">
               <span className="row-name">Cut only</span>
-              <span className="row-line">The plain cutter: takes the silences out of any video, nothing else</span>
+              <span className="row-line">Just take the silences out</span>
             </span>
             <ChevronRight />
           </button>
