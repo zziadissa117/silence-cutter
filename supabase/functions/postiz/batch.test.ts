@@ -140,3 +140,20 @@ describe('a batch video of a format', () => {
     expect(batchInfo({ id: 'b-1', date: '2026-11-06', time: '10:00', size: 5, format: 'bad id!' })?.format).toBeUndefined()
   })
 })
+
+describe('warm-up posts (2026-11-11)', () => {
+  const now = Date.parse('2026-11-12T12:00:00Z')
+  it('keep the time the phone picked, only for a warm-up key, within a month', async () => {
+    const { warmupOf, isWarmupKey } = await import('./batch')
+    expect(warmupOf({ idea: 'w-1', at: '2026-11-14T19:05:00Z' }, 'warmup:w-1:m-1', now)).toEqual({ idea: 'w-1', at: '2026-11-14T19:05:00.000Z' })
+    expect(warmupOf({ idea: 'w-1', at: '2026-11-14T19:05:00Z' }, 'job-1', now)).toBeNull()
+    expect(warmupOf({ idea: 'w-1', at: '2026-11-12T12:05:00Z' }, 'warmup:w-1:m-1', now)).toBeNull()
+    expect(warmupOf({ idea: 'w-1', at: '2027-01-14T19:05:00Z' }, 'warmup:w-1:m-1', now)).toBeNull()
+    expect(isWarmupKey('warmup:a:b')).toBe(true)
+  })
+  it('tell him what to approve and by when', async () => {
+    const { warmupReady } = await import('./batch')
+    expect(warmupReady('Godari', '2026-11-14T19:05:00Z', 'America/Toronto').title).toBe('Godari: a warm-up to approve')
+    expect(warmupReady('Godari', '2026-11-14T19:05:00Z', 'America/Toronto').body).toContain('Sat')
+  })
+})

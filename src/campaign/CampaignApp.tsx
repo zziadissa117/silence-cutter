@@ -37,6 +37,8 @@ import { NOT_ALLOWED, trialAngle, trialFileName, withAccounts } from './trialLoo
 import { AnalyticsView, addHeadline, answerSuggestion, saveTarget, useCampaignRows } from './AnalyticsView'
 import { FormatsView, type FormatClips } from './FormatsView'
 import { WarmupView } from './WarmupView'
+import { sendDueWarmups } from './warmupSend'
+import { watchMade } from './warmups'
 import { TrialView } from './TrialView'
 import { MotionView } from './MotionView'
 import { afterMixing, daysLine, mixesOf, spreadOver } from './formats'
@@ -3232,6 +3234,22 @@ export function CampaignApp() {
     }
   }, [posting?.profile?.id]) // eslint-disable-line react-hooks/exhaustive-deps
 
+  // Warm-up posts (warmupSend.ts): the ones due within a week go to the
+  // server to wait for his yes - when the app opens, every half hour, when
+  // he films some, and when he changes where they go.
+  useEffect(() => {
+    if (!posting?.profile || !campaigns) return
+    const mine = campaigns.filter((c) => !c.general && !c.trial)
+    const run = () => void sendDueWarmups(mine).catch(() => {})
+    run()
+    const stop = watchMade(run)
+    const timer = window.setInterval(run, 30 * 60_000)
+    return () => {
+      stop()
+      window.clearInterval(timer)
+    }
+  }, [posting?.profile, campaigns])
+
   // Batches that keep going (batchRun.ts): whenever the app is open - opened,
   // back on screen, or every half hour - each running batch keeps up with its
   // number: days over it lose the extra, days missing are made. The Batch tab
@@ -4694,7 +4712,11 @@ export function CampaignApp() {
     ) : tab === 'motion' ? (
       <MotionView onBack={() => setTab('more')} />
     ) : tab === 'warmups' ? (
-      <WarmupView onBack={() => setTab('more')} />
+      <WarmupView
+        onBack={() => setTab('more')}
+        campaigns={ownCampaigns.filter((c) => !c.trial)}
+        onSaveCampaign={(c) => void store({ ...c, updatedAt: Date.now() })}
+      />
     ) : tab === 'trial' ? (
       <TrialView
         campaigns={campaigns}

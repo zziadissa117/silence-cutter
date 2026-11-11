@@ -216,6 +216,12 @@ export async function dropMade(id: string): Promise<void> {
   if (gone) await deleteBankFile(gone.file.id).catch(() => {})
 }
 
+/** Called whenever the filmed warm-ups change. */
+export function watchMade(listener: (made: MadeWarmup[]) => void): () => void {
+  madeListeners.add(listener)
+  return () => madeListeners.delete(listener)
+}
+
 export function useMade(): MadeWarmup[] {
   const [made, setMade] = useState<MadeWarmup[]>([])
   useEffect(() => {

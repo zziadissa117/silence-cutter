@@ -5,14 +5,16 @@
 // go up at once, anyone else's wait for his OK - he can change them first.
 // The same for a new category. See warmups.ts.
 
-import { useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 
 import { VideoPicker } from '../VideoPicker'
 import { HeadlineLook } from './JobRow'
-import type { HeadlineStyle } from './look'
+import type { Campaign, HeadlineStyle } from './look'
 import { BackToMore } from './MoreView'
 import { isVideoFile, songFile, soundOf, songName, useMusicBank } from './musicBank'
+import { lastPosts, listPosts } from './posting'
 import { PlayButton } from './TrackPlayer'
+import { ideaViews } from './warmupPlan'
 import {
   addCategory,
   approveCategory,
@@ -38,7 +40,16 @@ const where = (link: string) => (/tiktok\.com/i.test(link) ? 'TikTok' : 'Instagr
 /** How many in one go of "Film several": a couple of minutes' filming. */
 const IN_ONE_GO = 5
 
-export function WarmupView({ onBack }: { onBack?: () => void }) {
+export function WarmupView({
+  onBack,
+  campaigns = [],
+  onSaveCampaign,
+}: {
+  onBack?: () => void
+  /** His campaigns, to say which get warm-ups, how many a week, from which categories. */
+  campaigns?: Campaign[]
+  onSaveCampaign?: (campaign: Campaign) => void
+}) {
   const { list, refresh, problem } = useWarmups()
   const [category, setCategory] = useState<string>('all')
   const [editing, setEditing] = useState<WarmupIdea | 'new' | null>(null)
@@ -46,6 +57,17 @@ export function WarmupView({ onBack }: { onBack?: () => void }) {
   const [error, setError] = useState<string | null>(null)
   const [filming, setFilming] = useState<WarmupIdea[] | null>(null)
   const made = useMade()
+  // How each idea's warm-ups do: their average views (warmupPlan.ideaViews).
+  const [views, setViews] = useState<Map<string, number>>(() => ideaViews(lastPosts()))
+  useEffect(() => {
+    let alive = true
+    void listPosts()
+      .then((posts) => alive && setViews(ideaViews(posts)))
+      .catch(() => {})
+    return () => {
+      alive = false
+    }
+  }, [])
   const ready = made.filter((m) => !m.posted)
   const onFilm = (ideas: WarmupIdea[]) => setFilming(ideas)
   const approved = list.categories.filter((c) => c.status === 'approved')
@@ -117,6 +139,7 @@ export function WarmupView({ onBack }: { onBack?: () => void }) {
         </button>
       ) : null}
       {ready.length > 0 ? <ReadyList ready={ready} /> : null}
+      {onSaveCampaign && campaigns.length > 0 ? <WhereTheyGo campaigns={campaigns} categories={approved} onSave={onSaveCampaign} /> : null}
       {problem ? <p className="hint warn-text">{problem}</p> : null}
       {error ? <div className="error">{error}</div> : null}
       {busy ? <p className="hint">{busy}</p> : null}
@@ -176,7 +199,7 @@ export function WarmupView({ onBack }: { onBack?: () => void }) {
       ) : null}
       {shown.length === 0 ? <p className="empty">No warm-up ideas here yet. Add the first with + Idea.</p> : null}
       {shown.map((idea) => (
-        <IdeaCard key={idea.id} idea={idea} category={nameOf(idea.category)}>
+        <IdeaCard key={idea.id} idea={idea} category={nameOf(idea.category)} views={views.get(idea.id)}>
           <button type="button" className="btn small primary" onClick={() => onFilm([idea])}>
             Film it
           </button>
@@ -198,6 +221,60 @@ export function WarmupView({ onBack }: { onBack?: () => void }) {
         </IdeaCard>
       ))}
     </section>
+  )
+}
+
+/** Which campaigns get warm-ups, how many every 7 days, from which
+ *  categories - on top of their batch videos, at their accounts' best hour,
+ *  each waiting for his yes (warmupPlan.ts). */
+function WhereTheyGo({ campaigns, categories, onSave }: { campaigns: Campaign[]; categories: WarmupCategory[]; onSave: (campaign: Campaign) => void }) {
+  return (
+    <div className="group">
+      <div className="group-title">Where they go</div>
+      <p className="hint">On top of the batch, at each account's best hour. Each waits for your OK - you get a notification.</p>
+      {campaigns.map((c) => {
+        const w = c.warmups
+        const set = (warmups: Campaign['warmups']) => onSave({ ...c, warmups })
+        return (
+          <div key={c.id} className="warmup-where">
+            <label className="toggle">
+              <input type="checkbox" checked={Boolean(w)} onChange={(e) => set(e.target.checked ? { categories: [], perWeek: 2 } : undefined)} />
+              <span className="row-name">{c.name || 'Campaign'}</span>
+            </label>
+            {w ? (
+              <>
+                <div className="stepper">
+                  <button type="button" className="btn small icon-btn" aria-label="Fewer a week" disabled={w.perWeek <= 1} onClick={() => set({ ...w, perWeek: w.perWeek - 1 })}>
+                    −
+                  </button>
+                  <span className="stepper-value">{w.perWeek} a week</span>
+                  <button type="button" className="btn small icon-btn" aria-label="More a week" disabled={w.perWeek >= 7} onClick={() => set({ ...w, perWeek: w.perWeek + 1 })}>
+                    +
+                  </button>
+                </div>
+                <div className="warmup-chips">
+                  {categories.map((cat) => {
+                    const on = w.categories.includes(cat.id)
+                    return (
+                      <button
+                        key={cat.id}
+                        type="button"
+                        className={`chip${on ? ' on' : ''}`}
+                        aria-pressed={on}
+                        onClick={() => set({ ...w, categories: on ? w.categories.filter((x) => x !== cat.id) : [...w.categories, cat.id] })}
+                      >
+                        {cat.name}
+                      </button>
+                    )
+                  })}
+                  <span className="hint">{w.categories.length === 0 ? 'Every category' : ''}</span>
+                </div>
+              </>
+            ) : null}
+          </div>
+        )
+      })}
+    </div>
   )
 }
 
@@ -233,7 +310,7 @@ function ReadyList({ ready }: { ready: MadeWarmup[] }) {
 }
 
 /** One idea: what it is, its example, how to film it, its headline, sound and length. */
-function IdeaCard({ idea, category, children }: { idea: WarmupIdea; category: string; children?: React.ReactNode }) {
+function IdeaCard({ idea, category, views, children }: { idea: WarmupIdea; category: string; views?: number; children?: React.ReactNode }) {
   const [example, setExample] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
   const showExample = async () => {
@@ -250,6 +327,7 @@ function IdeaCard({ idea, category, children }: { idea: WarmupIdea; category: st
         <span className="hint">
           {category} · {idea.seconds} s{idea.byName ? ` · ${idea.byName}` : ''}
         </span>
+        {views !== undefined ? <span className="hint">Your warm-ups of it: {Math.round(views).toLocaleString()} views on average</span> : null}
       </div>
       {idea.example && 'link' in idea.example ? (
         <a className="btn small" href={idea.example.link} target="_blank" rel="noreferrer">

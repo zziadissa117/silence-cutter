@@ -94,7 +94,7 @@ import { GONE_MS, serverTrouble, troubleNote, type ServerPing } from './serverWa
 import { accountName, baseNote, clearOfTaken, failedRefs, goodHoursEnd, missingAccounts, notPostedNote, reconnectedAs, youtubeRetryTime, youtubeTime } from './failed.ts'
 import { carryOver, cleanCaptions, cleanRepost, repostDueAt, textFor, variationNote, type AccountText } from './repost.ts'
 import { FAKE_CLAUDE, FakeError, fakeCaption, fakePostiz, isFakePostiz } from './fake.ts'
-import { approvalFor, batchChoices, batchInfo, batchReady, batchTrusted, freeBatchTimes, trustKey, type BatchInfo } from './batch.ts'
+import { approvalFor, batchChoices, batchInfo, batchReady, batchTrusted, freeBatchTimes, isWarmupKey, trustKey, warmupOf, warmupReady, type BatchInfo } from './batch.ts'
 import { handFields } from './hand.ts'
 import { laterWhileWaiting, lastTimeToday, nextSlot, normalTimes, pickTime, sessionOf, spreadDay, spreadEnd, spreadUntil, timesFor, type OtherPost, type Spread, addDays, localDate, localTime, zoned } from './slots.ts'
 import { cleanWindow, type PostingWindow } from './window.ts'
@@ -2116,6 +2116,8 @@ async function start(profile: Profile, body: Record<string, unknown>): Promise<R
   const rules = cleanRules(campaign.posting)
   const hand = handFields(meta.byHand, rules, text(campaign.name, 200) ?? 'Campaign')
   const batch = hand ? null : batchInfo(meta.batch)
+  // A warm-up: at its own time, always his yes first.
+  const warm = hand || batch ? null : warmupOf(meta.warmup, key)
   // A Trial reel only from a login allowed them: never a copy posted as a
   // normal Reel to someone's followers instead.
   if (batch?.trial && !(await trialAllowedFor(profile.space_id))) throw new Problem('Trial reels are not turned on for this login.')
@@ -2139,8 +2141,9 @@ async function start(profile: Profile, body: Record<string, unknown>): Promise<R
         // Formats video he scheduled himself goes at its time (approvalFor).
         rules: {
           ...rules,
-          approval: approvalFor(rules.approval, { hand: Boolean(hand), approveNow, batch: Boolean(batch), scheduled: meta.scheduled === true }),
+          approval: warm ? 'me' : approvalFor(rules.approval, { hand: Boolean(hand), approveNow, batch: Boolean(batch), scheduled: meta.scheduled === true }),
         },
+        ...(warm ? { post_at: warm.at } : {}),
         status: 'uploading',
         parts,
         size,
@@ -2388,7 +2391,11 @@ async function prepare(start: Post): Promise<Post> {
     attempts: 0,
     retry_at: null,
   })
-  if (post.status === 'waiting') await (post.batch ? notifyBatch(post.profile_id, post.batch.id) : notifyWaiting(post.profile_id))
+  if (post.status === 'waiting') {
+    if (post.batch) await notifyBatch(post.profile_id, post.batch.id)
+    else if (isWarmupKey(post.client_key) && post.post_at) await notify(post.profile_id, { ...warmupReady(post.campaign_name, post.post_at, profile.timezone || 'UTC'), tag: `warmup-${post.id}` })
+    else await notifyWaiting(post.profile_id)
+  }
   return post
 }
 

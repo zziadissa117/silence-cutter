@@ -3,6 +3,22 @@
 Newest first. Every change says what it does, how to use it, and how it works
 underneath. Kept up to date with each commit.
 
+## Warm-ups, step 3: posting them per campaign
+App and server: run ./deploy.sh (it runs ./deploy-server.sh too).
+Needs deploying: run ./deploy-server.sh
+- Warm-ups -> **Where they go**: each campaign on or off, how many every 7 days (2 to start, 1-7), and from which
+  categories (none ticked: every category).
+- The Cutter plans them by itself (`warmupPlan.ts`): evenly apart (7 days / the number), at the accounts' best hour,
+  **on top** of the day's batch videos; a filmed warm-up goes out once, ever; an idea never on the same campaign
+  twice; the ideas whose warm-ups get the most views first (a new idea counts as 1,000 until it has views). Planned a
+  week ahead at most, each sent at once (`warmupSend.ts`, when the app opens, every half hour, after filming, and when
+  he changes where they go).
+- Each **waits for his yes** in Posts with a notification of its own: "<campaign>: a warm-up to approve - It goes out
+  Sat 7:05 PM - approve it in Posts before then." Server: `meta.warmup` (`batch.warmupOf`: its time kept, approval
+  always his), the idea in the post's key `warmup:<idea>:<made>` - no database change.
+- Each idea's card shows its warm-ups' average views.
+- Tests: `warmupPlan.test.ts`, `batch.test.ts` (warm-up posts).
+
 ## Warm-ups, step 2: film several in one go
 App only: run ./deploy.sh.
 - Warm-ups -> **Film 5 in one go** (the ideas of the category shown that he has filmed least first), or **Film it** on

@@ -383,6 +383,9 @@ export interface SendEntry {
     /** A Formats video he scheduled himself, once the brand saw it: it goes
      *  at its batch day and time without asking again. */
     scheduled?: boolean
+    /** A warm-up post (warmupSend.ts): its idea and the time it goes, after
+     *  his yes. */
+    warmup?: { idea: string; at: string }
   }
   /** The post this one is a new version of (Edit again, music added), by
    *  key: taken out once this one is on the server (outbox.retireReplaced) -

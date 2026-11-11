@@ -172,3 +172,27 @@ export function freeBatchTimes(batch: BatchInfo, tz: string, taken: readonly num
   }
   return out
 }
+
+/** A warm-up post (the phone's warmups.ts, his ask 2026-11-11): one of the
+ *  short set posts that go out between an account's batch videos. It goes at
+ *  the time the phone picked (the account's best hour), on top of the day's
+ *  videos - never moved with the batch - and always waits for his yes, with a
+ *  notification of its own. Its idea is in its key, `warmup:<idea>:<made>`, so
+ *  views can be counted per idea. Null when what came is not one, or its time
+ *  is gone or more than a month off. */
+export function warmupOf(value: unknown, key: string, now = Date.now()): { idea: string; at: string } | null {
+  if (!value || typeof value !== 'object' || !isWarmupKey(key)) return null
+  const v = value as Record<string, unknown>
+  const idea = typeof v.idea === 'string' && /^[\w-]{1,80}$/.test(v.idea) ? v.idea : null
+  const at = typeof v.at === 'string' ? Date.parse(v.at) : NaN
+  if (!idea || !Number.isFinite(at) || at < now + 10 * 60_000 || at > now + 31 * 24 * 3600_000) return null
+  return { idea, at: new Date(at).toISOString() }
+}
+
+export const isWarmupKey = (key: string | null | undefined): boolean => typeof key === 'string' && key.startsWith('warmup:')
+
+/** A warm-up's notification: what to approve, and by when. */
+export function warmupReady(campaign: string, at: string, tz: string): { title: string; body: string } {
+  const when = new Date(at).toLocaleString('en-US', { weekday: 'short', hour: 'numeric', minute: '2-digit', timeZone: tz })
+  return { title: `${campaign}: a warm-up to approve`, body: `It goes out ${when} - approve it in Posts before then.` }
+}
