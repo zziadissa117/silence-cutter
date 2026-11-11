@@ -30,7 +30,7 @@ import { VideoPicker } from '../VideoPicker'
 import { BankView } from './BankView'
 import { MusicBankView } from './MusicBankView'
 import { VideoBankView } from './VideoBankView'
-import { findSong, songFile, syncSongs } from './musicBank'
+import { findSong, loadMusicBank, songFile, syncSongs } from './musicBank'
 import { BatchView } from './BatchView'
 import { copiesToMake, dislikedBy, keepStopped, nextInLine, oneAtATime, overfull, settled, startOver, stopBatch, takenBy, topUp, trimDown, type BatchVideo } from './batchRun'
 import { NOT_ALLOWED, trialAngle, trialFileName, withAccounts } from './trialLoop'
@@ -245,7 +245,7 @@ import { keepEven } from './keepEven'
 import { linkBatches, SERVER_URL_EVENT, serverUrl } from './serverLink'
 import { dropTalk, orderListen, orderMake, serverLetDown, talkNow, talkPlan, talkServerUp, upload } from './talkLink'
 import { popsSaid, talkFileId, toServer, type MakeOrder, type TalkSummary } from './talkOrder'
-import { clipTexts, clipsOf, headlineSeconds, noSpeechIn } from './noTalk'
+import { clipTexts, clipsOf, headlineSeconds, noSpeechIn, songForReaction } from './noTalk'
 import { reportMaking, SERVER_BANKS_EVENT, SERVER_COMMAND_EVENT, SERVER_STOP_EVENT, serverLog, type ServerCommand, type ServerMaking } from './serverMode'
 import { TabBar, type Tab } from './TabBar'
 import { BackToMore, MoreView } from './MoreView'
@@ -468,10 +468,20 @@ export function CampaignApp() {
     }
   }
 
+  /** A reaction with no song - none picked, none on its angle - still gets
+   *  one: a song from his music bank, the same one each time for the same
+   *  video. Its own sound is muted, so the music is all there is. */
+  const reactionSongFor = async (job: Job): Promise<string | undefined> => {
+    if (!job.day?.noSpeech) return undefined
+    if (campaignsRef.current.find((c) => c.id === job.campaignId)?.angles.find((a) => a.id === job.angleId)?.music) return undefined
+    const song = songForReaction(await loadMusicBank().catch(() => []), job.id)
+    return song ? `bank:${song.id}` : undefined
+  }
+
   /** The track under a video: the one picked for it - a song from the
    *  music bank or another angle's - or its angle's. */
   const musicFor = async (job: Job): Promise<AngleMusic | null | undefined> => {
-    const picked = job.day?.music
+    const picked = job.day?.music ?? (await reactionSongFor(job))
     if (picked === 'none') return null
     if (!picked) return undefined
     if (picked.startsWith('bank:')) {
@@ -787,7 +797,11 @@ export function CampaignApp() {
       headlineText: job.headlineText,
       captions: wantsCaptions(job) ? drawnWords(captionsFor(job, plan), bareRef.current) : [],
       voice: voiceRef.current,
-      ...(job.day?.music ? { music: job.day.music } : {}),
+      ...(await (async () => {
+        const music = job.day?.music ?? (await reactionSongFor(job))
+        return music ? { music } : {}
+      })()),
+      ...(job.day?.noSpeech ? { musicOnly: true } : {}),
       clips,
       defaults: job.day?.noEffects ? null : defaultEffects(),
       skipPictures: job.day?.skipPictures ?? [],
@@ -2167,6 +2181,7 @@ export function CampaignApp() {
               next.day?.captionStyle ?? defaultCaptionStyle(),
               popsFor(next),
               await byHandFor(next),
+              next.day?.noSpeech === true,
             ),
           )
         } else {

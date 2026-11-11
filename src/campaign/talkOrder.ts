@@ -59,6 +59,9 @@ export interface MakeOrder {
   skipPictures: string[]
   captionPosition: CaptionPosition
   noCut: boolean
+  /** A reaction (no talking): its own sound muted, the music the only sound
+   *  (render.ts musicOnly). Absent on orders from before. */
+  musicOnly?: boolean
   /** Pictures put on by hand: one from the picture bank is read from the
    *  server's own copy of the bank (fileId absent); one from his phone was sent. */
   manual: { picture: ManualPicture; fileId?: string }[]

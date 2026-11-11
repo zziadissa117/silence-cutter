@@ -153,6 +153,7 @@ async function runMake(order: MakeOrder): Promise<void> {
       videos: videos.filter((v): v is { picture: typeof v.picture; file: File } => v.file !== null),
       sounds: sounds.filter((v) => v.file !== null || (v.picture.source.kind === 'sound' && v.picture.source.from === 'effect')),
     },
+    order.musicOnly === true,
   )
   // The look didn't go on: the phone makes it itself, where he sees why.
   if (result.lookFailed) throw new SilenceCutError(result.lookFailed)

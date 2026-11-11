@@ -163,7 +163,7 @@ export function JobRow({
         : job.status === 'sorted'
           ? unsure
             ? `Needs you · ${job.day?.guess?.why ?? ''}`
-            : [job.day?.noSpeech ? 'Reaction, no talking' : null, label, job.headlineText && `"${job.headlineText}"`].filter(Boolean).join(' · ')
+            : [job.day?.noSpeech ? 'Reaction, no talking · music only' : null, label, job.headlineText && `"${job.headlineText}"`].filter(Boolean).join(' · ')
           : job.status === 'approved'
             ? job.onServer
               ? `Approved · going to the server to be made · ${label}`

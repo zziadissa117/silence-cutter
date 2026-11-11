@@ -35,6 +35,16 @@ export function noSpeechIn(words: readonly { text: string }[]): boolean {
   return said.length >= 12 && new Set(said).size / said.length < 0.3
 }
 
+/** The song for a reaction that has none: one of his music bank's songs
+ *  (not a sound effect), the same one for the same video every time. */
+export function songForReaction<S extends { id: string; sfx?: true }>(songs: readonly S[], key: string): S | null {
+  const list = songs.filter((s) => s.sfx !== true)
+  if (list.length === 0) return null
+  let h = 0
+  for (const c of key) h = (h * 31 + c.charCodeAt(0)) >>> 0
+  return list[h % list.length]
+}
+
 export interface Clip {
   start: number
   end: number

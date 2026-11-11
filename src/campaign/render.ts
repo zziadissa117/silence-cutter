@@ -68,6 +68,7 @@ import { dbToGain, mixInto, musicProblem, prepareMusic, prepareSound, type Place
 import { MomentPlacer, inWindow } from './timeline'
 import { MusicBed, musicGain, trackLoudness, type MusicLevel } from './music'
 import { MusicFreeCopy } from './musicFree'
+import { liftMusic, soloMusicGain } from './montageRender'
 import { cover } from './reaction'
 import { Voice, measureLoudness, type WalkAudio } from './voice'
 import { frameRateOf, makeSize, videoQuality } from './quality'
@@ -128,6 +129,11 @@ export interface CampaignRenderInput {
   voice?: boolean
   /** A track to play under the voice; see music.ts. */
   music?: { audio: Blob; level: MusicLevel } | null
+  /** A reaction - no talking (noTalk.ts): its own sound is muted and the
+   *  music is the only sound, the whole video long, at the level a batch
+   *  song plays (his ask, 2026-11-11: "the music should take up 100% ...
+   *  mute the clip and just do the music ... at a normal volume"). */
+  musicOnly?: boolean
   /** Videos joined on whole, before him and after him. */
   clips?: Partial<Record<ClipPlace, Blob | null>> & { muted?: ClipPlace[] }
   /** Videos played whole in the middle of him, each after kept part `after`
@@ -215,6 +221,7 @@ export async function renderCampaignCut(
     forceVertical = false,
     voice: boostVoice = false,
     music = null,
+    musicOnly = false,
     clips: joining = {},
     inserts = [],
     pops,
@@ -391,7 +398,7 @@ export async function renderCampaignCut(
     }
     let voice: Voice | null = null
     traceStep('measuring the voice')
-    if (boostVoice) {
+    if (boostVoice && !musicOnly) {
       try {
         voice = await Voice.measure(sampleRate, channels, walkKeptAudio)
       } catch (error) {
@@ -413,11 +420,21 @@ export async function renderCampaignCut(
       try {
         // Only as much of the track as the video uses is decoded (sounds.ts).
         const channelsNeeded = (await prepareMusic(music.audio, 'music', allSec, sampleRate)).channels
-        const voiceLufs = await keptLufs()
         const trackLufs = trackLoudness(channelsNeeded, sampleRate)
-        const gain = musicGain(trackLufs, voiceLufs, music.level)
-        if (gain > 0) bed = new MusicBed(channelsNeeded, sampleRate, Math.round(allSec * sampleRate), gain, voiceLufs, false)
-        else musicFailed = Number.isFinite(trackLufs) ? "the voice couldn't be measured" : 'the track is silent'
+        if (musicOnly) {
+          // Nothing else is heard: the song set to where a batch song plays,
+          // up or down, under a limiter, and never dipped.
+          const lift = soloMusicGain(trackLufs)
+          if (lift > 0) {
+            liftMusic(channelsNeeded, lift, sampleRate)
+            bed = new MusicBed(channelsNeeded, sampleRate, Math.round(allSec * sampleRate), 1, Infinity, true)
+          } else musicFailed = 'the track is silent'
+        } else {
+          const voiceLufs = await keptLufs()
+          const gain = musicGain(trackLufs, voiceLufs, music.level)
+          if (gain > 0) bed = new MusicBed(channelsNeeded, sampleRate, Math.round(allSec * sampleRate), gain, voiceLufs, false)
+          else musicFailed = Number.isFinite(trackLufs) ? "the voice couldn't be measured" : 'the track is silent'
+        }
       } catch (error) {
         console.warn('The music could not be added, so the video is made without it:', error)
         reportProblem({ kind: 'fallback', phase: 'music', message: musicProblem(error, music.audio) })
@@ -714,7 +731,8 @@ export async function renderCampaignCut(
       const data = new Float32Array(length * channels)
       const planes = block.planes.map((plane, c) => {
         const into = data.subarray(c * length, (c + 1) * length)
-        into.set(plane)
+        // A reaction's own sound is left out: the music is its sound.
+        if (!musicOnly) into.set(plane)
         return into
       })
       const firstFrame = Math.round(timestamp * sampleRate)

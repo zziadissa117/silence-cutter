@@ -233,6 +233,8 @@ export async function make(
     /** His sounds, each with its file - none for one of the Cutter's own effects. */
     sounds?: readonly { picture: ManualPicture; file: Blob | null }[]
   } = {},
+  /** A reaction (no talking): its own sound muted, the music its only sound. */
+  musicOnly = false,
 ): Promise<CampaignResult> {
   refuseBroken(campaign, angle)
   const base = videoLook(campaign, angle, bank, defaults, skipPictures, pop.videos)
@@ -284,6 +286,7 @@ export async function make(
       forceVertical,
       voice,
       music: track ? { audio: track.audio, level: track.level } : null,
+      ...(musicOnly ? { musicOnly } : {}),
       clips: { before: clips.before, after: clips.after, ...(clips.muted?.length ? { muted: clips.muted } : {}) },
       inserts: middle.placed.map((p) => ({ after: p.after, file: clips.cues![p.cue].file })),
       pops: { clips: popClips, sizePct: pop.sizePct, position: pop.position },
