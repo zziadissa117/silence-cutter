@@ -103,7 +103,8 @@ describe("Claude's answer as plain JSON (the strict schema was too complex for t
     expect(board.format).toBe('glass')
     expect(board.title).toEqual({ text: 'I Automated My Editing', to: 5 })
     expect(board.emphasis).toEqual([{ at: 2, style: 'pill' }])
-    expect(board.scenes[0].parts[0]).toMatchObject({ kind: 'tag', place: 'behind', label: '100% EDITED BY CLAUDE', mark: 'end-to-end' })
+    // Kept as written: no forced capitals (they read as an AI-made edit, 2026-11-11).
+    expect(board.scenes[0].parts[0]).toMatchObject({ kind: 'tag', place: 'behind', label: '100% edited by Claude', mark: 'end-to-end' })
     expect(cleanReply(answer)).toBe('Planned it.')
     expect(MOTION_ANSWER).toContain('"kind": "steps"')
   })
@@ -183,6 +184,7 @@ describe('Format 1: the board for a few moments, pop cards over his face the res
 
 describe('Format 2, the glass look (his example reel, 2026-11-08)', () => {
   it('keeps one card a scene, short, with a place it knows; a mark only if it is in the line', () => {
+    expect(cleanStoryboard({ format: 'glass', scenes: [{ from: 0, to: 9, says: '', parts: [{ kind: 'tag', at: 0, to: 5, text: 'hi', place: 'face' }] }] }, 10).scenes[0].parts[0]).toMatchObject({ place: 'face' })
     const board = cleanStoryboard(
       {
         format: 'glass',
@@ -194,18 +196,18 @@ describe('Format 2, the glass look (his example reel, 2026-11-08)', () => {
       100,
     )
     expect(board.scenes[0].parts).toHaveLength(1)
-    expect(board.scenes[0].parts[0]).toMatchObject({ kind: 'stat', place: 'side', tag: 'GRAPHICS' })
+    expect(board.scenes[0].parts[0]).toMatchObject({ kind: 'stat', place: 'side', tag: 'graphics' })
     expect(board.scenes[0].to).toBeLessThanOrEqual(18)
     expect(board.scenes[1].parts[0]).toMatchObject({ mark: '', place: 'side' })
   })
 
-  it('a list of steps needs two rows, in capitals, in order', () => {
+  it('a list of steps needs two rows, as Claude wrote them (no forced capitals, 2026-11-11), in order', () => {
     const board = cleanStoryboard(
       { format: 'glass', scenes: [{ from: 0, to: 30, says: '', parts: [{ kind: 'steps', at: 0, to: 30, tag: 'the pipeline', items: [{ text: 'rough cut', at: 6, icon: 'tools' }, { text: 'intake', note: 'copy raw in', at: 2, icon: 'nope' }] }] }] },
       40,
     )
     const steps = board.scenes[0].parts[0]
-    expect(steps.kind === 'steps' && steps.items.map((i) => i.text)).toEqual(['INTAKE', 'ROUGH CUT'])
+    expect(steps.kind === 'steps' && steps.items.map((i) => i.text)).toEqual(['intake', 'rough cut'])
     expect(steps.kind === 'steps' && steps.items[0].icon).toBeUndefined()
     expect(cleanStoryboard({ format: 'glass', scenes: [{ from: 0, to: 9, says: '', parts: [{ kind: 'steps', at: 0, items: [{ text: 'one', at: 1 }] }] }] }, 10).scenes).toEqual([])
   })

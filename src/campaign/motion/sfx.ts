@@ -213,3 +213,47 @@ export function soundsByName(cues: readonly { sound: MotionSound; at: number }[]
   for (const cue of cues) byName.set(cue.sound, [...(byName.get(cue.sound) ?? []), cue.at])
   return [...byName].map(([name, moments]) => ({ name, moments: moments.sort((a, b) => a - b), volumeDb: SOUND_DB[name] }))
 }
+
+/** Which of his sound effects (the music bank's Sound effects) plays each
+ *  kind of moment, by the words in its name - "whoosh 3.mp3", "Vine boom".
+ *  The Cutter's own made-up sounds are gone from motion graphics: "those are
+ *  the sound effects that Claude uses and everyone has. I honestly hate them"
+ *  (his words, 2026-11-11). A kind none of his effects is named for has no
+ *  sound. */
+export const KIND_WORDS: Record<MotionSound, RegExp> = {
+  whoosh: /whoo?sh|swoosh|transition|swipe|riser|rise/i,
+  swish: /swish|whip|swing|slide|swoosh/i,
+  pop: /pop|bubble|blip|pluck|boop/i,
+  ding: /ding|bell|chime|notif|ping|cash|coin|success/i,
+  tick: /tick|click|tap|type|keyboard|mouse/i,
+  hit: /hit|boom|bass|impact|thud|drop|vine|punch|slam/i,
+  shutter: /camera|shutter|flash|snap|photo/i,
+}
+
+/** His effects for one kind of moment, in the bank's order. */
+export function effectsFor(kind: MotionSound, bank: readonly { id: string; name: string }[]): { id: string; name: string }[] {
+  return bank.filter((e) => KIND_WORDS[kind].test(e.name))
+}
+
+/** The storyboard's moments with his effects: each moment gets one of his
+ *  effects of its kind - taking turns when he has several, so the same one
+ *  doesn't come back every time - grouped by effect, as render.ts takes them.
+ *  Moments with none of his effects are left silent. */
+export function bankSounds(
+  cues: readonly { sound: MotionSound; at: number }[],
+  bank: readonly { id: string; name: string }[],
+): { name: MotionSound; effectId: string; effectName: string; moments: number[]; volumeDb: number }[] {
+  const turn = new Map<MotionSound, number>()
+  const byEffect = new Map<string, { name: MotionSound; effectId: string; effectName: string; moments: number[]; volumeDb: number }>()
+  for (const cue of cues) {
+    const options = effectsFor(cue.sound, bank)
+    if (options.length === 0) continue
+    const k = turn.get(cue.sound) ?? 0
+    turn.set(cue.sound, k + 1)
+    const effect = options[k % options.length]
+    const entry = byEffect.get(effect.id) ?? { name: cue.sound, effectId: effect.id, effectName: effect.name, moments: [], volumeDb: SOUND_DB[cue.sound] }
+    entry.moments.push(cue.at)
+    byEffect.set(effect.id, entry)
+  }
+  return [...byEffect.values()].map((e) => ({ ...e, moments: e.moments.sort((a, b) => a - b) }))
+}

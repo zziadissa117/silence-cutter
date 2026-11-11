@@ -160,9 +160,11 @@ export interface CampaignRenderInput {
     /** The glass look: his words in its caption bar - in place of the
      *  captions (motion/glass.ts). */
     kinetic?: { words: { text: string; start: number; end: number }[]; phrases: [number, number][]; styles: (EmphasisStyle | null)[]; centerY?: number; scale?: number }
-    /** Its sound effects (motion/sfx.ts): each sound, when it plays on the
-     *  raw video's timeline, and how loud. */
-    sounds?: { name: MotionSound; moments: number[]; volumeDb: number }[]
+    /** Its sound effects (motion/sfx.ts): each of his effects (`file`, from
+     *  the music bank's Sound effects), when it plays on the raw video's
+     *  timeline, and how loud. One without a file isn't played - the Cutter's
+     *  own made-up sounds are gone (his ask, 2026-11-11). */
+    sounds?: { name: MotionSound; moments: number[]; volumeDb: number; file?: Blob }[]
   }
 }
 
@@ -316,6 +318,21 @@ export async function renderCampaignCut(
         ownSounds.push({ prepared: { channels: playedFor(channels, sound.seconds, sampleRate) }, placer: new MomentPlacer([sound.at], keep), gain: dbToGain(sound.volumeDb) })
       } catch (error) {
         reportProblem({ kind: 'fallback', phase: 'sound put on by hand', message: error instanceof Error ? error.message : String(error) })
+      }
+    }
+    // Motion graphics' sound effects: his own files, each made as loud at its
+    // peak as the others, then set under his voice.
+    const motionPrepared: { prepared: PreparedSound; moments: number[]; gain: number }[] = []
+    for (const sound of graphics?.sounds ?? []) {
+      if (!sound.file) continue
+      try {
+        const { channels } = await prepareMusic(sound.file, sound.name, 4, sampleRate)
+        let peak = 0
+        for (const c of channels) for (let i = 0; i < c.length; i++) peak = Math.max(peak, Math.abs(c[i]))
+        if (peak <= 0) continue
+        motionPrepared.push({ prepared: { channels: playedFor(channels, 4, sampleRate) }, moments: sound.moments, gain: dbToGain(sound.volumeDb) / peak })
+      } catch (error) {
+        reportProblem({ kind: 'fallback', phase: 'motion sound effect', message: error instanceof Error ? error.message : String(error) })
       }
     }
     // The clips joined on are opened here too - but one that can't be read
@@ -577,10 +594,10 @@ export async function renderCampaignCut(
         if (sound.trigger.kind === 'start') placed.push({ ...prepared[i], startFrame: Math.round(at * sampleRate), gain: dbToGain(sound.volumeDb) })
       })
     // Motion graphics' own sounds, placed with each part like the look's.
-    const motionSounds = (graphics?.sounds ?? []).map((sound) => ({
-      prepared: { channels: [makeSound(sound.name, sampleRate)] },
+    const motionSounds = motionPrepared.map((sound) => ({
+      prepared: sound.prepared,
       placer: new MomentPlacer(sound.moments, keep),
-      gain: dbToGain(sound.volumeDb),
+      gain: sound.gain,
     }))
     const placeSounds = (index: number, shift: number) => {
       for (const sound of [...motionSounds, ...ownSounds]) {

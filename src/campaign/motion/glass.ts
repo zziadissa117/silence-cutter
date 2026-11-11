@@ -70,6 +70,18 @@ const OUT_SEC = 0.28
 const HOLD = 0.35
 /** The light screen of the steps takes this long to come and go. */
 const STAGE_SEC = 0.5
+/** The square in the middle of the frame that every graphic stays inside -
+ *  where viewers look (his rule, 2026-11-11: "imagine a sort of square in
+ *  the middle of the video ... I want all the visuals to go inside that
+ *  square"). As wide as the frame on a vertical video, centred up and down. */
+export function squareOf(width: number, height: number): { x: number; y: number; size: number } {
+  const size = Math.min(width, height)
+  return { x: (width - size) / 2, y: (height - size) / 2, size }
+}
+/** Graphics are drawn this much smaller than they used to be, to sit well
+ *  inside the square ("the visuals are a little bit too large"). */
+const CARD_SCALE = 0.85
+
 /** Most words in one caption phrase, and a pause that ends one. */
 const PHRASE_WORDS = 5
 const PHRASE_PAUSE = 0.45
@@ -178,11 +190,6 @@ function text(ctx: Ctx, value: string, x: number, y: number, px: number, colour:
   else ctx.fillText(value, x, y)
 }
 
-/** Small capitals spaced out, like the example's labels. */
-function spaced(value: string): string {
-  return value.split('').join(' ')
-}
-
 /** The frame as it is now, before anything of the look is drawn on it. */
 interface Frame {
   /** The frame itself, for his video in the steps' box and for him over a
@@ -279,7 +286,7 @@ function cardLife(part: { at: number; to: number }, time: Timing, t: number): { 
 function cardSize(ctx: Ctx, part: CardPart, u: number): { w: number; h: number } {
   switch (part.kind) {
     case 'tag': {
-      const label = part.label ? textWidth(ctx, spaced(part.label), 2.3 * u, 700) + 7 * u : 0
+      const label = part.label ? textWidth(ctx, part.label, 2.8 * u, 700) + 7 * u : 0
       const line = textWidth(ctx, part.text, 6.4 * u, 800) + (part.mark ? 3 * u : 0)
       return { w: Math.min(88 * u, Math.max(46 * u, label, line) + 7 * u), h: part.label ? 19 * u : 13 * u }
     }
@@ -292,18 +299,73 @@ function cardSize(ctx: Ctx, part: CardPart, u: number): { w: number; h: number }
   }
 }
 
-/** Where a card of `size` sits for `place`. Behind him: big and high, his
- *  head in front; at the side: right of his head; low: over his chest. */
+/** Where a card of `size` sits for `place`, inside the square: over his
+ *  face ("face"), right of his head ("side"), over his chest ("low"); a card
+ *  behind him is placed by behindBox, beside his head. */
 function cardBox(place: Place, size: { w: number; h: number }, width: number, height: number, u: number): { x: number; y: number; scale: number } {
-  if (place === 'behind') {
-    const scale = Math.min(1.25, (90 * u) / size.w)
-    // High, its words in its top part; his head comes up over the empty
-    // glass under them (drawCard makes a card behind him taller).
-    return { x: width / 2 - (size.w * scale) / 2, y: height * 0.095, scale }
+  const sq = squareOf(width, height)
+  const scale = Math.min(CARD_SCALE, (sq.size - 14 * u) / size.w)
+  const w = size.w * scale
+  const h = size.h * scale
+  const inside = (y: number) => Math.max(sq.y + 3 * u, Math.min(sq.y + sq.size - 3 * u - h, y))
+  if (place === 'side') return { x: sq.x + sq.size - 6 * u - w, y: inside(height * 0.42 - h / 2), scale }
+  if (place === 'face') return { x: width / 2 - w / 2, y: inside(height * 0.4 - h / 2), scale }
+  return { x: width / 2 - w / 2, y: inside(height * 0.6 - h / 2), scale }
+}
+
+/** Where a card behind him goes: beside his head, on the side with more room
+ *  behind him at that moment (read off his cut-out), in the top of the square -
+ *  so his head covers at most its edge, never half of it (his report,
+ *  2026-11-11: "half of them are getting covered"). Too little room either
+ *  side: null - it is drawn in front, over his face, instead. Worked out once,
+ *  as the card comes up, and kept for its life. */
+const behindBoxes = new WeakMap<object, { x: number; y: number; scale: number } | null>()
+function behindBox(part: CardPart, size: { w: number; h: number }, width: number, height: number, u: number, cutout: CanvasImageSource | null | undefined): { x: number; y: number; scale: number } | null {
+  if (behindBoxes.has(part)) return behindBoxes.get(part)!
+  const sq = squareOf(width, height)
+  // Room either side of him, as shares of the width; a still without his
+  // cut-out takes the usual: his head in the middle third.
+  const room = cutout ? roomBeside(cutout, height, sq) : { left: 0.33, right: 0.33 }
+  const side = room.right >= room.left ? 'right' : 'left'
+  const free = Math.max(room.left, room.right) * width
+  const scale = Math.min(CARD_SCALE, (free + 6 * u) / size.w)
+  let box: { x: number; y: number; scale: number } | null = null
+  if (size.w * scale >= 30 * u) {
+    const w = size.w * scale
+    box = { x: side === 'right' ? sq.x + sq.size - 4 * u - w : sq.x + 4 * u, y: sq.y + 4 * u, scale }
   }
-  // Beside his neck and shoulder, clear of his face.
-  if (place === 'side') return { x: width - 4 * u - size.w, y: height * 0.4, scale: 1 }
-  return { x: width / 2 - size.w / 2, y: height * 0.56 - size.h / 2, scale: 1 }
+  behindBoxes.set(part, box)
+  return box
+}
+
+/** How much of the frame's width is free of him, left and right of his head,
+ *  in the top third of the square - from his cut-out (white where he is). */
+function roomBeside(cutout: CanvasImageSource, height: number, sq: { y: number; size: number }): { left: number; right: number } {
+  const W = 40
+  const H = 71
+  const small = scratch('room', W, H)
+  if (!small) return { left: 0.33, right: 0.33 }
+  try {
+    small.ctx.clearRect(0, 0, W, H)
+    small.ctx.drawImage(cutout, 0, 0, W, H)
+    const data = small.ctx.getImageData(0, 0, W, H).data
+    const from = Math.floor((sq.y / height) * H)
+    // Head height only: his shoulders further down never decide the side.
+    const to = Math.ceil(((sq.y + sq.size * 0.32) / height) * H)
+    const him = new Array<boolean>(W).fill(false)
+    for (let y = from; y < Math.min(H, to); y++) {
+      for (let x = 0; x < W; x++) {
+        const k = (y * W + x) * 4
+        if (data[k] > 128 && data[k + 3] > 128) him[x] = true
+      }
+    }
+    const first = him.indexOf(true)
+    if (first < 0) return { left: 0.5, right: 0.5 }
+    const last = him.lastIndexOf(true)
+    return { left: first / W, right: (W - 1 - last) / W }
+  } catch {
+    return { left: 0.33, right: 0.33 }
+  }
 }
 
 /** The fixed pattern of red blocks for a row: three or four, never side by
@@ -331,8 +393,8 @@ function drawCardInside(ctx: Ctx, part: CardPart, x: number, y: number, w: numbe
         const lp = clamp01((t - at - 0.1) / 0.3)
         ctx.save()
         ctx.globalAlpha *= lp
-        const label = spaced(part.label)
-        const lw = textWidth(ctx, label, 2.3 * u, 700) + 6 * u
+        const label = part.label
+        const lw = textWidth(ctx, label, 2.8 * u, 700) + 6 * u
         const ly = y + 5.4 * u
         ctx.strokeStyle = 'rgba(236, 122, 79, 0.45)'
         ctx.lineWidth = Math.max(1, 0.22 * u)
@@ -342,7 +404,7 @@ function drawCardInside(ctx: Ctx, part: CardPart, x: number, y: number, w: numbe
         ctx.beginPath()
         ctx.arc(x + 5.6 * u, ly, 0.6 * u, 0, Math.PI * 2)
         ctx.fill()
-        text(ctx, label, x + 7.2 * u, ly + 0.1 * u, 2.3 * u, GLASS_COLOURS.orange, 700, 'left', w - 12 * u)
+        text(ctx, label, x + 7.2 * u, ly + 0.1 * u, 2.8 * u, GLASS_COLOURS.orange, 700, 'left', w - 12 * u)
         ctx.restore()
         rowY = y + 12.6 * u
       }
@@ -385,7 +447,7 @@ function drawCardInside(ctx: Ctx, part: CardPart, x: number, y: number, w: numbe
       ctx.globalAlpha *= after > 0 ? Math.abs(after - 0.5) * 2 : 1
       text(ctx, title, x + 3.5 * u, y + 5 * u, 4 * u, GLASS_COLOURS.ink, 800, 'left', w - 26 * u)
       ctx.restore()
-      if (part.tag) text(ctx, spaced(part.tag), x + w - 3.5 * u, y + 5 * u, 2 * u, GLASS_COLOURS.blue, 700, 'right')
+      if (part.tag) text(ctx, part.tag, x + w - 3.5 * u, y + 5 * u, 2.5 * u, GLASS_COLOURS.blue, 700, 'right')
       // The row: each block pops in in turn; on "after" the red ones close up.
       const rowX = x + 3.5 * u
       const rowW = w - 7 * u
@@ -418,7 +480,7 @@ function drawCardInside(ctx: Ctx, part: CardPart, x: number, y: number, w: numbe
       return
     }
     case 'stat': {
-      if (part.tag) text(ctx, spaced(part.tag), x + w - 3.5 * u, y + 4.6 * u, 1.9 * u, GLASS_COLOURS.blue, 700, 'right', w - 6 * u)
+      if (part.tag) text(ctx, part.tag, x + w - 3.5 * u, y + 4.6 * u, 2.4 * u, GLASS_COLOURS.blue, 700, 'right', w - 6 * u)
       const counted = clamp01((t - at - 0.1) / 1)
       text(ctx, countText(part.text, easeOut(counted)), x + w - 3.5 * u, y + 11.5 * u, 9 * u, GLASS_COLOURS.ink, 800, 'right', w - 6 * u)
       if (part.sub) text(ctx, part.sub, x + w - 3.5 * u, y + 17.2 * u, 2.1 * u, GLASS_COLOURS.grey, 600, 'right', w - 6 * u)
@@ -445,12 +507,12 @@ function drawCardInside(ctx: Ctx, part: CardPart, x: number, y: number, w: numbe
     }
     case 'picture': {
       if (part.tag) {
-        const tw = textWidth(ctx, spaced(part.tag), 1.8 * u, 700) + 3.6 * u
+        const tw = textWidth(ctx, part.tag, 2.3 * u, 700) + 3.6 * u
         ctx.strokeStyle = 'rgba(255, 255, 255, 0.5)'
         ctx.lineWidth = Math.max(1, 0.2 * u)
         roundRect(ctx, x + 2.6 * u, y + 2.6 * u, Math.min(tw, w - 5.2 * u), 3.8 * u, 1.9 * u)
         ctx.stroke()
-        text(ctx, spaced(part.tag), x + 4.4 * u, y + 4.6 * u, 1.8 * u, '#ffffff', 700, 'left', w - 9 * u)
+        text(ctx, part.tag, x + 4.4 * u, y + 4.6 * u, 2.3 * u, '#ffffff', 700, 'left', w - 9 * u)
       }
       const life = t - at
       const bob = Math.sin(life * 2.4) * 0.9 * u
@@ -479,21 +541,59 @@ function drawCardInside(ctx: Ctx, part: CardPart, x: number, y: number, w: numbe
   }
 }
 
-function drawCard(ctx: Ctx, frame: Frame, part: CardPart, width: number, height: number, t: number, time: Timing): void {
+/** Where a card goes this frame, and whether it is behind him: a card meant
+ *  for behind him with no room beside his head comes in front instead. */
+function placeCard(ctx: Ctx, part: CardPart, width: number, height: number, cutout?: CanvasImageSource | null): { box: { x: number; y: number; scale: number }; size: { w: number; h: number }; inside: { w: number; h: number }; behind: boolean } {
+  const u = width / 100
+  const inside = cardSize(ctx, part, u)
+  if (part.place === 'behind') {
+    const box = behindBox(part, inside, width, height, u, cutout)
+    if (box) return { box, size: inside, inside, behind: true }
+    return { box: cardBox('face', inside, width, height, u), size: inside, inside, behind: false }
+  }
+  return { box: cardBox(part.place, inside, width, height, u), size: inside, inside, behind: false }
+}
+
+/** How a card comes in - one of a few, picked by where it is in the video,
+ *  so they don't all move the same way (his report, 2026-11-11: "they're
+ *  very, very, very repetitive"). */
+function entranceOf(part: CardPart): number {
+  return Math.abs(Math.round(part.at * 7 + part.to * 3)) % 4
+}
+
+function drawCard(ctx: Ctx, frame: Frame, part: CardPart, width: number, height: number, t: number, time: Timing, cutout?: CanvasImageSource | null): void {
   const life = cardLife(part, time, t)
   if (!life) return
   const u = width / 100
-  const inside = cardSize(ctx, part, u)
-  // Behind him: glass reaching down under the words, for his head to cover.
-  const size = part.place === 'behind' ? { w: inside.w, h: inside.h + 14 * u } : inside
-  const box = cardBox(part.place, size, width, height, u)
+  const { box, size, inside } = placeCard(ctx, part, width, height, cutout)
   ctx.save()
   ctx.globalAlpha *= clamp01(life.p * 2) * life.out
-  // Rises in, a touch small, and settles; on the way out it sinks a little.
-  const s = box.scale * (0.92 + 0.08 * easeBack(life.p)) * (0.96 + 0.04 * life.out)
   const cx = box.x + (size.w * box.scale) / 2
   const cy = box.y + (size.h * box.scale) / 2
-  ctx.translate(cx, cy + (1 - easeOut(life.p)) * 5 * u + Math.sin((t - life.at) * 1.8) * 0.4 * u)
+  const settle = 1 - easeOut(life.p)
+  const drift = Math.sin((t - life.at) * 1.8) * 0.4 * u
+  let s = box.scale * (0.96 + 0.04 * life.out)
+  let dx = 0
+  let dy = drift
+  switch (entranceOf(part)) {
+    case 0:
+      // Rises in, a touch small, and settles.
+      s *= 0.92 + 0.08 * easeBack(life.p)
+      dy += settle * 5 * u
+      break
+    case 1:
+      // Slides in from the left.
+      dx = -settle * 14 * u
+      break
+    case 2:
+      // Slides in from the right.
+      dx = settle * 14 * u
+      break
+    default:
+      // Pops up from small.
+      s *= 0.6 + 0.4 * easeBack(life.p)
+  }
+  ctx.translate(cx + dx, cy + dy)
   ctx.scale(s, s)
   ctx.translate(-size.w / 2, -size.h / 2)
   glassPanel(ctx, frame, width, height, 0, 0, size.w, size.h, 3.2 * u, u, part.kind === 'picture')
@@ -525,10 +625,18 @@ export function stageAt(board: Storyboard, time: Timing, t: number): { part: Ext
 }
 
 /** Where his video sits on the light screen: a box under the list. */
+/** The steps' rows, inside the square: where the first starts and how far
+ *  apart they are. */
+function rowsOf(width: number, height: number, u: number): { top: number; pitch: number; x: number; w: number; h: number } {
+  const sq = squareOf(width, height)
+  return { top: sq.y + 8 * u, pitch: 9.4 * u, x: sq.x + 8 * u, w: sq.size - 16 * u, h: 7.8 * u }
+}
+
 function stageBox(rows: number, width: number, height: number, u: number): { x: number; y: number; w: number; h: number } {
-  const listEnd = 16 * u + rows * 10.6 * u
-  const top = listEnd + 5 * u
-  const h = Math.min(74 * u, height - 13 * u - top)
+  const sq = squareOf(width, height)
+  const list = rowsOf(width, height, u)
+  const top = list.top + rows * list.pitch + 3 * u
+  const h = Math.max(20 * u, Math.min(64 * u, sq.y + sq.size - 3 * u - top))
   const w = h / 1.22
   return { x: width / 2 - w / 2, y: top, w, h }
 }
@@ -589,15 +697,16 @@ function drawStage(ctx: Ctx, frame: Frame, part: Extract<Part, { kind: 'steps' }
   // The list.
   ctx.save()
   ctx.globalAlpha = clamp01(up * 1.6)
-  if (part.tag) text(ctx, spaced(part.tag), 7 * u, 11.4 * u, 2.2 * u, GLASS_COLOURS.blue, 800, 'left', 86 * u)
+  const list = rowsOf(width, height, u)
+  if (part.tag) text(ctx, part.tag, list.x + u, list.top - 3.6 * u, 2.8 * u, GLASS_COLOURS.blue, 800, 'left', list.w)
   part.items.forEach((item, i) => {
     const at = time.start(item.at)
     const p = clamp01((t - at + LEAD) / 0.35)
     if (p <= 0) return
-    const rowY = 15 * u + i * 10.6 * u
-    const rowX = 6 * u + (1 - easeOut(p)) * -8 * u
-    const rowW = 88 * u
-    const rowH = 8.8 * u
+    const rowY = list.top + i * list.pitch
+    const rowX = list.x + (1 - easeOut(p)) * -8 * u
+    const rowW = list.w
+    const rowH = list.h
     const colour = STEP_COLOURS[i % STEP_COLOURS.length]
     ctx.save()
     ctx.globalAlpha *= clamp01(p * 1.8)
@@ -651,7 +760,7 @@ function drawTitle(ctx: Ctx, title: NonNullable<Storyboard['title']>, board: Sto
   const until = Math.min(time.end(title.to) + HOLD, first - OUT_SEC)
   if (t > until + OUT_SEC) return
   const out = clamp01((until + OUT_SEC - t) / OUT_SEC)
-  const px = 7.4 * u
+  const px = 6.6 * u
   // At most two lines, as even as can be.
   const words = title.text.split(/\s+/).filter(Boolean)
   let lines = [words]
@@ -673,7 +782,9 @@ function drawTitle(ctx: Ctx, title: NonNullable<Storyboard['title']>, board: Sto
   const space = textWidth(ctx, ' ', size, 800)
   let k = 0
   lines.forEach((line, row) => {
-    const y = height * 0.105 + (row - (lines.length - 1) / 2) * size * 1.15
+    // At the top of the square, not the top of the frame (his ask, 2026-11-11:
+    // "the headline is too high up").
+    const y = squareOf(width, height).y + 8 * u + (row - (lines.length - 1) / 2) * size * 1.15
     let x = width / 2 - textWidth(ctx, line.join(' '), size, 800) / 2
     for (const word of line) {
       // Word by word, quickly, rising into place.
@@ -842,8 +953,8 @@ export function drawGlassLook(ctx: Ctx, width: number, height: number, board: St
   const full = stage !== null && stage.up > 0.5
   if (!full) {
     const cards = board.scenes.flatMap((scene) => scene.parts.filter((p): p is CardPart => p.kind === 'tag' || p.kind === 'blocks' || p.kind === 'stat' || p.kind === 'picture'))
-    const behind = cards.filter((p) => p.place === 'behind' && cardLife(p, time, t))
-    for (const part of behind) drawCard(ctx, frame, part, width, height, t, time)
+    const behind = cards.filter((p) => p.place === 'behind' && cardLife(p, time, t) && placeCard(ctx, p, width, height, cutout).behind)
+    for (const part of behind) drawCard(ctx, frame, part, width, height, t, time, cutout)
     if (behind.length > 0 && cutout && frame.copy) {
       // Him, cut out of the frame, back over the card.
       const him = scratch('him', width, height)
@@ -857,7 +968,7 @@ export function drawGlassLook(ctx: Ctx, width: number, height: number, board: St
         ctx.drawImage(him.canvas, 0, 0)
       }
     }
-    for (const part of cards) if (part.place !== 'behind') drawCard(ctx, frame, part, width, height, t, time)
+    for (const part of cards) if (!behind.includes(part)) drawCard(ctx, frame, part, width, height, t, time, cutout)
     if (board.title) drawTitle(ctx, board.title, board, width, height, t, time)
     if (kinetic) drawCaptions(ctx, kinetic, width, height, t)
   }

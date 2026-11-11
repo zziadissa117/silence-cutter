@@ -14,7 +14,8 @@ import { renderCampaignCut } from '../render'
 import { formatOf, type EmphasisStyle, type Storyboard } from '../../../supabase/functions/postiz/motion.ts'
 import { captionPositionAt, type Timing } from './draw'
 import { CAPTION_CENTER, kineticPhrases, type Kinetic } from './glass'
-import { motionSounds, soundsByName } from './sfx'
+import { bankSounds, motionSounds, type MotionSound } from './sfx'
+import { isEffect, loadMusicBank, songFile } from '../musicBank'
 
 /** A setting of the Videos tab, as it keeps it on this phone (CampaignApp
  *  usePref), so a motion video is cut and captioned the way his others are. */
@@ -84,12 +85,26 @@ export interface CaptionChoice {
   style?: CaptionStyle
 }
 
-/** The storyboard's sound effects as render.ts takes them: none when he
- *  turned them off for this video. */
-export function soundsFor(plan: CampaignPlan, board: Storyboard, on = true): ReturnType<typeof soundsByName> {
+/** The storyboard's sound effects: each moment with one of his own effects
+ *  (the music bank's Sound effects, sfx.bankSounds) - none when he turned
+ *  them off for this video, or has no effect named for that kind of moment. */
+export function soundsFor(plan: CampaignPlan, board: Storyboard, on = true, effects: readonly { id: string; name: string }[] = []): ReturnType<typeof bankSounds> {
   if (!on) return []
   const heard = storyWords(plan)
-  return soundsByName(motionSounds(board, (i) => heard[i]?.start ?? Infinity))
+  return bankSounds(motionSounds(board, (i) => heard[i]?.start ?? Infinity), effects)
+}
+
+/** The same with each effect's file, for the render. */
+async function soundFiles(plan: CampaignPlan, board: Storyboard, on: boolean): Promise<{ name: MotionSound; moments: number[]; volumeDb: number; file?: Blob }[]> {
+  if (!on) return []
+  const effects = (await loadMusicBank().catch(() => [])).filter(isEffect)
+  const out: { name: MotionSound; moments: number[]; volumeDb: number; file?: Blob }[] = []
+  for (const sound of soundsFor(plan, board, true, effects)) {
+    const song = effects.find((e) => e.id === sound.effectId)
+    const file = song ? await songFile(song).catch(() => null) : null
+    if (file) out.push({ name: sound.name, moments: sound.moments, volumeDb: sound.volumeDb, file })
+  }
+  return out
 }
 
 /** The captions as they will be burned in: his fixed words fitted to the cut,
@@ -155,10 +170,12 @@ export async function makeMotionVideo(
   const settings = videoSettings()
   const words = storyWords(plan)
   const caption = captionLook(choice)
-  // The glass look draws its own captions, in its bar; and, like his
-  // example, the shot moves a little closer or back out at the cuts.
-  const ownCaptions = formatOf(board) === 'glass'
-  const look = { ...videoLook(blankCampaign('motion'), blankAngle('motion', 'Motion graphics')), effects: { ...NO_EFFECTS, ...(ownCaptions ? { cutPunch: 'subtle' as const } : {}) } }
+  // Like his example, the glass look's shot moves a little closer or back
+  // out at the cuts. The captions are the Cutter's own in every look - word
+  // by word or phrase by phrase, as on Videos (his rule, 2026-11-11: "It's
+  // not necessary to have different ones for any format, ever again").
+  const glass = formatOf(board) === 'glass'
+  const look = { ...videoLook(blankCampaign('motion'), blankAngle('motion', 'Motion graphics')), effects: { ...NO_EFFECTS, ...(glass ? { cutPunch: 'subtle' as const } : {}) } }
   const rendered = await renderCampaignCut(
     file,
     {
@@ -171,13 +188,12 @@ export async function makeMotionVideo(
       pictureMoments: [],
       bankCues: [],
       seed,
-      // In the glass look the bar under his face is the caption.
-      captions: ownCaptions ? [] : shownCaptions(plan, choice),
+      captions: shownCaptions(plan, choice),
       captionPosition: caption.position,
       captionSize: caption.size,
       captionStyle: caption.style,
       voice: settings.voice,
-      motion: { board, words, sounds: soundsFor(plan, board, sounds), ...(ownCaptions ? { kinetic: kineticFor(plan, choice, board) } : {}) },
+      motion: { board, words, sounds: await soundFiles(plan, board, sounds) },
     },
     onProgress,
   )

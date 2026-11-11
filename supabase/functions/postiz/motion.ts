@@ -119,9 +119,10 @@ export const BOARD_PARTS: readonly PartKind[] = ['title', 'note', 'cards', 'list
 export const popScene = (scene: Pick<Scene, 'parts'>): boolean => scene.parts.length > 0 && scene.parts.every((p) => p.kind === 'pop')
 export const GLASS_PARTS: readonly PartKind[] = ['tag', 'blocks', 'stat', 'picture', 'steps']
 
-/** Where a glass card sits. */
-export type Place = 'low' | 'side' | 'behind'
-const PLACES: readonly Place[] = ['low', 'side', 'behind']
+/** Where a glass card sits: over his face (in front of it), right of his
+ *  head, over his chest, or behind him beside his head. */
+export type Place = 'face' | 'low' | 'side' | 'behind'
+const PLACES: readonly Place[] = ['face', 'low', 'side', 'behind']
 
 export interface Scene {
   /** First and last word it is up for. */
@@ -199,16 +200,24 @@ FORMAT "board": while a board scene is up, the top 45% of the frame is a light g
 Tones: purple, green, red, dark.
 Drawings ("icon"): give most titles, cards, list rows and numbers an "icon" that fits, so the board is never just text, and use an "icons" part in some scenes. Only these: ${ICONS.join(', ')}. Optional "hook": a small card over his face at the very start with a label and a number counting up (only for a striking number in his first sentence). 3 to 8 scenes for a 30-90 s video.
 
-FORMAT "glass": like a polished YouTube-style edit. His face stays full screen; frosted glass cards come and go over him - something new every 3 to 6 seconds, each card up 2 to 5 seconds (at most 15 words), one card at a time, never covering his face. Each scene holds ONE part. Cards have a "place": "low" (over his chest, under his face), "side" (to the right of his head), or "behind" (big, high up, BEHIND him - his head and shoulders in front of it, for a strong moment; use it 1 to 3 times). Parts:
-- tag: a small UPPERCASE "label" ("100% EDITED BY CLAUDE · ZERO HUMAN EDITS") and a bold short "text" ("edited end-to-end") with one word or two of it in an orange pill ("mark": "end-to-end"). For the main claim of a moment.
-- blocks: a row of blue blocks with some red ones (the waste), a "title" ("cuts the dead space") and a small "tag" ("AUTO-EDITED"); optional "after": on its word the red ones disappear and the title becomes its "text" ("tight. no filler."). For before/after, removing waste, saving time.
-- stat: a big number counting up ("94%", "$3,000", "2x") with a small "tag" ("MOTION GRAPHICS") and "sub" ("auto-built, on beat"), bars growing under it. Only numbers he says.
-- picture: a card with a big "emoji" (one emoji that shows the thing: 🤖 🎬 💰 📈 🔥 ⏱️ 🧠 ✂️ 📱) and a small "tag" naming it ("DYNAMIC VISUALS").
-- steps: the whole screen turns light blue with his video in a box under a numbered list; "tag" over it ("THE PIPELINE · RAW → FINISHED") and up to 6 "items", each on its word: "text" one or two words, shown in capitals ("INTAKE"), "note" a few small words ("copy raw in"), an "icon", optional "pill" (a small coloured label at the right, "BY FORMAT"). Only when he lists steps or several things - once or twice a video, 4 to 10 seconds.
+FORMAT "glass": his face stays full screen; now and then a frosted glass card comes and goes over him. It must look like a person edited it, not a tool: viewers now recognise the same AI-made edit everywhere, and he does not want his to look like it.
+- Fewer, better moments: a card only where it adds something he says - about one every 8 to 12 seconds on average, at UNEVEN gaps (sometimes two close together, sometimes 15 seconds of just him talking). 4 to 8 scenes for a 30-90 s video, the first within his first two sentences. Each card up 2 to 5 seconds (at most 15 words), one at a time. Each scene holds ONE part.
+- Variety: never the same kind of part twice in a row, never the same "place" twice in a row; across the video use at least three different kinds.
+- Words like his own: short, plain, in his voice and his language, sentence case - the way he would write a text. No marketing labels, no words like "AI", "Claude", "automated", "edited by", "100%", "zero human" unless he says them himself. Most tags have NO "label"; give one only when it says something (at most a third of them). Emoji pictures rarely (at most once).
+- "place", where a card sits - everything stays in the middle of the frame:
+  "face": in front of him, over his face - when he asks for cards over his face, or for the one big moment;
+  "low": over his chest, under his face;
+  "side": right of his head;
+  "behind": behind him, beside his head, his head in front of its edge - at most twice a video.
+Parts:
+- tag: an optional small "label" and a short "text" ("cut every pause"), one or two words of it in an orange pill ("mark": "pause") - or no mark. For the main point of a moment.
+- blocks: a row of blue blocks with some red ones (the waste), a "title" ("the dead space") and an optional small "tag"; optional "after": on its word the red ones disappear and the title becomes its "text" ("no more filler"). For before/after, removing waste, saving time.
+- stat: a big number counting up ("2x", "$3,000", "25 a day") with an optional small "tag" and "sub", bars growing under it. Only numbers he says.
+- picture: a card with a big "emoji" that shows the thing and a small "tag" naming it. Rarely.
+- steps: the whole screen turns light blue with his video in a box under a numbered list; optional "tag" over it and up to 5 "items", each on its word: "text" one or two words, "note" a few small words, an "icon", optional "pill". Only when he lists steps - at most once a video, 4 to 10 seconds.
 Also in "glass":
-- "title": the title of the video, written over his head at the very start, 2 to 7 words, the promise of the video ("I Fully Automated My Video Editing"), until word "to" (about 3 seconds).
-- "emphasis": the captions are a dark bar under his face; mark a few words: "accent" (that word in orange - a key word, about one every 10 words) and "pill" (that word's whole phrase shown in a white pill with a green tick - for 1 to 3 key phrases: "super duper simple").
-- 6 to 12 scenes for a 30-90 s video, the first within his first two sentences.
+- "title": written over his head at the very start, 2 to 6 words in his own words - the promise of the video - until word "to" (about 3 seconds). Leave it out if his first sentence makes no promise.
+- The captions are the Cutter's own and are burned in already: never repeat his sentence word for word on a card.
 
 Call to action ("end"), in both looks, ALWAYS: at his last sentence. If he says one ("comment UGC", "follow for more"), put his words, short ('Comment "UGC"'). If he says none, put 'Comment "UGC"'.
 
@@ -228,9 +237,8 @@ Rules:
 export const MOTION_ANSWER = `Answer with ONE JSON object and nothing else - no code fence, no words before or after:
 {
   "reply": "one short sentence for him",
-  "format": "board" or "words",
-  "title": {"text": "I Automated My Editing", "to": 8},    (glass only)
-  "emphasis": [{"at": 12, "style": "accent" | "pill"}],   (glass only)
+  "format": "board" or "glass",
+  "title": {"text": "how I post 25 a day", "to": 8},    (glass only, optional)
   "hook": {"at": 0, "to": 6, "label": "PER MONTH", "text": "+10 000 $"},   (board only, optional)
   "scenes": [
     {"from": 14, "to": 40, "says": "what shows, for him", "parts": [ ...parts... ]}
@@ -248,11 +256,11 @@ Parts - "kind" and its fields:
   {"kind": "math", "at": 15, "lines": [{"text": "50 videos", "at": 15}], "result": {"text": "= 300 $ / day", "at": 22}}
   {"kind": "number", "at": 15, "label": "a day", "text": "300 $", "icon": "money"}
   {"kind": "pop", "at": 15, "to": 21, "icon": "fire", "text": "Goes viral", "tone": "red"}
-  {"kind": "tag", "at": 15, "to": 24, "place": "low" | "side" | "behind", "label": "100% EDITED BY CLAUDE", "text": "edited end-to-end", "mark": "end-to-end"}
-  {"kind": "blocks", "at": 15, "to": 26, "place": "low", "title": "cuts the dead space", "tag": "AUTO-EDITED", "after": {"at": 22, "text": "tight. no filler."}}
-  {"kind": "stat", "at": 15, "to": 22, "place": "side", "tag": "MOTION GRAPHICS", "text": "94%", "sub": "auto-built, on beat"}
-  {"kind": "picture", "at": 15, "to": 21, "place": "side", "tag": "DYNAMIC VISUALS", "emoji": "🤖"}
-  {"kind": "steps", "at": 15, "to": 40, "tag": "THE PIPELINE · RAW → FINISHED", "items": [{"text": "Intake", "note": "copy raw in", "at": 16, "icon": "video", "pill": ""}]}
+  {"kind": "tag", "at": 15, "to": 24, "place": "face" | "low" | "side" | "behind", "label": "", "text": "cut every pause", "mark": "pause"}
+  {"kind": "blocks", "at": 15, "to": 26, "place": "low", "title": "the dead space", "tag": "", "after": {"at": 22, "text": "no more filler"}}
+  {"kind": "stat", "at": 15, "to": 22, "place": "side", "tag": "views", "text": "2x", "sub": "in one week"}
+  {"kind": "picture", "at": 15, "to": 21, "place": "side", "tag": "the app", "emoji": "📱"}
+  {"kind": "steps", "at": 15, "to": 40, "tag": "my setup", "items": [{"text": "Film", "note": "one take", "at": 16, "icon": "video", "pill": ""}]}
 Every "at", "from", "to" is a word number.`
 
 /** Claude's answer as an object: the JSON in it, even with a code fence or a
@@ -442,7 +450,7 @@ function cleanPart(raw: Record<string, unknown>, from: number, to: number, words
       const text = str(raw.text, 40)
       if (!text) return null
       const mark = str(raw.mark, 40)
-      return { kind: 'tag', at, to: cardEnd(raw.to), label: str(raw.label, 48).toUpperCase(), text, mark: mark && text.toLowerCase().includes(mark.toLowerCase()) ? mark : '', place: placeOf(raw.place, 'low') }
+      return { kind: 'tag', at, to: cardEnd(raw.to), label: str(raw.label, 48), text, mark: mark && text.toLowerCase().includes(mark.toLowerCase()) ? mark : '', place: placeOf(raw.place, 'low') }
     }
     case 'blocks': {
       const title = str(raw.title, 32) || str(raw.text, 32)
@@ -451,29 +459,29 @@ function cleanPart(raw: Record<string, unknown>, from: number, to: number, words
       const afterRaw = raw.after && typeof raw.after === 'object' ? (raw.after as Record<string, unknown>) : null
       const afterText = afterRaw ? str(afterRaw.text, 32) : ''
       const afterAt = afterRaw ? Math.max(at + 1, Math.min(end, inside(afterRaw.at, end))) : end
-      return { kind: 'blocks', at, to: end, title, tag: str(raw.tag, 20).toUpperCase(), after: afterText && afterAt > at ? { at: afterAt, text: afterText } : null, place: placeOf(raw.place, 'low') }
+      return { kind: 'blocks', at, to: end, title, tag: str(raw.tag, 20), after: afterText && afterAt > at ? { at: afterAt, text: afterText } : null, place: placeOf(raw.place, 'low') }
     }
     case 'stat': {
       const text = str(raw.text, 12)
-      return text ? { kind: 'stat', at, to: cardEnd(raw.to), tag: str(raw.tag, 24).toUpperCase(), text, sub: str(raw.sub, 32), place: placeOf(raw.place, 'side') } : null
+      return text ? { kind: 'stat', at, to: cardEnd(raw.to), tag: str(raw.tag, 24), text, sub: str(raw.sub, 32), place: placeOf(raw.place, 'side') } : null
     }
     case 'picture': {
       const emoji = typeof raw.emoji === 'string' ? [...raw.emoji.trim()].slice(0, 4).join('') : ''
       const icon = iconOf(raw.icon)
       if (!emoji && !icon) return null
-      return { kind: 'picture', at, to: cardEnd(raw.to), tag: str(raw.tag, 24).toUpperCase(), emoji, ...(icon ? { icon } : {}), place: placeOf(raw.place, 'side') }
+      return { kind: 'picture', at, to: cardEnd(raw.to), tag: str(raw.tag, 24), emoji, ...(icon ? { icon } : {}), place: placeOf(raw.place, 'side') }
     }
     case 'steps': {
       const items = list(raw.items)
         .slice(0, L.stepItems)
         .flatMap((item) => {
           const text = str(item.text, 18)
-          return text ? [{ text: text.toUpperCase(), note: str(item.note, 24), at: inside(item.at, at), ...withIcon(item.icon), pill: str(item.pill, 12).toUpperCase() }] : []
+          return text ? [{ text, note: str(item.note, 24), at: inside(item.at, at), ...withIcon(item.icon), pill: str(item.pill, 12) }] : []
         })
         .sort((a, b) => a.at - b.at)
       if (items.length < 2) return null
       const end = Math.max(items[items.length - 1].at + 2, inside(raw.to, to))
-      return { kind: 'steps', at: Math.min(at, items[0].at), to: Math.min(to, end), tag: str(raw.tag, 40).toUpperCase(), items }
+      return { kind: 'steps', at: Math.min(at, items[0].at), to: Math.min(to, end), tag: str(raw.tag, 40), items }
     }
     default:
       return null

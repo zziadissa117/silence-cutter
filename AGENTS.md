@@ -85,7 +85,7 @@ only, no Supabase); `./deploy-server.sh` ships the `postiz` and `cutter` functio
 - Motion graphics (More -> Motion graphics: Claude's storyboard from his words, plan screen with stills + chat, then
   made in render.ts `motion`): `MotionView.tsx`, `motion/draw.ts` (the board and parts, drawn per frame),
   `motion/track.ts` (word numbers -> the video's clock), `motion/make.ts`, `motion/session.ts`, `motion/frames.ts`;
-  two looks: board (`draw.ts`; pop cards over his face between boards, confetti; drawings `motion/icons.ts` drawn on and moving) and glass (Format 2: `motion/glass.ts` - frosted cards, behind him via `motion/liveCutout.ts`, the steps light screen, its own caption bar, title, call to action always), picked in `motion/FormatPicker.tsx`; caption check before the plan (`MotionView.CaptionCheck`);
+  two looks: board (`draw.ts`; pop cards over his face between boards, confetti; drawings `motion/icons.ts` drawn on and moving) and glass (Format 2: `motion/glass.ts` - everything inside the middle square `squareOf`, frosted cards over his face / low / side / behind him beside his head via `motion/liveCutout.ts` `behindBox`, four entrances, the steps light screen, title, call to action always), picked in `motion/FormatPicker.tsx`; captions are the Cutter's own in every look; sound effects are his own from the music bank's Sound effects, matched by name (`sfx.bankSounds`); caption check before the plan (`MotionView.CaptionCheck`);
   server `postiz/motion.ts` (prompt, schema, `cleanStoryboard`), action `motion-plan`
 - Trial reels (admins: the owner's login and the ones he turns on in People): `trialLoop.ts` (a batch of layout
   `trial` - the viral reels, how each copy differs), `viralReel.ts` (where the reel starts, its sound, a still),

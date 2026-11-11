@@ -3,6 +3,35 @@
 Newest first. Every change says what it does, how to use it, and how it works
 underneath. Kept up to date with each commit.
 
+## Motion graphics: everything in the middle square, more natural, his captions and his sound effects
+App and server: run ./deploy.sh (it runs ./deploy-server.sh too - Claude's instructions are in the postiz function).
+Needs deploying: run ./deploy-server.sh
+**What he said (2026-11-11):** Format 2: "imagine a sort of square in the middle of the video ... I want all the visuals
+to go inside that square", the headline too high, the visuals too large; every format "very, very, very repetitive";
+cards he asked over his face went behind his head, half covered; "everyone knows that it's being edited with Claude";
+the sound effects are "the basic Claude sound effects ... I honestly hate them"; captions "exactly like the cutter's
+usual captions ... for any format, ever again".
+- Format 2 (glass): every card, the title, the steps screen and the call to action sit inside a square in the middle of
+  the frame (`glass.squareOf`); the title starts at the top of the square, not the top of the frame; cards are drawn
+  15% smaller (`CARD_SCALE`).
+- A new place "face": a card in front of him, over his face - what Claude uses when he asks for cards over his face.
+  A card "behind" him now goes beside his head, on the side with more room at that moment (read off his cut-out,
+  `behindBox`), so his head covers only its edge; with no room either side it comes in front instead.
+- Less repetitive: cards come in four different ways (rise, slide from the left, from the right, pop up), and Claude is
+  told never the same kind or place twice in a row, at least three kinds a video.
+- Less "made by Claude": 4 to 8 cards a minute-long video at uneven gaps (was 6 to 12, every 3 to 6 seconds); plain
+  words in his voice, sentence case - no forced CAPITALS, no letter-spaced labels, no "AI / edited by / 100%" labels
+  unless he says them, a label on at most a third of the cards; the examples Claude copied ("100% EDITED BY CLAUDE")
+  replaced; the opening title only when his first sentence makes a promise.
+- Captions: the Cutter's own in every format (word by word or phrase by phrase, as on Videos); Format 2's caption bar
+  and its word colouring are gone.
+- Sound effects: the Cutter's made-up sounds are gone from motion graphics and from the edit screen's Sound picker.
+  Motion graphics use his own sound effects (Music -> Sound effects), picked by name for each kind of moment (whoosh,
+  swish, pop, ding, click, boom, camera - `sfx.KIND_WORDS`), taking turns when he has several; a moment with none of
+  his effects for it is silent. Each is set to the same peak, under his voice.
+- Lint: two server functions renamed (`keyIdOf`, `takeReconnected`) - the linter took their "use" names for React hooks.
+- Tests: `sfx.test.ts` (his effects), `motion.test.ts` (place "face", no forced capitals), `motionView.test.tsx`.
+
 ## Audit, round two: the open items
 App and server: run ./deploy.sh (it runs ./deploy-server.sh too).
 Needs deploying: run ./deploy-server.sh

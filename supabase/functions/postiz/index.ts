@@ -384,7 +384,7 @@ interface PostizUse {
   busyUntil: number
 }
 
-async function useKeyOf(key: string): Promise<string> {
+async function keyIdOf(key: string): Promise<string> {
   const digest = new Uint8Array(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(key)))
   return `postiz-use:${Array.from(digest.slice(0, 8), (b) => b.toString(16).padStart(2, '0')).join('')}`
 }
@@ -409,7 +409,7 @@ async function saveUse(id: string, use: PostizUse): Promise<void> {
  *  the counting itself fail, Postiz is asked anyway: posting never waits on it. */
 async function postizAllowance(key: string, need: PostizNeed): Promise<{ id: string; use: PostizUse } | null> {
   try {
-    const id = await useKeyOf(key)
+    const id = await keyIdOf(key)
     const now = Date.now()
     const use = await readUse(id, now)
     const busy = now < use.busyUntil
@@ -3359,7 +3359,7 @@ async function retryAccounts(profile: Profile, post: Post, auto = false): Promis
       }),
     })
     const swaps = new Map(targets.filter((t) => t.was.id !== t.to.id).map((t) => [t.was.id, t.to]))
-    if (swaps.size > 0) await useReconnected(profile, now, swaps)
+    if (swaps.size > 0) await takeReconnected(profile, now, swaps)
     // The failed ones are dropped, or they would count as failed again.
     const retried = new Set(targets.map((t) => t.was.id))
     const kept = ids.filter((ref) => !retried.has(ref.integration))
@@ -3503,7 +3503,7 @@ function missedFields(post: Post, note: string, errored: PostAccount[], tz: stri
  *  campaign that had the old, in the accounts as last read, and in the posts
  *  not in Postiz yet - so the next videos go to it too. Posts already in
  *  Postiz stay as they are (Postiz holds them). */
-async function useReconnected(profile: Profile, now: Account[], swaps: Map<string, Account>): Promise<void> {
+async function takeReconnected(profile: Profile, now: Account[], swaps: Map<string, Account>): Promise<void> {
   const campaigns = { ...(profile.settings.campaigns ?? {}) }
   for (const [id, place] of Object.entries(campaigns)) {
     if (!place.accounts?.some((a) => swaps.has(a))) continue

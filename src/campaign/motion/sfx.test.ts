@@ -80,3 +80,36 @@ describe('motion graphics: the sound effects, worked out from the storyboard', (
     }
   })
 })
+
+describe('his own sound effects on the graphics (2026-11-11: the made-up ones are gone)', () => {
+  const bank = [
+    { id: 'a', name: 'Whoosh fast' },
+    { id: 'b', name: 'swoosh 2' },
+    { id: 'c', name: 'Vine boom' },
+    { id: 'd', name: 'my intro song' },
+  ]
+
+  it('picks an effect named for each kind of moment, taking turns', async () => {
+    const { bankSounds, effectsFor } = await import('./sfx')
+    expect(effectsFor('whoosh', bank).map((e) => e.id)).toEqual(['a', 'b'])
+    expect(effectsFor('hit', bank).map((e) => e.id)).toEqual(['c'])
+    const sounds = bankSounds(
+      [
+        { sound: 'whoosh', at: 1 },
+        { sound: 'whoosh', at: 5 },
+        { sound: 'whoosh', at: 9 },
+        { sound: 'hit', at: 3 },
+      ],
+      bank,
+    )
+    expect(sounds.find((s) => s.effectId === 'a')?.moments).toEqual([1, 9])
+    expect(sounds.find((s) => s.effectId === 'b')?.moments).toEqual([5])
+    expect(sounds.find((s) => s.effectId === 'c')?.moments).toEqual([3])
+  })
+
+  it('leaves a moment silent when none of his effects is for it', async () => {
+    const { bankSounds } = await import('./sfx')
+    expect(bankSounds([{ sound: 'ding', at: 2 }], bank)).toEqual([])
+    expect(bankSounds([{ sound: 'pop', at: 2 }], [])).toEqual([])
+  })
+})

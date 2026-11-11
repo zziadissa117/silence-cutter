@@ -149,25 +149,14 @@ describe('Motion graphics: captions he can fix, as on Videos', () => {
   })
 })
 
-describe('Motion graphics: Format 2 (glass) captions he can style', () => {
-  it('taps a word through orange, pill and back, saved on the storyboard', async () => {
+describe('Motion graphics: Format 2 (glass) has the Cutter\'s own captions', () => {
+  it('shows no word styling of its own - its captions are the ones on Videos', async () => {
     const glassBoard = cleanStoryboard({ format: 'glass', emphasis: [{ at: 4, style: 'accent' }], scenes: [] }, words.length)
     kept = { id: 'm2', file: new Blob(['x']), fileName: 'take.mov', ask: '', plan, storyboard: glassBoard, chat: [], costCents: 0 }
     await act(async () => root.render(<MotionView onBack={() => {}} />))
     await settle()
-    expect(host.textContent).toContain('Your words')
-    expect(host.textContent).toContain('Change the wording')
-    const chip = (text: string) => [...host.querySelectorAll('.motion-word')].find((b) => b.textContent === text) as HTMLButtonElement
-    expect(chip('word4').className).toContain('accent')
-    await act(async () => chip('word2').click())
-    await settle()
-    expect(saved.at(-1)?.storyboard?.emphasis).toEqual([
-      { at: 2, style: 'accent' },
-      { at: 4, style: 'accent' },
-    ])
-    await act(async () => chip('word2').click())
-    await settle()
-    expect(saved.at(-1)?.storyboard?.emphasis?.[0]).toEqual({ at: 2, style: 'pill' })
+    expect(host.textContent).not.toContain('Your words')
+    expect(host.querySelector('.motion-word')).toBeNull()
   })
 
   it('a video planned in the old Format 2 goes back to its caption check, to be planned again as glass', async () => {

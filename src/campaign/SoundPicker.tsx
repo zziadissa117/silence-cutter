@@ -1,6 +1,8 @@
 // The edit screen's Add sound (his ask, 2026-11-10: "Add sound, but sound can
-// be a sfx"): a sound effect from the bank's sound effects, one of the
-// Cutter's own effects, a song from the music bank, or a file from his phone
+// be a sfx"): a sound effect from the bank's sound effects, a song from the
+// music bank, or a file from his phone. The Cutter's own made-up effects are no
+// longer offered (2026-11-11: "I honestly hate them"); ones already put on a
+// video still play
 // (a video's sound is taken out of it). A tap on ▶ plays it; a tap on its name
 // puts it on the video at the playhead (CutsEditor).
 
@@ -171,15 +173,8 @@ export function SoundPicker({ at, onPick, onClose }: { at: string; onPick: (pick
       />
       <ul className="sound-list">
         {effects.map((song) => row(song.id, song.name, () => songFile(song), () => void fromBank(song)))}
-        {EFFECTS.map((e) =>
-          row(
-            e.name,
-            e.label,
-            async () => effectFile(e.name),
-            () => onPick({ source: { kind: 'sound', from: 'effect', ref: e.name, name: e.label, volumeDb: SOUND_DB.start }, length: effectSeconds(e.name) }),
-          ),
-        )}
       </ul>
+      {effects.length === 0 ? <p className="hint">No sound effects yet - tap + Add to the bank, or add them in Music, under Sound effects.</p> : null}
       {songs.length > 0 ? (
         <>
           <span className="label">Music bank</span>

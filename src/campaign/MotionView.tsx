@@ -18,7 +18,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 
 import type { CaptionWord } from './captions'
-import { barText, type Kinetic } from './motion/glass'
 
 import type { ChatTurn, Storyboard } from '../../supabase/functions/postiz/motion.ts'
 import { forgetCut } from '../media/outputSink'
@@ -29,9 +28,9 @@ import { drawMotion, faceDropAt, fillBehindFace, type Timing } from './motion/dr
 import { FrameReader } from './motion/frames'
 import { Planning, useElapsed } from './motion/Planning'
 import { AskExamples, FORMAT_INFO, FormatPicker, saveFormat, savedFormat } from './motion/FormatPicker'
-import { formatOf, popScene, type EmphasisStyle, type FormatAsk } from '../../supabase/functions/postiz/motion.ts'
-import { captionLook, captionsToEdit, claudeWords, drawCaptionAt, forClaude, hear, kineticFor, kineticStill, makeMotionVideo, shownCaptions, soundsFor, storyWords, type CaptionChoice } from './motion/make'
-import { SOUND_DB, makeSound, type MotionSound } from './motion/sfx'
+import { formatOf, popScene, type FormatAsk } from '../../supabase/functions/postiz/motion.ts'
+import { captionLook, captionsToEdit, claudeWords, drawCaptionAt, forClaude, hear, makeMotionVideo, shownCaptions, soundsFor, storyWords, type CaptionChoice } from './motion/make'
+import { loadMusicBank, songFile, useMusicBank } from './musicBank'
 import { CaptionReview, type EmbeddedVideo } from './CaptionReview'
 import { clearSession, freshFile, loadSession, saveSession, type MotionSession } from './motion/session'
 import { cutLength, cutTiming, rawTimeAt } from './motion/track'
@@ -275,74 +274,12 @@ export function MotionView({ onBack }: { onBack: () => void }) {
   )
 }
 
-/** The words look's words, block by block, each a chip to tap: normal ->
- *  big -> gold -> fancy -> normal. His ask (2026-11-08): "captions on this
- *  formats are not really customizable ... i cant actually edit them". Claude
- *  picks them first; a tap changes the storyboard's `emphasis`, on the word as
- *  heard nearest in time (so his retyped captions keep working), and shows that
- *  moment on the big still. */
-function WordStyles({
-  session,
-  kinetic,
-  onChange,
-  onSee,
-  onWording,
-  disabled,
-}: {
-  session: MotionSession
-  kinetic: Kinetic
-  onChange: (next: MotionSession) => void
-  onSee: (t: number) => void
-  /** Opens the Cutter's caption screen, to change what a word says. */
-  onWording: () => void
-  disabled: boolean
-}) {
-  const heard = useMemo(() => storyWords(session.plan!), [session.plan])
-  const shown = kinetic.words as { text: string; start: number }[]
-  const next: Record<string, EmphasisStyle | null> = { none: 'accent', accent: 'pill', pill: null }
-  const tap = (i: number) => {
-    const at = shown[i]?.start
-    if (at === undefined) return
-    let k = -1
-    for (let j = 0; j < heard.length; j++) if (k < 0 || Math.abs(heard[j].start - at) < Math.abs(heard[k].start - at)) k = j
-    if (k < 0) return
-    const style = next[kinetic.styleOf(i) ?? 'none']
-    const board = session.storyboard!
-    const emphasis = (board.emphasis ?? []).filter((e) => e.at !== k)
-    if (style) emphasis.push({ at: k, style })
-    emphasis.sort((a, b) => a.at - b.at)
-    onChange({ ...session, storyboard: { ...board, emphasis } })
-    onSee(kinetic.timing.start(i))
-  }
-  return (
-    <div className="motion-words">
-      <div className="list-title">Your words</div>
-      <p className="hint">Tap a word: orange, then its phrase in a white pill with a tick, then normal.</p>
-      <button type="button" className="btn wide" disabled={disabled} onClick={onWording}>
-        Change the wording · Claude checks it
-      </button>
-      {kinetic.phrases.map(([first, end]) => (
-        <div key={first} className="motion-block">
-          {Array.from({ length: end - first }, (_, k) => first + k).map((i) => {
-            const style = kinetic.styleOf(i)
-            const text = barText(kinetic.words[i]?.text ?? '')
-            if (!text) return null
-            return (
-              <button key={i} type="button" disabled={disabled} className={`motion-word${style ? ` ${style}` : ''}`} onClick={() => tap(i)}>
-                {text}
-              </button>
-            )
-          })}
-        </div>
-      ))}
-    </div>
-  )
-}
-
-/** Sound effects on this video: on by themselves, with what they are and how
- *  many, a button to hear them, and a switch to make it without. */
+/** Sound effects on this video: his own (Music -> Sound effects), picked by
+ *  their names for each kind of moment, with a switch to make it without.
+ *  The Cutter's made-up sounds are gone (his ask, 2026-11-11). */
 function SoundEffects({ session, onChange, disabled }: { session: MotionSession; onChange: (next: MotionSession) => void; disabled: boolean }) {
-  const sounds = useMemo(() => soundsFor(session.plan!, session.storyboard!), [session.plan, session.storyboard])
+  const effects = useMusicBank('effects')
+  const sounds = useMemo(() => soundsFor(session.plan!, session.storyboard!, true, effects), [session.plan, session.storyboard, effects])
   const count = sounds.reduce((sum, s) => sum + s.moments.length, 0)
   const on = !session.noSounds
   return (
@@ -352,14 +289,16 @@ function SoundEffects({ session, onChange, disabled }: { session: MotionSession;
         <span>
           <span className="label">Sound effects</span>
           <span className="hint" style={{ display: 'block' }}>
-            {on
-              ? `${count} on the graphics: ${sounds.map((s) => SOUND_NAMES[s.name]).join(', ')} - under your voice.`
-              : 'Off for this video.'}
+            {!on
+              ? 'Off for this video.'
+              : count > 0
+                ? `${count} from your sound effects: ${[...new Set(sounds.map((s) => s.effectName))].join(', ')} - under your voice.`
+                : 'None yet: add yours in Music, under Sound effects, with the kind in the name (whoosh, swish, pop, ding, click, boom, camera).'}
           </span>
         </span>
       </label>
       {on && sounds.length > 0 ? (
-        <button type="button" className="linkbtn" onClick={() => void hearSounds(sounds.map((s) => s.name))}>
+        <button type="button" className="linkbtn" onClick={() => void hearEffects(sounds.map((s) => s.effectId))}>
           Hear them
         </button>
       ) : null}
@@ -367,35 +306,23 @@ function SoundEffects({ session, onChange, disabled }: { session: MotionSession;
   )
 }
 
-const SOUND_NAMES: Record<MotionSound, string> = {
-  whoosh: 'whoosh',
-  pop: 'pops',
-  ding: 'ding',
-  tick: 'ticks',
-  hit: 'deep hit',
-  shutter: 'camera flash',
-  swish: 'swish',
-}
-
-/** Plays each sound once, one after the other, through the phone's speaker. */
-async function hearSounds(names: MotionSound[]): Promise<void> {
-  const Context = window.AudioContext ?? (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext
-  if (!Context) return
-  const context = new Context()
-  let at = context.currentTime + 0.05
-  for (const name of names) {
-    const samples = makeSound(name, context.sampleRate)
-    const buffer = context.createBuffer(1, samples.length, context.sampleRate)
-    buffer.copyToChannel(samples as Float32Array<ArrayBuffer>, 0)
-    const source = context.createBufferSource()
-    source.buffer = buffer
-    const gain = context.createGain()
-    gain.gain.value = Math.pow(10, (SOUND_DB[name] + 9) / 20)
-    source.connect(gain).connect(context.destination)
-    source.start(at)
-    at += Math.max(0.45, samples.length / context.sampleRate + 0.15)
+/** Plays each of his effects once, one after the other. */
+async function hearEffects(ids: string[]): Promise<void> {
+  const bank = await loadMusicBank()
+  for (const id of ids) {
+    const song = bank.find((s) => s.id === id)
+    const file = song ? await songFile(song).catch(() => null) : null
+    if (!file) continue
+    const url = URL.createObjectURL(file)
+    const audio = new Audio(url)
+    await new Promise<void>((resolve) => {
+      audio.onended = () => resolve()
+      audio.onerror = () => resolve()
+      void audio.play().catch(() => resolve())
+      window.setTimeout(resolve, 4000)
+    })
+    URL.revokeObjectURL(url)
   }
-  setTimeout(() => void context.close().catch(() => {}), (at - context.currentTime + 0.5) * 1000)
 }
 
 /** The caption check before the plan - the same as on Videos: Claude reads
@@ -571,12 +498,6 @@ function PlanScreen({
   const choice = session.captions
   const shown = useMemo(() => shownCaptions(plan, choice), [plan, choice])
   const look = formatOf(session.storyboard!)
-  // The glass look: his words in its caption bar, as they will show.
-  const kinetic = useMemo(() => {
-    if (look !== 'glass') return undefined
-    const made = kineticFor(plan, choice, session.storyboard!)
-    return kineticStill(made, cutTiming(made.words, plan.keep))
-  }, [look, plan, choice, session.storyboard])
   const board = session.storyboard!
   const words = useMemo(() => storyWords(plan), [plan])
   const timing = useMemo(() => cutTiming(words, plan.keep), [words, plan])
@@ -599,13 +520,13 @@ function PlanScreen({
     let alive = true
     const canvas = big.current
     if (!canvas || !reader.current) return
-    void drawStill(reader.current, canvas, board, timing, shown, plan.keep, at, choice, kinetic).then(() => {
+    void drawStill(reader.current, canvas, board, timing, shown, plan.keep, at, choice).then(() => {
       if (!alive) return
     })
     return () => {
       alive = false
     }
-  }, [at, board, timing, shown, plan.keep, choice, kinetic])
+  }, [at, board, timing, shown, plan.keep, choice])
 
   // A small still of each scene, in its middle once its parts are up.
   useEffect(() => {
@@ -618,7 +539,7 @@ function PlanScreen({
         const canvas = document.createElement('canvas')
         canvas.width = STILL.width
         canvas.height = STILL.height
-        await drawStill(reader.current, canvas, board, timing, shown, plan.keep, t, choice, kinetic)
+        await drawStill(reader.current, canvas, board, timing, shown, plan.keep, t, choice)
         if (!alive) return
         const url = canvas.toDataURL('image/jpeg', 0.7)
         setStills((s) => ({ ...s, [i]: url }))
@@ -627,7 +548,7 @@ function PlanScreen({
     return () => {
       alive = false
     }
-  }, [board, timing, shown, plan.keep, choice, kinetic])
+  }, [board, timing, shown, plan.keep, choice])
 
   return (
     <div className="motion-plan">
@@ -688,7 +609,6 @@ function PlanScreen({
           </li>
         ) : null}
       </ul>
-      {kinetic ? <WordStyles session={session} kinetic={kinetic} onChange={onChange} onSee={(t) => setAt(Math.min(length, t + 0.35))} onWording={onCaptions} disabled={making} /> : null}
       <SoundEffects session={session} onChange={onChange} disabled={making} />
       <div className="motion-look">
         <span className="hint">
@@ -740,7 +660,6 @@ async function drawStill(
   keep: { start: number; end: number }[],
   t: number,
   choice?: CaptionChoice,
-  kinetic?: Kinetic,
 ): Promise<void> {
   const frame = await reader.frameAt(rawTimeAt(t, keep))
   const ctx = canvas.getContext('2d')
@@ -751,9 +670,9 @@ async function drawStill(
   const drop = faceDropAt(board, timing, t, height)
   fillBehindFace(ctx, width, drop)
   if (frame) ctx.drawImage(frame as CanvasImageSource, 0, drop, width, height)
-  drawMotion(ctx, width, height, board, timing, t, kinetic)
-  // In the words look the block is the caption.
-  if (!kinetic) drawCaptionAt(ctx, width, height, shown, keep, t, choice, { storyboard: board, timing })
+  drawMotion(ctx, width, height, board, timing, t)
+  // The Cutter's own captions, in every look (his rule, 2026-11-11).
+  drawCaptionAt(ctx, width, height, shown, keep, t, choice, { storyboard: board, timing })
 }
 
 /** The chat with Claude about the plan: each message changes the storyboard. */
