@@ -24,18 +24,30 @@ import {
   useWarmups,
   warmupFile,
   WARMUP_SECONDS,
+  dropMade,
+  madeFile,
+  useMade,
+  type MadeWarmup,
   type WarmupCategory,
   type WarmupIdea,
 } from './warmups'
+import { WarmupFilm } from './WarmupFilm'
 
 const where = (link: string) => (/tiktok\.com/i.test(link) ? 'TikTok' : 'Instagram')
 
-export function WarmupView({ onBack, onFilm }: { onBack?: () => void; onFilm?: (ideas: WarmupIdea[]) => void }) {
+/** How many in one go of "Film several": a couple of minutes' filming. */
+const IN_ONE_GO = 5
+
+export function WarmupView({ onBack }: { onBack?: () => void }) {
   const { list, refresh, problem } = useWarmups()
   const [category, setCategory] = useState<string>('all')
   const [editing, setEditing] = useState<WarmupIdea | 'new' | null>(null)
   const [busy, setBusy] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
+  const [filming, setFilming] = useState<WarmupIdea[] | null>(null)
+  const made = useMade()
+  const ready = made.filter((m) => !m.posted)
+  const onFilm = (ideas: WarmupIdea[]) => setFilming(ideas)
   const approved = list.categories.filter((c) => c.status === 'approved')
   const nameOf = (id: string) => list.categories.find((c) => c.id === id)?.name ?? id
   const shown = list.ideas.filter((i) => i.status === 'approved' && (category === 'all' || i.category === category))
@@ -59,6 +71,8 @@ export function WarmupView({ onBack, onFilm }: { onBack?: () => void; onFilm?: (
     const name = window.prompt(list.owner ? 'New category' : 'New category - the owner says yes or no first')
     if (name?.trim()) void run('Adding the category…', () => addCategory(name.trim()))
   }
+
+  if (filming) return <WarmupFilm ideas={filming} onClose={() => setFilming(null)} />
 
   if (editing) {
     return (
@@ -89,11 +103,20 @@ export function WarmupView({ onBack, onFilm }: { onBack?: () => void; onFilm?: (
         Short posts that warm an account up between its videos: a set headline, a set sound, about 7 seconds, no talking.
         Read how to film it, film it, done.
       </p>
-      {onFilm && shown.length > 0 ? (
-        <button type="button" className="btn primary wide" onClick={() => onFilm(shown)}>
-          Film several in one go
+      {shown.length > 0 ? (
+        <button
+          type="button"
+          className="btn primary wide"
+          onClick={() => {
+            // The ones he has filmed least first, a couple of minutes' worth.
+            const times = (id: string) => made.filter((m) => m.ideaId === id).length
+            onFilm([...shown].sort((a, b) => times(a.id) - times(b.id)).slice(0, IN_ONE_GO))
+          }}
+        >
+          Film {Math.min(IN_ONE_GO, shown.length)} in one go
         </button>
       ) : null}
+      {ready.length > 0 ? <ReadyList ready={ready} /> : null}
       {problem ? <p className="hint warn-text">{problem}</p> : null}
       {error ? <div className="error">{error}</div> : null}
       {busy ? <p className="hint">{busy}</p> : null}
@@ -154,11 +177,9 @@ export function WarmupView({ onBack, onFilm }: { onBack?: () => void; onFilm?: (
       {shown.length === 0 ? <p className="empty">No warm-up ideas here yet. Add the first with + Idea.</p> : null}
       {shown.map((idea) => (
         <IdeaCard key={idea.id} idea={idea} category={nameOf(idea.category)}>
-          {onFilm ? (
-            <button type="button" className="btn small primary" onClick={() => onFilm([idea])}>
-              Film it
-            </button>
-          ) : null}
+          <button type="button" className="btn small primary" onClick={() => onFilm([idea])}>
+            Film it
+          </button>
           {list.owner ? (
             <>
               <button type="button" className="btn small" onClick={() => setEditing(idea)}>
@@ -177,6 +198,37 @@ export function WarmupView({ onBack, onFilm }: { onBack?: () => void; onFilm?: (
         </IdeaCard>
       ))}
     </section>
+  )
+}
+
+/** The warm-ups filmed on this phone, waiting to go out. */
+function ReadyList({ ready }: { ready: MadeWarmup[] }) {
+  const [watching, setWatching] = useState<{ id: string; url: string } | null>(null)
+  const watch = async (m: MadeWarmup) => {
+    if (watching) URL.revokeObjectURL(watching.url)
+    const file = await madeFile(m)
+    setWatching(file ? { id: m.id, url: URL.createObjectURL(file) } : null)
+  }
+  return (
+    <div className="group">
+      <div className="group-title">Ready to post · {ready.length}</div>
+      <p className="hint">Each goes out once, on a campaign you turned warm-ups on for.</p>
+      {ready.map((m) => (
+        <div key={m.id} className="setting">
+          <div className="setting-text">
+            <span className="row-line">{m.title}</span>
+            <span className="row-line hint">{m.headline || 'No headline'}</span>
+          </div>
+          <button type="button" className="btn small" onClick={() => void watch(m)}>
+            Watch
+          </button>
+          <button type="button" className="btn small danger" onClick={() => window.confirm(`Throw away this "${m.title}"?`) && void dropMade(m.id)}>
+            ✕
+          </button>
+        </div>
+      ))}
+      {watching ? <video className="warmup-example" src={watching.url} controls playsInline autoPlay /> : null}
+    </div>
   )
 }
 

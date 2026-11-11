@@ -3,6 +3,19 @@
 Newest first. Every change says what it does, how to use it, and how it works
 underneath. Kept up to date with each commit.
 
+## Warm-ups, step 2: film several in one go
+App only: run ./deploy.sh.
+- Warm-ups -> **Film 5 in one go** (the ideas of the category shown that he has filmed least first), or **Film it** on
+  one idea: each in turn shows its example, how to film it and its headline (change it if you like), then the camera
+  opens with the idea's sound playing to move to, and stops by itself at the idea's length (the record ring fills over
+  that length). Skip goes to the next.
+- Each is made at once: what he filmed with its own sound left out, the idea's sound in its place, the headline in the
+  idea's look (`warmupMake.ts`, the batch montage render). Checked here in Chrome for Testing: 6 s, the song heard, the
+  clip's own sound gone, the headline drawn.
+- **Ready to post** on the Warm-ups screen: the finished ones on this phone (Watch, ✕), each to go out once, ever
+  (`warmups.keepMade`, meta `warmups:made`). Posting them per campaign is the next step.
+- Recorder: optional `limitSec`, `sound`, `guide` (normal recording unchanged).
+
 ## Warm-ups, step 1: the shared ideas
 App and server: run ./deploy.sh (it runs ./deploy-server.sh too - the ideas are kept by the cutter function).
 Needs deploying: run ./deploy-server.sh

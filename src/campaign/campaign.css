@@ -1328,3 +1328,10 @@ html.editor-dark, html.editor-dark body { background: #000; }
 .warmup-cats button { white-space: nowrap; }
 .warmup-waiting { display: flex; flex-direction: column; gap: 10px; }
 .warmups .actions-row { display: flex; flex-wrap: wrap; gap: 8px; }
+/* A warm-up's idea over the camera while it waits to record. */
+.recorder-guide {
+  position: absolute; left: 12px; right: 12px; bottom: 150px; padding: 12px 14px; border-radius: 14px;
+  background: rgb(0 0 0 / 0.55); color: #fff; font-size: 15px; line-height: 1.35; pointer-events: none;
+  display: flex; flex-direction: column; gap: 6px;
+}
+.recorder-guide strong { font-size: 17px; }

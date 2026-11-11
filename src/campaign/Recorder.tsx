@@ -18,7 +18,7 @@
 // What he records goes on exactly as a picked video does: one take is one
 // video, sorted into its campaign; several are joined first (addJoined).
 
-import { useCallback, useEffect, useRef, useState, type TouchEvent as ReactTouchEvent } from 'react'
+import { useCallback, useEffect, useRef, useState, type ReactNode, type TouchEvent as ReactTouchEvent } from 'react'
 
 import { report } from '../report'
 import { describeClip } from './clipCheck'
@@ -141,7 +141,23 @@ function keepSteady(on: boolean): void {
  *  it has one, else the picture itself, up to 4 times. */
 const MAX_DIGITAL_ZOOM = 4
 
-export function Recorder({ onDone, onCancel }: { onDone: (files: File[], clipStarts: number[]) => void; onCancel: () => void }) {
+export function Recorder({
+  onDone,
+  onCancel,
+  limitSec,
+  sound,
+  guide,
+}: {
+  onDone: (files: File[], clipStarts: number[]) => void
+  onCancel: () => void
+  /** A warm-up (warmups.ts): it stops and finishes by itself at this length. */
+  limitSec?: number
+  /** Played while he films - a warm-up's trend or music, to move to. The
+   *  recording keeps the microphone; the video's own sound is left out later. */
+  sound?: Blob | null
+  /** Shown over the camera: what to film. */
+  guide?: ReactNode
+}) {
   const video = useRef<HTMLVideoElement>(null)
   /** The camera now - only its picture; switched on a flip. */
   const camera = useRef<MediaStream | null>(null)
@@ -190,6 +206,22 @@ export function Recorder({ onDone, onCancel }: { onDone: (files: File[], clipSta
    *  soon as the other camera is showing. */
   const resumeAfterFlip = useRef(false)
   const startRef = useRef<() => void>(() => {})
+  /** The sound to film to, playing while recording. */
+  const player = useRef<HTMLAudioElement | null>(null)
+  useEffect(() => {
+    if (!sound) return
+    const url = URL.createObjectURL(sound)
+    const el = new Audio(url)
+    el.loop = true
+    el.preload = 'auto'
+    player.current = el
+    return () => {
+      el.pause()
+      player.current = null
+      URL.revokeObjectURL(url)
+    }
+  }, [sound])
+  const doneRef = useRef<() => void>(() => {})
   /** A flip is opening the other camera: the recording holds the last picture. */
   const switching = useRef(false)
   /** The camera now in the picture faces him: the recording is mirrored,
@@ -364,9 +396,17 @@ export function Recorder({ onDone, onCancel }: { onDone: (files: File[], clipSta
 
   useEffect(() => {
     if (!recording) return
-    const timer = window.setInterval(() => setElapsed(Date.now() - startedAt), 250)
+    const timer = window.setInterval(() => {
+      const now = Date.now() - startedAt
+      setElapsed(now)
+      // A warm-up's length reached: finished by itself.
+      if (limitSec && lengths.current.reduce((a, b) => a + b, 0) + now >= limitSec * 1000) {
+        window.clearInterval(timer)
+        doneRef.current()
+      }
+    }, 100)
     return () => window.clearInterval(timer)
-  }, [recording, startedAt])
+  }, [recording, startedAt, limitSec])
 
   // The flashlight, on the back camera, when the light is on.
   useEffect(() => {
@@ -439,6 +479,14 @@ export function Recorder({ onDone, onCancel }: { onDone: (files: File[], clipSta
     }
     r.start(1000)
     recorder.current = r
+    // The sound from where the recording has got to, so a part after a pause
+    // carries on with it.
+    const el = player.current
+    if (el) {
+      const at = lengths.current.reduce((a, b) => a + b, 0) / 1000
+      el.currentTime = Number.isFinite(el.duration) && el.duration > 0 ? at % el.duration : at
+      void el.play().catch(() => {})
+    }
     // A part after a pause is a new clip.
     const before = lengths.current.reduce((a, b) => a + b, 0)
     if (before > 0) marks.current.push(before)
@@ -461,6 +509,7 @@ export function Recorder({ onDone, onCancel }: { onDone: (files: File[], clipSta
   const stop = () =>
     new Promise<void>((resolve) => {
       const r = recorder.current
+      player.current?.pause()
       setRecording(false)
       recordingRef.current = false
       void wake.current?.release().catch(() => {})
@@ -529,6 +578,7 @@ export function Recorder({ onDone, onCancel }: { onDone: (files: File[], clipSta
     }
     onDone(files, clipStarts(marks.current, total))
   }
+  doneRef.current = () => void done()
 
   /** The last part recorded taken off - a stutter - and nothing else, so it
    *  can be recorded again (TikTok's delete-last-segment). */
@@ -592,6 +642,7 @@ export function Recorder({ onDone, onCancel }: { onDone: (files: File[], clipSta
         <video ref={video} playsInline muted autoPlay className={facing === 'user' ? 'mirror' : ''} />
         {zoomShown !== null ? <span className="recorder-zoom">{zoomShown.toFixed(1)}×</span> : null}
         {problem ? <p className="recorder-problem">{problem}</p> : null}
+        {guide && !recording ? <div className="recorder-guide">{guide}</div> : null}
       </div>
 
       <div className="recorder-segments" aria-hidden>
@@ -681,7 +732,7 @@ export function Recorder({ onDone, onCancel }: { onDone: (files: File[], clipSta
               r="46"
               className="recorder-ring-done"
               pathLength={1}
-              strokeDasharray={`${ringFraction(recorded + (recording ? elapsed : 0))} 1`}
+              strokeDasharray={`${limitSec ? Math.min(1, (recorded + (recording ? elapsed : 0)) / (limitSec * 1000)) : ringFraction(recorded + (recording ? elapsed : 0))} 1`}
             />
           </svg>
           <span />

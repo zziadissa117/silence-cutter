@@ -9,7 +9,7 @@ import { useCallback, useEffect, useState } from 'react'
 
 import type { WarmupCategory, WarmupFile, WarmupIdea } from '../../supabase/functions/cutter/warmups.ts'
 import { CloudError, askShared } from './cloud'
-import { getMeta, loadBankFile, saveBankFile, setMeta } from './store'
+import { deleteBankFile, getMeta, loadBankFile, saveBankFile, setMeta } from './store'
 
 export type { WarmupCategory, WarmupFile, WarmupIdea }
 export { FIRST_CATEGORIES, SECONDS as WARMUP_SECONDS } from '../../supabase/functions/cutter/warmups.ts'
@@ -146,3 +146,86 @@ export async function approveCategory(id: string, approve: boolean): Promise<voi
 }
 
 export const newWarmupId = () => `w-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`
+
+// --- Warm-ups filmed on this phone -------------------------------------------
+//
+// Each finished warm-up video waits here until it goes out - once, ever (his
+// rule: "a video that's been posted once does not get posted again"). The
+// video is kept like the batch's clips; the list is one row of meta.
+
+export interface MadeWarmup {
+  id: string
+  ideaId: string
+  title: string
+  category: string
+  headline: string
+  seconds: number
+  madeAt: number
+  /** The finished video, kept on this phone (store.saveBankFile). */
+  file: { id: string; name: string; type: string; size: number }
+  /** Where it went: the campaign, and the post's key. Never sent twice. */
+  posted?: { campaignId: string; key: string; at: string }
+}
+
+const MADE_KEY = 'warmups:made'
+const madeListeners = new Set<(made: MadeWarmup[]) => void>()
+
+export async function loadMade(): Promise<MadeWarmup[]> {
+  try {
+    const raw = await getMeta(MADE_KEY)
+    return raw ? (JSON.parse(raw) as MadeWarmup[]) : []
+  } catch {
+    return []
+  }
+}
+
+export async function saveMade(made: MadeWarmup[]): Promise<void> {
+  await setMeta(MADE_KEY, JSON.stringify(made))
+  for (const listener of madeListeners) listener(made)
+}
+
+/** A finished warm-up, kept until it goes out. */
+export async function keepMade(blob: Blob, idea: Pick<WarmupIdea, 'id' | 'title' | 'category' | 'seconds'>, headline: string): Promise<MadeWarmup> {
+  const id = newWarmupId()
+  const fileId = `warmmade-${id}`
+  const name = `Warm-up ${idea.title}.mp4`.replace(/[\\/:*?"<>|]/g, '')
+  await saveBankFile(fileId, blob)
+  const made: MadeWarmup = {
+    id,
+    ideaId: idea.id,
+    title: idea.title,
+    category: idea.category,
+    headline,
+    seconds: idea.seconds,
+    madeAt: Date.now(),
+    file: { id: fileId, name, type: 'video/mp4', size: blob.size },
+  }
+  await saveMade([...(await loadMade()), made])
+  return made
+}
+
+export async function madeFile(made: MadeWarmup): Promise<File | null> {
+  return loadBankFile(made.file).catch(() => null)
+}
+
+/** One he doesn't want: gone, its video with it. */
+export async function dropMade(id: string): Promise<void> {
+  const all = await loadMade()
+  const gone = all.find((m) => m.id === id)
+  await saveMade(all.filter((m) => m.id !== id))
+  if (gone) await deleteBankFile(gone.file.id).catch(() => {})
+}
+
+export function useMade(): MadeWarmup[] {
+  const [made, setMade] = useState<MadeWarmup[]>([])
+  useEffect(() => {
+    let alive = true
+    void loadMade().then((m) => alive && setMade(m))
+    madeListeners.add(setMade)
+    return () => {
+      alive = false
+      madeListeners.delete(setMade)
+    }
+  }, [])
+  return made
+}
