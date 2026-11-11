@@ -33,9 +33,47 @@ vi.mock('./posting', async (original) => ({
   ...(await original<Record<string, unknown>>()),
   listPosts: vi.fn(async () => []),
   postAction: vi.fn(),
+  trialHeadlines: vi.fn(async () => ['This changed everything', 'Nobody tells you this', 'I wish I knew this sooner']),
   readViralReel: vi.fn(async () => ({
     read: { text: 'POV: you found the hack', style: 'outline', outlineColor: '#000000', size: 'large', x: 0.5, y: 0.3, rewordings: ['POV: you found the trick'] },
   })),
+}))
+vi.mock('./trialTalk', async (original) => ({
+  ...(await original<Record<string, unknown>>()),
+  hearTalk: vi.fn(async () => ({
+    keep: [
+      { start: 0, end: 2 },
+      { start: 3, end: 5 },
+    ],
+    duration: 5,
+    silences: 1,
+    fillerWords: 0,
+    stutters: 0,
+    cleanSpeech: true,
+    aligned: true,
+    words: [],
+    spoken: [
+      { text: 'This', start: 0.2, end: 0.5 },
+      { text: 'changed', start: 0.6, end: 1 },
+      { text: 'everything', start: 3.2, end: 3.8 },
+    ],
+  })),
+  cutTalk: vi.fn(async () => new File(['cut'], 'talk (cut).mp4', { type: 'video/mp4' })),
+}))
+vi.mock('./CaptionReview', () => ({
+  CaptionReview: ({ initial, onApprove }: { initial: unknown[]; onApprove: (words: unknown[]) => void }) => (
+    <button type="button" onClick={() => onApprove(initial)}>
+      Approve captions
+    </button>
+  ),
+}))
+vi.mock('./musicBank', async (original) => ({
+  ...(await original<Record<string, unknown>>()),
+  useMusicBank: () => [
+    { id: 's1', name: 'Song one.m4a', type: 'audio/mp4', size: 1 },
+    { id: 's2', name: 'Song two.m4a', type: 'audio/mp4', size: 1 },
+  ],
+  copySong: vi.fn(async (song: { id: string; name: string }) => ({ id: `copy-${song.id}`, name: song.name, type: 'audio/mp4', size: 1 })),
 }))
 // Which picked file has sound: the viral one.
 vi.mock('mediabunny', async (original) => {
@@ -110,6 +148,65 @@ describe('More', () => {
 })
 
 describe('Trial reels', () => {
+  it('says to pick the videos when Start is tapped with none picked', async () => {
+    act(() =>
+      root.render(<TrialView campaigns={[]} posting={posting()} jobs={[]} onBack={() => {}} onCreate={vi.fn()} onRun={() => {}} removeJob={() => {}} />),
+    )
+    await flush()
+    const start = [...host.querySelectorAll('button')].find((b) => b.textContent === 'Start') as HTMLButtonElement
+    await act(async () => start.click())
+    expect(host.textContent).toContain('Pick the viral reel and its clean clip first.')
+    // Talking: the same - the video first, then a song.
+    const talking = [...host.querySelectorAll('button')].find((b) => b.textContent?.startsWith('Talking')) as HTMLButtonElement
+    await act(async () => talking.click())
+    const startTalk = [...host.querySelectorAll('button')].find((b) => b.textContent === 'Start') as HTMLButtonElement
+    await act(async () => startTalk.click())
+    expect(host.textContent).toContain('Pick your talking video first.')
+  })
+
+  it('starts a talking clip: cut once, captions checked once, headlines and songs taking turns', async () => {
+    const created: Campaign = { ...blankCampaign('trial-c'), name: 'Trial reels', trial: true }
+    const onRun = vi.fn()
+    act(() =>
+      root.render(
+        <TrialView campaigns={[]} posting={posting()} jobs={[]} onBack={() => {}} onCreate={vi.fn(async () => created)} onRun={onRun} removeJob={() => {}} />,
+      ),
+    )
+    await flush()
+    const talking = [...host.querySelectorAll('button')].find((b) => b.textContent?.startsWith('Talking')) as HTMLButtonElement
+    await act(async () => talking.click())
+    const input = host.querySelector('input[type=file]') as HTMLInputElement
+    Object.defineProperty(input, 'files', { value: [new File(['t'], 'talk.mov', { type: 'video/quicktime' })], configurable: true })
+    await act(async () => input.dispatchEvent(new Event('change', { bubbles: true })))
+    const start = () => [...host.querySelectorAll('button')].find((b) => b.textContent === 'Start') as HTMLButtonElement
+    await act(async () => start().click())
+    expect(host.textContent).toContain('Pick at least one song')
+    for (const name of ['Song one', 'Song two']) {
+      const chip = [...host.querySelectorAll('button')].find((b) => b.textContent === name) as HTMLButtonElement
+      await act(async () => chip.click())
+    }
+    await act(async () => start().click())
+    await flush()
+    const approve = [...host.querySelectorAll('button')].find((b) => b.textContent === 'Approve captions') as HTMLButtonElement
+    await act(async () => approve.click())
+    await flush()
+    expect(host.textContent).toContain('Nobody tells you this')
+    const out = [...host.querySelectorAll('button')].find((b) => b.getAttribute('aria-label') === 'Take out Nobody tells you this') as HTMLButtonElement
+    await act(async () => out.click())
+    await act(async () => start().click())
+    await flush()
+    const source = saved?.trial?.sources[0]
+    expect(source?.talk?.headlines).toEqual(['This changed everything', 'I wish I knew this sooner'])
+    expect(source?.talk?.songs).toEqual(['copy-s1', 'copy-s2'])
+    // The captions on the cut clip's own timeline: "everything" was at 3.2 s, after a 1 s pause cut.
+    expect(source?.talk?.words.map((w) => w.text)).toEqual(['This', 'changed', 'everything'])
+    expect(source?.talk?.words[2].start).toBeCloseTo(2.2, 1)
+    expect(source?.sound).toBeNull()
+    expect(saved?.music.map((m) => m.id)).toEqual(['copy-s1', 'copy-s2'])
+    expect(saved?.running).toBe(true)
+    expect(onRun).toHaveBeenCalled()
+  })
+
   it('starts a loop from the two videos picked together, setting the account up the first time', async () => {
     const created: Campaign = { ...blankCampaign('trial-c'), name: 'Trial reels', trial: true }
     const onCreate = vi.fn(async () => created)

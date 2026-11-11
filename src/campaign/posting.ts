@@ -691,6 +691,12 @@ export async function rewordTrial(text: string, rewordings: string[]): Promise<{
   return call<{ rewordings: string[]; checked: number }>('trial-reword', { profile: profileId(), text, rewordings })
 }
 
+/** A talking Trial clip's headlines, one per copy, written by Claude from
+ *  what he says (postiz/trialHeadlines.ts) - none of `have` again. */
+export async function trialHeadlines(words: string, have: string[] = []): Promise<string[]> {
+  return (await call<{ headlines: string[] }>('trial-headlines', { profile: profileId(), words, have })).headlines ?? []
+}
+
 export async function readViralReel(still: string, hook = ''): Promise<{ read: TrialRead | null; error?: string }> {
   return call<{ read: TrialRead | null; error?: string }>('trial-read', { profile: profileId(), still, hook })
 }

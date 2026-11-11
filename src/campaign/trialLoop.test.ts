@@ -10,6 +10,8 @@ import {
   newTrialBank,
   placesFor,
   planTrial,
+  songFor,
+  talkRead,
   trialAngle,
   trialDays,
   trialFileName,
@@ -260,5 +262,43 @@ describe('a copy that played its clip twice', () => {
     expect(doubledCopy(9.0, 8.97)).toBe(false)
     expect(doubledCopy(17.93, undefined)).toBe(false)
     expect(doubledCopy(null, 9)).toBe(false)
+  })
+})
+
+describe('a talking clip (2026-11-11)', () => {
+  it('songs come out evenly, a new order each round, never one twice in a row', () => {
+    const songs = ['a', 'b', 'c', 'd']
+    const picks = Array.from({ length: 40 }, (_, n) => songFor(songs, n, 'src'))
+    for (const s of songs) expect(picks.filter((p) => p === s).length).toBe(10)
+    for (let round = 0; round < 10; round++) expect(new Set(picks.slice(round * 4, round * 4 + 4)).size).toBe(4)
+    for (let i = 1; i < picks.length; i++) expect(picks[i]).not.toBe(picks[i - 1])
+    expect(new Set(Array.from({ length: 10 }, (_, r) => picks.slice(r * 4, r * 4 + 4).join(''))).size).toBeGreaterThan(1)
+    expect(songFor([], 3, 'x')).toBeNull()
+  })
+
+  it('each copy: the next headline, one of the songs, his voice, the same clip', () => {
+    const talk = { words: [{ text: 'Hi', start: 0, end: 0.4 }], headlines: ['one', 'two', 'three'], songs: ['s1', 's2'] }
+    const src: TrialSource = { id: 't1', name: 'talk.mov', clip: 't1-clip', sound: null, read: talkRead(talk.headlines, 1), addedAt: 1, talk }
+    let bank = withSource(newTrialBank('c', 'a', 30), src, file('t1-clip'), [file('s1', 's1.m4a'), file('s2', 's2.m4a')], new Date('2026-11-11T10:00:00'))
+    const { plans } = planTrial(bank, 6, { rand: () => 0.5 })
+    expect(plans.map((p) => p.text)).toEqual(['one', 'two', 'three', 'one', 'two', 'three'])
+    const songs = plans.map((p) => p.sound?.id)
+    expect(songs.filter((s) => s === 's1').length).toBe(3)
+    expect(songs.filter((s) => s === 's2').length).toBe(3)
+    expect(plans.every((p) => p.clip.id === 't1-clip' && p.look.place.y === talkRead([], 1).y)).toBe(true)
+    // Taken out: the clip and its songs go.
+    const gone = withoutSource(bank, 't1')
+    expect(gone.retire.sort()).toEqual(['s1', 's2', 't1-clip'])
+    bank = gone.bank
+    expect(bank.music).toEqual([])
+  })
+
+  it('its videos keep his voice', () => {
+    const talk = { words: [], headlines: ['one'], songs: ['s1'] }
+    const src: TrialSource = { id: 't1', name: 'talk.mov', clip: 't1-clip', sound: null, read: talkRead(talk.headlines, 1), addedAt: 1, talk }
+    const bank = withSource(newTrialBank('c', 'a', 3), src, file('t1-clip'), [file('s1', 's1.m4a')], new Date('2026-11-11T10:00:00'))
+    const plan = planVideos(bank, [{ date: '2026-11-12', time: '10:00' }, { date: '2026-11-12', time: '14:00' }], { now: new Date('2026-11-11T10:00:00') })
+    expect(plan.videos.length).toBeGreaterThan(0)
+    expect(plan.videos.every((v) => v.voice === true && v.music?.id === 's1')).toBe(true)
   })
 })

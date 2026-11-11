@@ -439,6 +439,14 @@ counts the account's trials of the 24 h before into `settings.trial.limits` (he 
 sets `BatchBank.most` from it (`withAccounts`; `perDayOn` never goes over it). An account that can't post trials
 (2207081) goes in `settings.trial.notAllowed`: the loop makes nothing (`NOT_ALLOWED`) until a trial goes through.
 
+**Talking clips** (his ask, 2026-11-11; `TrialTalkStart.tsx`, `trialTalk.ts`): a source with `talk` (`TrialTalk`)
+instead of a viral reel. Added once: `hearTalk` (cleanSpeech, aligned) -> his caption check (`CaptionReview`) ->
+`trial-headlines` (Claude, `postiz/trialHeadlines.ts`; he takes some out) -> `cutTalk` (cutSilence once) -> the cut
+clip in `reactions`, copies of his chosen music-bank songs in `music`. Each copy (`planTrial`): headline
+`talk.headlines[n % len]`, song `songFor` (every song once a round, shuffled per round), place 0
+(`TALK_HEADLINE_Y`), brightness varies; `voice: true` keeps his voice; CampaignApp draws `talk.words` (on the cut
+clip's timeline) as the captions. The rewording check never runs on it (`talkRead`: no rewordings, checked).
+
 ## Instagram location (`postiz/place.ts`, `InstagramPlace.tsx`)
 
 One place every Instagram post is tagged with (`settings.instagramPlace`, action `save-place`,

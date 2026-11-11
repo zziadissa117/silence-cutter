@@ -18,6 +18,7 @@
 // it can work twice").
 
 import type { BankFile, BatchBank } from './batch'
+import type { CaptionWord } from './captions'
 import { NO_EFFECTS, randomFrom } from './effects'
 import type { Angle, HeadlinePlace, HeadlineSize, HeadlineStyle } from './look'
 import type { TrialAccounts, TrialRead } from '../../supabase/functions/postiz/trial.ts'
@@ -39,6 +40,20 @@ export interface TrialSource {
   addedAt: number
   /** Stopped: no more videos of it (the ones made stay, Stop takes them out). */
   stopped?: boolean
+  /** A talking clip (his ask, 2026-11-11), not a viral reel: `clip` is his
+   *  clip cut once, his voice kept; every copy has the same captions, its own
+   *  headline and one of his songs under his voice. */
+  talk?: TrialTalk
+}
+
+/** A talking clip's copies: what stays the same and what takes turns. */
+export interface TrialTalk {
+  /** The captions he checked once, on the cut clip's own timeline. */
+  words: CaptionWord[]
+  /** Claude's headlines he kept, and his own: one per copy, each in turn. */
+  headlines: string[]
+  /** His songs for it (the bank's `music` ids): one per copy, evenly. */
+  songs: string[]
 }
 
 export interface TrialBank {
@@ -162,6 +177,12 @@ export function trialMissing(bank: Pick<BatchBank, 'trial' | 'reactions'>): stri
  *  pick: half and half), each kind the least-made way first, picked at random
  *  among those; once every way of a kind is made it starts over. */
 function nextVariant(source: TrialSource, count: number, made: Set<string>, rand: () => number): TrialVariant {
+  // A talking clip: its headlines in turn, each once before any again; the
+  // words stay where they are (the captions are below), the light changes.
+  if (source.talk) {
+    const n = Math.max(1, source.talk.headlines.length)
+    return { sourceId: source.id, wording: count % n, place: 0, light: Math.floor(rand() * 5) - 2 }
+  }
   const wantExact = count % 2 === 0 || source.read.rewordings.length === 0
   for (const exact of wantExact ? [true, false] : [false, true]) {
     const all = variantsOf(source, exact)
@@ -209,11 +230,13 @@ export function planTrial(
     used[source.id] = (used[source.id] ?? 0) + 1
     last = source.id
     const place = placesFor(source.read)[variant.place] ?? placesFor(source.read)[0]
+    const talk = source.talk
+    const song = talk ? songFor(talk.songs, (used[source.id] ?? 1) - 1, source.id) : source.sound
     plans.push({
       source,
       clip: bank.reactions.find((f) => f.id === source.clip)!,
-      sound: source.sound ? (bank.music.find((f) => f.id === source.sound) ?? null) : null,
-      text: wordsOf(source.read, variant.wording),
+      sound: song ? (bank.music.find((f) => f.id === song) ?? null) : null,
+      text: talk ? (talk.headlines[variant.wording] ?? talk.headlines[0] ?? '') : wordsOf(source.read, variant.wording),
       variant,
       look: {
         sourceId: source.id,
@@ -226,6 +249,38 @@ export function planTrial(
     })
   }
   return { plans, made: [...made], used, lastPair: last }
+}
+
+/** The song of a talking clip's copy number `n`: every song once in each
+ *  round, in an order of its own each round - so they come out evenly, never
+ *  in the same order (his ask: "it's going to randomize evenly"). */
+export function songFor(songs: readonly string[], n: number, seed: string): string | null {
+  if (songs.length === 0) return null
+  const round = Math.floor(n / songs.length)
+  let h = 2166136261
+  for (const c of `${seed}:${round}`) h = Math.imul(h ^ c.charCodeAt(0), 16777619) >>> 0
+  const order = [...songs]
+  for (let i = order.length - 1; i > 0; i--) {
+    h = Math.imul(h ^ (h >>> 15), 2246822507) >>> 0
+    const j = h % (i + 1)
+    ;[order[i], order[j]] = [order[j], order[i]]
+  }
+  // The round's first never the last round's last: no song twice in a row.
+  if (round > 0 && order.length > 1) {
+    const before = songFor(songs, round * songs.length - 1, seed)
+    if (order[0] === before) [order[0], order[1]] = [order[1], order[0]]
+  }
+  return order[n % songs.length]
+}
+
+/** Where a talking clip's headline sits: high, clear of the captions. */
+export const TALK_HEADLINE_Y = 0.22
+
+/** A talking clip's "read": its first headline in the Cutter's usual look -
+ *  the rest go copy by copy (TrialTalk.headlines). Never sent for a check of
+ *  rewordings: these are headlines, not rewordings of one. */
+export function talkRead(headlines: readonly string[], check: number): TrialRead {
+  return { text: headlines[0] ?? '', style: 'box', outlineColor: '#000000', size: 'medium', x: 0.5, y: TALK_HEADLINE_Y, rewordings: [], checked: check }
 }
 
 /** The angle a trial video is made with: its words in the viral reel's look
@@ -310,12 +365,13 @@ export function newTrialBank(campaignId: string, angleId: string, perDay = FIRST
 
 /** The bank with a viral reel added (its clean clip and sound kept in the
  *  bank's lists) and running - started now. */
-export function withSource(bank: BatchBank, source: TrialSource, clip: BankFile, sound: BankFile | null, now = new Date()): BatchBank {
+export function withSource(bank: BatchBank, source: TrialSource, clip: BankFile, sound: BankFile | readonly BankFile[] | null, now = new Date()): BatchBank {
+  const songs = sound === null ? [] : 'id' in sound ? [sound as BankFile] : (sound as readonly BankFile[])
   return {
     ...bank,
     layout: 'trial',
     reactions: [...bank.reactions.filter((f) => f.id !== clip.id), clip],
-    music: sound ? [...bank.music.filter((f) => f.id !== sound.id), sound] : bank.music,
+    music: [...bank.music.filter((f) => !songs.some((s) => s.id === f.id)), ...songs],
     trial: { sources: [...(bank.trial?.sources ?? []).filter((s) => s.id !== source.id), source] },
     running: true,
     runProblem: undefined,
@@ -330,8 +386,9 @@ export function withoutSource(bank: BatchBank, id: string): { bank: BatchBank; r
   const gone = sources.find((s) => s.id === id)
   if (!gone) return { bank, retire: [] }
   const kept = sources.filter((s) => s.id !== id)
-  const files = new Set([gone.clip, ...(gone.sound ? [gone.sound] : [])])
-  const stillUsed = new Set(kept.flatMap((s) => [s.clip, ...(s.sound ? [s.sound] : [])]))
+  const filesOf = (s: TrialSource) => [s.clip, ...(s.sound ? [s.sound] : []), ...(s.talk?.songs ?? [])]
+  const files = new Set(filesOf(gone))
+  const stillUsed = new Set(kept.flatMap(filesOf))
   const retire = [...files].filter((f) => !stillUsed.has(f))
   const next: BatchBank = {
     ...bank,

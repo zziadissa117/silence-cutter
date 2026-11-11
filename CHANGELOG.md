@@ -3,6 +3,28 @@
 Newest first. Every change says what it does, how to use it, and how it works
 underneath. Kept up to date with each commit.
 
+## Trial reels: talking videos - one clip, many copies, a new headline and song each
+App and server: run ./deploy.sh (it runs ./deploy-server.sh too).
+Needs deploying: run ./deploy-server.sh
+- More -> Trial reels -> **Talking - my own video** (next to **Not talking - a viral reel**, which works as before).
+  Pick the talking video that did well, as you filmed it, and tick its songs from your music bank, then Start:
+  1. it listens once (pauses and "um"s found, every word);
+  2. you check the captions once - Claude reads them first, as on every talking video - and Approve;
+  3. Claude writes 20 headlines from what you say, in the style of your best past ones; take out the ones you don't
+     like, add your own, or Write more; Start.
+- The clip is cut **once**; every copy says the same words with the same captions, its own headline (each in turn,
+  every one used before any again) and one of your songs under your voice (every song once a round, a new order each
+  round, never the same song twice in a row), a touch brighter or darker. Same loop as the viral reels: so many a
+  day, Trial Reels to people who don't follow you, the first 3 waiting for your OK, Stop on it takes its copies out.
+- Start with nothing picked now says so ("Pick the viral reel and its clean clip first." / "Pick your talking video
+  first.") instead of a grey button.
+- Underneath: `trialLoop.TrialTalk` (`words`, `headlines`, `songs`; `songFor`, `talkRead`), `trialTalk.ts` (hear,
+  captions onto the cut, cut once), `TrialTalkStart.tsx`; the copies are batch videos with his voice kept
+  (`voice`) and the captions drawn by `montageRender` (CampaignApp, `trialTalk`). Server: action `trial-headlines`
+  (`postiz/trialHeadlines.ts`), for logins allowed Trial reels only. No database change.
+- Not yet: 1-2 motion graphics per copy (in the backlog).
+- Tests: `trialLoop.test.ts` (a talking clip), `trialView.test.tsx`, `postiz/trialHeadlines.test.ts`.
+
 ## Warm-ups, step 4: an extra warm-up when an account goes cold - your yes first
 App and server: run ./deploy.sh (it runs ./deploy-server.sh too).
 Needs deploying: run ./deploy-server.sh

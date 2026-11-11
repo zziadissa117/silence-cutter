@@ -2021,6 +2021,10 @@ export function CampaignApp() {
           // A talking head batch: what he says, heard once per clip
           // (talkCaptions.ts), drawn over it - unless captions are off.
           let said: CaptionWord[] = []
+          // A talking Trial clip: the captions he checked once, the same on
+          // every copy (trialLoop.TrialTalk) - never heard again.
+          const trialTalk = trialLook ? batchBank?.trial?.sources.find((s) => s.id === trialLook.sourceId)?.talk : undefined
+          if (trialTalk && captionsRef.current) said = drawnWords(trialTalk.words, bareRef.current)
           const talkingClip = next.montage.bank && keepsVoice && !trialLook ? next.montage.bank.reaction : null
           if (talkingClip && captionsRef.current) {
             try {

@@ -29,6 +29,8 @@ import { accountLabel, listPosts, placeFor, postAction, readViralReel, rewordTri
 import { Watch } from './PostsView'
 import { BATCH_BANK_SAVED, loadBankFile, loadBatchBank, retireBankFiles, saveBankFile, saveBatchBank } from './store'
 import { measureSong } from './songLength'
+import { copySong, useMusicBank } from './musicBank'
+import { TrialTalkStart, type TalkToAdd } from './TrialTalkStart'
 import {
   FIRST_PER_DAY,
   NOT_ALLOWED,
@@ -41,6 +43,7 @@ import {
   newTrialBank,
   notAllowedOn,
   sourceId,
+  talkRead,
   trialDays,
   trialFileName,
   viralOf,
@@ -253,6 +256,10 @@ export function TrialView({
   const [problem, setProblem] = useState<string | null>(null)
   const [said, setSaid] = useState<string | null>(null)
   const [perDayDraft, setPerDayDraft] = useState<string | null>(null)
+  // A viral reel (not talking) or his own talking clip (his ask, 2026-11-11).
+  const [kind, setKind] = useState<'viral' | 'talking'>('viral')
+  const [talkFull, setTalkFull] = useState(false)
+  const songs = useMusicBank('songs')
 
   // The loop's bank, as it is saved - by this screen, the top-ups or the server's progress.
   useEffect(() => {
@@ -437,25 +444,35 @@ export function TrialView({
 
   const addMore = (files: File[]) => void pick([...(picked ?? []), ...files])
 
+  /** What stops a loop starting, said - or null. */
+  const accountProblem = (): string | null => {
+    if (campaign) return null
+    if (accounts.length === 0) return 'No Instagram account in your Postiz yet: connect one there, then come back.'
+    if (!account && accounts.length !== 1) return 'Pick the Instagram account the trial reels go to.'
+    return null
+  }
+
+  /** The Trial reels campaign - made the first time, on his Instagram account. */
+  const ownerCampaign = async (): Promise<Campaign> => {
+    if (campaign) return campaign
+    setBusy('Setting up Trial reels…')
+    return onCreate(account || accounts[0].id)
+  }
+
   const start = async () => {
-    if (!profile || !picked || picked.length !== 2) return
+    if (!profile) return
+    // Checked before anything: the videos picked (his ask, 2026-11-11).
+    if (!picked || picked.length === 0) return setProblem('Pick the viral reel and its clean clip first.')
+    if (picked.length !== 2) return setProblem('Pick the other one too: the viral reel and its clean clip, both.')
     const viral = picked.find((f) => f.name === viralName)
     const clean = picked.find((f) => f !== viral)
-    if (!viral || !clean) return
+    if (!viral || !clean) return setProblem('Tap which one went viral.')
+    const blocked = accountProblem()
+    if (blocked) return setProblem(blocked)
     setProblem(null)
     setSaid(null)
     try {
-      // The Trial reels campaign, the first time: his Instagram account.
-      let owner = campaign
-      if (!owner) {
-        const to = account || (accounts.length === 1 ? accounts[0].id : '')
-        if (!to) {
-          setProblem('Pick the Instagram account the trial reels go to.')
-          return
-        }
-        setBusy('Setting up Trial reels…')
-        owner = await onCreate(to)
-      }
+      const owner = await ownerCampaign()
       const parts = await takeApart(viral, clean, setBusy)
       if (!parts.still && !hook.trim()) {
         setAskHook(true)
@@ -495,6 +512,34 @@ export function TrialView({
     } finally {
       setBusy(null)
     }
+  }
+
+  /** His talking clip in the loop: the cut clip and his songs kept, its
+   *  copies made from now (trialLoop.ts TrialTalk). */
+  const addTalk = async (talk: TalkToAdd, onBusy: (what: string) => void) => {
+    setSaid(null)
+    let owner: Campaign
+    try {
+      owner = await ownerCampaign()
+    } finally {
+      setBusy(null)
+    }
+    onBusy('Keeping the clip and the songs on this phone…')
+    const clip = await keep(talk.cut)
+    const songFiles = await Promise.all(talk.songs.map((s) => copySong(s)))
+    const source: TrialSource = {
+      id: sourceId(),
+      name: talk.name,
+      clip: clip.id,
+      sound: null,
+      read: talkRead(talk.headlines, REWORD_CHECK),
+      addedAt: Date.now(),
+      talk: { words: talk.words, headlines: talk.headlines, songs: songFiles.map((f) => f.id) },
+    }
+    const current = (await loadBatchBank(owner.id)) ?? newTrialBank(owner.id, owner.angles[0].id)
+    await save(withSource(current.layout === 'trial' ? current : newTrialBank(owner.id, owner.angles[0].id, current.perDay), source, clip, songFiles))
+    setSaid(`Started: ${talk.name} - ${talk.headlines.length} headlines and ${songFiles.length} song${songFiles.length === 1 ? '' : 's'} taking turns.`)
+    onRun()
   }
 
   const setPerDay = async (n: number) => {
@@ -638,11 +683,12 @@ export function TrialView({
   }
 
   const perDay = bank?.perDay ?? FIRST_PER_DAY
-  const ready = picked?.length === 2 && viralName !== null
   const needsAccount = !campaign && accounts.length > 1
 
   return (
     <section className="screen trial">
+      {!talkFull ? (
+        <>
       {onBack ? <BackToMore onBack={onBack} /> : null}
       <div className="screen-head">
         <h1>Trial reels</h1>
@@ -734,9 +780,11 @@ export function TrialView({
           {sources.map((s) => (
             <div key={s.id} className="setting">
               <div className="setting-text">
-                <span className="row-name wrap">&ldquo;{s.read.text}&rdquo;</span>
+                <span className="row-name wrap">{s.talk ? s.name : <>&ldquo;{s.read.text}&rdquo;</>}</span>
                 <span className="row-line">
-                  {s.name} · {bank.used[s.id] ?? 0} made · {s.read.rewordings.length} rewordings
+                  {s.talk
+                    ? `Talking · ${bank.used[s.id] ?? 0} made · ${s.talk.headlines.length} headlines · ${s.talk.songs.length} song${s.talk.songs.length === 1 ? '' : 's'}`
+                    : `${s.name} · ${bank.used[s.id] ?? 0} made · ${s.read.rewordings.length} rewordings`}
                 </span>
                 {short[s.id] ? (
                   <span className="row-line warn-text wrap">
@@ -778,7 +826,41 @@ export function TrialView({
         />
       ) : null}
 
-      <div className="list-title">{sources.length > 0 ? 'Another viral reel' : 'Start a Trial loop'}</div>
+          <div className="list-title">{sources.length > 0 ? 'Add another video' : 'Start a Trial loop'}</div>
+          <div className="trial-kind" role="group" aria-label="Video type">
+            <button type="button" className={`chip${kind === 'viral' ? ' on' : ''}`} aria-pressed={kind === 'viral'} onClick={() => setKind('viral')}>
+              Not talking - a viral reel
+            </button>
+            <button type="button" className={`chip${kind === 'talking' ? ' on' : ''}`} aria-pressed={kind === 'talking'} onClick={() => setKind('talking')}>
+              Talking - my own video
+            </button>
+          </div>
+          {needsAccount ? (
+            <div className="card-group">
+              <div className="setting">
+                <div className="setting-text">
+                  <span className="row-line">The Instagram account they go to</span>
+                  <select value={account} aria-label="Instagram account" onChange={(e) => setAccount(e.target.value)}>
+                    <option value="">Pick one</option>
+                    {accounts.map((a) => (
+                      <option key={a.id} value={a.id}>
+                        {accountLabel(a)}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+            </div>
+          ) : null}
+          {!campaign && accounts.length === 0 ? (
+            <p className="hint warn-text">No Instagram account in your Postiz yet: connect one there, then come back.</p>
+          ) : null}
+        </>
+      ) : null}
+
+      {kind === 'talking' ? (
+        <TrialTalkStart songs={songs} check={accountProblem} onAdd={addTalk} onFull={setTalkFull} busyElsewhere={busy !== null} />
+      ) : (
       <div className="card-group">
         <div className="setting">
           <div className="setting-text">
@@ -816,24 +898,6 @@ export function TrialView({
             </div>
           </div>
         ) : null}
-        {needsAccount ? (
-          <div className="setting">
-            <div className="setting-text">
-              <span className="row-line">The Instagram account they go to</span>
-              <select value={account} aria-label="Instagram account" onChange={(e) => setAccount(e.target.value)}>
-                <option value="">Pick one</option>
-                {accounts.map((a) => (
-                  <option key={a.id} value={a.id}>
-                    {accountLabel(a)}
-                  </option>
-                ))}
-              </select>
-            </div>
-          </div>
-        ) : null}
-        {!campaign && accounts.length === 0 ? (
-          <p className="hint warn-text">No Instagram account in your Postiz yet: connect one there, then come back.</p>
-        ) : null}
         {askHook ? (
           <div className="setting">
             <div className="setting-text">
@@ -850,14 +914,15 @@ export function TrialView({
           <button
             type="button"
             className="btn primary"
-            disabled={!ready || busy !== null || (needsAccount && !account) || (!campaign && accounts.length === 0) || (askHook && !hook.trim())}
+            disabled={busy !== null || (askHook && !hook.trim())}
             onClick={() => void start()}
           >
             Start
           </button>
         </div>
       </div>
-      {said ? <p className="notice">{said}</p> : null}
+      )}
+      {said && !talkFull ? <p className="notice">{said}</p> : null}
     </section>
   )
 }

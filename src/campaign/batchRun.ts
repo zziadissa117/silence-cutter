@@ -275,7 +275,12 @@ export function variationParts(bank: BatchBank): string[] {
   }
   if (bank.layout === 'trial') {
     const sources = bank.trial?.sources.filter((s) => !s.stopped) ?? []
-    return [`${sources.length} viral reel${sources.length === 1 ? '' : 's'}`, 'their words moved or reworded', 'a touch brighter or darker']
+    const talking = sources.filter((s) => s.talk).length
+    return [
+      ...(sources.length > talking ? [`${sources.length - talking} viral reel${sources.length - talking === 1 ? '' : 's'}`, 'their words moved or reworded'] : []),
+      ...(talking > 0 ? [`${talking} talking clip${talking === 1 ? '' : 's'}`, 'a new headline and song each'] : []),
+      'a touch brighter or darker',
+    ]
   }
   const green = bank.layout === 'greenscreen'
   const headlines = green || hookOf(bank) !== 'formula' ? bank.headlines : []
@@ -546,6 +551,8 @@ function planTrialVideos(
     headline: plan.text,
     headlineStyle: plan.look.style,
     trial: plan.look,
+    // A talking clip keeps his voice, the song under it.
+    ...(plan.source.talk ? { voice: true } : {}),
     batch: trialBatch({ id, date: taking[i].date, time: taking[i].time, size: taking.length }, plan.source.id),
   }))
   return { videos, slots: taking, bank: fill({ ...bank, made, used, lastPair }, taking, now), retire: [] }

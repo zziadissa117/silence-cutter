@@ -58,6 +58,8 @@
 //   read-note      { profile, note, count }     -> { plan, caption }   New post's note: when, and the captions (handNote.ts)
 //   trial-reword   { profile, text, rewordings } -> { rewordings, checked, costCents }   Trial reels: a running reel's
 //                  rewordings checked again, the ones that don't sound right replaced.
+//   trial-headlines { profile, words, have? }   -> { headlines, costCents }   Trial reels: a talking clip's
+//                                                headlines, one per copy, from what he says (trialHeadlines.ts)
 //   trial-read     { profile, still, hook? }    -> { read, costCents }   Trial reels: Claude reads the viral reel's
 //                  words, their look and place from one still, and rewords them a word or two (trial.ts); only a
 //                  login allowed Trial reels (the owner's, or one he turned it on for in People)
@@ -94,6 +96,7 @@ import { GONE_MS, serverTrouble, troubleNote, type ServerPing } from './serverWa
 import { accountName, baseNote, clearOfTaken, failedRefs, goodHoursEnd, missingAccounts, notPostedNote, reconnectedAs, youtubeRetryTime, youtubeTime } from './failed.ts'
 import { carryOver, cleanCaptions, cleanRepost, repostDueAt, textFor, variationNote, type AccountText } from './repost.ts'
 import { FAKE_CLAUDE, FakeError, fakeCaption, fakePostiz, isFakePostiz } from './fake.ts'
+import { TRIAL_HEADLINES, TRIAL_HEADLINES_SCHEMA, TRIAL_HEADLINES_SYSTEM, cleanTrialHeadlines, trialHeadlinesMessage } from './trialHeadlines.ts'
 import { approvalFor, batchChoices, batchInfo, batchReady, batchTrusted, freeBatchTimes, isWarmupKey, trustKey, warmupOf, warmupReady, type BatchInfo } from './batch.ts'
 import { handFields } from './hand.ts'
 import { laterWhileWaiting, lastTimeToday, nextSlot, normalTimes, pickTime, sessionOf, spreadDay, spreadEnd, spreadUntil, timesFor, type OtherPost, type Spread, addDays, localDate, localTime, zoned } from './slots.ts'
@@ -977,6 +980,57 @@ async function trialReword(profile: Profile, body: Record<string, unknown>): Pro
   const client = new Anthropic({ apiKey: keys.anthropic, maxRetries: 2, timeout: 2 * MINUTE })
   const checked = await checkRewordings(client, text, rewordings)
   return reply({ rewordings: checked.rewordings, checked: REWORD_CHECK, costCents: checked.cost })
+}
+
+/** A talking Trial reel's headlines: Claude writes them from what he says,
+ *  in the style of his best past ones (trialHeadlines.ts). */
+async function trialHeadlines(profile: Profile, body: Record<string, unknown>): Promise<Response> {
+  if (!(await trialAllowedFor(profile.space_id))) throw new Problem('Trial reels are not turned on for this login.', false, 403)
+  const words = typeof body.words === 'string' ? body.words.trim().slice(0, 6000) : ''
+  const have = (Array.isArray(body.have) ? body.have : [])
+    .filter((h): h is string => typeof h === 'string')
+    .map((h) => h.trim().slice(0, 300))
+    .filter(Boolean)
+    .slice(0, 60)
+  if (words.split(/\s+/).length < 3) throw new Problem('Not enough words were heard in this clip to write headlines from.')
+  const keys = await keysFor(profile.id)
+  if (!keys.anthropic) throw new Problem('Your Anthropic key is missing - paste it in Settings, Posting.')
+  if (keys.anthropic === FAKE_CLAUDE) return reply({ headlines: Array.from({ length: TRIAL_HEADLINES }, (_, i) => `Fake headline ${i + 1 + have.length}`), costCents: 0 })
+  const { data } = await db
+    .from('cutter_posts')
+    .select('headline, views')
+    .eq('profile_id', profile.id)
+    .not('headline', 'is', null)
+    .neq('headline', '')
+    .order('created_at', { ascending: false })
+    .limit(400)
+  const past = pastHeadlines(
+    ((data ?? []) as Pick<Post, 'headline' | 'views'>[]).map((r) => {
+      const counts = Object.values(r.views ?? {}).filter((n) => typeof n === 'number')
+      return { headline: r.headline, views: counts.length > 0 ? counts.reduce((x, y) => x + y, 0) : null }
+    }),
+  )
+  const client = new Anthropic({ apiKey: keys.anthropic, maxRetries: 2, timeout: 2 * MINUTE })
+  const request = {
+    model: MODEL,
+    max_tokens: 4000,
+    system: TRIAL_HEADLINES_SYSTEM,
+    output_config: { effort: 'medium', format: { type: 'json_schema', schema: TRIAL_HEADLINES_SCHEMA } },
+    messages: [{ role: 'user', content: trialHeadlinesMessage(words, TRIAL_HEADLINES, past, have) }],
+  }
+  const response = await client.beta.messages.create(request as never).catch(anthropicProblem)
+  const message = response as unknown as { content: { type: string; text?: string }[]; usage?: { input_tokens?: number; output_tokens?: number } }
+  const said = message.content
+    .filter((b) => b.type === 'text')
+    .map((b) => b.text ?? '')
+    .join('')
+  let parsed: unknown = null
+  try {
+    parsed = JSON.parse(said)
+  } catch {
+    throw new Problem("Claude's headlines couldn't be read. Try again.", true)
+  }
+  return reply({ headlines: cleanTrialHeadlines(parsed, have), costCents: costCents(message.usage?.input_tokens ?? 0, message.usage?.output_tokens ?? 0) })
 }
 
 /** What a trial reel's refusal teaches (trial.ts trialProblem): Instagram's
@@ -4902,6 +4956,8 @@ Deno.serve(async (req) => {
         return await trialRead(profile, body)
       case 'trial-reword':
         return await trialReword(profile, body)
+      case 'trial-headlines':
+        return await trialHeadlines(profile, body)
       default:
         return reply({ error: 'Unknown action.' }, 400)
     }
