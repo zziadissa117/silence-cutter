@@ -6,6 +6,7 @@ import { useState } from 'react'
 
 import { VideoPicker } from '../VideoPicker'
 import type { BatchBank, CopySource } from './batch'
+import { Mark } from './Mark'
 
 export function CopiesCard({
   bank,
@@ -30,6 +31,7 @@ export function CopiesCard({
     <div className="group copies">
       <div className="bank-head">
         <span className="group-title">
+          <Mark kind="copies" />
           One video, new songs <span className="bank-count">{copies.length}</span>
         </span>
         <VideoPicker className="btn small" label="Add a video to copy" onFiles={(files) => onAdd(files, wanted)}>

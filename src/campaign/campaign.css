@@ -1702,3 +1702,35 @@ img.mark { border-radius: 14px; }
 .space-bar > div { height: 100%; border-radius: inherit; background: linear-gradient(90deg, var(--sky), var(--accent)); }
 .settings .footnote { margin-top: 4px; }
 .sync-dot.warn { background: var(--warn); box-shadow: 0 0 8px var(--warn); }
+
+/* --- Batch (his ask, 2026-11-11: "make it cooler, but I like how it's
+   built"): the campaign as a card with its badge, each part under its mark,
+   the day's number big. ----------------------------------------------- */
+.batch-hero {
+  position: relative; display: flex; align-items: center; gap: 14px; padding: 14px 16px; border-radius: 26px;
+  border: 1px solid var(--hairline); box-shadow: var(--lift); cursor: pointer;
+  background: radial-gradient(120% 140% at 0% 0%, color-mix(in srgb, var(--accent) 24%, transparent), transparent 62%), var(--card-sheen), var(--surface);
+}
+.batch-hero .brand-badge { width: 52px; height: 52px; border-radius: 17px; font-size: 22px; flex: none; }
+.batch-hero-text { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.batch-hero-name { font-size: 22px; font-weight: 800; letter-spacing: -0.03em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.batch-hero > svg { flex: none; color: var(--muted); }
+.chooser select.batch-hero-select { position: absolute; inset: 0; width: 100%; height: 100%; opacity: 0; cursor: pointer; }
+.group-title { display: inline-flex; align-items: center; gap: 10px; }
+.set-icon.mark { width: 28px; height: 28px; border-radius: 9px; }
+.set-icon.mark svg { width: 17px; height: 17px; }
+.batch .group { border-radius: 26px; }
+.batch .stepper input.stepper-value { font-size: 34px; font-weight: 800; letter-spacing: -0.03em; width: 2.6em; min-height: 52px; }
+.batch .stepper .icon-btn { width: 48px; height: 48px; }
+.batch .format-cards { gap: 10px; }
+.batch .format-card { position: relative; border-radius: 20px; border: 1px solid var(--hairline); background: color-mix(in srgb, var(--text) 4%, transparent); }
+.batch .format-card::before { content: ''; position: absolute; left: 0; top: 14px; bottom: 14px; width: 3px; border-radius: 0 3px 3px 0; background: var(--accent); }
+.batch .format-card.talking::before { background: var(--sky); }
+.batch .format-card.greenscreen::before { background: var(--ok); }
+.batch .format-card.open { border-color: color-mix(in srgb, var(--accent) 45%, transparent); }
+.batch .format-head { padding: 14px 16px; }
+.batch .format-head .row-name { font-size: 17px; font-weight: 700; }
+.batch .format-badge { padding: 3px 9px; font-weight: 700; color: var(--accent); background: color-mix(in srgb, var(--accent) 16%, transparent); }
+.batch .format-badge.talking { color: var(--sky); background: color-mix(in srgb, var(--sky) 16%, transparent); }
+.batch .format-badge.greenscreen { color: var(--ok); background: color-mix(in srgb, var(--ok) 16%, transparent); }
+.batch-hero .new-post-to { font-size: 13px; line-height: 1.35; margin: 2px 0 0; }

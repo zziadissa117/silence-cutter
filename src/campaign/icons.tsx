@@ -276,3 +276,17 @@ export const StorageIcon = () => (
     <path d="M5 6.5v11c0 1.5 3.1 2.75 7 2.75s7-1.25 7-2.75v-11M5 12c0 1.5 3.1 2.75 7 2.75S19 13.5 19 12" />
   </Icon>
 )
+
+export const MusicIcon = () => (
+  <Icon>
+    <path d="M9 17.5V6l10-2v11.5" />
+    <circle cx="6.75" cy="17.5" r="2.25" />
+    <circle cx="16.75" cy="15.5" r="2.25" />
+  </Icon>
+)
+
+export const HookIcon = () => (
+  <Icon>
+    <path d="M13 3.5L5.5 13.25h5.75L10.5 20.5 18.5 10.5h-5.75z" />
+  </Icon>
+)

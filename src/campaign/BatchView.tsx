@@ -48,6 +48,8 @@ import {
 import { StepOrder } from './StepOrder'
 import { StepTexts } from './StepTexts'
 import { BatchStatus } from './BatchStatus'
+import { Mark } from './Mark'
+import { BrandBadge } from './HomeTop'
 import { batchState, lastReadyAt, statusDays } from './batchNow'
 import { ClipViewer } from './ClipViewer'
 import { describeClip } from './clipCheck'
@@ -77,7 +79,7 @@ import {
 import { fingerprint, skippedNotice } from './fingerprint'
 import { formatTime, labelOf, type Job } from './jobs'
 import type { Angle, Campaign } from './look'
-import { CloseIcon, MinusIcon, PlusIcon } from './icons'
+import { ChevronDown, CloseIcon, MinusIcon, PlusIcon } from './icons'
 import { MAX_TRACK_MB } from './music'
 import { copySong, useMusicBank } from './musicBank'
 import {
@@ -1237,7 +1239,7 @@ export function BatchView({
           ? `${leftHere} different video${leftHere === 1 ? '' : 's'} left`
           : 'Plenty of different videos'
     return (
-      <li key={f.id} className={`format-card${open ? ' open' : ''}${f.paused ? ' paused' : ''}`}>
+      <li key={f.id} className={`format-card ${f.kind}${open ? ' open' : ''}${f.paused ? ' paused' : ''}`}>
         <button type="button" className="format-head" aria-expanded={open} onClick={() => setOpenFormat(open ? null : f.id)}>
           <span className={`format-badge ${f.kind}`}>{kind.label}</span>
           <span className="row-name">{f.name}</span>
@@ -1360,6 +1362,7 @@ export function BatchView({
     <div className="group">
       <div className="bank-head">
         <span className="group-title">
+          {formatId ? null : <Mark kind={kind === 'music' ? 'music' : 'clips'} />}
           {title} <span className="bank-count">{filesIn(kind, formatId).length}</span>
         </span>
         {kind === 'music' ? (
@@ -1501,8 +1504,24 @@ export function BatchView({
       </div>
 
       <div className="chooser">
-        <div className="chooser-row">
+        {/* The campaign as a card with its badge; the picker is the whole card. */}
+        <label className="batch-hero">
+          <BrandBadge campaign={campaign} />
+          <span className="batch-hero-text">
+            <span className="eyebrow">Batch for</span>
+            <span className="batch-hero-name">{campaign.name}</span>
+            <span className="hint new-post-to">
+              To {accounts.map(accountLabel).join(', ')}
+              {random
+                ? ' · around the clock'
+                : times.length > 0
+                  ? ` · at ${times.map(timeLabel).join(', ')}`
+                  : ''}
+            </span>
+          </span>
+          {choices.length > 1 ? <ChevronDown /> : null}
         <select
+          className="batch-hero-select"
           aria-label="Campaign"
           value={campaign.id}
           onChange={(e) => {
@@ -1519,7 +1538,7 @@ export function BatchView({
             </option>
           ))}
         </select>
-        </div>
+        </label>
         {batchAngles.length > 1 && bank ? (
           <div className="seg chips" role="radiogroup" aria-label="Headline look">
             {batchAngles.map((a) => (
@@ -1536,14 +1555,6 @@ export function BatchView({
             ))}
           </div>
         ) : null}
-        <p className="hint new-post-to">
-          To {accounts.map(accountLabel).join(', ')}
-          {random
-            ? ' · around the clock'
-            : times.length > 0
-              ? ` · at ${times.map(timeLabel).join(', ')}`
-              : ''}
-        </p>
         {lookRows.some((r) => r.look && r.waiting > 0) ? (
           // The card is far down the tab: from here, one tap to it.
           <button type="button" className="linkbtn" onClick={() => document.getElementById('hook-results')?.scrollIntoView({ behavior: 'smooth', block: 'start' })}>
@@ -1598,7 +1609,10 @@ export function BatchView({
           {onEngine ? (
             <>
               <div className="group">
-                <div className="group-title">On the engine</div>
+                <div className="group-title">
+                  <Mark kind="engine" />
+                  On the engine
+                </div>
                 <p className="hint tip">
                   Made on the server - close the app once it says the batch is handed over. Each take gives several hooks, every video a little
                   different, never a near-copy. They wait in Posts: watch one, then Approve all.
@@ -1614,6 +1628,7 @@ export function BatchView({
             <div className="group batch-formats">
               <div className="bank-head">
                 <span className="group-title">
+                  <Mark kind="formats" />
                   Formats <span className="bank-count">{formatList.length}</span>
                 </span>
                 {engineUrl() ? (
@@ -1650,7 +1665,10 @@ export function BatchView({
           )}
           {green || onEngine ? null : (
           <div className="group">
-            <div className="group-title">Hook</div>
+            <div className="group-title">
+              <Mark kind="hook" />
+              Hook
+            </div>
             <HookLooks looks={shownLooks} withFormula stepped={stepped} onChange={saveLooks} />
           </div>
           )}
@@ -1770,6 +1788,7 @@ export function BatchView({
           <div className="group">
             <div className="bank-head">
               <span className="group-title">
+                <Mark kind="headlines" />
                 Headlines <span className="bank-count">{bank.headlines.length}</span>
               </span>
             </div>
@@ -1844,7 +1863,10 @@ export function BatchView({
           {bankSize > 0 ? <p className="hint">The bank keeps {mb(bankSize)} on this phone.</p> : null}
 
           <div className="group">
-            <div className="group-title">Posting</div>
+            <div className="group-title">
+              <Mark kind="posting" />
+              Posting
+            </div>
             <div className="field">
               <span className="label">Videos a day</span>
               <div className="stepper">
@@ -2155,7 +2177,10 @@ function HookResults({
     window.confirm(`Stop using ${what}?${waiting > 0 ? ` The ${waiting} video${waiting === 1 ? '' : 's'} with it not out yet come${waiting === 1 ? 's' : ''} out, and the batch makes others instead.` : ''}`)
   return (
     <div className="group hook-results" id="hook-results">
-      <div className="group-title">How each hook is doing</div>
+      <div className="group-title">
+        <Mark kind="results" />
+        How each hook is doing
+      </div>
       <p className="hint tip bank-hint">
         Views are read a day, three days and a week after a video goes out. Stop a hook that does badly, or change its
         words: its videos not out yet come out and the batch makes others in their place. Change a look to another: its

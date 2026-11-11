@@ -103,7 +103,7 @@ export function ActionTiles({ onRecord, add }: { onRecord: () => void; add: Reac
 }
 
 /** A campaign's badge: its logo, or its first letter on a colour of its own. */
-function Badge({ campaign }: { campaign: Campaign }) {
+export function BrandBadge({ campaign }: { campaign: Pick<Campaign, 'name' | 'logo'> }) {
   const [url, setUrl] = useState<string | null>(null)
   useEffect(() => {
     if (!campaign.logo) return
@@ -132,7 +132,7 @@ export function CampaignRow({ campaigns, onOpen, onAll }: { campaigns: readonly 
       <div className="brand-row">
         {campaigns.map((c) => (
           <button key={c.id} type="button" className="brand-item" onClick={() => onOpen(c)}>
-            <Badge campaign={c} />
+            <BrandBadge campaign={c} />
             <span className="brand-name">{c.name || 'Campaign'}</span>
           </button>
         ))}
