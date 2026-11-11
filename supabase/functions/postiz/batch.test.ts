@@ -151,6 +151,11 @@ describe('warm-up posts (2026-11-11)', () => {
     expect(warmupOf({ idea: 'w-1', at: '2027-01-14T19:05:00Z' }, 'warmup:w-1:m-1', now)).toBeNull()
     expect(isWarmupKey('warmup:a:b')).toBe(true)
   })
+  it('an extra one for a cold account names that account only', async () => {
+    const { warmupOf } = await import('./batch')
+    expect(warmupOf({ idea: 'w-1', at: '2026-11-14T19:05:00Z', only: 'acc-9' }, 'warmup:w-1:m-1', now)?.only).toBe('acc-9')
+    expect(warmupOf({ idea: 'w-1', at: '2026-11-14T19:05:00Z', only: 'bad id!' }, 'warmup:w-1:m-1', now)).not.toHaveProperty('only')
+  })
   it('tell him what to approve and by when', async () => {
     const { warmupReady } = await import('./batch')
     expect(warmupReady('Godari', '2026-11-14T19:05:00Z', 'America/Toronto').title).toBe('Godari: a warm-up to approve')

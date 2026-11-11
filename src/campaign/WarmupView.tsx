@@ -12,7 +12,8 @@ import { HeadlineLook } from './JobRow'
 import type { Campaign, HeadlineStyle } from './look'
 import { BackToMore } from './MoreView'
 import { isVideoFile, songFile, soundOf, songName, useMusicBank } from './musicBank'
-import { lastPosts, listPosts } from './posting'
+import { ColdWarmupAsk, askAbout, campaignOf } from './ColdWarmup'
+import { accountLabel, lastInsights, lastPosts, listInsights, listPosts, postingHere } from './posting'
 import { PlayButton } from './TrackPlayer'
 import { ideaViews } from './warmupPlan'
 import {
@@ -68,6 +69,18 @@ export function WarmupView({
       alive = false
     }
   }, [])
+  // Accounts that stopped getting views: an extra warm-up, if he says yes.
+  const [cold, setCold] = useState(() => lastInsights().trouble ?? [])
+  useEffect(() => {
+    let alive = true
+    void listInsights()
+      .then((got) => alive && setCold(got.trouble ?? []))
+      .catch(() => {})
+    return () => {
+      alive = false
+    }
+  }, [])
+  const coldHere = cold.filter((a) => askAbout(a.id) && campaignOf(a.id, campaigns))
   const ready = made.filter((m) => !m.posted)
   const onFilm = (ideas: WarmupIdea[]) => setFilming(ideas)
   const approved = list.categories.filter((c) => c.status === 'approved')
@@ -137,6 +150,22 @@ export function WarmupView({
         >
           Film {Math.min(IN_ONE_GO, shown.length)} in one go
         </button>
+      ) : null}
+      {coldHere.length > 0 ? (
+        <div className="group">
+          <div className="group-title">Accounts gone cold</div>
+          <p className="hint">Their videos stopped getting views. An extra warm-up goes on that account only, if you say yes.</p>
+          {coldHere.map((a) => (
+            <div key={a.id} className="setting">
+              <div className="setting-text">
+                <span className="row-line">
+                  {accountLabel({ ...a, profile: a.profile ?? postingHere()?.profile.accounts.find((k) => k.id === a.id)?.profile })}
+                </span>
+                <ColdWarmupAsk account={a} campaigns={campaigns} />
+              </div>
+            </div>
+          ))}
+        </div>
       ) : null}
       {ready.length > 0 ? <ReadyList ready={ready} /> : null}
       {onSaveCampaign && campaigns.length > 0 ? <WhereTheyGo campaigns={campaigns} categories={approved} onSave={onSaveCampaign} /> : null}

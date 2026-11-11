@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { atBestHour, bestOf, ideaOfKey, ideaViews, planWarmups } from './warmupPlan'
+import { atBestHour, bestOf, ideaOfKey, ideaViews, planExtra, planWarmups } from './warmupPlan'
 import type { MadeWarmup } from './warmups'
 
 const made = (id: string, ideaId: string, category = 'training', fields: Partial<MadeWarmup> = {}): MadeWarmup => ({
@@ -77,5 +77,24 @@ describe('when warm-ups go out', () => {
     expect(bestOf(Array.from({ length: 24 }, (_, h) => (h === 13 ? 5 : 1)))).toBe(13)
     expect(bestOf(undefined)).toBe(19)
     expect(atBestHour(new Date('2026-11-12T20:00:00').getTime(), 19, 's').getDate()).toBe(13)
+  })
+})
+
+describe('an extra warm-up for a cold account', () => {
+  it('the best one the campaign has not had, its own categories first, soon', () => {
+    const p = planExtra({
+      campaign: { id: 'c1', warmups: { categories: ['ai'], perWeek: 2 } },
+      made: [made('m1', 'a', 'ai'), made('m2', 'b', 'training'), made('m3', 'c', 'ai', { posted: { campaignId: 'c2', key: 'k', at: '' } })],
+      posts: [{ key: 'warmup:a:m0', campaignId: 'c1', status: 'scheduled', views: null }],
+      bestHour: hour,
+      now,
+    })
+    // "a" was on c1 already, m3 went out elsewhere: the training one, though not its category.
+    expect(p?.made.id).toBe('m2')
+    expect(p!.at.getTime() - now.getTime()).toBeGreaterThanOrEqual(3 * 3600_000)
+    expect(p!.at.getHours()).toBe(19)
+  })
+  it('none when nothing filmed can go there', () => {
+    expect(planExtra({ campaign: { id: 'c1' }, made: [], posts: [], bestHour: hour, now })).toBeNull()
   })
 })

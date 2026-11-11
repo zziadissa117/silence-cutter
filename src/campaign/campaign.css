@@ -1339,3 +1339,4 @@ html.editor-dark, html.editor-dark body { background: #000; }
 .warmup-chips { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
 .warmup-chips .chip { padding: 6px 12px; border-radius: 999px; border: 1px solid var(--edge); background: var(--field); color: var(--text); font: inherit; font-size: 14px; cursor: pointer; }
 .warmup-chips .chip.on { background: var(--accent); border-color: var(--accent); color: var(--on-accent); }
+.cold-warmup { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-top: 6px; }

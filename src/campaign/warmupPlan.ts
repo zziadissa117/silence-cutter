@@ -106,3 +106,32 @@ export function bestOf(weights: readonly number[] | undefined): number {
   for (let h = 0; h < 24; h++) if (weights[h] > weights[best]) best = h
   return best
 }
+
+/** An extra warm-up for an account that went cold (his yes first): the best
+ *  of his filmed ones the campaign hasn't had the idea of, at the next best
+ *  hour he still has time to approve it by - whatever the week's spacing. */
+export function planExtra({
+  campaign,
+  made,
+  posts,
+  bestHour,
+  now = new Date(),
+}: {
+  campaign: Pick<Campaign, 'id' | 'warmups'>
+  made: readonly MadeWarmup[]
+  posts: readonly Pick<ServerPost, 'key' | 'campaignId' | 'status' | 'views'>[]
+  bestHour: (date: Date) => number
+  now?: Date
+}): PlannedWarmup | null {
+  const views = ideaViews(posts)
+  const score = (m: MadeWarmup) => views.get(m.ideaId) ?? EXPECTED_VIEWS
+  const used = new Set(posts.filter((p) => p.campaignId === campaign.id && !GONE.has(p.status)).flatMap((p) => ideaOfKey(p.key) ?? []))
+  const wanted = campaign.warmups?.categories ?? []
+  const free = made.filter((m) => !m.posted && !used.has(m.ideaId))
+  const best = (list: MadeWarmup[]) => [...list].sort((a, b) => score(b) - score(a) || a.madeAt - b.madeAt)[0]
+  // From its own categories, else any: a cold account needs one now.
+  const pick = best(free.filter((m) => wanted.length === 0 || wanted.includes(m.category))) ?? best(free) ?? null
+  if (!pick) return null
+  const from = now.getTime() + SOONEST_MS
+  return { made: pick, campaignId: campaign.id, at: atBestHour(from, bestHour(new Date(from)), `${campaign.id}${pick.id}`) }
+}

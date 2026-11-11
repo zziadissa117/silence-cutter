@@ -586,6 +586,32 @@ files come down the first time they are used (`ensureSong`: `song-urls`, checked
 `songFile`, `copySong`, the Music screen's play and `BatchEdit` all go through it. Every song action
 is behind the cutter login (`spaceFor`); the rows and the bucket have no policies.
 
+## Warm-ups (`warmups.ts`, `WarmupView.tsx`, server `cutter/warmups.ts`)
+
+Short posts that warm an account up between its batch videos: a set headline, a
+set sound, a set length (about 7 s), no talking, no captions.
+
+- **Ideas** are shared by every login: rows `warmup:<id>` / categories `warmcat:<id>`
+  in `cutter_config`, files at `warmup/<sha>` in `cutter-files`, all through
+  `warmupAction` in `cutter/index.ts` after a valid login. The owner's ideas go up
+  at once; anyone else's (and a new category) wait for his OK, and he can change
+  them first. His and his partners' (People -> Partner) come first.
+- **Filming** (`WarmupFilm.tsx`, `Recorder` `limitSec`/`sound`): several in one go,
+  the idea's sound playing, stopping by itself. Made by `warmupMake.ts` (the batch
+  montage render) and kept on the phone (`warmups:made` meta + bank file) until it
+  goes out - once, ever.
+- **Posting** (`warmupPlan.planWarmups`, `warmupSend.sendDueWarmups`): per campaign
+  (`Campaign.warmups {categories, perWeek}`), evenly apart, at the best hour, on
+  top of the batch, an idea never twice on a campaign, best-viewed ideas first.
+  Key `warmup:<idea>:<made>`, `meta.warmup {idea, at, only?}`; the server
+  (`postiz/batch.warmupOf`) keeps the time and always asks his yes, with its own
+  notification (`warmupReady`).
+- **Cold accounts** (`ColdWarmup.tsx`, `warmupPlan.planExtra`): an account in
+  `Insights.trouble` (postiz/deadAccounts.ts) asks "Post an extra warm-up on it?"
+  in Warm-ups and in Analytics; Yes sends one at the next best hour to that
+  account only (`rules.only` on the post: the scheduler and `attachAccounts`
+  keep it to that account); asked again a week later if still cold.
+
 ## The Cutter server (`server/`, on Railway)
 
 The Cutter app itself in Chrome for Testing (headless, Linux), driven by `server/main.mjs` (Node, no packages):

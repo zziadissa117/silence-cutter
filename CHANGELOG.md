@@ -3,6 +3,21 @@
 Newest first. Every change says what it does, how to use it, and how it works
 underneath. Kept up to date with each commit.
 
+## Warm-ups, step 4: an extra warm-up when an account goes cold - your yes first
+App and server: run ./deploy.sh (it runs ./deploy-server.sh too).
+Needs deploying: run ./deploy-server.sh
+- When an account's videos stop getting views (the "Accounts that stopped getting views" card), it now asks
+  **"Post an extra warm-up on it?" Yes / No** - on that card in Analytics, and under "Accounts gone cold" in
+  Warm-ups. Nothing goes out without your Yes.
+- Yes: the best of your filmed warm-ups that campaign hasn't had the idea of (its own categories first, any if none)
+  goes at the account's next best hour, at least 3 hours away, on **that account only** - and still waits for your
+  OK in Posts, with its notification. No: not asked again for a week; asked again then if it is still cold.
+- None filmed that can go there: it says so (film a few in Warm-ups).
+- Underneath: `warmupPlan.planExtra`, `warmupSend.sendExtraWarmup`, `ColdWarmup.tsx`; the server keeps such a post to
+  its one account (`meta.warmup.only` -> `rules.only`, read where the scheduler picks accounts; adding an account to
+  the campaign doesn't add it to that post). No database change.
+- Tests: `warmupPlan.test.ts` (extra warm-up), `batch.test.ts` (only that account).
+
 ## Warm-ups, step 3: posting them per campaign
 App and server: run ./deploy.sh (it runs ./deploy-server.sh too).
 Needs deploying: run ./deploy-server.sh

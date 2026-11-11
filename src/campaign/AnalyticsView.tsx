@@ -135,6 +135,7 @@ export function AnalyticsView({
           paused={new Set(Object.entries(profile.settings.limits?.accounts ?? {}).flatMap(([id, l]) => (l.paused ? [id] : [])))}
           onPause={onPauseAccount}
           known={profile.accounts}
+          campaigns={rows.map((r) => r.campaign)}
         />
       ) : null}
       <BestHoursCard best={profile.bestHours ?? insights.bestHours} onOff={onBestHoursOff} />

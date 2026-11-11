@@ -6,8 +6,8 @@
 import { NO_POSTING, type Campaign } from './look'
 import { queueSend } from './outbox'
 import { hoursHere, lastPosts, listPosts, placeFor, postingHere } from './posting'
-import { bestOf, planWarmups } from './warmupPlan'
-import { loadMade, madeFile, saveMade } from './warmups'
+import { bestOf, planExtra, planWarmups, type PlannedWarmup } from './warmupPlan'
+import { loadMade, madeFile, saveMade, type MadeWarmup } from './warmups'
 
 let running: Promise<number> | null = null
 
@@ -33,28 +33,46 @@ async function sendNow(campaigns: readonly Campaign[]): Promise<number> {
   let sent = 0
   for (const p of plan) {
     const campaign = on.find((c) => c.id === p.campaignId)
-    const file = await madeFile(p.made)
-    if (!campaign || !file) continue
-    const key = `warmup:${p.made.ideaId}:${p.made.id}`
-    await queueSend(
-      {
-        key,
-        profileId: local.profile.id,
-        campaign: { id: campaign.id, name: campaign.name, posting: campaign.posting ?? NO_POSTING },
-        meta: {
-          transcript: '',
-          headline: p.made.headline,
-          duration: p.made.seconds,
-          fileName: p.made.file.name,
-          warmup: { idea: p.made.ideaId, at: p.at.toISOString() },
-        },
-      },
-      file,
-    )
-    // Gone out: never again (his rule), whatever happens to the post.
-    const now = await loadMade()
-    await saveMade(now.map((m) => (m.id === p.made.id ? { ...m, posted: { campaignId: campaign.id, key, at: p.at.toISOString() } } : m)))
-    sent++
+    if (campaign && (await sendOne(local.profile.id, campaign, p))) sent++
   }
   return sent
+}
+
+/** One warm-up to the server, then marked gone out - never again (his
+ *  rule), whatever happens to the post. */
+async function sendOne(profileId: string, campaign: Campaign, p: PlannedWarmup, only?: string): Promise<boolean> {
+  const file = await madeFile(p.made)
+  if (!file) return false
+  const key = `warmup:${p.made.ideaId}:${p.made.id}`
+  await queueSend(
+    {
+      key,
+      profileId,
+      campaign: { id: campaign.id, name: campaign.name, posting: campaign.posting ?? NO_POSTING },
+      meta: {
+        transcript: '',
+        headline: p.made.headline,
+        duration: p.made.seconds,
+        fileName: p.made.file.name,
+        warmup: { idea: p.made.ideaId, at: p.at.toISOString(), ...(only ? { only } : {}) },
+      },
+    },
+    file,
+  )
+  const now = await loadMade()
+  await saveMade(now.map((m) => (m.id === p.made.id ? { ...m, posted: { campaignId: campaign.id, key, at: p.at.toISOString() } } : m)))
+  return true
+}
+
+/** An extra warm-up on one account that went cold, after his yes: on that
+ *  account only, at its next best hour, waiting for his OK like the rest.
+ *  What went out, or null when none of his filmed ones can go there. */
+export async function sendExtraWarmup(campaign: Campaign, accountId: string): Promise<{ made: MadeWarmup; at: Date } | null> {
+  const local = postingHere()
+  if (!local) return null
+  const made = await loadMade()
+  const posts = await listPosts(true).catch(() => lastPosts())
+  const p = planExtra({ campaign, made, posts, bestHour: (date) => bestOf(hoursHere(dayOf(date))) })
+  if (!p || !(await sendOne(local.profile.id, campaign, p, accountId))) return null
+  return { made: p.made, at: p.at }
 }

@@ -8,6 +8,8 @@
 import { useState } from 'react'
 
 import { type DeadAccount } from '../../supabase/functions/postiz/deadAccounts.ts'
+import { ColdWarmupAsk } from './ColdWarmup'
+import type { Campaign } from './look'
 import { accountLabel } from './posting'
 
 import { bestRuns, dayOfWeek, type BestHours } from '../../supabase/functions/postiz/bestHours.ts'
@@ -151,8 +153,11 @@ export function TroubleCard({
   paused,
   onPause,
   known = [],
+  campaigns,
 }: {
   accounts: readonly DeadAccount[]
+  /** His campaigns: with them, each account asks about an extra warm-up (ColdWarmup.tsx). */
+  campaigns?: readonly Campaign[]
   /** The profile's accounts, for the usernames of those the server named only. */
   known?: readonly { id: string; profile?: string }[]
   /** Account ids paused now. */
@@ -183,6 +188,7 @@ export function TroubleCard({
               <div className="hint">
                 About {shortNumber(a.recent)} views a video lately - it usually gets {shortNumber(a.usual)}.
               </div>
+              {campaigns ? <ColdWarmupAsk account={a} campaigns={campaigns} /> : null}
             </div>
             <button type="button" className={`btn small${paused.has(a.id) ? '' : ' primary'}`} disabled={busy === a.id} onClick={() => tap(a.id, !paused.has(a.id))}>
               {busy === a.id ? '…' : paused.has(a.id) ? 'Resume' : 'Pause'}

@@ -1691,6 +1691,8 @@ async function attachAccounts(profile: Profile, body: Record<string, unknown>): 
   const moves: AttachMove[] = []
 
   for (const row of (data ?? []) as Post[]) {
+    // An extra warm-up for one account stays on that account.
+    if (row.rules.only) continue
     const first = attachMove(row, wanted, Date.now())
     if (first.move === 'has-all' || first.move === 'not-open') continue
     const owned = await claim(row.id)
@@ -2141,6 +2143,7 @@ async function start(profile: Profile, body: Record<string, unknown>): Promise<R
         // Formats video he scheduled himself goes at its time (approvalFor).
         rules: {
           ...rules,
+          ...(warm?.only && profile.accounts.some((a) => a.id === warm.only) ? { only: [warm.only] } : {}),
           approval: warm ? 'me' : approvalFor(rules.approval, { hand: Boolean(hand), approveNow, batch: Boolean(batch), scheduled: meta.scheduled === true }),
         },
         ...(warm ? { post_at: warm.at } : {}),
@@ -2357,6 +2360,7 @@ async function prepare(start: Post): Promise<Post> {
 
   const chosen = profile.settings.campaigns?.[post.campaign_id]
   const accounts = (chosen?.accounts ?? [])
+    .filter((accountId) => !post.rules.only || post.rules.only.includes(accountId))
     .map((accountId) => profile.accounts.find((a) => a.id === accountId))
     .filter((a): a is Account => Boolean(a))
     .map((a) => ({ id: a.id, name: a.name, platform: a.platform, profile: a.profile }))

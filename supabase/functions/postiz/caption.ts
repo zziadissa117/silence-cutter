@@ -28,6 +28,9 @@ export interface PostingRules {
   /** A Trial reel's caption was written in its account's own voice, under
    *  this version of the rule (ACCOUNT_VOICE) - set by the server. */
   voice?: number
+  /** Only these of the campaign's accounts - an extra warm-up for one that
+   *  went cold. Set by the server. */
+  only?: string[]
 }
 
 /** The version of the rule a Trial reel's caption is written under: one

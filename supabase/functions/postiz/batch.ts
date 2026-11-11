@@ -180,13 +180,15 @@ export function freeBatchTimes(batch: BatchInfo, tz: string, taken: readonly num
  *  notification of its own. Its idea is in its key, `warmup:<idea>:<made>`, so
  *  views can be counted per idea. Null when what came is not one, or its time
  *  is gone or more than a month off. */
-export function warmupOf(value: unknown, key: string, now = Date.now()): { idea: string; at: string } | null {
+export function warmupOf(value: unknown, key: string, now = Date.now()): { idea: string; at: string; only?: string } | null {
   if (!value || typeof value !== 'object' || !isWarmupKey(key)) return null
   const v = value as Record<string, unknown>
   const idea = typeof v.idea === 'string' && /^[\w-]{1,80}$/.test(v.idea) ? v.idea : null
   const at = typeof v.at === 'string' ? Date.parse(v.at) : NaN
   if (!idea || !Number.isFinite(at) || at < now + 10 * 60_000 || at > now + 31 * 24 * 3600_000) return null
-  return { idea, at: new Date(at).toISOString() }
+  // An extra one for an account that went cold (his yes first): that account only.
+  const only = typeof v.only === 'string' && /^[\w-]{1,100}$/.test(v.only) ? v.only : null
+  return { idea, at: new Date(at).toISOString(), ...(only ? { only } : {}) }
 }
 
 export const isWarmupKey = (key: string | null | undefined): boolean => typeof key === 'string' && key.startsWith('warmup:')
