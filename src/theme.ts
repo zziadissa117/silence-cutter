@@ -19,7 +19,9 @@ export function savedTheme(): Theme {
 
 /** Which set of colours is showing for `theme` right now. */
 export function shownTheme(theme: Theme, prefersDark: boolean): 'light' | 'dark' {
-  return theme === 'system' ? (prefersDark ? 'dark' : 'light') : theme
+  // The new look is dark (2026-11-11): light only when he picks it.
+  void prefersDark
+  return theme === 'light' ? 'light' : 'dark'
 }
 
 function prefersDark(): boolean {

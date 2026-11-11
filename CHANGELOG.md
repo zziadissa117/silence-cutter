@@ -3,6 +3,21 @@
 Newest first. Every change says what it does, how to use it, and how it works
 underneath. Kept up to date with each commit.
 
+## The new look, step 1: dark, rounded, purple, a floating tab bar
+App only: run ./deploy.sh.
+- His ask: make the Cutter look like the apps in his screenshots ("the cutter just looks like an old app").
+- Everywhere at once (index.css tokens + the last block of campaign.css):
+  - pure black behind, soft dark cards (#121214) with big rounded corners (24) and a hairline edge;
+  - one purple (#8b7cf6) for what to do next - the main button glows a little;
+  - pill buttons and chips, the chosen one lit purple with an outline;
+  - bigger, bolder titles (38, extra bold) and section titles (21, bold);
+  - the tab bar is a floating pill of icons, the tab you're on in a purple pill (names still read out to VoiceOver).
+- Dark is now the look by default; Light is still in Settings -> Appearance ("Automatic" became "Dark").
+- Light keeps the same shapes with a darker purple. The TikTok edit screen keeps its own black and red.
+- Design guidance from the ui-ux-pro-max skill he linked (touch targets, contrast, no emoji icons, reduced motion);
+  the look itself from his screenshots.
+- Next: the screens themselves (Videos home with a header and the day's numbers, Analytics cards).
+
 ## Your voice: a paragraph made to cover every part of talking, and a voice per mic
 App only: run ./deploy.sh.
 - His ask: "a specific paragraph ... to know exactly how to hit every single area of our speech", and "sometimes I

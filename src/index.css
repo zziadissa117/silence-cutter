@@ -12,31 +12,33 @@
    page when he picks one). */
 
 :root {
+  /* The new look (2026-11-11, his screenshots): pure black, soft dark cards
+     with a hairline edge, one purple for what to do next. */
   --ink: #000000;
-  --surface: #1c1c1e;
-  --surface-raised: #2c2c2e;
-  --field: #2c2c2e;
-  --edge: #38383a;
-  --edge-lit: #48484a;
-  --rule: #2c2c2e;
+  --surface: #121214;
+  --surface-raised: #1c1c21;
+  --field: #1c1c21;
+  --edge: #26262c;
+  --edge-lit: #3a3a42;
+  --rule: #1f1f25;
 
   --text: #ffffff;
-  --dim: #aeaeb2;
-  --muted: #8e8e93;
+  --dim: #c9c9d0;
+  --muted: #8e8e98;
 
   --now: #ffffff;
-  --accent: #0a84ff;
+  --accent: #8b7cf6;
   --on-accent: #ffffff;
-  --ok: #30d158;
-  --warn: #ff9f0a;
-  --bad: #ff453a;
+  --ok: #34d17a;
+  --warn: #ffb020;
+  --bad: #ff5a5f;
   /* Only for a post waiting for its time in Postiz. */
-  --scheduled: #0a84ff;
+  --scheduled: #8b7cf6;
 
-  --seg-track: rgb(118 118 128 / 0.24);
-  --seg-on: #636366;
-  --bar-bg: rgb(22 22 24 / 0.82);
-  --shadow: 0 1px 2px rgb(0 0 0 / 0.4);
+  --seg-track: rgb(255 255 255 / 0.07);
+  --seg-on: #2c2c34;
+  --bar-bg: rgb(20 20 24 / 0.86);
+  --shadow: 0 10px 30px rgb(0 0 0 / 0.45);
 
   color-scheme: dark;
 
@@ -46,37 +48,7 @@
   --focus: color-mix(in srgb, var(--accent) 85%, transparent);
 }
 
-@media (prefers-color-scheme: light) {
-  :root:not([data-theme='dark']) {
-  --ink: #f2f2f7;
-  --surface: #ffffff;
-  --surface-raised: #e5e5ea;
-  --field: #f2f2f7;
-  --edge: #d1d1d6;
-  --edge-lit: #c7c7cc;
-  --rule: #e5e5ea;
-
-  --text: #000000;
-  --dim: #3c3c43;
-  --muted: #8a8a8e;
-
-  --now: #000000;
-  --accent: #007aff;
-  --on-accent: #ffffff;
-  --ok: #248a3d;
-  --warn: #c93400;
-  --bad: #d70015;
-  --scheduled: #007aff;
-
-  --seg-track: rgb(118 118 128 / 0.12);
-  --seg-on: #ffffff;
-  --bar-bg: rgb(249 249 249 / 0.86);
-  --shadow: 0 1px 3px rgb(0 0 0 / 0.12);
-
-  color-scheme: light;
-  }
-}
-
+/* Light only when he picks it: the new look is dark (2026-11-11). */
 :root[data-theme='light'] {
   --ink: #f2f2f7;
   --surface: #ffffff;
@@ -91,12 +63,12 @@
   --muted: #8a8a8e;
 
   --now: #000000;
-  --accent: #007aff;
+  --accent: #6d5ce8;
   --on-accent: #ffffff;
   --ok: #248a3d;
   --warn: #c93400;
   --bad: #d70015;
-  --scheduled: #007aff;
+  --scheduled: #6d5ce8;
 
   --seg-track: rgb(118 118 128 / 0.12);
   --seg-on: #ffffff;

@@ -46,7 +46,7 @@ export function TabBar({
             type="button"
             className={t.tab === lit ? 'active' : ''}
             aria-current={t.tab === lit ? 'page' : undefined}
-            aria-label={count > 0 ? `${t.label}, ${count} to approve` : undefined}
+            aria-label={count > 0 ? `${t.label}, ${count} to approve` : t.label}
             onClick={() => {
               onTab(t.tab)
               window.scrollTo({ top: 0 })
@@ -62,7 +62,7 @@ export function TabBar({
                 <span className="tab-dot" aria-label="Something to answer" />
               ) : null}
             </span>
-            <span>{t.label}</span>
+            <span className="tab-label">{t.label}</span>
           </button>
         )
       })}

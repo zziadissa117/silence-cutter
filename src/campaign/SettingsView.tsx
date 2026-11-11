@@ -594,7 +594,7 @@ function EngineSetting() {
 
 /** Light or dark (or as the phone is), and whether the explanations show. */
 function Appearance() {
-  const [theme, setThemeState] = useState<Theme>(savedTheme)
+  const [theme, setThemeState] = useState<Theme>(() => (savedTheme() === 'dark' ? 'system' : savedTheme()))
   const [tips, setTipsState] = useState(savedTips)
   return (
     <>
@@ -632,9 +632,8 @@ function Appearance() {
 }
 
 const THEMES: { id: Theme; label: string }[] = [
-  { id: 'system', label: 'Automatic' },
+  { id: 'system', label: 'Dark' },
   { id: 'light', label: 'Light' },
-  { id: 'dark', label: 'Dark' },
 ]
 
 /** Every campaign posts at random unless he gave it fixed times; this

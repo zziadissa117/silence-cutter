@@ -11,7 +11,7 @@ describe('the theme', () => {
   it('follows the phone unless he picks one', () => {
     expect(savedTheme()).toBe('system')
     expect(shownTheme('system', true)).toBe('dark')
-    expect(shownTheme('system', false)).toBe('light')
+    expect(shownTheme('system', false)).toBe('dark')
     expect(shownTheme('light', true)).toBe('light')
   })
 

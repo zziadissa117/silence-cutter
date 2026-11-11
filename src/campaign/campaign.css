@@ -127,7 +127,7 @@
    language: black ground, hairlines, a dot for each row's state, colour only
    where it says something. */
 
-main.tabbed { padding-bottom: calc(env(safe-area-inset-bottom) + 96px); }
+main.tabbed { padding-bottom: calc(env(safe-area-inset-bottom) + 112px); }
 .hint, .lede, .quote { text-wrap: pretty; }
 .linkbtn { min-height: 44px; }
 
@@ -1395,3 +1395,75 @@ html.editor-dark, html.editor-dark body { background: #000; }
 .voice-ask span { flex: 1; }
 .voice-mic { display: block; text-align: left; } .voice-mic p { margin: 0; line-height: 1.4; }
 .voice-read p { margin: 0 0 6px; } .voice-pause { color: var(--accent); font-size: 14px; font-weight: 600; white-space: nowrap; } .voice-list .warmup-chips { margin: 6px 0; }
+
+/* =========================================================================
+   The new look (his ask, 2026-11-11, with screenshots of the apps he likes):
+   pure black, soft dark cards with big rounded corners and a hairline edge,
+   pill buttons and chips, large bold titles, one purple for what to do next,
+   and a floating pill tab bar of icons. Last in the file, so it is what shows;
+   the colours are the tokens in index.css. The TikTok edit screen keeps its own.
+   ========================================================================= */
+
+/* Titles: big and bold, like the apps he showed. */
+.screen-head h1 { font-size: 38px; font-weight: 800; letter-spacing: -0.035em; line-height: 1.05; }
+.screen-head h2 { font-size: 26px; font-weight: 700; letter-spacing: -0.02em; }
+.list-title { font-size: 21px; font-weight: 700; letter-spacing: -0.015em; color: var(--text); text-transform: none; margin: 14px 2px 6px; }
+.group-title { font-size: 19px; font-weight: 700; letter-spacing: -0.01em; }
+.lede { color: var(--dim); }
+
+/* Cards: rounded, soft, a hairline edge - each part of a screen on its own. */
+.group, .card-group, .callout, .setting, .rows, .vlist, .posts-list, .effect, .warmup-card, .screen > .toggle, .screen > .bank-list {
+  border-radius: 24px;
+  background: var(--surface);
+  border: 1px solid var(--edge);
+}
+.group { padding: 18px; }
+.card-group > .setting, .card-group > .toggle, .card-group > .field, .card-group > .rows,
+.group .group, .group .setting, .group .callout, .group .rows, .group .bank-list, .review-look .group,
+.card-group .card-group, .setting .setting {
+  border: 0;
+}
+.group .group, .review-look .group { background: none; border-radius: 0; padding: 0; }
+
+/* Buttons: pills. The one to press is purple; the rest a soft tint. */
+.btn { border-radius: 999px; min-height: 44px; padding: 0 20px; font-weight: 650; letter-spacing: -0.005em; }
+.btn.small { min-height: 36px; padding: 0 14px; font-size: 15px; }
+.btn.primary { background: var(--accent); border-color: var(--accent); color: var(--on-accent); box-shadow: 0 6px 20px color-mix(in srgb, var(--accent) 35%, transparent); }
+.btn.wide { min-height: 52px; font-size: 17px; }
+.btn:not(.primary):not(.danger):not(:disabled) { background: color-mix(in srgb, var(--text) 8%, transparent); color: var(--text); }
+.btn.icon-btn, .icon-btn { border-radius: 50%; }
+.stepper .icon-btn { border-radius: 14px; }
+
+/* Chips and the segmented control: pills, the chosen one lit purple. */
+.seg { border-radius: 999px; padding: 4px; background: var(--seg-track); }
+.seg button { border-radius: 999px; }
+.seg button.active { background: color-mix(in srgb, var(--accent) 24%, var(--surface)); color: var(--text); box-shadow: inset 0 0 0 1.5px var(--accent); }
+.chip, .warmup-chips .chip { border-radius: 999px; padding: 8px 14px; border: 1px solid var(--edge); background: var(--surface-raised); color: var(--text); }
+.chip.on, .warmup-chips .chip.on { background: color-mix(in srgb, var(--accent) 24%, var(--surface)); border-color: var(--accent); color: var(--text); }
+
+/* Fields: rounded, on the card's raised colour. */
+.field :is(input[type=text], input[type=password], input[type=url], input[type=email], input[type=number], textarea, select) { border-radius: 16px; }
+
+/* The tab bar: a floating pill of icons, the tab you're on lit purple. */
+.tabbar {
+  left: 14px; right: 14px; bottom: calc(env(safe-area-inset-bottom) + 10px);
+  padding: 7px; gap: 4px;
+  border-radius: 999px;
+  border: 1px solid var(--edge);
+  background: var(--bar-bg);
+  -webkit-backdrop-filter: saturate(180%) blur(24px);
+  backdrop-filter: saturate(180%) blur(24px);
+  box-shadow: var(--shadow);
+}
+.tabbar button { min-height: 56px; padding: 0; gap: 0; border-radius: 999px; color: var(--dim); justify-content: center; }
+.tabbar button .tab-label { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+.tabbar button .tab-icon svg { width: 30px; height: 30px; stroke-width: 1.9; }
+.tabbar button.active { color: var(--accent); background: color-mix(in srgb, var(--accent) 20%, transparent); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent) 45%, transparent); }
+.tab-count { background: var(--accent); color: var(--on-accent); }
+
+/* Rows inside cards: hairlines between, more room. */
+.vrow, .row-link, .post { padding-top: 14px; padding-bottom: 14px; }
+
+@media (prefers-reduced-motion: reduce) {
+  .btn, .tabbar button { transition: none; }
+}
