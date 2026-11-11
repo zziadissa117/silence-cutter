@@ -3,6 +3,19 @@
 Newest first. Every change says what it does, how to use it, and how it works
 underneath. Kept up to date with each commit.
 
+## Every video its own cover on the profile grid
+Server: run ./deploy.sh (it runs ./deploy-server.sh).
+Needs deploying: run ./deploy-server.sh
+- His ask: "make it so every cover is different by making it a different timestamp per video" - MediaBoxing's CEO
+  doesn't like a grid where the videos look the same. Instagram used the first frame for every cover.
+- Now every video, on every account, goes to Postiz with its own cover moment (`thumbnailTimestamp`, which Postiz's
+  Instagram code sends as `thumb_offset`): somewhere between 12% and 88% of the video, never the first frame or the
+  very end, different for every video and every account, and the same if the same video is sent again
+  (`postiz/cover.ts` `coverMs`, worked out from the post's and the account's ids). Batch, talking, by hand, Trial
+  reels, accounts added later, reconnected accounts - everything that goes through Postiz.
+- Videos already handed to Postiz keep the first frame; those that go via Buffer too (Buffer takes no cover moment).
+- Tests: `postiz/cover.test.ts`.
+
 ## Cutting: the end of every word is kept
 App only: run ./deploy.sh.
 - His report: "it just cut off the end of my words." Since 2026-11-10 the loudness is measured in exact 20 ms steps

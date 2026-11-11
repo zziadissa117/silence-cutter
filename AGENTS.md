@@ -105,6 +105,7 @@ only, no Supabase); `./deploy-server.sh` ships the `postiz` and `cutter` functio
 - Posting (phone): `posting.ts`, `PostsView.tsx`, `NewPost.tsx`, `BatchView.tsx`
 - Posting (server): `supabase/functions/postiz/*` (`slots.ts` times, `caption.ts`, `batch.ts`, `hand.ts`, `attach.ts`, `failed.ts` missed accounts,
   `channels.ts` accounts a campaign holds / `endPlan` for ending one - phone side `EndCampaign.tsx`)
+- Each video's cover on the grid: its own moment per video and account (`postiz/cover.ts`, Postiz `thumbnailTimestamp`)
 - Instagram location tagged on every Instagram post (default + per campaign): `postiz/place.ts`, `InstagramPlace.tsx`; Postiz doesn't pass it on yet - the request and patch for them in `docs/postiz-location`
 - Buffer, the backup for Postiz (same video, caption, time, Instagram accounts matched by username): `postiz/buffer.ts`;
   in `postiz/index.ts` `PostizProblem`, `toBuffer`, `handOver` ("Postiz is down" switch), `checkBuffer`, `unpostHanded`;

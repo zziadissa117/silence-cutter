@@ -96,6 +96,7 @@ import { GONE_MS, serverTrouble, troubleNote, type ServerPing } from './serverWa
 import { accountName, baseNote, clearOfTaken, failedRefs, goodHoursEnd, missingAccounts, notPostedNote, reconnectedAs, youtubeRetryTime, youtubeTime } from './failed.ts'
 import { carryOver, cleanCaptions, cleanRepost, repostDueAt, textFor, variationNote, type AccountText } from './repost.ts'
 import { FAKE_CLAUDE, FakeError, fakeCaption, fakePostiz, isFakePostiz } from './fake.ts'
+import { withCover } from './cover.ts'
 import { TRIAL_HEADLINES, TRIAL_HEADLINES_SCHEMA, TRIAL_HEADLINES_SYSTEM, cleanTrialHeadlines, trialHeadlinesMessage } from './trialHeadlines.ts'
 import { approvalFor, batchChoices, batchInfo, batchReady, batchTrusted, freeBatchTimes, isWarmupKey, trustKey, warmupOf, warmupReady, type BatchInfo } from './batch.ts'
 import { handFields } from './hand.ts'
@@ -1682,7 +1683,7 @@ async function releaseHeld(now: number): Promise<void> {
                 const text = textFor(owned, account.id)
                 return {
                   integration: { id: account.id },
-                  value: [{ content: text.caption, image: [{ id: owned.media!.id, path: owned.media!.path }] }],
+                  value: [{ content: text.caption, image: [withCover(owned.media!, owned.id, account.id, owned.duration)] }],
                   settings: settingsFor(account.platform, finishTitle(text.title ?? '', [owned.headline ?? '', owned.campaign_name]), instagramPlace(profile.settings, owned.campaign_id), owned.batch?.trial === true),
                 }
               }),
@@ -1778,7 +1779,7 @@ async function attachAccounts(profile: Profile, body: Record<string, unknown>): 
               const text = textFor(owned, account.id)
               return {
                 integration: { id: account.id },
-                value: [{ content: text.caption, image: [{ id: owned.media!.id, path: owned.media!.path }] }],
+                value: [{ content: text.caption, image: [withCover(owned.media!, owned.id, account.id, owned.duration)] }],
                 settings: settingsFor(account.platform, finishTitle(text.title ?? '', [owned.headline ?? '', owned.campaign_name]), instagramPlace(profile.settings, owned.campaign_id), owned.batch?.trial === true),
               }
             }),
@@ -3020,7 +3021,7 @@ async function schedule(start: Post): Promise<Post> {
           const text = textFor(post, account.id)
           return {
             integration: { id: account.id },
-            value: [{ content: text.caption, image: [{ id: media.id, path: media.path }] }],
+            value: [{ content: text.caption, image: [withCover(media, post.id, account.id, post.duration)] }],
             settings: settingsFor(account.platform, finishTitle(text.title ?? '', [post.headline ?? '', post.campaign_name]), instagramPlace(profile.settings, post.campaign_id), post.batch?.trial === true),
           }
         }),
@@ -3418,7 +3419,7 @@ async function retryAccounts(profile: Profile, post: Post, auto = false): Promis
         const text = textFor(owned, was.id)
         return {
           integration: { id: to.id },
-          value: [{ content: text.caption, image: [{ id: owned.media!.id, path: owned.media!.path }] }],
+          value: [{ content: text.caption, image: [withCover(owned.media!, owned.id, to.id, owned.duration)] }],
           settings: settingsFor(to.platform, finishTitle(text.title ?? '', [owned.headline ?? '', owned.campaign_name]), instagramPlace(profile.settings, owned.campaign_id), owned.batch?.trial === true),
         }
       }),
