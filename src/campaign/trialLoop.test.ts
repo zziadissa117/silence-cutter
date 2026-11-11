@@ -10,6 +10,7 @@ import {
   newTrialBank,
   placesFor,
   planTrial,
+  trimFor,
   songFor,
   talkRead,
   trialAngle,
@@ -300,5 +301,30 @@ describe('a talking clip (2026-11-11)', () => {
     const plan = planVideos(bank, [{ date: '2026-11-12', time: '10:00' }, { date: '2026-11-12', time: '14:00' }], { now: new Date('2026-11-11T10:00:00') })
     expect(plan.videos.length).toBeGreaterThan(0)
     expect(plan.videos.every((v) => v.voice === true && v.music?.id === 's1')).toBe(true)
+  })
+})
+
+describe('copies of different lengths (his ask, 2026-11-11: "mostly keep it at 8, but sometimes make it 7 or 6")', () => {
+  it('mostly whole, sometimes 1 s shorter, now and then 2 s', () => {
+    const counts = new Map<number, number>()
+    for (let i = 0; i < 1000; i++) {
+      const t = trimFor(i / 1000)
+      counts.set(t, (counts.get(t) ?? 0) + 1)
+    }
+    expect(counts.get(0)).toBe(600)
+    expect(counts.get(1)).toBe(250)
+    expect(counts.get(2)).toBe(150)
+  })
+
+  it('a viral reel copy gets one; a talking clip copy never - it would cut his last words', () => {
+    let n = 0
+    const rand = () => [0.1, 0.7, 0.92][n++ % 3]
+    const { plans } = planTrial(bankWith(source('a')), 6, { rand })
+    expect(plans.every((p) => typeof p.look.trimSec === 'number')).toBe(true)
+    expect(new Set(plans.map((p) => p.look.trimSec)).size).toBeGreaterThan(1)
+    const talk = { words: [], headlines: ['one'], songs: ['s1'] }
+    const src: TrialSource = { id: 't1', name: 'talk.mov', clip: 't1-clip', sound: null, read: talkRead(['one'], 1), addedAt: 1, talk }
+    const bank = withSource(newTrialBank('c', 'a', 30), src, file('t1-clip'), [file('s1', 's1.m4a')], new Date('2026-11-11T10:00:00'))
+    expect(planTrial(bank, 4, { rand }).plans.every((p) => p.look.trimSec === undefined)).toBe(true)
   })
 })

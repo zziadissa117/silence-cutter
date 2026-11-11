@@ -81,6 +81,28 @@ export interface TrialLook {
   place: HeadlinePlace
   /** -1..1: how much white (above 0) or black (below 0) goes over the frame. */
   brightness: number
+  /** Seconds off the end (0, 1 or 2): mostly the whole reel, sometimes a
+   *  second or two shorter (his ask, 2026-11-11: "mostly keep it at 8, but
+   *  sometimes make it 7 or 6"). A talking clip is never shortened - that
+   *  would cut his last words. */
+  trimSec?: number
+}
+
+/** How a copy's length changes: mostly whole, sometimes 1 or 2 s shorter. */
+export const TRIMS: readonly { sec: number; share: number }[] = [
+  { sec: 0, share: 0.6 },
+  { sec: 1, share: 0.25 },
+  { sec: 2, share: 0.15 },
+]
+
+/** Seconds off the end of one copy, from a number 0..1. */
+export function trimFor(r: number): number {
+  let sum = 0
+  for (const t of TRIMS) {
+    sum += t.share
+    if (r < sum) return t.sec
+  }
+  return 0
 }
 
 /** The brightness steps: light changes only (his pick: "light, as I said"). */
@@ -245,6 +267,7 @@ export function planTrial(
         size: source.read.size,
         place,
         brightness: BRIGHTNESS[variant.light + 2],
+        ...(talk ? {} : { trimSec: trimFor(rand()) }),
       },
     })
   }

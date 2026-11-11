@@ -477,6 +477,8 @@ export async function makeMontage(
     brightness?: number
     keepLines?: boolean
     keepShape?: boolean
+    /** A Trial loop's video: seconds off its end (trialLoop.TrialLook.trimSec). */
+    shorterBy?: number
     /** A talking batch's captions (talkCaptions.ts). */
     captions?: Parameters<typeof renderMontage>[0]['captions']
   } = {},
@@ -497,6 +499,7 @@ export async function makeMontage(
       brightness: extra.brightness,
       keepLines: extra.keepLines,
       keepShape: extra.keepShape,
+      shorterBy: extra.shorterBy,
       captions: extra.captions ?? null,
     },
     onRenderProgress,

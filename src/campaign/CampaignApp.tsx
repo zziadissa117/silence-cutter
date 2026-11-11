@@ -2076,6 +2076,8 @@ export function CampaignApp() {
               // step with a single clip plays whole (stepPiece.playsWhole).
               reactionFirst: Boolean(next.montage.bank) && !trialLook,
               brightness: trialLook?.brightness,
+              // Sometimes a second or two shorter, so no two copies are alike.
+              shorterBy: trialLook?.trimSec,
               keepLines: Boolean(trialLook),
               ...(said.length > 0
                 ? { captions: { words: said, position: defaultCaptionPosition(), size: defaultCaptionSize(), style: defaultCaptionStyle() } }

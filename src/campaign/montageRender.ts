@@ -174,6 +174,10 @@ export interface MontageRenderInput {
   /** The video keeps the first clip's own shape - a horizontal clip stays
    *  horizontal (a Trial reel, his ask 2026-11-06) - instead of 9:16. */
   keepShape?: boolean
+  /** A Trial loop's video: this many seconds off the end of the first clip -
+   *  an 8 s reel sometimes 7 or 6, so Instagram doesn't take every copy for
+   *  the same video (his ask, 2026-11-11). Never more than a quarter of it. */
+  shorterBy?: number
   /** A talking batch's captions: what he says in the first clip, on that
    *  clip's own timeline (talkCaptions.ts), drawn as his talking videos'. */
   captions?: { words: CaptionWord[]; position: CaptionPosition; size: CaptionSize; style: CaptionStyle } | null
@@ -273,7 +277,7 @@ export function liftMusic(channels: Float32Array[], gain: number, sampleRate: nu
 }
 
 export async function renderMontage(
-  { clips: files, look, headlineText, music, seed = '', formula = null, windows = [], reactionFirst = false, titles = [], voice = false, voiceAll = false, brightness = 0, keepLines = false, keepShape = false, captions = null }: MontageRenderInput,
+  { clips: files, look, headlineText, music, seed = '', formula = null, windows = [], reactionFirst = false, titles = [], voice = false, voiceAll = false, brightness = 0, keepLines = false, keepShape = false, shorterBy = 0, captions = null }: MontageRenderInput,
   onProgress?: (fraction: number) => void,
 ): Promise<MontageRenderResult> {
   if (files.length === 0) throw new SilenceCutError('Add at least one clip.')
@@ -304,6 +308,10 @@ export async function renderMontage(
       // seconds plays instead.
       const activity = await readActivity(clip.video, clip.first, clip.duration).catch(() => null)
       parts.push(pickPiece(activity, clip.first, clip.duration, random))
+    }
+    if (shorterBy > 0 && parts[0]) {
+      const first = parts[0]
+      first.end = Math.max(first.start + (first.end - first.start) * 0.75, first.end - shorterBy)
     }
     const stepped = parts.flatMap((_, i) => (windows[i] ? [i] : []))
     fitShowcase(stepped.map((i) => parts[i])).forEach((piece, k) => (parts[stepped[k]] = piece))

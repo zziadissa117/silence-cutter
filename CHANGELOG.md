@@ -3,6 +3,17 @@
 Newest first. Every change says what it does, how to use it, and how it works
 underneath. Kept up to date with each commit.
 
+## Trial reels: copies of different lengths
+App only: run ./deploy.sh.
+- His ask: "mostly keep it at 8, but sometimes make it 7 or 6" - Instagram takes the copies for the same video.
+- Each new copy of a viral reel is now its whole length 60% of the time, 1 second shorter 25%, 2 seconds shorter 15%
+  - the end taken off, its sound fading out as usual; never more than a quarter of a short clip
+  (`trialLoop.trimFor`, `TrialLook.trimSec`, `montageRender` `shorterBy`). Phone and Cutter server alike.
+- A talking clip's copies are never shortened: that would cut his last words (they already differ by headline,
+  song and light).
+- Copies already made keep their length; use "Make again" in Trial reels to remake the ones not out yet.
+- Tests: `trialLoop.test.ts` (copies of different lengths).
+
 ## Every video its own cover on the profile grid
 Server: run ./deploy.sh (it runs ./deploy-server.sh).
 Needs deploying: run ./deploy-server.sh
