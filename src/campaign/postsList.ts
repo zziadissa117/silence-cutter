@@ -100,3 +100,36 @@ export function rememberShown(id: string | null): void {
     // A private window: the filter just isn't remembered.
   }
 }
+
+/** "Just posted" goes back this far (his ask, 2026-11-11: "things that have
+ *  been posted, but only in the past couple hours. I don't need more"). */
+export const JUST_POSTED_MS = 3 * 3_600_000
+/** A post that didn't go out stays on the screen this long, to post again. */
+export const MISSED_MS = 24 * 3_600_000
+
+const timeOf = (p: Pick<ServerPost, 'postAt' | 'createdAt'>) => Date.parse(p.postAt ?? p.createdAt)
+
+/** A post that didn't go out, or not to every account. */
+export function missedPost(p: Pick<ServerPost, 'status' | 'error'>): boolean {
+  return p.status === 'failed' || p.status === 'error' || (p.status === 'posted' && Boolean(p.error?.startsWith('Not posted to')))
+}
+
+/** The Posts screen, in the order he reads it (his ask, 2026-11-11: "It
+ *  needs to be ordered: what's the next thing that's going to post? At the
+ *  bottom, things that have been posted"): everything still to go out -
+ *  to approve, approved, scheduled - in one list by its time, the next
+ *  first; what didn't go out in the last day, to post again; and what went
+ *  out in the last few hours, newest first. Older posts are on Analytics. */
+export function postsOrder<P extends Pick<ServerPost, 'status' | 'postAt' | 'createdAt' | 'error'>>(
+  posts: readonly P[],
+  now = Date.now(),
+): { next: P[]; missed: P[]; justPosted: P[] } {
+  const next = posts
+    .filter((p) => p.status === 'waiting' || p.status === 'approved' || p.status === 'scheduled')
+    .sort((a, b) => (a.postAt ?? '￿').localeCompare(b.postAt ?? '￿'))
+  const missed = posts.filter((p) => missedPost(p) && now - timeOf(p) < MISSED_MS).sort((a, b) => timeOf(b) - timeOf(a))
+  const justPosted = posts
+    .filter((p) => p.status === 'posted' && !missedPost(p) && p.postAt && now - Date.parse(p.postAt) < JUST_POSTED_MS)
+    .sort((a, b) => timeOf(b) - timeOf(a))
+  return { next, missed, justPosted }
+}

@@ -1,6 +1,6 @@
-// The Posts screen's flow: approved posts wait with the scheduled ones, and
-// everything still going up is one line - only a video he has to act on gets
-// a row of its own.
+// The Posts screen's flow: approved posts wait with the scheduled ones, by
+// their time, and everything still going up is one line - only a video he
+// has to act on gets a row of its own.
 
 import { act } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
@@ -94,43 +94,36 @@ afterEach(() => {
   host.remove()
 })
 
-const section = (title: string) => {
-  const heading = [...host.querySelectorAll('.list-title')].find((t) => t.textContent?.startsWith(title))
-  return heading?.nextElementSibling as HTMLElement | undefined
-}
+const upNext = () => [...host.querySelectorAll('.day-block .post')] as HTMLElement[]
+const onTheWay = () => host.querySelector('.on-the-way') as HTMLElement
 
 describe('the Posts screen', () => {
-  it('lists an approved post with the scheduled ones, with its time and a way to take it back', async () => {
-    expect(host.querySelector('.list-title')?.parentElement?.textContent).not.toContain('Going to Postiz')
-    const scheduled = section('Scheduled')!
-    expect(host.textContent).toContain('Scheduled · 2')
-    // One campaign's: one row, opened.
-    expect(scheduled.textContent).toContain('Loveable zi · 2 videos')
-    await act(async () => (scheduled.querySelector('.batch-row .post-head') as HTMLButtonElement).click())
-    expect(scheduled.textContent).toContain('Approved · @traderzi2')
-    expect(scheduled.textContent).toContain("Postiz didn't take it yet")
-    expect([...scheduled.querySelectorAll('button')].filter((b) => b.textContent === 'Take back')).toHaveLength(2)
+  it('lists an approved post with the scheduled ones, by its time, with a way to take it back', async () => {
+    expect(upNext()).toHaveLength(2)
+    const [first, second] = upNext()
+    // Tomorrow's first, then next week's approved one.
+    expect(first.textContent).toContain('Scheduled')
+    expect(second.textContent).toContain('Approved · @traderzi2')
+    expect(second.textContent).toContain("Postiz didn't take it yet")
+    expect(upNext().flatMap((row) => [...row.querySelectorAll('button')]).filter((b) => b.textContent === 'Take back')).toHaveLength(2)
   })
 
   it('shows everything going up as one line - the rest only waiting their turn, not "No connection"', () => {
-    const onTheWay = section('On the way')!
-    expect(onTheWay.textContent).toContain('2 videos going up')
-    expect(onTheWay.textContent).toContain('Now IMG_1.mp4 · 45% · 1 waiting their turn')
-    expect(onTheWay.textContent).toContain('Claude is writing a caption')
-    expect(onTheWay.textContent).not.toContain('No connection')
+    expect(onTheWay().textContent).toContain('2 videos going up')
+    expect(onTheWay().textContent).toContain('Now IMG_1.mp4 · 45% · 1 waiting their turn')
+    expect(onTheWay().textContent).toContain('Claude is writing a caption')
+    expect(onTheWay().textContent).not.toContain('No connection')
   })
 
   it('gives a video he has to act on its own row, with what is wrong and his two ways out', () => {
-    const onTheWay = section('On the way')!
-    expect(onTheWay.textContent).toContain("IMG_3.mp4: This video's copy is gone from the phone")
-    expect([...onTheWay.querySelectorAll('button')].map((b) => b.textContent)).toEqual(expect.arrayContaining(['Try again', 'Stop sending']))
+    expect(onTheWay().textContent).toContain("IMG_3.mp4: This video's copy is gone from the phone")
+    expect([...onTheWay().querySelectorAll('button')].map((b) => b.textContent)).toEqual(expect.arrayContaining(['Try again', 'Stop sending']))
   })
 
   it('opens the line to show each one', async () => {
-    const onTheWay = section('On the way')!
-    await act(async () => (onTheWay.querySelector('button[aria-expanded="false"]') as HTMLButtonElement).click())
-    expect(onTheWay.textContent).toContain('IMG_2.mp4')
-    expect(onTheWay.textContent).toContain('Waiting its turn')
-    expect(onTheWay.textContent).toContain('45%')
+    await act(async () => (onTheWay().querySelector('button[aria-expanded="false"]') as HTMLButtonElement).click())
+    expect(onTheWay().textContent).toContain('IMG_2.mp4')
+    expect(onTheWay().textContent).toContain('Waiting its turn')
+    expect(onTheWay().textContent).toContain('45%')
   })
 })

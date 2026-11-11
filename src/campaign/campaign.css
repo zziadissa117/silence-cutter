@@ -1627,6 +1627,24 @@ main.tabbed > * { position: relative; z-index: 1; }
 .post-line { font-size: 14px; }
 .post-caption { min-height: 64px; border-radius: 16px; background: color-mix(in srgb, var(--text) 5%, transparent); border: 1px solid var(--hairline); }
 .post-actions { gap: 8px; }
+/* One list by time (his ask, 2026-11-11): the time first, big, then the
+   campaign, then where it stands as a coloured chip. */
+.post-time { flex: none; min-width: 62px; font-size: 15px; font-weight: 750; letter-spacing: -0.01em; font-variant-numeric: tabular-nums; color: var(--text); }
+.state-chip { flex: none; padding: 4px 10px; border-radius: 999px; font-size: 12px; font-weight: 700; white-space: nowrap; color: var(--dim); background: color-mix(in srgb, var(--text) 7%, transparent); }
+.state-chip.now { color: var(--accent); background: color-mix(in srgb, var(--accent) 18%, transparent); }
+.state-chip.later { color: var(--sky); background: color-mix(in srgb, var(--sky) 16%, transparent); }
+.state-chip.ok { color: var(--ok); background: color-mix(in srgb, var(--ok) 15%, transparent); }
+.state-chip.warn { color: var(--warn); background: color-mix(in srgb, var(--warn) 15%, transparent); }
+.state-chip.bad { color: var(--bad); background: color-mix(in srgb, var(--bad) 15%, transparent); }
+:root[data-theme='light'] .state-chip.later { color: #0a84c6; }
+.list-count { margin-left: 6px; font-size: 15px; font-weight: 650; letter-spacing: 0; color: var(--muted); }
+.list-title.bad { color: var(--bad); }
+.day-block { display: flex; flex-direction: column; gap: 8px; margin-bottom: 6px; }
+.day-block .day-title { position: static; padding: 4px 4px 0; background: none; font-size: 12px; font-weight: 700; letter-spacing: 0.12em; text-transform: uppercase; color: var(--muted); }
+.posts .post > .hint, .posts .post > .field, .posts .post > .bar, .posts .post-caption, .posts .post-caption-read,
+.posts .post-video, .posts .post-links, .posts .post-actions, .posts .post-more { margin-left: 0; }
+.posts .post-line { padding-left: 0; }
+.see-more { align-self: center; padding: 8px 14px; }
 
 /* --- More: coloured icon tiles, a lighter list ------------------------- */
 .more-icon {

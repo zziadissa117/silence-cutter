@@ -1,27 +1,28 @@
 // The Posts screen: every finished video on its way to Postiz, and what
 // became of it.
 //
-// What needs him comes first - a caption to read and approve, a tracking
-// caption to paste, a brand to hear back from - then what is still going
-// up, what is scheduled, and what went out. Every post can be saved to the
+// In the order he reads it (his ask, 2026-11-11): what is still going up,
+// what didn't go out in the last day, then one list of everything still to go
+// out by its time - the next first, to approve or already set - and at the
+// bottom what went out in the last few hours (postsList.postsOrder). Every post can be saved to the
 // phone or shared, from the phone's own copy while it has one, Postiz's
 // otherwise: Inflow's and Lock in's approvals go out by hand.
 //
 // Rows never move under his thumb: each list keeps its order while he is on
 // the screen, and a post only changes list when he acts on it.
 
-import { type ReactNode, useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 
 import { shortNumber } from './analytics'
 import { dayLabel } from './batch'
 import { hasShareSheet, shareVideo, useSharable } from './shareFile'
-import { ChevronLeft, PlusIcon, ScheduledIcon } from './icons'
+import { ChevronLeft, PlusIcon } from './icons'
 import type { Campaign } from './look'
 import { NewPost } from './NewPost'
 import { StopPicker } from './StopPicker'
 import { jobOfPostKey, EDIT_WINDOW_MS } from './store'
 import { MusicAfter, useCanChangeMusic } from './MusicAfter'
-import { byDay, campaignsIn, foldCampaigns, localDay, rememberShown, shownCampaign, type ListItem } from './postsList'
+import { JUST_POSTED_MS, byDay, campaignsIn, localDay, postsOrder, rememberShown, shownCampaign } from './postsList'
 import { canAddMusic } from './musicAfterSend'
 import { copyKind, forgetSend, localVideo, retryStuck, sending, tidySends, watchSending, type Sending } from './outbox'
 import {
@@ -46,8 +47,8 @@ import {
 } from './posting'
 
 const POLL_MS = 15_000
-/** Posted shows this many until he asks for the rest. */
-const POSTED_SHOWN = 10
+/** Up next shows this many until he asks for the rest. */
+const NEXT_SHOWN = 15
 /** How many of a batch waiting for him are shown open, to check. */
 const PREVIEW = 3
 /** As the server's batch.ts BATCH_TRUST: his 3rd yes in a batch approves the rest. */
@@ -213,6 +214,7 @@ function WaitingPost({
   onEdit,
   campaigns,
   onChanged,
+  onRedo,
 }: {
   post: ServerPost
   busy: boolean
@@ -224,6 +226,8 @@ function WaitingPost({
   problem?: string
   /** One of the first of its batch: shown with its video, to check it. */
   watchFirst?: boolean
+  /** A batch post: its batch's captions redone (hashtags added, rewritten). */
+  onRedo?: (mode: RedoMode) => Promise<void>
   onAct: (action: PostAction, fields?: { caption?: string; at?: string; captions?: Record<string, { caption?: string }>; disliked?: boolean }) => void
 }) {
   // His own words while he types; null means the box shows the caption as
@@ -257,9 +261,9 @@ function WaitingPost({
   return (
     <li className="post">
       <div className="post-head">
-        <span className="dot now" aria-hidden />
+        <span className="post-time">{timeLabel(post.postAt)}</span>
         <span className="post-title">{post.campaignName}{post.repost ? ' · repost' : ''}</span>
-        <span className="post-when">{whenLabel(post.postAt)}</span>
+        <span className="state-chip now">{post.ready ? 'Tap Post' : brand ? 'Brand' : 'To approve'}</span>
       </div>
       <div className="post-line">
         {post.accounts.map((a) => (a.held ? `${accountLabel(a)} (${a.held === 'paused' ? 'paused - waiting' : "today's limit - waiting"})` : accountLabel(a))).join(', ')}
@@ -344,6 +348,7 @@ function WaitingPost({
           {brand ? null : <SaveVideo post={post} primary={false} />}
           <EditAgain post={post} editable={editable} onEdit={onEdit} />
         </div>
+        {onRedo ? <RedoBatch onRedo={onRedo} /> : null}
         {post.accounts.filter((a) => !a.held).length > 1 ? (
           <details className="per-platform">
             <summary className="linkbtn">A different caption for one platform</summary>
@@ -385,6 +390,7 @@ function OtherPost({
   onEdit,
   campaigns,
   onChanged,
+  onRedo,
 }: {
   post: ServerPost
   busy: boolean
@@ -395,6 +401,8 @@ function OtherPost({
   /** What his last tap on it came back with. */
   problem?: string
   onAct: (action: PostAction) => void
+  /** A batch post still to go: its batch's captions redone. */
+  onRedo?: (mode: RedoMode) => Promise<void>
 }) {
   const [open, setOpen] = useState(false)
   const [addingMusic, setAddingMusic] = useState(false)
@@ -421,9 +429,21 @@ function OtherPost({
   return (
     <li className="post">
       <button type="button" className="post-head as-button" onClick={() => setOpen((o) => !o)} aria-expanded={open}>
-        {waitingForTime(post) ? <ScheduledIcon /> : <span className={`dot ${tone}`} aria-hidden />}
+        <span className="post-time">{post.status === 'failed' ? '-' : timeLabel(post.postAt)}</span>
         <span className="post-title">{post.campaignName}</span>
-        <span className={`post-when${waitingForTime(post) ? ' scheduled' : ''}`}>{post.status === 'failed' ? 'Not posted' : whenLabel(post.postAt)}</span>
+        <span className={`state-chip ${tone}`}>
+          {post.status === 'posted'
+            ? post.error
+              ? 'Partly'
+              : 'Posted'
+            : post.status === 'failed'
+              ? 'Not posted'
+              : post.status === 'error'
+                ? 'Failed'
+                : waitingForTime(post)
+                  ? 'Scheduled'
+                  : 'Going out'}
+        </span>
       </button>
       <div className={`post-line${tone === 'bad' ? ' bad' : tone === 'warn' ? ' warn' : ''}`}>
         {line}
@@ -433,6 +453,7 @@ function OtherPost({
         <>
           {post.caption ? <div className="post-caption-read">{post.caption}</div> : null}
           <Watch post={post} />
+          {onRedo ? <RedoBatch onRedo={onRedo} /> : null}
         </>
       ) : null}
       {post.status === 'posted' && post.error ? <div className="hint warn-text">{post.error}</div> : null}
@@ -494,6 +515,39 @@ function OtherPost({
   )
 }
 
+/** "7:55 PM" - the day is the list's own heading. */
+function timeLabel(iso: string | null): string {
+  if (!iso) return 'No time'
+  const at = new Date(iso)
+  const time = at.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' })
+  // Still to come: under its day's heading. Gone out on another day: the day too.
+  if (at.getTime() >= Date.now() || localDay(iso) === localDay(new Date().toISOString())) return time
+  return whenLabel(iso)
+}
+
+/** His batch's captions redone with its campaign's rules as they are now. */
+function RedoBatch({ onRedo }: { onRedo: (mode: RedoMode) => Promise<void> }) {
+  const [redoing, setRedoing] = useState<RedoMode | null>(null)
+  return (
+    <div className="post-actions">
+      {(['hashtags', 'rewrite'] as const).map((mode) => (
+        <button
+          key={mode}
+          type="button"
+          className="linkbtn"
+          disabled={redoing !== null}
+          onClick={() => {
+            setRedoing(mode)
+            void onRedo(mode).finally(() => setRedoing(null))
+          }}
+        >
+          {redoing === mode ? 'Working…' : mode === 'hashtags' ? "Add missing hashtags to this batch" : "Rewrite this batch's captions"}
+        </button>
+      ))}
+    </div>
+  )
+}
+
 /** "Today", "Tomorrow" or "Sat, Oct 31". */
 function dayTitle(date: string | null): string {
   if (!date) return 'No time yet'
@@ -501,117 +555,6 @@ function dayTitle(date: string | null): string {
   if (date === today) return 'Today'
   if (date === localDay(new Date(Date.now() + 24 * 3_600_000).toISOString())) return 'Tomorrow'
   return dayLabel(date)
-}
-
-/** The posts listed day by day, like a calendar. */
-function Days({ posts, children }: { posts: ServerPost[]; children: (post: ServerPost) => ReactNode }) {
-  return (
-    <>
-      {byDay(posts).map(({ date, posts: day }) => (
-        <li key={date ?? 'none'} className="day-group">
-          <div className="day-title">
-            {dayTitle(date)} · {day.length}
-          </div>
-          <ul className="posts-list">{day.map((post) => children(post))}</ul>
-        </li>
-      ))}
-    </>
-  )
-}
-
-/** A campaign's posts folded into one row: how many, which days and when
- *  the next one goes. Opened, every one of them, day by day. Waiting for him
- *  (`preview`), the first few are open with their video to watch, and one tap
- *  approves them all - "I only want to see 3 posts at the start of every
- *  single batch to check if they're good" (2026-10-29). */
-function BatchRow({
-  posts,
-  children,
-  onRedo,
-  preview = 0,
-  onApproveAll,
-}: {
-  posts: ServerPost[]
-  children: (post: ServerPost, first?: boolean) => ReactNode
-  /** Adds the campaign's missing hashtags to these captions, or rewrites
-   *  them with its current rules. */
-  onRedo?: (mode: RedoMode) => Promise<void>
-  /** How many of the first are shown open, with their video. */
-  preview?: number
-  onApproveAll?: () => Promise<void>
-}) {
-  const [redoing, setRedoing] = useState<RedoMode | null>(null)
-  const [approving, setApproving] = useState(false)
-  const [open, setOpen] = useState(false)
-  const inOrder = [...posts].sort((a, b) => (a.postAt ?? '\uffff').localeCompare(b.postAt ?? '\uffff'))
-  const dates = inOrder.map((p) => (p.postAt ? localDay(p.postAt) : '')).filter(Boolean)
-  const days = dates.length === 0 ? '' : dates[0] === dates[dates.length - 1] ? dayTitle(dates[0]) : `${dayTitle(dates[0])} to ${dayTitle(dates[dates.length - 1])}`
-  const next = inOrder.find((p) => p.postAt && Date.parse(p.postAt) > Date.now())
-  const tone = posts.every((p) => p.status === 'posted') ? 'ok' : posts[0].status === 'waiting' ? 'now' : 'later'
-  const first = inOrder.slice(0, preview)
-  const rest = inOrder.slice(preview)
-  return (
-    <li className="post batch-row">
-      <button type="button" className="post-head as-button" onClick={() => setOpen((o) => !o)} aria-expanded={open}>
-        {posts.every((p) => waitingForTime(p)) ? <ScheduledIcon /> : <span className={`dot ${tone}`} aria-hidden />}
-        <span className="post-title">
-          {posts[0].campaignName} · {posts.length} videos
-        </span>
-        <span className="post-when">{preview > 0 ? '' : open ? 'Hide' : 'Show'}</span>
-      </button>
-      <div className="post-line">
-        {days}
-        {next ? ` · next ${whenLabel(next.postAt)}` : ''}
-      </div>
-      {onApproveAll || onRedo ? (
-        <div className="post-actions">
-          {onApproveAll ? (
-            <button
-              type="button"
-              className="btn small primary"
-              disabled={approving}
-              onClick={() => {
-                setApproving(true)
-                void onApproveAll().finally(() => setApproving(false))
-              }}
-            >
-              {approving ? 'Approving…' : `Approve all ${posts.length}`}
-            </button>
-          ) : null}
-          {onRedo
-            ? (['hashtags', 'rewrite'] as const).map((mode) => (
-                <button
-                  key={mode}
-                  type="button"
-                  className={mode === 'hashtags' && !onApproveAll ? 'btn small' : 'linkbtn'}
-                  disabled={redoing !== null}
-                  onClick={() => {
-                    setRedoing(mode)
-                    void onRedo(mode).finally(() => setRedoing(null))
-                  }}
-                >
-                  {redoing === mode ? 'Working…' : mode === 'hashtags' ? 'Add missing hashtags' : 'Rewrite captions'}
-                </button>
-              ))
-            : null}
-        </div>
-      ) : null}
-      {preview > 0 && posts.length > BATCH_TRUST ? (
-        <div className="post-line">Approve {BATCH_TRUST} and the rest of the batch goes by itself.</div>
-      ) : null}
-      {first.length > 0 ? <ul className="posts-list batch-inside">{first.map((post) => children(post, true))}</ul> : null}
-      {preview > 0 && rest.length > 0 ? (
-        <button type="button" className="linkbtn" onClick={() => setOpen((o) => !o)}>
-          {open ? 'Hide the others' : `Show the other ${rest.length}`}
-        </button>
-      ) : null}
-      {open && rest.length > 0 ? (
-        <ul className="posts-list batch-inside">
-          <Days posts={rest}>{(post) => children(post)}</Days>
-        </ul>
-      ) : null}
-    </li>
-  )
 }
 
 /** A video that can't go up until he does something - its copy gone from
@@ -646,7 +589,7 @@ function SendingRow({ item, onRemove }: { item: Sending; onRemove: () => void })
 
 /** Everything still on its way, as one line: the videos going up from this
  *  phone - one at a time, so the rest are only waiting their turn - and what
- *  the server is still getting ready. Each one shows in To approve as soon as
+ *  the server is still getting ready. Each one shows in Up next as soon as
  *  it is ready. Open it to see them one by one. */
 function OnTheWay({ sending, working }: { sending: Sending[]; working: ServerPost[] }) {
   const [open, setOpen] = useState(false)
@@ -685,7 +628,7 @@ function OnTheWay({ sending, working }: { sending: Sending[]; working: ServerPos
           <div style={{ width: `${Math.round(now.progress * 100)}%` }} />
         </div>
       ) : null}
-      <div className="hint">Each one shows in To approve as soon as it is ready - nothing to do here.</div>
+      <div className="hint">Each one shows in Up next as soon as it is ready - nothing to do here.</div>
       {open ? (
         <ul className="posts-list batch-inside">
           {sending.map((item) => (
@@ -755,7 +698,7 @@ export function PostsView({
   const [stopping, setStopping] = useState(false)
   // One campaign at a time, or all of them - remembered on this phone.
   const [shown, setShown] = useState<string | null>(shownCampaign)
-  const [allPosted, setAllPosted] = useState(false)
+  const [allNext, setAllNext] = useState(false)
   const outgoing = useSending()
 
   const load = useCallback(async (fresh = false) => {
@@ -862,42 +805,43 @@ export function PostsView({
       setProblem(/unknown action/i.test(message) ? 'Redoing captions needs the server updated first - run ./deploy-server.sh in silence-cutter.' : message)
     }
   }
-  const list = (items: ListItem[], row: (post: ServerPost, first?: boolean) => ReactNode, toApprove = false) =>
-    items.map((item) =>
-      item.kind === 'post' ? (
-        row(item.post)
-      ) : (
-        <BatchRow
-          key={item.id}
-          posts={item.posts}
-          preview={toApprove ? PREVIEW : 0}
-          onApproveAll={toApprove ? () => approveThese(item.posts.filter((p) => p.approval !== 'brand' && p.caption?.trim())) : undefined}
-          onRedo={item.posts.some((p) => p.status !== 'posted') ? (mode) => redoBatch(item.posts, mode) : undefined}
-        >
-          {row}
-        </BatchRow>
-      ),
-    )
-
   const waiting = view.filter((p) => p.status === 'waiting' && !p.ready)
-  // Approved with "post later": held until he taps Post.
-  const ready = view.filter((p) => p.status === 'waiting' && p.ready).sort((a, b) => (a.postAt ?? '').localeCompare(b.postAt ?? ''))
   const approvable = waiting.filter((p) => p.approval !== 'brand' && p.caption?.trim())
   const sendingNow = outgoing.filter((s) => s.entry.state === 'sending')
   const sendingKeys = new Set(sendingNow.map((s) => s.entry.key))
   // On the way: what is still going up from this phone, and what the server
   // is still getting ready (the last parts arriving, Claude writing the
-  // caption) - seconds to minutes, then each goes to To approve.
+  // caption) - seconds to minutes, then each goes into Up next.
   const working = view.filter((p) => (p.status === 'uploading' || p.status === 'writing') && !sendingKeys.has(p.key))
-  const byTime = (a: ServerPost, b: ServerPost) => (a.postAt ?? '').localeCompare(b.postAt ?? '')
-  // Approved is scheduled, to him: it goes at its time. The server hands it
-  // to Postiz on its own (or Buffer, if Postiz can't), so it waits with the
-  // scheduled ones - not "on the way" for days.
-  const scheduled = view.filter((p) => p.status === 'scheduled' || p.status === 'approved').sort(byTime)
-  const failed = view.filter((p) => p.status === 'failed')
-  const done = view
-    .filter((p) => p.status === 'posted' || p.status === 'error')
-    .sort((a, b) => byTime(b, a))
+  // One list by time, the next first; then what went out in the last hours
+  // (postsList.postsOrder). Approved is scheduled, to him: it goes at its time.
+  const order = postsOrder(view)
+  // The first few of a batch waiting for him open with their video, to check.
+  const firstOfBatch = new Set(
+    [...new Set(waiting.filter((p) => p.batch).map((p) => p.campaignId))].flatMap((id) =>
+      order.next.filter((p) => p.status === 'waiting' && p.batch && p.campaignId === id).slice(0, PREVIEW).map((p) => p.id),
+    ),
+  )
+  /** A batch post still to go: its batch's captions can be redone. */
+  const redoFor = (post: ServerPost) => {
+    if (!post.batch) return undefined
+    const batch = order.next.filter((p) => p.batch && p.campaignId === post.campaignId)
+    return (mode: RedoMode) => redoBatch(batch, mode)
+  }
+  const other = (post: ServerPost) => (
+    <OtherPost
+      key={post.id}
+      editable={editable}
+      onEdit={onEditAgain}
+      campaigns={campaigns}
+      onChanged={onMusicDone}
+      post={post}
+      busy={busy.has(post.id)}
+      problem={postProblems[post.id]}
+      onAct={(action) => void act(post, action)}
+      onRedo={post.status === 'scheduled' || post.status === 'approved' ? redoFor(post) : undefined}
+    />
+  )
 
   /** Three at a time: each approval waits on the server putting the post
    *  into Postiz, and 25 one after another kept the screen on for minutes. */
@@ -1005,78 +949,73 @@ export function PostsView({
         </p>
       ) : null}
 
-      {waiting.length > 0 ? (
-        <>
-          <div className="list-title">To approve</div>
-          <ul className="posts-list">
-            {list(foldCampaigns(waiting, { own: false }), (post, first) => (
-              <WaitingPost key={post.id} watchFirst={first} editable={editable} onEdit={onEditAgain} campaigns={campaigns} onChanged={onMusicDone} post={post} busy={busy.has(post.id)} problem={postProblems[post.id]} onAct={(action, fields) => void act(post, action, fields)} />
-            ), true)}
-          </ul>
-        </>
-      ) : null}
-
-      {ready.length > 0 ? (
-        <>
-          <div className="list-title">Ready to post · {ready.length}</div>
-          <ul className="posts-list">
-            {list(foldCampaigns(ready, { own: false }), (post) => (
-              <WaitingPost key={post.id} editable={editable} onEdit={onEditAgain} campaigns={campaigns} onChanged={onMusicDone} post={post} busy={busy.has(post.id)} problem={postProblems[post.id]} onAct={(action, fields) => void act(post, action, fields)} />
-            ))}
-          </ul>
-        </>
-      ) : null}
-
       {sendingNow.length > 0 || working.length > 0 ? (
+        <ul className="posts-list on-the-way">
+          {/* What he has to act on, one by one; the rest is one line. */}
+          {sendingNow
+            .filter((item) => item.entry.stuck)
+            .map((item) => (
+              <SendingRow key={item.entry.key} item={item} onRemove={() => void forgetSend(item.entry.key)} />
+            ))}
+          <OnTheWay sending={sendingNow.filter((item) => !item.entry.stuck)} working={working} />
+        </ul>
+      ) : null}
+
+      {order.missed.length > 0 ? (
         <>
-          <div className="list-title">On the way</div>
-          <ul className="posts-list">
-            {/* What he has to act on, one by one; the rest is one line. */}
-            {sendingNow
-              .filter((item) => item.entry.stuck)
-              .map((item) => (
-                <SendingRow key={item.entry.key} item={item} onRemove={() => void forgetSend(item.entry.key)} />
-              ))}
-            <OnTheWay sending={sendingNow.filter((item) => !item.entry.stuck)} working={working} />
-          </ul>
+          <div className="list-title bad">Didn't go out · {order.missed.length}</div>
+          <ul className="posts-list">{order.missed.map((post) => other(post))}</ul>
         </>
       ) : null}
 
-      {failed.length > 0 ? (
+      {order.next.length > 0 ? (
         <>
-          <div className="list-title">Failed</div>
-          <ul className="posts-list">
-            {failed.map((post) => (
-              <OtherPost key={post.id} editable={editable} onEdit={onEditAgain} campaigns={campaigns} onChanged={onMusicDone} post={post} busy={busy.has(post.id)} problem={postProblems[post.id]} onAct={(action) => void act(post, action)} />
-            ))}
-          </ul>
-        </>
-      ) : null}
-
-      {scheduled.length > 0 ? (
-        <>
-          <div className="list-title">Scheduled · {scheduled.length}</div>
-          <ul className="posts-list">
-            {list(foldCampaigns(scheduled), (post) => (
-              <OtherPost key={post.id} editable={editable} onEdit={onEditAgain} campaigns={campaigns} onChanged={onMusicDone} post={post} busy={busy.has(post.id)} problem={postProblems[post.id]} onAct={(action) => void act(post, action)} />
-            ))}
-          </ul>
-        </>
-      ) : null}
-
-      {done.length > 0 ? (
-        <>
-          <div className="list-title">Posted · {done.length}</div>
-          <ul className="posts-list">
-            {(allPosted ? done : done.slice(0, POSTED_SHOWN)).map((post) => (
-              <OtherPost key={post.id} editable={editable} onEdit={onEditAgain} campaigns={campaigns} onChanged={onMusicDone} post={post} busy={busy.has(post.id)} problem={postProblems[post.id]} onAct={(action) => void act(post, action)} />
-            ))}
-          </ul>
-          {done.length > POSTED_SHOWN ? (
-            <button type="button" className="linkbtn" onClick={() => setAllPosted((a) => !a)}>
-              {allPosted ? 'Show fewer' : `Show all ${done.length}`}
+          <div className="list-title">
+            Up next <span className="list-count">{order.next.length}</span>
+          </div>
+          {order.next.some((p) => p.status === 'waiting' && p.batch) ? (
+            <p className="hint tip">Approve {BATCH_TRUST} of a batch and the rest of it goes by itself.</p>
+          ) : null}
+          {byDay(allNext ? order.next : order.next.slice(0, NEXT_SHOWN)).map(({ date, posts: day }) => (
+            <div key={date ?? 'none'} className="day-block">
+              <div className="day-title">{dayTitle(date)}</div>
+              <ul className="posts-list">
+                {day.map((post) =>
+                  post.status === 'waiting' ? (
+                    <WaitingPost
+                      key={post.id}
+                      watchFirst={firstOfBatch.has(post.id)}
+                      editable={editable}
+                      onEdit={onEditAgain}
+                      campaigns={campaigns}
+                      onChanged={onMusicDone}
+                      post={post}
+                      busy={busy.has(post.id)}
+                      problem={postProblems[post.id]}
+                      onAct={(action, fields) => void act(post, action, fields)}
+                      onRedo={redoFor(post)}
+                    />
+                  ) : (
+                    other(post)
+                  ),
+                )}
+              </ul>
+            </div>
+          ))}
+          {order.next.length > NEXT_SHOWN ? (
+            <button type="button" className="linkbtn see-more" onClick={() => setAllNext((a) => !a)}>
+              {allNext ? 'Show fewer' : `Show all ${order.next.length}`}
             </button>
           ) : null}
+        </>
+      ) : null}
+
+      {order.justPosted.length > 0 ? (
+        <>
+          <div className="list-title">
+            Just posted <span className="list-count">last {JUST_POSTED_MS / 3_600_000} hours</span>
+          </div>
+          <ul className="posts-list">{order.justPosted.map((post) => other(post))}</ul>
         </>
       ) : null}
       </>

@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 
 import type { ServerPost } from './posting'
-import { byDay, campaignsIn, foldBatches, foldCampaigns, localDay } from './postsList'
+import { byDay, campaignsIn, foldBatches, foldCampaigns, localDay, postsOrder } from './postsList'
 
 const post = (id: string, campaignId: string, batch?: string) =>
   ({ id, campaignId, campaignName: campaignId.toUpperCase(), batch: batch ? { id: batch, date: '2026-10-11', time: '10:00', size: 3 } : null }) as unknown as ServerPost
@@ -52,5 +52,28 @@ describe('byDay', () => {
       [null, ['none']],
     ])
     expect(localDay(c)).toBe('2026-10-31')
+  })
+})
+
+describe('the Posts screen order (postsOrder)', () => {
+  const NOW = Date.parse('2026-11-11T15:00:00Z')
+  const at = (h: number) => new Date(NOW + h * 3_600_000).toISOString()
+  const p = (id: string, status: string, h: number | null, error?: string) =>
+    ({ id, status, postAt: h === null ? null : at(h), createdAt: at(-1), ...(error ? { error } : {}) }) as never as Parameters<typeof postsOrder>[0][number] & { id: string }
+
+  it('lists what is still to go by its time, the next first, whatever its state', () => {
+    const { next } = postsOrder([p('later', 'scheduled', 5), p('approve', 'waiting', 2), p('soon', 'approved', 1), p('none', 'waiting', null)], NOW)
+    expect(next.map((x) => (x as { id: string }).id)).toEqual(['soon', 'approve', 'later', 'none'])
+  })
+
+  it('keeps only the last few hours of what went out, newest first', () => {
+    const { justPosted } = postsOrder([p('a', 'posted', -1), p('b', 'posted', -2.5), p('old', 'posted', -6)], NOW)
+    expect(justPosted.map((x) => (x as { id: string }).id)).toEqual(['a', 'b'])
+  })
+
+  it("keeps what didn't go out for a day, apart, to post again", () => {
+    const { missed, justPosted } = postsOrder([p('err', 'error', -5), p('half', 'posted', -2, 'Not posted to Jake (Instagram).'), p('gone', 'failed', -30)], NOW)
+    expect(missed.map((x) => (x as { id: string }).id)).toEqual(['half', 'err'])
+    expect(justPosted).toHaveLength(0)
   })
 })

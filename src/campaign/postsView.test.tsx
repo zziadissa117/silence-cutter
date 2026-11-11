@@ -1,5 +1,6 @@
-// The Posts screen with big batches: folded into one row each, and a filter
-// by campaign so one campaign's posts don't fill the page.
+// The Posts screen with big batches: one list by time, the next first (his
+// ask, 2026-11-11), the first 15 and the rest on a tap, a filter by campaign,
+// and at the bottom only what went out in the last few hours.
 
 import { act } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
@@ -36,8 +37,10 @@ const posts = [
   ...Array.from({ length: 25 }, (_, i) => scheduled(`b${i}`, 'polsia', 'Polsia', 'big', i + 1)),
   ...Array.from({ length: 2 }, (_, i) => scheduled(`c${i}`, 'polsia', 'Polsia', 'small', 30 + i)),
   ...Array.from({ length: 5 }, (_, i) => ({ ...scheduled(`n${i}`, 'nova', 'Nova', 'new', 40 + i), status: 'waiting', caption: 'A caption', approval: 'you' }) as unknown as ServerPost),
-  scheduled('one', 'inflow', 'Inflow', undefined, 2),
+  scheduled('one', 'inflow', 'Inflow', undefined, 2.5),
   { ...scheduled('half', 'wron', 'Wron', undefined, -3), status: 'posted', error: 'Not posted to Jake (Instagram).' } as ServerPost,
+  { ...scheduled('just', 'wron', 'Wron', undefined, -1), status: 'posted' } as ServerPost,
+  { ...scheduled('old', 'wron', 'Wron', undefined, -5), status: 'posted' } as ServerPost,
 ]
 
 vi.mock('./store', async (original) => {
@@ -85,62 +88,70 @@ afterEach(() => {
   host.remove()
 })
 
-const scheduledRows = () => [...host.querySelectorAll('.list-title')].find((t) => t.textContent?.startsWith('Scheduled'))!.nextElementSibling!.children
-const rows = scheduledRows
-const polsiaRow = () => [...host.querySelectorAll('.batch-row')].find((r) => r.textContent?.includes('Polsia ·'))!
+const upNext = () => [...host.querySelectorAll('.day-block .post')] as HTMLElement[]
+const titled = (title: string) => [...host.querySelectorAll('.list-title')].find((t) => t.textContent?.startsWith(title))?.nextElementSibling as HTMLElement | undefined
+const button = (name: string, within: ParentNode = host) => [...within.querySelectorAll('button')].filter((b) => b.textContent === name)
+const showAll = async () => act(async () => button('Show all 35')[0].click())
 
-describe('scheduled posts', () => {
-  it('folds a batch of 25 into one row he can open', async () => {
-    expect(rows()).toHaveLength(2)
-    expect(host.textContent).toContain('Polsia · 27 videos')
-    await act(async () => (polsiaRow().querySelector('.post-head') as HTMLButtonElement).click())
-    expect(polsiaRow().querySelectorAll('.batch-inside .day-group .post')).toHaveLength(27)
-    // Day by day, like a calendar.
-    expect(polsiaRow().querySelectorAll('.batch-inside .day-title').length).toBeGreaterThanOrEqual(1)
+describe('Up next: everything still to go, by its time', () => {
+  it('starts with the next one to go out, whatever its campaign or state', () => {
+    const times = upNext().map((row) => row.querySelector('.post-time')!.textContent)
+    expect(upNext()[0].textContent).toContain('Polsia')
+    expect(upNext()[1].textContent).toContain('Polsia')
+    expect(upNext()[2].textContent).toContain('Inflow')
+    // Waiting for him, sitting at its own time among the scheduled ones.
+    expect(upNext().findIndex((row) => row.textContent?.includes('Vertus'))).toBeGreaterThan(2)
+    expect(times.length).toBe(15)
   })
 
-  it('folds every batch of a campaign into one row', () => {
-    // Polsia's 25 come from one batch and its two more from another.
-    expect(host.textContent).not.toContain('Polsia · 2 videos')
+  it('shows the first 15, the rest on a tap', async () => {
+    expect(host.textContent).toContain('Show all 35')
+    await showAll()
+    expect(upNext()).toHaveLength(35)
+    // Day by day, like a calendar.
+    expect(host.querySelectorAll('.day-block .day-title').length).toBeGreaterThanOrEqual(2)
+  })
+
+  it('says where each stands', () => {
+    const chips = upNext().map((row) => row.querySelector('.state-chip')!.textContent)
+    expect(chips).toContain('Scheduled')
+    expect(chips).toContain('To approve')
+    expect(chips).toContain('Tap Post')
   })
 
   it('shows one campaign at a time, and remembers it', async () => {
     const filter = host.querySelector('select.posts-filter') as HTMLSelectElement
-    expect([...filter.options].map((o) => o.textContent)).toContain('All campaigns · 36')
+    expect([...filter.options].map((o) => o.textContent)).toContain('All campaigns · 38')
     const pick = async (value: string) => {
       filter.value = value
       await act(async () => filter.dispatchEvent(new Event('change', { bubbles: true })))
     }
     await pick('inflow')
-    expect(rows()).toHaveLength(1)
-    expect(host.textContent).not.toContain('Polsia · 27 videos')
+    expect(upNext()).toHaveLength(1)
     expect(localStorage.getItem('cutter.posts.show')).toBe('inflow')
     await pick('')
-    expect(rows()).toHaveLength(2)
+    expect(upNext()).toHaveLength(15)
   })
 })
 
 describe('a new batch to approve', () => {
-  const novaRow = () => [...host.querySelectorAll('.batch-row')].find((r) => r.textContent?.includes('Nova · 5 videos'))!
-
-  it('shows its first 3 open with their video, and approves all 5 in one tap', async () => {
-    expect(novaRow().querySelectorAll('.batch-inside > .post')).toHaveLength(3)
-    expect(novaRow().textContent).toContain('Show the other 2')
-    const all = [...novaRow().querySelectorAll('button')].find((b) => b.textContent === 'Approve all 5') as HTMLButtonElement
+  it('shows its first 3 open with their video, and the top button approves everything waiting', async () => {
+    await showAll()
+    const nova = upNext().filter((row) => row.textContent?.includes('Nova'))
+    expect(nova).toHaveLength(5)
+    expect(nova.map((row) => button('Hide video', row).length)).toEqual([1, 1, 1, 0, 0])
+    expect(host.textContent).toContain('the rest of it goes by itself')
     postAction.mockClear()
-    await act(async () => all.click())
-    expect(postAction.mock.calls.filter((c) => c[0] === 'approve').map((c) => c[1]).sort()).toEqual(['n0', 'n1', 'n2', 'n3', 'n4'])
+    await act(async () => button('Approve all 6')[0].click())
+    expect(postAction.mock.calls.filter((c) => c[0] === 'approve').map((c) => c[1]).sort()).toEqual(['n0', 'n1', 'n2', 'n3', 'n4', 'w1'])
   })
 })
 
 describe('approve, post later', () => {
-  const button = (name: string) => [...host.querySelectorAll('button')].filter((b) => b.textContent === name)
-
   it('sits next to Approve and holds the post instead of sending it', async () => {
     expect(button('Approve').length).toBeGreaterThanOrEqual(1)
     await act(async () => button('Approve, post later')[0].click())
     expect(postAction).toHaveBeenCalledWith('ready', 'w1')
-    expect(host.textContent).toContain('Ready to post · 2')
   })
 
   it('has Post now beside Approve: approved with a time of now', async () => {
@@ -150,18 +161,23 @@ describe('approve, post later', () => {
     expect(Date.parse((sentFields as { at: string }).at)).toBeGreaterThanOrEqual(before)
   })
 
-  it('keeps a held post under Ready to post, with Post instead of Approve', () => {
-    expect(host.textContent).toContain('Ready to post · 1')
+  it('keeps a held post at its time, with Post instead of Approve', () => {
     expect(button('Post')).toHaveLength(1)
     expect(host.textContent).toContain('it waits here until you tap Post')
   })
 })
 
 describe('redo captions', () => {
+  const openPolsia = async () => {
+    const row = upNext()[0]
+    await act(async () => (row.querySelector('.post-head') as HTMLButtonElement).click())
+    return upNext()[0]
+  }
+
   it('adds the missing hashtags to the whole batch in one tap, after he says yes', async () => {
     const confirm = vi.spyOn(window, 'confirm').mockReturnValue(true)
-    const add = [...polsiaRow().querySelectorAll('button')].find((b) => b.textContent === 'Add missing hashtags') as HTMLButtonElement
-    await act(async () => add.click())
+    const row = await openPolsia()
+    await act(async () => button('Add missing hashtags to this batch', row)[0].click())
     expect(confirm).toHaveBeenCalledWith(expect.stringContaining('Add #polsia to these 27 Polsia posts? Captions stay as they are'))
     expect(redoCaptions).toHaveBeenCalledWith('polsia', expect.objectContaining({ hashtags: ['#polsia'] }), [...Array.from({ length: 25 }, (_, i) => `b${i}`), 'c0', 'c1'], 'hashtags')
     expect(host.textContent).toContain('Adding #polsia to 27 Polsia posts - captions stay as they are')
@@ -169,34 +185,25 @@ describe('redo captions', () => {
 
   it('can still rewrite them, as a second choice', async () => {
     vi.spyOn(window, 'confirm').mockReturnValue(true)
-    const rewrite = [...polsiaRow().querySelectorAll('button')].find((b) => b.textContent === 'Rewrite captions') as HTMLButtonElement
-    await act(async () => rewrite.click())
+    const row = await openPolsia()
+    await act(async () => button("Rewrite this batch's captions", row)[0].click())
     expect(redoCaptions).toHaveBeenLastCalledWith('polsia', expect.anything(), expect.any(Array), 'rewrite')
   })
 })
 
-describe('the scheduled clock', () => {
-  const scheduledList = () => [...host.querySelectorAll('.list-title')].find((t) => t.textContent?.startsWith('Scheduled'))!.nextElementSibling!
-
-  it('marks a scheduled batch and a scheduled post with the blue clock instead of a dot', () => {
-    const list = scheduledList()
-    expect(list.querySelectorAll('[aria-label="Scheduled"]')).toHaveLength(2)
-    expect(list.querySelectorAll(':scope > li > .post-head > .dot')).toHaveLength(0)
-    expect(list.querySelector('.post-when.scheduled')).not.toBeNull()
+describe('what went out', () => {
+  it('shows only the last few hours', () => {
+    const posted = titled('Just posted')!
+    expect(posted.querySelectorAll('.post')).toHaveLength(1)
+    expect(posted.textContent).toContain('Posted')
   })
 
-  it('leaves posts that are not waiting for their time without it', () => {
-    const waiting = [...host.querySelectorAll('.list-title')].find((t) => t.textContent?.startsWith('To approve'))!.nextElementSibling!
-    expect(waiting.querySelectorAll('[aria-label="Scheduled"]')).toHaveLength(0)
-  })
-})
-
-describe('a video that missed one of its accounts', () => {
-  it('says which one, and posts again to only the missing ones in one tap', async () => {
-    const button = [...host.querySelectorAll('button')].find((b) => b.textContent === 'Post again to the missing ones')
-    expect(host.textContent).toContain('Not posted to Jake (Instagram).')
-    expect(button).toBeTruthy()
-    await act(async () => button!.click())
+  it('keeps a video that missed one of its accounts up top, and posts again to only the missing ones in one tap', async () => {
+    const missed = titled("Didn't go out")!
+    expect(missed.textContent).toContain('Not posted to Jake (Instagram).')
+    const again = button('Post again to the missing ones', missed)
+    expect(again).toHaveLength(1)
+    await act(async () => again[0].click())
     expect(postAction).toHaveBeenCalledWith('retry-accounts', 'half')
   })
 })
