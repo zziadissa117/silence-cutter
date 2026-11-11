@@ -44,10 +44,13 @@ export function EditScreen({
   onChange,
   onFinish,
   startFull = false,
+  muteOwn = false,
 }: {
   /** Opens on the timeline editor, not the quick check (a video he just
    *  recorded and finished with ✓). */
   startFull?: boolean
+  /** A reaction: its own sound isn't heard in the finished video. */
+  muteOwn?: boolean
   id: string
   name: string
   file: Blob | null
@@ -154,6 +157,7 @@ export function EditScreen({
   return (
     <CutsEditor
       key={id}
+      muteOwn={muteOwn}
       name={name}
       file={file}
       missing={missing}

@@ -4670,6 +4670,7 @@ export function CampaignApp() {
         key={reviewJob.id}
         id={reviewJob.id}
         startFull={openFull.has(reviewJob.id)}
+        muteOwn={reviewJob.day?.noSpeech === true}
         name={reviewJob.name}
         file={reviewFile?.id === reviewJob.id ? reviewFile.file : null}
         missing={reviewFile?.id === reviewJob.id && reviewFile.missing}

@@ -3,6 +3,38 @@
 Newest first. Every change says what it does, how to use it, and how it works
 underneath. Kept up to date with each commit.
 
+## Reactions are music only; Posts by what goes out next; Settings, Batch and the edit screen redone
+App only: run ./deploy.sh. (The Cutter server makes reactions music-only too once it runs this version - it updates
+with the app.)
+- Reactions (his ask: "I just film ... automatically it knows I'm doing a reaction. The music should take up 100% of
+  everything. It should mute the clip and just do the music ... at a normal volume"):
+  - A video with no talking was already found by itself and kept whole with no captions. Its music sat under the
+    clip's own sound, set from how loud the clip was - over a quiet room the song came out barely there.
+  - Now its own sound is muted and the song is the only sound: set to -14 LUFS, up or down (the level batch songs
+    play at), starting again if it is shorter than the video, never dipped (`render.ts` `musicOnly`).
+  - No song picked and none on its campaign: one from the music bank, the same one for the same video.
+  - Its row says "Reaction, no talking · music only"; the edit screen plays it muted, as it will be.
+  - On the phone and on the Cutter server alike (`MakeOrder.musicOnly`).
+- Posts (his ask: "It needs to be ordered: what's the next thing that's going to post? At the bottom, things that
+  have been posted, but only in the past couple hours"):
+  - Up next: everything still to go out - to approve, approved, scheduled - in one list by its time, day by day, the
+    next one first. Each row starts with its time and has a chip for where it stands (To approve, Scheduled, Tap
+    Post). The first 15, then Show all.
+  - Didn't go out: failed posts, or ones that missed an account, from the last day - at the top, with Post again.
+  - Just posted: the last 3 hours, newest first. Older ones are on Analytics.
+  - Batches aren't folded into one row any more: Approve all at the top approves everything waiting, the first 3 of
+    a new batch open with their video, and a batch's captions are redone from any of its posts.
+- Settings: a card at the top with who is signed in and whether it's shared, then groups - Posting, Your voice,
+  Cutting, Captions, Effects, Server, People, Appearance, Space - each under its own coloured mark with its rows in
+  one card. Space shows a bar of what the app keeps. Every setting is the same as before.
+- Batch, same layout: the campaign as a card with its badge and accounts (tap it to pick another), a coloured mark
+  on each part, format cards with a coloured edge by kind, Videos a day as a big number.
+- Edit screen: the app's purple instead of TikTok's red, the video lit from behind with a big glass play button
+  that goes away while it plays, the time as a pill and a white play button, the timeline on its own panel with a
+  knob on the playhead and coloured lanes, the tools as icon tiles.
+- Tests: `reactionSound.test.ts` (level, loop, song pick), `postsList.test.ts` (the order), Posts screen tests
+  rewritten for the one list.
+
 ## The new look, step 2: the screens themselves
 App only: run ./deploy.sh.
 - His word on step 1: "that was lazy ... inspiration, not a 1:1 copy ... it does not have a premium feel, and you

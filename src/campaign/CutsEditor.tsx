@@ -497,9 +497,11 @@ function Thumb({ o, url }: { o: ManualPicture; url?: string }) {
 function ToolButton({ label, icon, onClick, disabled = false, active = false }: { label: string; icon: ReactNode; onClick: () => void; disabled?: boolean; active?: boolean }) {
   return (
     <button type="button" className={`tl-tool${active ? ' on' : ''}`} aria-label={label} disabled={disabled} onClick={onClick}>
-      <svg viewBox="0 0 24 24" aria-hidden>
-        {icon}
-      </svg>
+      <span className="tl-tool-icon">
+        <svg viewBox="0 0 24 24" aria-hidden>
+          {icon}
+        </svg>
+      </span>
       <span>{label}</span>
     </button>
   )
@@ -532,6 +534,7 @@ export function CutsEditor({
   headActions,
   typing = false,
   quick = false,
+  muteOwn = false,
 }: {
   name: string
   /** The recording, or null while it is being fetched from storage. */
@@ -592,6 +595,9 @@ export function CutsEditor({
   /** The quick check (EditScreen): only the video, big - the timeline and
    *  its tools stay hidden until he asks for the timeline editor. */
   quick?: boolean
+  /** A reaction (no talking): the finished video has only its music, so
+   *  its own sound isn't played here either. */
+  muteOwn?: boolean
 }) {
   const [keep, setKeep] = useState(initial)
   // Undo and redo (the arrows at the top): the cuts and what is over the
@@ -1325,7 +1331,7 @@ export function CutsEditor({
     const from = Math.max(0, range.start - 0.4)
     const until = range.end + 0.4
     v.currentTime = from
-    v.muted = false
+    v.muted = muteOwn
     playingRef.current = true
     setPlaying(true)
     void v.play().catch(() => stop())
@@ -1393,7 +1399,7 @@ export function CutsEditor({
     const from = playableFrom(keepRef.current, tRef.current) ?? keepRef.current[0]?.start ?? 0
     seeking.current.want = null
     v.currentTime = from
-    v.muted = false
+    v.muted = muteOwn
     playingRef.current = true
     setPlaying(true)
     void v.play().catch(() => stop())
@@ -1810,7 +1816,7 @@ export function CutsEditor({
           ) : null}
           {inPart < 0 ? <span className="cuts-out">Cut out</span> : null}
           {url ? (
-            <span className="review-playing" aria-hidden>
+            <span className={`review-playing${playing ? ' is-playing' : ''}`} aria-hidden>
               {playing ? <PauseIcon /> : <PlayIcon />}
             </span>
           ) : null}

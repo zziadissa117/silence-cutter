@@ -1734,3 +1734,98 @@ img.mark { border-radius: 14px; }
 .batch .format-badge.talking { color: var(--sky); background: color-mix(in srgb, var(--sky) 16%, transparent); }
 .batch .format-badge.greenscreen { color: var(--ok); background: color-mix(in srgb, var(--ok) 16%, transparent); }
 .batch-hero .new-post-to { font-size: 13px; line-height: 1.35; margin: 2px 0 0; }
+
+/* --- The edit screen, redone (his ask, 2026-11-11: "redo the edit screen"):
+   the app's purple instead of TikTok's red, the video lit from behind, a big
+   glass play button, the timeline on a panel of its own with a playhead
+   knob, coloured lanes, and the tools as icon tiles. ----------------------- */
+.cuts.tiktok {
+  --accent: #8b7cf6; --on-accent: #ffffff;
+  --accent-grad: linear-gradient(180deg, #a294ff 0%, #8b7cf6 45%, #6f5cf0 100%);
+  --glass: rgb(255 255 255 / 0.09); --glass-edge: rgb(255 255 255 / 0.1);
+}
+.cuts.tiktok .review-top {
+  background: radial-gradient(70% 55% at 50% 40%, rgb(139 124 246 / 0.22), transparent 72%), #000;
+}
+.cuts.tiktok .review-frame {
+  border-radius: 24px; overflow: hidden;
+  box-shadow: 0 24px 60px rgb(0 0 0 / 0.7), 0 0 0 1px rgb(255 255 255 / 0.07);
+}
+.cuts.tiktok .tl-round { background: var(--glass); border: 1px solid var(--glass-edge); -webkit-backdrop-filter: blur(14px); backdrop-filter: blur(14px); }
+.cuts.tiktok .tl-next { background: var(--accent-grad); border: 0; box-shadow: 0 8px 22px rgb(139 124 246 / 0.45); }
+.cuts.tiktok .cuts-head-actions .icon-btn { color: #fff; }
+/* Play: a big glass button in the middle while paused, gone while it plays. */
+.cuts.tiktok .review-playing {
+  right: auto; bottom: auto; left: 50%; top: 50%; width: 68px; height: 68px; transform: translate(-50%, -50%);
+  background: rgb(0 0 0 / 0.32); border: 1px solid rgb(255 255 255 / 0.22);
+  -webkit-backdrop-filter: blur(12px); backdrop-filter: blur(12px);
+  transition: opacity 200ms, transform 200ms;
+}
+.cuts.tiktok .review-playing svg { width: 26px; height: 26px; margin-left: 3px; }
+.cuts.tiktok .review-playing.is-playing { opacity: 0; transform: translate(-50%, -50%) scale(0.85); }
+.cuts.tiktok .cuts-out { background: rgb(0 0 0 / 0.5); -webkit-backdrop-filter: blur(10px); backdrop-filter: blur(10px); }
+/* The time, play and undo under the video. */
+.cuts.tiktok .tl-bar-row { padding: 2px 0; }
+.cuts.tiktok .tl-bar-row .cuts-timer {
+  justify-self: start; padding: 6px 10px; border-radius: 999px; background: var(--glass);
+  font-size: 12px; font-weight: 650; white-space: nowrap;
+}
+.cuts.tiktok .tl-play { width: 52px; height: 52px; border-radius: 50%; background: #fff; color: #000; box-shadow: 0 8px 24px rgb(255 255 255 / 0.12); }
+.cuts.tiktok .tl-play svg { width: 22px; height: 22px; }
+.cuts.tiktok .tl-bar-tools { gap: 6px; }
+.cuts.tiktok .tl-bar-tools .icon-btn { width: 38px; height: 38px; min-height: 0; border-radius: 50%; background: var(--glass); }
+.cuts.tiktok .tl-bar-tools .icon-btn svg { width: 19px; height: 19px; }
+.cuts.tiktok .tl-bar-tools .icon-btn:disabled { color: #48484a; background: rgb(255 255 255 / 0.04); }
+/* The timeline on its own panel, edge to edge. */
+.cuts.tiktok .cuts-strip-wrap {
+  padding-top: 12px; border-radius: 26px 26px 0 0;
+  background: linear-gradient(180deg, #121216, #0a0a0c 70%); border-top: 1px solid rgb(255 255 255 / 0.07);
+}
+.cuts.tiktok .cuts-playhead { top: 6px; width: 2px; border-radius: 1px; background: #fff; box-shadow: 0 0 10px rgb(255 255 255 / 0.35); }
+.cuts.tiktok .cuts-playhead::before {
+  content: ''; position: absolute; top: -5px; left: 50%; width: 11px; height: 11px; margin-left: -5.5px;
+  border-radius: 50%; background: #fff; box-shadow: 0 2px 8px rgb(0 0 0 / 0.6);
+}
+.cuts.tiktok .cuts-mark { background: #3a3a3e; }
+.cuts.tiktok .cuts-mark.major { background: #636366; }
+.cuts.tiktok .cuts-mark-label { color: #8e8e93; font-weight: 600; }
+.cuts.tiktok .tl-clip, .cuts.tiktok .tl-frames { border-radius: 9px; }
+.cuts.tiktok .tl-clip.on::after { border-radius: 9px; border-color: #fff; box-shadow: 0 0 0 4px rgb(139 124 246 / 0.35); }
+.cuts.tiktok .tl-handle.start { border-radius: 9px 0 0 9px; }
+.cuts.tiktok .tl-handle.end { border-radius: 0 9px 9px 0; }
+.cuts.tiktok .tl-word { color: #a1a1a6; font-weight: 500; }
+.cuts.tiktok .tl-bar { height: 26px; border-radius: 8px; font-weight: 650; box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.18); }
+.cuts.tiktok .tl-bar.headline { background: linear-gradient(90deg, #8b7cf6, #6f5cf0); }
+.cuts.tiktok .tl-bar.words { background: linear-gradient(90deg, #f5a524, #d9860b); color: #1a1205; }
+.cuts.tiktok .tl-bar.picture { background: linear-gradient(90deg, #5e5ce6, #4644c9); }
+.cuts.tiktok .tl-bar.video { background: linear-gradient(90deg, #0a84ff, #0068d6); }
+.cuts.tiktok .tl-bar.sound { background: linear-gradient(90deg, #30d158, #1fa847); color: #04210d; }
+.cuts.tiktok .tl-bar.on { outline-color: #fff; box-shadow: 0 0 0 4px rgb(255 255 255 / 0.15); }
+.cuts.tiktok .tl-add-sound {
+  height: 26px; border-radius: 8px; background: none; border: 1px dashed rgb(255 255 255 / 0.28); color: #d1d1d6; font-size: 12.5px;
+}
+/* The tools: an icon tile with its name under it, the lit one in purple. */
+.cuts.tiktok .tl-tools {
+  gap: 2px; padding: 8px 16px calc(env(safe-area-inset-bottom) + 6px);
+  background: #0a0a0c; border-top: 1px solid rgb(255 255 255 / 0.06);
+}
+.cuts.tiktok .tl-tool {
+  min-width: 68px; height: auto; padding: 4px 6px; gap: 6px; background: none; border-radius: 16px;
+  color: #e5e5ea; font-size: 11.5px; font-weight: 600; letter-spacing: 0.01em;
+}
+.cuts.tiktok .tl-tool-icon {
+  width: 46px; height: 46px; display: grid; place-items: center; border-radius: 15px;
+  background: var(--glass); border: 1px solid var(--glass-edge); transition: transform 140ms, background-color 140ms;
+}
+.cuts.tiktok .tl-tool:active:not(:disabled) .tl-tool-icon { transform: scale(0.92); }
+.cuts.tiktok .tl-tool svg { width: 22px; height: 22px; }
+.cuts.tiktok .tl-tool.on { background: none; color: #fff; }
+.cuts.tiktok .tl-tool.on .tl-tool-icon { background: var(--accent-grad); border-color: transparent; box-shadow: 0 6px 18px rgb(139 124 246 / 0.45); }
+.cuts.tiktok .tl-tool:disabled { color: #48484a; }
+.cuts.tiktok .tl-tool:disabled .tl-tool-icon { background: rgb(255 255 255 / 0.03); }
+/* Approve at the bottom, on a blur. */
+.cuts.tiktok .editor-foot.sticky {
+  background: rgb(0 0 0 / 0.72); -webkit-backdrop-filter: blur(18px); backdrop-filter: blur(18px);
+  border-top: 1px solid rgb(255 255 255 / 0.07);
+}
+.cuts.tiktok .btn.primary { background: var(--accent-grad); box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.25), 0 10px 28px rgb(139 124 246 / 0.4); }
