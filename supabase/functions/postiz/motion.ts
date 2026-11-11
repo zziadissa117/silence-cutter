@@ -119,10 +119,9 @@ export const BOARD_PARTS: readonly PartKind[] = ['title', 'note', 'cards', 'list
 export const popScene = (scene: Pick<Scene, 'parts'>): boolean => scene.parts.length > 0 && scene.parts.every((p) => p.kind === 'pop')
 export const GLASS_PARTS: readonly PartKind[] = ['tag', 'blocks', 'stat', 'picture', 'steps']
 
-/** Where a glass card sits: over his face (in front of it), right of his
- *  head, over his chest, or behind him beside his head. */
+/** Where a glass card sits. Only 'face' is made now - above his face, over
+ *  his forehead; the others stay for plans made before (drawn there too). */
 export type Place = 'face' | 'low' | 'side' | 'behind'
-const PLACES: readonly Place[] = ['face', 'low', 'side', 'behind']
 
 export interface Scene {
   /** First and last word it is up for. */
@@ -202,13 +201,9 @@ Drawings ("icon"): give most titles, cards, list rows and numbers an "icon" that
 
 FORMAT "glass": his face stays full screen; now and then a frosted glass card comes and goes over him. It must look like a person edited it, not a tool: viewers now recognise the same AI-made edit everywhere, and he does not want his to look like it.
 - Fewer, better moments: a card only where it adds something he says - about one every 8 to 12 seconds on average, at UNEVEN gaps (sometimes two close together, sometimes 15 seconds of just him talking). 4 to 8 scenes for a 30-90 s video, the first within his first two sentences. Each card up 2 to 5 seconds (at most 15 words), one at a time. Each scene holds ONE part.
-- Variety: never the same kind of part twice in a row, never the same "place" twice in a row; across the video use at least three different kinds.
+- Variety: never the same kind of part twice in a row; across the video use at least three different kinds.
 - Words like his own: short, plain, in his voice and his language, sentence case - the way he would write a text. No marketing labels, no words like "AI", "Claude", "automated", "edited by", "100%", "zero human" unless he says them himself. Most tags have NO "label"; give one only when it says something (at most a third of them). Emoji pictures rarely (at most once).
-- "place", where a card sits - everything stays in the middle of the frame:
-  "face": in front of him, over his face - when he asks for cards over his face, or for the one big moment;
-  "low": over his chest, under his face;
-  "side": right of his head;
-  "behind": behind him, beside his head, his head in front of its edge - at most twice a video.
+- Where a card sits is fixed, his strict rule: ALWAYS above his face, over his forehead, at the top of the middle square. NEVER under his face, NEVER beside his head, NEVER behind him. Give every card "place": "face" - it means above his face. If he asks for a card anywhere else, it still goes above his face; say so in your reply.
 Parts:
 - tag: an optional small "label" and a short "text" ("cut every pause"), one or two words of it in an orange pill ("mark": "pause") - or no mark. For the main point of a moment.
 - blocks: a row of blue blocks with some red ones (the waste), a "title" ("the dead space") and an optional small "tag"; optional "after": on its word the red ones disappear and the title becomes its "text" ("no more filler"). For before/after, removing waste, saving time.
@@ -256,7 +251,7 @@ Parts - "kind" and its fields:
   {"kind": "math", "at": 15, "lines": [{"text": "50 videos", "at": 15}], "result": {"text": "= 300 $ / day", "at": 22}}
   {"kind": "number", "at": 15, "label": "a day", "text": "300 $", "icon": "money"}
   {"kind": "pop", "at": 15, "to": 21, "icon": "fire", "text": "Goes viral", "tone": "red"}
-  {"kind": "tag", "at": 15, "to": 24, "place": "face" | "low" | "side" | "behind", "label": "", "text": "cut every pause", "mark": "pause"}
+  {"kind": "tag", "at": 15, "to": 24, "place": "face", "label": "", "text": "cut every pause", "mark": "pause"}
   {"kind": "blocks", "at": 15, "to": 26, "place": "low", "title": "the dead space", "tag": "", "after": {"at": 22, "text": "no more filler"}}
   {"kind": "stat", "at": 15, "to": 22, "place": "side", "tag": "views", "text": "2x", "sub": "in one week"}
   {"kind": "picture", "at": 15, "to": 21, "place": "side", "tag": "the app", "emoji": "📱"}
@@ -336,7 +331,11 @@ const withIcon = (value: unknown) => {
   return icon ? { icon } : {}
 }
 
-const placeOf = (value: unknown, fallback: Place): Place => (PLACES.includes(value as Place) ? (value as Place) : fallback)
+/** Every glass card goes above his face, over his forehead - never under it,
+ *  beside it or behind him (his strict rule, 2026-11-11: "It has to be above
+ *  my face and never below my face ... on top of my forehead, not next to my
+ *  face"). Whatever Claude says. */
+const ABOVE_FACE: Place = 'face'
 
 const list = (value: unknown): Record<string, unknown>[] =>
   Array.isArray(value) ? value.filter((v): v is Record<string, unknown> => Boolean(v) && typeof v === 'object') : []
@@ -450,7 +449,7 @@ function cleanPart(raw: Record<string, unknown>, from: number, to: number, words
       const text = str(raw.text, 40)
       if (!text) return null
       const mark = str(raw.mark, 40)
-      return { kind: 'tag', at, to: cardEnd(raw.to), label: str(raw.label, 48), text, mark: mark && text.toLowerCase().includes(mark.toLowerCase()) ? mark : '', place: placeOf(raw.place, 'low') }
+      return { kind: 'tag', at, to: cardEnd(raw.to), label: str(raw.label, 48), text, mark: mark && text.toLowerCase().includes(mark.toLowerCase()) ? mark : '', place: ABOVE_FACE }
     }
     case 'blocks': {
       const title = str(raw.title, 32) || str(raw.text, 32)
@@ -459,17 +458,17 @@ function cleanPart(raw: Record<string, unknown>, from: number, to: number, words
       const afterRaw = raw.after && typeof raw.after === 'object' ? (raw.after as Record<string, unknown>) : null
       const afterText = afterRaw ? str(afterRaw.text, 32) : ''
       const afterAt = afterRaw ? Math.max(at + 1, Math.min(end, inside(afterRaw.at, end))) : end
-      return { kind: 'blocks', at, to: end, title, tag: str(raw.tag, 20), after: afterText && afterAt > at ? { at: afterAt, text: afterText } : null, place: placeOf(raw.place, 'low') }
+      return { kind: 'blocks', at, to: end, title, tag: str(raw.tag, 20), after: afterText && afterAt > at ? { at: afterAt, text: afterText } : null, place: ABOVE_FACE }
     }
     case 'stat': {
       const text = str(raw.text, 12)
-      return text ? { kind: 'stat', at, to: cardEnd(raw.to), tag: str(raw.tag, 24), text, sub: str(raw.sub, 32), place: placeOf(raw.place, 'side') } : null
+      return text ? { kind: 'stat', at, to: cardEnd(raw.to), tag: str(raw.tag, 24), text, sub: str(raw.sub, 32), place: ABOVE_FACE } : null
     }
     case 'picture': {
       const emoji = typeof raw.emoji === 'string' ? [...raw.emoji.trim()].slice(0, 4).join('') : ''
       const icon = iconOf(raw.icon)
       if (!emoji && !icon) return null
-      return { kind: 'picture', at, to: cardEnd(raw.to), tag: str(raw.tag, 24), emoji, ...(icon ? { icon } : {}), place: placeOf(raw.place, 'side') }
+      return { kind: 'picture', at, to: cardEnd(raw.to), tag: str(raw.tag, 24), emoji, ...(icon ? { icon } : {}), place: ABOVE_FACE }
     }
     case 'steps': {
       const items = list(raw.items)

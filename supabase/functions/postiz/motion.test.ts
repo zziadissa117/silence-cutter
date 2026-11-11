@@ -104,7 +104,8 @@ describe("Claude's answer as plain JSON (the strict schema was too complex for t
     expect(board.title).toEqual({ text: 'I Automated My Editing', to: 5 })
     expect(board.emphasis).toEqual([{ at: 2, style: 'pill' }])
     // Kept as written: no forced capitals (they read as an AI-made edit, 2026-11-11).
-    expect(board.scenes[0].parts[0]).toMatchObject({ kind: 'tag', place: 'behind', label: '100% edited by Claude', mark: 'end-to-end' })
+    // Asked behind him, put above his face: every card is (his strict rule, 2026-11-11).
+    expect(board.scenes[0].parts[0]).toMatchObject({ kind: 'tag', place: 'face', label: '100% edited by Claude', mark: 'end-to-end' })
     expect(cleanReply(answer)).toBe('Planned it.')
     expect(MOTION_ANSWER).toContain('"kind": "steps"')
   })
@@ -196,9 +197,9 @@ describe('Format 2, the glass look (his example reel, 2026-11-08)', () => {
       100,
     )
     expect(board.scenes[0].parts).toHaveLength(1)
-    expect(board.scenes[0].parts[0]).toMatchObject({ kind: 'stat', place: 'side', tag: 'graphics' })
+    expect(board.scenes[0].parts[0]).toMatchObject({ kind: 'stat', place: 'face', tag: 'graphics' })
     expect(board.scenes[0].to).toBeLessThanOrEqual(18)
-    expect(board.scenes[1].parts[0]).toMatchObject({ mark: '', place: 'side' })
+    expect(board.scenes[1].parts[0]).toMatchObject({ mark: '', place: 'face' })
   })
 
   it('a list of steps needs two rows, as Claude wrote them (no forced capitals, 2026-11-11), in order', () => {

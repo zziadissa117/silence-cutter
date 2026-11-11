@@ -308,9 +308,11 @@ function cardBox(place: Place, size: { w: number; h: number }, width: number, he
   const w = size.w * scale
   const h = size.h * scale
   const inside = (y: number) => Math.max(sq.y + 3 * u, Math.min(sq.y + sq.size - 3 * u - h, y))
-  if (place === 'side') return { x: sq.x + sq.size - 6 * u - w, y: inside(height * 0.42 - h / 2), scale }
-  if (place === 'face') return { x: width / 2 - w / 2, y: inside(height * 0.4 - h / 2), scale }
-  return { x: width / 2 - w / 2, y: inside(height * 0.6 - h / 2), scale }
+  // Every card, whatever its place: above his face, over his forehead, at the
+  // top of the square - never under his face or beside it (his strict rule,
+  // 2026-11-11). A plan made before with "low" or "side" is drawn there too.
+  void place
+  return { x: width / 2 - w / 2, y: inside(sq.y + 3 * u), scale }
 }
 
 /** Where a card behind him goes: beside his head, on the side with more room
@@ -546,11 +548,10 @@ function drawCardInside(ctx: Ctx, part: CardPart, x: number, y: number, w: numbe
 function placeCard(ctx: Ctx, part: CardPart, width: number, height: number, cutout?: CanvasImageSource | null): { box: { x: number; y: number; scale: number }; size: { w: number; h: number }; inside: { w: number; h: number }; behind: boolean } {
   const u = width / 100
   const inside = cardSize(ctx, part, u)
-  if (part.place === 'behind') {
-    const box = behindBox(part, inside, width, height, u, cutout)
-    if (box) return { box, size: inside, inside, behind: true }
-    return { box: cardBox('face', inside, width, height, u), size: inside, inside, behind: false }
-  }
+  // Never behind him beside his head any more (his strict rule, 2026-11-11):
+  // above his face like the rest.
+  void behindBox
+  void cutout
   return { box: cardBox(part.place, inside, width, height, u), size: inside, inside, behind: false }
 }
 
@@ -933,13 +934,9 @@ function drawCallToAction(ctx: Ctx, frame: Frame, end: NonNullable<Storyboard['e
 
 /** Whether a card behind him is up at `t` - only then is he cut out of the
  *  frame (render.ts runs the cut-out tool for those frames alone). */
-export function behindAt(board: Storyboard, time: Timing, t: number): boolean {
-  for (const scene of board.scenes) {
-    for (const part of scene.parts) {
-      if (!('place' in part) || part.place !== 'behind') continue
-      if (cardLife(part, time, t)) return true
-    }
-  }
+export function behindAt(_board: Storyboard, _time: Timing, _t: number): boolean {
+  // No card goes behind him any more - every one is above his face (his
+  // strict rule, 2026-11-11) - so he is never cut out.
   return false
 }
 

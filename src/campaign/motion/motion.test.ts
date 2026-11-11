@@ -250,9 +250,9 @@ describe('Format 2, the glass look', () => {
     words.length,
   )
 
-  it('cuts him out only while a card behind him is up', () => {
+  it('never cuts him out: no card goes behind him any more, every one is above his face', () => {
     expect(behindAt(glass, time, 1)).toBe(false)
-    expect(behindAt(glass, time, 4)).toBe(true)
+    expect(behindAt(glass, time, 4)).toBe(false)
     expect(behindAt(glass, time, 8)).toBe(false)
   })
 

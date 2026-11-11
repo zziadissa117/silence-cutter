@@ -3,6 +3,16 @@
 Newest first. Every change says what it does, how to use it, and how it works
 underneath. Kept up to date with each commit.
 
+## Motion graphics, Format 2: every card above your face, over your forehead
+App and server: run ./deploy.sh (it runs ./deploy-server.sh too).
+Needs deploying: run ./deploy-server.sh
+- His strict rule: a glass card is ALWAYS above his face, over his forehead, at the top of the middle square - never
+  under his face, never beside his head, never behind him. The drawing puts every card there whatever the plan says
+  (plans made before included), Claude is told so, and its answer is made to say so (`postiz/motion.ts`
+  `ABOVE_FACE`); asked for a card somewhere else, Claude says it stays above his face.
+- He is never cut out any more (`glass.behindAt` is always false): no card goes behind him - quicker to make too.
+- The plan screen says "above your face" for each card.
+
 ## Motion graphics: Make sends the change you typed first
 App only: run ./deploy.sh.
 - Typed a change for Claude and tapped Make without tapping Send? The button now says **"Send my change, then make

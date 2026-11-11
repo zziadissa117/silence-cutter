@@ -400,7 +400,7 @@ function glassLabel(scene: Storyboard['scenes'][number]): string {
   const part = scene.parts[0]
   if (!part) return ''
   if (part.kind === 'steps') return 'Light screen with your steps'
-  const where = 'place' in part ? (part.place === 'behind' ? 'behind you' : part.place === 'side' ? 'at your side' : 'under your face') : ''
+  const where = 'place' in part ? 'above your face' : ''
   return `Glass card ${where}`
 }
 
