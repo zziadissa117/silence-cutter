@@ -1152,7 +1152,7 @@ export function BatchView({
 
   /** One step of the product showcase: its clips, one of which - the moment
    *  something happens in it - goes in each video. */
-  const stepList = (step: BatchStep, index: number, talking = false) => (
+  const stepList = (step: BatchStep, index: number, talking = false, green = false) => (
     <div className="group" key={step.id}>
       <div className="bank-head">
         <span className="group-title">
@@ -1168,7 +1168,9 @@ export function BatchView({
       <p className="hint bank-hint">
         {talking
           ? `One of these in every video, played whole with its own sound - your voice saying what to do - the music low under it${stepTitle(step.name) ? `, "${stepTitle(step.name)}" written over it` : ''}. Edit them before: cut to length, you talking over them.`
-          : `One of these in every video: the moment something happens in it, or all of it when it's short${stepTitle(step.name) ? `, with "${stepTitle(step.name)}" written over it` : ''}.`}
+          : green
+            ? 'One of these behind you in every video, played whole.'
+            : `One of these in every video: the moment something happens in it, or all of it when it's short${stepTitle(step.name) ? `, with "${stepTitle(step.name)}" written over it` : ''}.`}
         {step.texts ? ` Your words on it: ${step.texts.length === 0 ? 'none' : step.texts.map((t) => `"${t.text}"`).join(', ')}.` : ' Tap Words to put your own anywhere on it.'}
       </p>
       {wordsFor === step.id ? (
@@ -1279,7 +1281,7 @@ export function BatchView({
               </div>
             ) : null}
             {steps.length > 0
-              ? steps.map((st, i) => stepList(st, i, f.kind === 'talking'))
+              ? steps.map((st, i) => stepList(st, i, f.kind === 'talking', green))
               : list(
                   'products',
                   green ? 'Videos behind you' : 'Product showcases',

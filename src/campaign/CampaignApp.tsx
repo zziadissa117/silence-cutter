@@ -2013,6 +2013,16 @@ export function CampaignApp() {
               reactionName: file instanceof File ? file.name : undefined,
               // A reaction he talks in keeps his voice (batch.talksIn).
               ...(keepsVoice ? { voice: file } : {}),
+              // Each product step's own words, where he put them (StepTexts.tsx) -
+              // as the step is set now; a step without his own words has none.
+              ...(stepFiles?.length
+                ? {
+                    stepTexts: stepFiles.map((s) => {
+                      const known = batchBank?.steps?.find((k) => k.files.some((f) => f.id === s.file.id))
+                      return known?.texts ? stepTexts(known) : null
+                    }),
+                  }
+                : {}),
             }),
           )
         } else if (next.montage) {

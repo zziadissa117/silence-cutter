@@ -3,6 +3,15 @@
 Newest first. Every change says what it does, how to use it, and how it works
 underneath. Kept up to date with each commit.
 
+## Green screen steps get your own words too
+App only: run ./deploy.sh.
+- His ask: the Words on a phone screen, for green screen product steps too. Batch tab -> a green screen format -> each
+  step -> **Words**: the same editor; every video draws a step's words while that step's clip plays behind him, in
+  front of him, exactly where you put them.
+- A green screen step without words of its own still has none (as before - its name is not written on it).
+- Underneath: `greenScreenRender` `stepTexts` (per background clip, laid out once, drawn while it plays), passed by
+  CampaignApp from `BatchStep.texts`; the step's hint no longer says its name is written over it.
+
 ## Product steps: your own words, anywhere on the clip
 App only: run ./deploy.sh.
 - His ask: "an example of a phone screen ... click on the phone screen and put, let's say, a text on top and a text

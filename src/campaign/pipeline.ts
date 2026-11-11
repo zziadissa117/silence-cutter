@@ -564,10 +564,10 @@ export async function makeGreenScreen(
   headlineText: string,
   corner: Corner,
   onRenderProgress?: (fraction: number) => void,
-  extra: { reactionName?: string; voice?: Blob } = {},
+  extra: { reactionName?: string; voice?: Blob; stepTexts?: Parameters<typeof renderGreenScreen>[0]['stepTexts'] } = {},
 ): Promise<CampaignResult> {
   const rendered = await renderGreenScreen(
-    { background, cutout, look: videoLook(campaign, angle, [], null), headlineText, corner, reactionName: extra.reactionName, voice: extra.voice },
+    { background, cutout, look: videoLook(campaign, angle, [], null), headlineText, corner, reactionName: extra.reactionName, voice: extra.voice, stepTexts: extra.stepTexts },
     onRenderProgress,
   )
   return {
