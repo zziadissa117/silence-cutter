@@ -214,3 +214,65 @@ export const MinusIcon = () => (
     <path d="M5.5 12h13" />
   </Icon>
 )
+
+/** Settings' section marks (2026-11-11). */
+export const MicIcon = () => (
+  <Icon>
+    <rect x="9" y="3.5" width="6" height="11" rx="3" />
+    <path d="M5.75 11.5a6.25 6.25 0 0 0 12.5 0M12 17.75v2.75" />
+  </Icon>
+)
+
+export const ScissorsIcon = () => (
+  <Icon>
+    <circle cx="6.5" cy="7" r="2.5" />
+    <circle cx="6.5" cy="17" r="2.5" />
+    <path d="M8.6 8.4L19.5 17.5M8.6 15.6L19.5 6.5" />
+  </Icon>
+)
+
+export const CaptionsIcon = () => (
+  <Icon>
+    <rect x="3.5" y="5.5" width="17" height="13" rx="3" />
+    <path d="M7.5 12.5h3M13.5 12.5h3M7.5 15.25h9" />
+  </Icon>
+)
+
+export const SparkIcon = () => (
+  <Icon>
+    <path d="M12 3.5l1.9 5.1 5.1 1.9-5.1 1.9L12 17.5l-1.9-5.1L5 10.5l5.1-1.9z" />
+    <path d="M18.5 16.5l.7 1.8 1.8.7-1.8.7-.7 1.8-.7-1.8-1.8-.7 1.8-.7z" />
+  </Icon>
+)
+
+export const ServerIcon = () => (
+  <Icon>
+    <rect x="4" y="4.5" width="16" height="6" rx="2" />
+    <rect x="4" y="13.5" width="16" height="6" rx="2" />
+    <path d="M7.5 7.5h.01M7.5 16.5h.01" />
+  </Icon>
+)
+
+export const PeopleIcon = () => (
+  <Icon>
+    <circle cx="9" cy="8.5" r="3" />
+    <path d="M3.75 19c.6-3 2.7-4.75 5.25-4.75S13.65 16 14.25 19" />
+    <path d="M15.5 6a3 3 0 0 1 0 5.5M17.5 14.5c1.4.6 2.4 2 2.75 4.5" />
+  </Icon>
+)
+
+export const PaletteIcon = () => (
+  <Icon>
+    <path d="M12 3.75a8.25 8.25 0 1 0 0 16.5c1.2 0 1.75-.75 1.75-1.6 0-1.5-1.5-1.9-1.5-3.15 0-.9.7-1.5 1.6-1.5h2.15A3.75 3.75 0 0 0 20.25 10.25C20.25 6.6 16.6 3.75 12 3.75z" />
+    <circle cx="7.75" cy="11" r="1" />
+    <circle cx="10.25" cy="7.5" r="1" />
+    <circle cx="14.5" cy="7.5" r="1" />
+  </Icon>
+)
+
+export const StorageIcon = () => (
+  <Icon>
+    <ellipse cx="12" cy="6.5" rx="7" ry="2.75" />
+    <path d="M5 6.5v11c0 1.5 3.1 2.75 7 2.75s7-1.25 7-2.75v-11M5 12c0 1.5 3.1 2.75 7 2.75S19 13.5 19 12" />
+  </Icon>
+)

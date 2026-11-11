@@ -1666,3 +1666,39 @@ main.tabbed > * { position: relative; z-index: 1; }
   box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.25);
 }
 img.mark { border-radius: 14px; }
+
+/* --- Settings (his ask, 2026-11-11: "redo the settings"): a profile card,
+   then groups, each under its mark on a colour of its own. --------------- */
+.settings { gap: 20px; }
+.account-card {
+  display: flex; align-items: center; gap: 14px; padding: 16px 18px; border-radius: 26px;
+  border: 1px solid var(--hairline); box-shadow: var(--lift);
+  background: radial-gradient(120% 120% at 0% 0%, color-mix(in srgb, var(--accent) 22%, transparent), transparent 60%), var(--card-sheen), var(--surface);
+}
+.account-card .home-avatar { width: 54px; height: 54px; font-size: 22px; }
+.account-text { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 4px; }
+.account-name { font-size: 20px; font-weight: 750; letter-spacing: -0.02em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.account-line { display: flex; align-items: center; gap: 7px; font-size: 14px; color: var(--muted); }
+.account-line .sync-dot { flex: none; }
+.set-section { display: flex; flex-direction: column; gap: 10px; }
+.set-head { display: flex; align-items: center; gap: 10px; margin: 0 2px; }
+.set-head h2 { margin: 0; font-size: 19px; font-weight: 750; letter-spacing: -0.02em; }
+.set-icon {
+  width: 30px; height: 30px; flex: none; display: grid; place-items: center; border-radius: 9px; color: #fff;
+  background: linear-gradient(145deg, hsl(var(--hue, 258) 75% 62%), hsl(calc(var(--hue, 258) + 30) 70% 44%));
+  box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.25);
+}
+.set-icon svg { width: 18px; height: 18px; stroke-width: 1.9; }
+.set-card { border-radius: 22px; }
+.card-group > .set-row { display: flex; flex-direction: column; gap: 10px; padding: 14px 16px; }
+.set-row .row-name { font-size: 15px; font-weight: 650; }
+.set-row .hint.tip { margin: 0; }
+.set-card > .setting, .set-card > .toggle { padding-top: 14px; padding-bottom: 14px; }
+.set-after { align-self: flex-start; margin-left: 6px; }
+.settings .set-section > .card-group:empty { display: none; }
+.space-line { display: flex; align-items: baseline; gap: 8px; }
+.space-used { font-size: 26px; font-weight: 800; letter-spacing: -0.03em; font-variant-numeric: tabular-nums; }
+.space-bar { height: 8px; border-radius: 999px; background: color-mix(in srgb, var(--text) 9%, transparent); overflow: hidden; }
+.space-bar > div { height: 100%; border-radius: inherit; background: linear-gradient(90deg, var(--sky), var(--accent)); }
+.settings .footnote { margin-top: 4px; }
+.sync-dot.warn { background: var(--warn); box-shadow: 0 0 8px var(--warn); }

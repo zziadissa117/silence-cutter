@@ -1,7 +1,7 @@
 // The Settings tab: the few things set once and rarely touched - sharing,
 // posting, how tight the cut is, whether "um"s go too, and the voice.
 
-import { useEffect, useState } from 'react'
+import { type ReactNode, useEffect, useState } from 'react'
 
 import { VoiceList, VoiceSetup } from './VoiceSetup'
 
@@ -26,6 +26,8 @@ import { BufferBackup } from './BufferBackup'
 import { PlaceField } from './InstagramPlace'
 import type { PushState } from './push'
 import { BackToMore } from './MoreView'
+import { hueOf } from './HomeTop'
+import { CaptionsIcon, MicIcon, PaletteIcon, PeopleIcon, PostsIcon, ScissorsIcon, ServerIcon, SparkIcon, StorageIcon } from './icons'
 
 const PUSH_LINE: Record<PushState, string> = {
   on: 'On - posts to approve, and reminders to submit.',
@@ -56,12 +58,12 @@ function size(bytes: number): string {
 
 /** What this app keeps on the phone. A full phone is what stops the iPhone
  *  handing picked videos over, so it is shown rather than guessed at. */
-function useSpaceUsed(): number | null {
-  const [used, setUsed] = useState<number | null>(null)
+function useSpaceUsed(): { usage: number; quota: number | null } | null {
+  const [used, setUsed] = useState<{ usage: number; quota: number | null } | null>(null)
   useEffect(() => {
     navigator.storage
       ?.estimate()
-      .then(({ usage }) => setUsed(usage ?? null))
+      .then(({ usage, quota }) => setUsed(usage === undefined ? null : { usage, quota: quota ?? null }))
       .catch(() => {})
   }, [])
   return used
@@ -91,26 +93,25 @@ function DefaultEffectsSetting() {
   )
   return (
     <>
-      <div className="list-title">Default effects</div>
-      <div className="seg full" role="radiogroup" aria-label="Default effects">
-        {PRESET_NAMES.map((name) => (
-          <button key={name} type="button" role="radio" aria-checked={preset === name} className={preset === name ? 'active' : ''} onClick={() => change(PRESET_EFFECTS[name])}>
-            {name[0].toUpperCase() + name.slice(1)}
-          </button>
-        ))}
-      </div>
-      <p className="hint tip">
-        Applied to every video whose angle has no effects of its own{preset === null ? ' (custom mix below)' : ''}. Turn them off for one video in its row. Applies to videos you make next.
-      </p>
-      <div className="card-group">
-        {level('cutPunch', 'Punch-in at cuts')}
-        {level('hookPush', 'Push-in under the hook')}
-        {level('brandHit', 'Punch when you say the brand')}
-        <label className="toggle">
-          <input type="checkbox" checked={effects.logoPop} onChange={(e) => change({ ...effects, logoPop: e.target.checked })} />
-          <span className="label">Logo and pictures spring in</span>
-        </label>
-      </div>
+      <SegRow
+        label="Default effects"
+        hint={`Applied to every video whose angle has no effects of its own${preset === null ? ' (custom mix below)' : ''}. Turn them off for one video in its row. Applies to videos you make next.`}
+      >
+        <div className="seg full" role="radiogroup" aria-label="Default effects">
+          {PRESET_NAMES.map((name) => (
+            <button key={name} type="button" role="radio" aria-checked={preset === name} className={preset === name ? 'active' : ''} onClick={() => change(PRESET_EFFECTS[name])}>
+              {name[0].toUpperCase() + name.slice(1)}
+            </button>
+          ))}
+        </div>
+      </SegRow>
+      {level('cutPunch', 'Punch-in at cuts')}
+      {level('hookPush', 'Push-in under the hook')}
+      {level('brandHit', 'Punch when you say the brand')}
+      <label className="toggle">
+        <input type="checkbox" checked={effects.logoPop} onChange={(e) => change({ ...effects, logoPop: e.target.checked })} />
+        <span className="label">Logo and pictures spring in</span>
+      </label>
     </>
   )
 }
@@ -119,7 +120,6 @@ function NoiseCutting() {
   const [on, setOn] = useState(cutNoiseOn)
   return (
     <>
-      <div className="list-title">Noises</div>
       <label className="toggle">
         <input
           type="checkbox"
@@ -149,8 +149,7 @@ function WideClips() {
     setMode(next)
   }
   return (
-    <>
-      <div className="list-title">Wide clips</div>
+    <SegRow label="Wide clips" hint={`${LANDSCAPE_MODES.find((m) => m.id === mode)?.note ?? ''} Clips already 9:16 are never touched. Applies to videos you make next.`}>
       <div className="seg full" role="radiogroup" aria-label="Wide clips">
         {LANDSCAPE_MODES.map((m) => (
           <button key={m.id} type="button" role="radio" aria-checked={mode === m.id} className={mode === m.id ? 'active' : ''} onClick={() => pick(m.id)}>
@@ -158,10 +157,7 @@ function WideClips() {
           </button>
         ))}
       </div>
-      <p className="hint tip">
-        {LANDSCAPE_MODES.find((m) => m.id === mode)?.note} Clips already 9:16 are never touched. Applies to videos you make next.
-      </p>
-    </>
+    </SegRow>
   )
 }
 
@@ -228,192 +224,190 @@ export function SettingsView({
     return <PostingLimits profile={posting.profile} onChanged={onLimitsChanged} onBack={() => setLimitsOpen(false)} />
   }
   return (
-    <section className="screen">
+    <section className="screen settings">
       {onBackToMore ? <BackToMore onBack={onBackToMore} /> : null}
       <div className="screen-head">
         <h1>Settings</h1>
       </div>
 
-      <Appearance />
+      <AccountCard session={session} syncState={syncState} onSignIn={onSignIn} onSignOut={onSignOut} />
 
-      <div className="list-title">Sharing</div>
-      <div className="setting">
-        <div className="setting-text">
-          <span className={`row-name${syncState.kind === 'waiting' ? ' warn-text' : ''}`}>{syncLine(session, syncState)}</span>
-          <span className="row-line">
-            {session
-              ? syncState.kind === 'waiting'
-                ? syncState.reason
-                : 'Campaigns, angles and the picture bank are the same on every phone signed in.'
-              : 'Sign in with the shared login to have the same setups as your friend, backed up.'}
-          </span>
-        </div>
-        {session ? (
-          <button type="button" className="btn small" onClick={onSignOut}>
-            Sign out
-          </button>
-        ) : (
-          <button type="button" className="btn small primary" onClick={onSignIn}>
-            Sign in
-          </button>
-        )}
-      </div>
-
-      {session ? <People /> : null}
-
-      <div className="list-title">Posting</div>
-      {posting ? (
-        <>
-          <div className="card-group">
-          <div className="setting">
-            <div className="setting-text">
-              <span className="row-name">
-                Postiz · {posting.profile.accounts.length} account{posting.profile.accounts.length === 1 ? '' : 's'}
-              </span>
-              <span className="row-line wrap">Pick each campaign's accounts and times under Campaigns, then Posting.</span>
-            </div>
-            <button type="button" className="btn small" onClick={onSetUpPosting}>
-              Change keys
-            </button>
-          </div>
-          <label className="toggle">
-            <input type="checkbox" checked={posting.sendHere} onChange={(e) => onSendHere(e.target.checked)} />
-            <span>
-              <span className="label">Send finished videos from this phone</span>
-              <span className="hint tip" style={{ display: 'block' }}>
-                Each one goes to Postiz with a caption, for the campaigns with accounts picked.
-              </span>
-            </span>
-          </label>
-          <RandomForAll profile={posting.profile} campaigns={campaigns} onChanged={onPlacesChanged} />
-          <PostingLimitsRow profile={posting.profile} onOpen={() => setLimitsOpen(true)} />
-          <BufferBackup profile={posting.profile} onChanged={onPlacesChanged} />
-          {posting.profile.accounts.some((a) => a.platform.startsWith('instagram')) ? (
-            <PlaceField
-              label="Instagram location"
-              place={cleanPlace(posting.profile.settings.instagramPlace)}
-              emptyLine="None. Set a place once and every Instagram post is tagged with it - a campaign can have its own, in its Posting."
-              onSave={async (place) => {
-                await saveInstagramPlace(place)
-                onPlacesChanged()
+      <Section
+        icon={<PostsIcon />}
+        hue={258}
+        title="Posting"
+        after={
+          posting ? (
+            <button
+              type="button"
+              className="linkbtn set-after"
+              onClick={() => {
+                if (window.confirm('Stop posting from this phone? Posts already in Postiz stay there.')) onDisconnectPosting()
               }}
-            />
-          ) : null}
+            >
+              Disconnect this phone
+            </button>
+          ) : null
+        }
+      >
+        {posting ? (
+          <>
+            <div className="setting">
+              <div className="setting-text">
+                <span className="row-name">
+                  Postiz · {posting.profile.accounts.length} account{posting.profile.accounts.length === 1 ? '' : 's'}
+                </span>
+                <span className="row-line wrap">Pick each campaign's accounts and times under Campaigns, then Posting.</span>
+              </div>
+              <button type="button" className="btn small" onClick={onSetUpPosting}>
+                Change keys
+              </button>
+            </div>
+            <label className="toggle">
+              <input type="checkbox" checked={posting.sendHere} onChange={(e) => onSendHere(e.target.checked)} />
+              <span>
+                <span className="label">Send finished videos from this phone</span>
+                <span className="hint tip" style={{ display: 'block' }}>
+                  Each one goes to Postiz with a caption, for the campaigns with accounts picked.
+                </span>
+              </span>
+            </label>
+            <RandomForAll profile={posting.profile} campaigns={campaigns} onChanged={onPlacesChanged} />
+            <PostingLimitsRow profile={posting.profile} onOpen={() => setLimitsOpen(true)} />
+            <BufferBackup profile={posting.profile} onChanged={onPlacesChanged} />
+            {posting.profile.accounts.some((a) => a.platform.startsWith('instagram')) ? (
+              <PlaceField
+                label="Instagram location"
+                place={cleanPlace(posting.profile.settings.instagramPlace)}
+                emptyLine="None. Set a place once and every Instagram post is tagged with it - a campaign can have its own, in its Posting."
+                onSave={async (place) => {
+                  await saveInstagramPlace(place)
+                  onPlacesChanged()
+                }}
+              />
+            ) : null}
+            <div className="setting">
+              <div className="setting-text">
+                <span className="row-name">Notifications</span>
+                <span className={`row-line wrap${push === 'denied' ? ' warn-text' : ''}`}>{PUSH_LINE[push]}</span>
+              </div>
+              {push === 'off' ? (
+                <button type="button" className="btn small primary" onClick={onPush}>
+                  Turn on
+                </button>
+              ) : null}
+            </div>
+          </>
+        ) : (
           <div className="setting">
             <div className="setting-text">
-              <span className="row-name">Notifications</span>
-              <span className={`row-line wrap${push === 'denied' ? ' warn-text' : ''}`}>{PUSH_LINE[push]}</span>
+              <span className="row-name">Not set up</span>
+              <span className="row-line wrap">
+                {session
+                  ? 'Send finished videos to your own Postiz, with a caption Claude writes, to approve here.'
+                  : 'Sign in with the shared login first.'}
+              </span>
             </div>
-            {push === 'off' ? (
-              <button type="button" className="btn small primary" onClick={onPush}>
-                Turn on
+            {session ? (
+              <button type="button" className="btn small primary" onClick={onSetUpPosting}>
+                Set up
               </button>
             ) : null}
           </div>
-          </div>
-          <button
-            type="button"
-            className="linkbtn"
-            onClick={() => {
-              if (window.confirm('Stop posting from this phone? Posts already in Postiz stay there.')) onDisconnectPosting()
-            }}
-          >
-            Disconnect this phone
-          </button>
-        </>
-      ) : (
-        <div className="setting">
-          <div className="setting-text">
-            <span className="row-name">Not set up</span>
-            <span className="row-line wrap">
-              {session
-                ? 'Send finished videos to your own Postiz, with a caption Claude writes, to approve here.'
-                : 'Sign in with the shared login first.'}
+        )}
+      </Section>
+
+      <Section icon={<MicIcon />} hue={150} title="Your voice">
+        <VoiceList onAdd={() => setVoiceOpen(true)} />
+        <label className="toggle">
+          <input type="checkbox" checked={voice} onChange={(e) => onVoice(e.target.checked)} />
+          <span>
+            <span className="label">Make my voice louder and clearer</span>
+            <span className="hint tip" style={{ display: 'block' }}>
+              Evens it out and brings it to normal TikTok loudness, never past a safe level.
             </span>
+          </span>
+        </label>
+        <label className="toggle">
+          <input type="checkbox" checked={cleanSpeech} onChange={(e) => onCleanSpeech(e.target.checked)} />
+          <span>
+            <span className="label">Also cut stumbles and the "um"s it hears in words (old way)</span>
+            <span className="hint tip" style={{ display: 'block' }}>
+              Best left off. "Um"s are now found by their sound in every video, cut, and listed in the captions to put
+              back with a tap.
+            </span>
+          </span>
+        </label>
+      </Section>
+
+      <Section icon={<ScissorsIcon />} hue={18} title="Cutting">
+        <SegRow label="Pacing" hint={`${PRESET_HINT[preset]} Applies to videos you add next.`}>
+          <div className="seg full" role="radiogroup" aria-label="Pacing">
+            {PRESET_ORDER.map((p) => (
+              <button key={p} type="button" role="radio" aria-checked={preset === p} className={preset === p ? 'active' : ''} onClick={() => onPreset(p)}>
+                {PRESET_LABEL[p]}
+              </button>
+            ))}
           </div>
-          {session ? (
-            <button type="button" className="btn small primary" onClick={onSetUpPosting}>
-              Set up
-            </button>
-          ) : null}
-        </div>
-      )}
+        </SegRow>
+        <WideClips />
+        <NoiseCutting />
+      </Section>
+
+      <Section icon={<CaptionsIcon />} hue={200} title="Captions">
+        <label className="toggle">
+          <input type="checkbox" checked={captions} onChange={(e) => onCaptions(e.target.checked)} />
+          <span>
+            <span className="label">Captions on the videos</span>
+            <span className="hint tip" style={{ display: 'block' }}>
+              One word at a time as you say it. You check them before each video is made.
+            </span>
+          </span>
+        </label>
+        <label className="toggle">
+          <input type="checkbox" checked={bareCaptions} disabled={!captions} onChange={(e) => onBareCaptions(e.target.checked)} />
+          <span>
+            <span className="label">Leave out punctuation</span>
+            <span className="hint tip" style={{ display: 'block' }}>
+              No ? or ! either - commas and full stops are always left off. "Don't" and "2.5" stay as they are.
+            </span>
+          </span>
+        </label>
+      </Section>
+
+      <Section icon={<SparkIcon />} hue={318} title="Effects">
+        <DefaultEffectsSetting />
+      </Section>
 
       {posting ? <ServerSetting campaignIds={Object.keys(posting.profile.settings.campaigns ?? {})} /> : null}
       {/* Le plateau's engine: only for a phone that already uses it - the
           Cutter server above makes the same batches as this phone. */}
       {posting && engineUrl() ? <EngineSetting /> : null}
 
-      <NoiseCutting />
+      {session ? <People head={<SectionHead icon={<PeopleIcon />} hue={42} title="People" />} /> : null}
 
-      <div className="list-title">Pacing</div>
-      <div className="seg full" role="radiogroup" aria-label="Pacing">
-        {PRESET_ORDER.map((p) => (
-          <button key={p} type="button" role="radio" aria-checked={preset === p} className={preset === p ? 'active' : ''} onClick={() => onPreset(p)}>
-            {PRESET_LABEL[p]}
-          </button>
-        ))}
-      </div>
-      <p className="hint tip">{PRESET_HINT[preset]} Applies to videos you add next.</p>
-
-      <DefaultEffectsSetting />
-
-      <WideClips />
-
-      <div className="list-title">Captions</div>
-      <div className="card-group">
-      <label className="toggle">
-        <input type="checkbox" checked={captions} onChange={(e) => onCaptions(e.target.checked)} />
-        <span>
-          <span className="label">Captions on the videos</span>
-          <span className="hint tip" style={{ display: 'block' }}>
-            One word at a time as you say it. You check them before each video is made.
-          </span>
-        </span>
-      </label>
-      <label className="toggle">
-        <input type="checkbox" checked={bareCaptions} disabled={!captions} onChange={(e) => onBareCaptions(e.target.checked)} />
-        <span>
-          <span className="label">Leave out punctuation</span>
-          <span className="hint tip" style={{ display: 'block' }}>
-            No ? or ! either - commas and full stops are always left off. "Don't" and "2.5" stay as they are.
-          </span>
-        </span>
-      </label>
-      </div>
-
-      <div className="list-title">Speech</div>
-      <div className="card-group">
-      <VoiceList onAdd={() => setVoiceOpen(true)} />
-      <label className="toggle">
-        <input type="checkbox" checked={voice} onChange={(e) => onVoice(e.target.checked)} />
-        <span>
-          <span className="label">Make my voice louder and clearer</span>
-          <span className="hint tip" style={{ display: 'block' }}>
-            Evens it out and brings it to normal TikTok loudness, never past a safe level.
-          </span>
-        </span>
-      </label>
-      <label className="toggle">
-        <input type="checkbox" checked={cleanSpeech} onChange={(e) => onCleanSpeech(e.target.checked)} />
-        <span>
-          <span className="label">Also cut stumbles and the "um"s it hears in words (old way)</span>
-          <span className="hint tip" style={{ display: 'block' }}>
-            Best left off. "Um"s are now found by their sound in every video, cut, and listed in the captions to put
-            back with a tap.
-          </span>
-        </span>
-      </label>
-      </div>
+      <Section icon={<PaletteIcon />} hue={275} title="Appearance">
+        <Appearance />
+      </Section>
 
       {used !== null ? (
-        <>
-          <div className="list-title">Space</div>
-          <p className="hint">
-            This app keeps {size(used)} on this phone - videos waiting to be made, finished ones still on the list and
-            the speech model. If picked videos don't show up, check Settings, General, iPhone Storage.
-          </p>
-        </>
+        <Section icon={<StorageIcon />} hue={190} title="Space">
+          <div className="set-row">
+            <div className="space-line">
+              <span className="space-used">{size(used.usage)}</span>
+              <span className="hint">used on this phone{used.quota ? ` of ${size(used.quota)}` : ''}</span>
+            </div>
+            {used.quota ? (
+              <div className="space-bar" aria-hidden>
+                <div style={{ width: `${Math.max(2, Math.min(100, (used.usage / used.quota) * 100))}%` }} />
+              </div>
+            ) : null}
+            <p className="hint">
+              Videos waiting to be made, finished ones still on the list and the speech model. If picked videos don't show up,
+              check Settings, General, iPhone Storage.
+            </p>
+          </div>
+        </Section>
       ) : null}
 
       <p className="footnote">
@@ -427,6 +421,74 @@ export function SettingsView({
   )
 }
 
+/** A section's heading: its mark on a colour of its own, and its name. */
+function SectionHead({ icon, hue, title }: { icon: ReactNode; hue: number; title: string }) {
+  return (
+    <div className="set-head">
+      <span className="set-icon" style={{ ['--hue' as string]: String(hue) }} aria-hidden>
+        {icon}
+      </span>
+      <h2>{title}</h2>
+    </div>
+  )
+}
+
+/** One group of settings: its heading, its rows in one card. */
+function Section({ icon, hue, title, children, after }: { icon: ReactNode; hue: number; title: string; children: ReactNode; after?: ReactNode }) {
+  return (
+    <div className="set-section">
+      <SectionHead icon={icon} hue={hue} title={title} />
+      <div className="card-group set-card">{children}</div>
+      {after}
+    </div>
+  )
+}
+
+/** A row with a name over a choice (Pacing: Natural / Balanced / Tight). */
+function SegRow({ label, hint, children }: { label: string; hint?: string; children: ReactNode }) {
+  return (
+    <div className="set-row">
+      <span className="row-name">{label}</span>
+      {children}
+      {hint ? <p className="hint tip">{hint}</p> : null}
+    </div>
+  )
+}
+
+/** Who is signed in and whether the setups are shared, at the top. */
+function AccountCard({ session, syncState, onSignIn, onSignOut }: { session: Session | null; syncState: SyncState; onSignIn: () => void; onSignOut: () => void }) {
+  const name = session?.name ?? ''
+  const waiting = syncState.kind === 'waiting'
+  return (
+    <div className="account-card">
+      <span className="home-avatar" aria-hidden style={{ ['--hue' as string]: String(hueOf(name || 'You')) }}>
+        {(name || '?').slice(0, 1).toUpperCase()}
+      </span>
+      <span className="account-text">
+        <span className="account-name">{session ? name : 'Not signed in'}</span>
+        <span className={`account-line${waiting ? ' warn-text' : ''}`}>
+          <span className={`sync-dot${!session || waiting ? ' warn' : ''}`} aria-hidden />
+          {session
+            ? waiting
+              ? syncState.reason
+              : syncState.kind === 'syncing'
+                ? 'Syncing…'
+                : 'Shared · up to date'
+            : 'Setups are on this phone only'}
+        </span>
+      </span>
+      {session ? (
+        <button type="button" className="btn small" onClick={onSignOut}>
+          Sign out
+        </button>
+      ) : (
+        <button type="button" className="btn small primary" onClick={onSignIn}>
+          Sign in
+        </button>
+      )}
+    </div>
+  )
+}
 
 /** The Cutter server's address (server/ on Railway): once connected, every
  *  batch is made there (serverLink.ts). */
@@ -491,8 +553,18 @@ function ServerSetting({ campaignIds }: { campaignIds: string[] }) {
     }
   }
   return (
-    <>
-      <div className="list-title">Server</div>
+    <Section
+      icon={<ServerIcon />}
+      hue={228}
+      title="Server"
+      after={
+        connected ? (
+          <button type="button" className="linkbtn set-after" disabled={busy} onClick={() => void disconnect()}>
+            Make batches on this phone again
+          </button>
+        ) : null
+      }
+    >
       <div className="setting engine-setting">
         <div className="setting-text">
           <input
@@ -515,12 +587,7 @@ function ServerSetting({ campaignIds }: { campaignIds: string[] }) {
           {busy ? 'Checking…' : connected ? 'Check' : 'Connect'}
         </button>
       </div>
-      {connected ? (
-        <button type="button" className="linkbtn" disabled={busy} onClick={() => void disconnect()}>
-          Make batches on this phone again
-        </button>
-      ) : null}
-    </>
+    </Section>
   )
 }
 
@@ -551,8 +618,26 @@ function EngineSetting() {
     }
   }
   return (
-    <>
-      <div className="list-title">Engine</div>
+    <Section
+      icon={<ServerIcon />}
+      hue={60}
+      title="Engine"
+      after={
+        engineUrl() ? (
+          <button
+            type="button"
+            className="linkbtn set-after"
+            onClick={() => {
+              setEngineUrl(null)
+              setUrl('')
+              setLine(null)
+            }}
+          >
+            Disconnect the engine
+          </button>
+        ) : null
+      }
+    >
       <div className="setting engine-setting">
         <div className="setting-text">
           <input
@@ -575,20 +660,7 @@ function EngineSetting() {
           {busy ? 'Checking…' : 'Connect'}
         </button>
       </div>
-      {engineUrl() ? (
-        <button
-          type="button"
-          className="linkbtn"
-          onClick={() => {
-            setEngineUrl(null)
-            setUrl('')
-            setLine(null)
-          }}
-        >
-          Disconnect the engine
-        </button>
-      ) : null}
-    </>
+    </Section>
   )
 }
 
@@ -598,7 +670,7 @@ function Appearance() {
   const [tips, setTipsState] = useState(savedTips)
   return (
     <>
-      <div className="list-title">Appearance</div>
+      <SegRow label="Look">
       <div className="seg full" role="radiogroup" aria-label="Appearance">
         {THEMES.map((t) => (
           <button
@@ -616,6 +688,7 @@ function Appearance() {
           </button>
         ))}
       </div>
+      </SegRow>
       <label className="toggle">
         <input
           type="checkbox"

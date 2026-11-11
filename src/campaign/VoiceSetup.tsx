@@ -296,9 +296,9 @@ export function VoiceList({ onAdd }: { onAdd: () => void }) {
   return (
     <div className="setting voice-list">
       <div className="setting-text">
-        <span className="row-name">Your voice</span>
+        <span className="row-name">{voices.length === 0 ? 'Not set up yet' : `${voices.length} voice${voices.length === 1 ? '' : 's'}`}</span>
         {voices.length === 0 ? (
-          <span className="row-line wrap">Not set up: 45 seconds so the cutter knows how you talk and never cuts your words.</span>
+          <span className="row-line wrap">45 seconds so the cutter knows how you talk and never cuts your words.</span>
         ) : (
           <>
             <span className="row-line wrap">Each video uses the voice it sounds like - or pin one (filming without your mic, say).</span>

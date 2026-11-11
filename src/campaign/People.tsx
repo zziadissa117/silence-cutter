@@ -5,7 +5,7 @@
 // shows the phones it is on (at most 3; he is notified of every new one), with
 // Remove for a phone and Pause for the login (2026-10-30).
 
-import { useEffect, useState } from 'react'
+import { type ReactNode, useEffect, useState } from 'react'
 
 import { CloudError, inviteLink, listPeople, makeInvite, pauseLogin, removeDevice, setPartner, setTrialReels, type Person } from './cloud'
 
@@ -20,7 +20,7 @@ function seenLabel(iso: string): string {
   return `last used ${new Date(iso).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}`
 }
 
-export function People() {
+export function People({ head }: { head?: ReactNode } = {}) {
   const [people, setPeople] = useState<Person[] | null>(null)
   const [name, setName] = useState('')
   const [busy, setBusy] = useState(false)
@@ -78,7 +78,7 @@ export function People() {
 
   return (
     <>
-      <div className="list-title">People</div>
+      {head ?? <div className="list-title">People</div>}
       <div className="card-group">
         {people.map((p) => (
           <div key={p.name}>
