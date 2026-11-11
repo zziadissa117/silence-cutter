@@ -46,6 +46,12 @@ vi.mock('./posting', async (original) => ({
   postingHere: () => ({ profile: { id: 'p' }, sendHere: true }),
 }))
 
+const makeMotion = vi.fn(async () => ({ blob: new Blob(['made']), storedAs: null }))
+vi.mock('./motion/make', async (original) => ({
+  ...(await original<Record<string, unknown>>()),
+  makeMotionVideo: (...a: unknown[]) => makeMotion(...(a as [])),
+}))
+
 import { MotionView } from './MotionView'
 
 ;(globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true
@@ -121,6 +127,31 @@ describe('Motion graphics', () => {
     expect(host.textContent).toContain('Took the cards out.')
     expect(host.textContent).toContain('Just the title now.')
     expect(saved.at(-1)?.storyboard).toEqual(changed)
+  })
+
+  it('Make with a change typed and not sent: sends it first, then makes from the changed plan', async () => {
+    kept = { id: 'm1', file: new Blob(['x']), fileName: 'take.mov', ask: '', plan, storyboard: board, chat: [], costCents: 0 }
+    const changed = { ...board, scenes: [{ ...board.scenes[0], says: 'Just the title now.' }] }
+    let answer: (v: unknown) => void = () => {}
+    motionPlan.mockReturnValue(new Promise((r) => (answer = r)))
+    await act(async () => root.render(<MotionView onBack={() => {}} />))
+    await settle()
+    const box = host.querySelector('.motion-say textarea') as HTMLTextAreaElement
+    await act(async () => {
+      Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value')!.set!.call(box, 'drop the cards')
+      box.dispatchEvent(new Event('input', { bubbles: true }))
+    })
+    const make = [...host.querySelectorAll('.motion-actions button')][0] as HTMLButtonElement
+    expect(make.textContent).toBe('Send my change, then make the video')
+    await act(async () => make.click())
+    expect(make.textContent).toBe('Sending your change…')
+    expect(make.disabled).toBe(true)
+    expect(motionPlan).toHaveBeenCalledWith(expect.objectContaining({ chat: [{ from: 'him', text: 'drop the cards' }] }))
+    await act(async () => answer({ storyboard: changed, reply: 'Took the cards out.', costCents: 2 }))
+    await settle()
+    // Made from the changed plan, never the old one.
+    expect(makeMotion).toHaveBeenCalledTimes(1)
+    expect((makeMotion.mock.calls[0] as unknown[])[2]).toEqual(changed)
   })
 })
 

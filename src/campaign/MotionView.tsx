@@ -151,19 +151,22 @@ export function MotionView({ onBack }: { onBack: () => void }) {
     void plan(next)
   }
 
-  const make = async () => {
-    if (!session?.plan || !session.storyboard || busy.current) return
+  /** Made from the plan as it is now - or as `given`, a change he typed just
+   *  before tapping Make, sent first (his ask, 2026-11-11). */
+  const make = async (given?: MotionSession) => {
+    const from = given ?? session
+    if (!from?.plan || !from.storyboard || busy.current) return
     busy.current = true
     setProblem(null)
     setStep({ kind: 'making', fraction: 0 })
     try {
       // Read again from the phone's storage, so it is never a Blob Safari has let go.
-      const file = await freshFile(session.id, session.file)
-      const made = await makeMotionVideo(file, session.plan, session.storyboard, session.id, (fraction) => setStep({ kind: 'making', fraction }), session.captions, !session.noSounds)
+      const file = await freshFile(from.id, from.file)
+      const made = await makeMotionVideo(file, from.plan, from.storyboard, from.id, (fraction) => setStep({ kind: 'making', fraction }), from.captions, !from.noSounds)
       // Kept with the session, copied out of the render's own storage.
       const copy = new Blob([await made.blob.arrayBuffer()], { type: 'video/mp4' })
       if (made.storedAs) void forgetCut(made.storedAs)
-      keep({ ...session, made: copy, madeFrom: session.storyboard })
+      keep({ ...from, made: copy, madeFrom: from.storyboard })
       setStep({ kind: 'done' })
     } catch (error) {
       report({ kind: 'fallback', phase: 'motion make', message: message(error) })
@@ -228,7 +231,7 @@ export function MotionView({ onBack }: { onBack: () => void }) {
         <PlanScreen
           session={session}
           onChange={keep}
-          onMake={() => void make()}
+          onMake={(given) => void make(given)}
           onStartOver={() => void startOver()}
           onCaptions={() => setStep({ kind: 'captions' })}
           onFormat={(next) => {
@@ -488,7 +491,8 @@ function PlanScreen({
 }: {
   session: MotionSession
   onChange: (next: MotionSession) => void
-  onMake: () => void
+  /** With the plan as changed by what he had typed, sent first. */
+  onMake: (given?: MotionSession) => void
   onStartOver: () => void
   onCaptions: () => void
   onFormat: (format: FormatAsk) => void
@@ -497,6 +501,41 @@ function PlanScreen({
   const plan = session.plan!
   const choice = session.captions
   const shown = useMemo(() => shownCaptions(plan, choice), [plan, choice])
+  // What he types to change the plan: never lost by tapping Make - Make
+  // sends it first (his ask, 2026-11-11: "I always click Make and it makes
+  // the video without sending my fix").
+  const [draft, setDraft] = useState('')
+  const [sending, setSending] = useState(false)
+  const [chatProblem, setChatProblem] = useState<string | null>(null)
+  const send = async (): Promise<MotionSession | null> => {
+    const said = draft.trim()
+    if (!said || sending || !session.plan || !session.storyboard) return null
+    setSending(true)
+    setChatProblem(null)
+    const chat: ChatTurn[] = [...session.chat, { from: 'him', text: said }]
+    try {
+      const words = storyWords(session.plan)
+      const answer = await withinMinutes(
+        motionPlan({ job: `${session.id}-${Date.now().toString(36)}`, ...forClaude(words, session.plan), ask: session.ask, storyboard: session.storyboard, chat }),
+        PLAN_MINUTES,
+      )
+      const next: MotionSession = {
+        ...session,
+        storyboard: answer.storyboard,
+        chat: [...chat, { from: 'claude', text: answer.reply || 'Done.' }],
+        costCents: session.costCents + answer.costCents,
+      }
+      onChange(next)
+      setDraft('')
+      return next
+    } catch (error) {
+      setChatProblem(message(error))
+      return null
+    } finally {
+      setSending(false)
+    }
+  }
+  const unsent = draft.trim().length > 0
   const look = formatOf(session.storyboard!)
   const board = session.storyboard!
   const words = useMemo(() => storyWords(plan), [plan])
@@ -622,10 +661,18 @@ function PlanScreen({
       <button type="button" className="btn wide" disabled={making} onClick={onCaptions}>
         {choice?.off ? 'Captions off - turn on or edit' : choice?.edited ? 'Edit captions (changed)' : 'Edit captions · Claude checks them'}
       </button>
-      <Chat session={session} onChange={onChange} disabled={making} />
+      <Chat session={session} disabled={making} text={draft} onText={setDraft} sending={sending} problem={chatProblem} onSend={() => void send()} />
       <div className="motion-actions">
-        <button type="button" className="btn primary wide" disabled={making} onClick={onMake}>
-          {making ? 'Making…' : 'Make the video'}
+        <button
+          type="button"
+          className="btn primary wide"
+          disabled={making || sending}
+          onClick={() => {
+            if (!unsent) return onMake()
+            void send().then((next) => next && onMake(next))
+          }}
+        >
+          {making ? 'Making…' : sending ? 'Sending your change…' : unsent ? 'Send my change, then make the video' : 'Make the video'}
         </button>
         <button type="button" className="linkbtn" disabled={making} onClick={onStartOver}>
           Start again with another video
@@ -675,34 +722,26 @@ async function drawStill(
   drawCaptionAt(ctx, width, height, shown, keep, t, choice, { storyboard: board, timing })
 }
 
-/** The chat with Claude about the plan: each message changes the storyboard. */
-function Chat({ session, onChange, disabled }: { session: MotionSession; onChange: (next: MotionSession) => void; disabled: boolean }) {
-  const [text, setText] = useState('')
-  const [sending, setSending] = useState(false)
+/** The chat with Claude about the plan: each message changes the storyboard.
+ *  What he types is kept by the plan screen, so Make can send it first. */
+function Chat({
+  session,
+  disabled,
+  text,
+  onText,
+  sending,
+  problem,
+  onSend,
+}: {
+  session: MotionSession
+  disabled: boolean
+  text: string
+  onText: (text: string) => void
+  sending: boolean
+  problem: string | null
+  onSend: () => void
+}) {
   const seconds = useElapsed(sending)
-  const [problem, setProblem] = useState<string | null>(null)
-  const send = async () => {
-    const said = text.trim()
-    if (!said || sending || !session.plan || !session.storyboard) return
-    setSending(true)
-    setProblem(null)
-    const chat: ChatTurn[] = [...session.chat, { from: 'him', text: said }]
-    try {
-      const words = storyWords(session.plan)
-      const answer = await withinMinutes(motionPlan({ job: `${session.id}-${Date.now().toString(36)}`, ...forClaude(words, session.plan), ask: session.ask, storyboard: session.storyboard, chat }), PLAN_MINUTES)
-      onChange({
-        ...session,
-        storyboard: answer.storyboard,
-        chat: [...chat, { from: 'claude', text: answer.reply || 'Done.' }],
-        costCents: session.costCents + answer.costCents,
-      })
-      setText('')
-    } catch (error) {
-      setProblem(message(error))
-    } finally {
-      setSending(false)
-    }
-  }
   return (
     <div className="motion-chat">
       <div className="list-title">Tell Claude what to change</div>
@@ -721,9 +760,9 @@ function Chat({ session, onChange, disabled }: { session: MotionSession; onChang
           value={text}
           disabled={disabled || sending}
           placeholder="e.g. make the sum come in later, drop the phones, why a grid here?"
-          onChange={(e) => setText(e.target.value)}
+          onChange={(e) => onText(e.target.value)}
         />
-        <button type="button" className="btn primary" disabled={disabled || sending || !text.trim()} onClick={() => void send()}>
+        <button type="button" className="btn primary" disabled={disabled || sending || !text.trim()} onClick={onSend}>
           {sending ? '…' : 'Send'}
         </button>
       </div>

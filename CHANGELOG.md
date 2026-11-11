@@ -3,6 +3,15 @@
 Newest first. Every change says what it does, how to use it, and how it works
 underneath. Kept up to date with each commit.
 
+## Motion graphics: Make sends the change you typed first
+App only: run ./deploy.sh.
+- Typed a change for Claude and tapped Make without tapping Send? The button now says **"Send my change, then make
+  the video"**: it sends your change, waits for the new plan, and makes the video from that - never from the old
+  plan. While a change is being sent the button says "Sending your change…" and can't be tapped twice. If Claude
+  can't make the change, it says why and nothing is made.
+- Underneath: the typed text lives on the plan screen (`MotionView.PlanScreen` `draft`/`send`), `make(given)` makes
+  from the plan Claude just sent back. Test: `motionView.test.tsx`.
+
 ## Trial reels: talking videos - one clip, many copies, a new headline and song each
 App and server: run ./deploy.sh (it runs ./deploy-server.sh too).
 Needs deploying: run ./deploy-server.sh
