@@ -4,8 +4,7 @@ Newest first. Every change says what it does, how to use it, and how it works
 underneath. Kept up to date with each commit.
 
 ## Reactions are music only; Posts by what goes out next; Settings, Batch and the edit screen redone
-App only: run ./deploy.sh. (The Cutter server makes reactions music-only too once it runs this version - it updates
-with the app.)
+App only: run ./deploy.sh. (The Cutter server rebuilds by itself from this push and makes reactions music-only too.)
 - Reactions (his ask: "I just film ... automatically it knows I'm doing a reaction. The music should take up 100% of
   everything. It should mute the clip and just do the music ... at a normal volume"):
   - A video with no talking was already found by itself and kept whole with no captions. Its music sat under the
