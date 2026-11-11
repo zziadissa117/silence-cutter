@@ -3,6 +3,19 @@
 Newest first. Every change says what it does, how to use it, and how it works
 underneath. Kept up to date with each commit.
 
+## Cutting: the end of every word is kept
+App only: run ./deploy.sh.
+- His report: "it just cut off the end of my words." Since 2026-11-10 the loudness is measured in exact 20 ms steps
+  and a pause exactly the minimum length counts - both right, but together the pauses came out a little longer and
+  began a little earlier, eating the quiet last sound of a word ("s", "t", a breath out). The Cutter only ever kept
+  each word's START (the speech model's ends are too rough to trust).
+- Now, when the letter model has timed his words exactly (most videos - the report says "exact times"), a cut never
+  starts before a word has finished: every kept part runs on to at least 80 ms past the end of the last word in it
+  (`plan.keepWordEnds`, `WORD_TAIL_SEC`) - never into the next part (they join) and never into an "um" or stumble
+  being cut. A word cut on purpose stays cut. Talking videos on the phone and on the Cutter server both.
+- Not changed: the plain "Cut only" page; videos whose words couldn't be timed exactly ("rough times").
+- Tests: `plan.test.ts` (the end of every word is kept).
+
 ## Motion graphics, Format 2: every card above your face, over your forehead
 App and server: run ./deploy.sh (it runs ./deploy-server.sh too).
 Needs deploying: run ./deploy-server.sh

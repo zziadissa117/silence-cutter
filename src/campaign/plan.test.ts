@@ -15,7 +15,7 @@ import { describe, expect, it } from 'vitest'
 import type { WordChunk } from '../media/fillerWords'
 import { PRESETS, findSilentRanges, type Level, type Range } from '../media/silenceMath'
 import { cutNoise } from './noiseCuts'
-import { fillersLine, fromHeard, noiseCandidates, plainKeep, soundsLikeFiller } from './plan'
+import { WORD_TAIL_SEC, fillersLine, fromHeard, keepWordEnds, noiseCandidates, plainKeep, soundsLikeFiller } from './plan'
 
 const STEP = 0.02
 
@@ -276,5 +276,39 @@ describe('the "um" report line', () => {
   it('says what was heard, by whom, and what was cut', () => {
     expect(fillersLine({ spoken: 3, letters: 1 }, 3, 1, true)).toBe('4 "um" heard (3 by the speech model, 1 by the letters), 3 cut, 1 left in; 1 stumble cut; exact times')
     expect(fillersLine({ spoken: 2, letters: 0 }, 2, 0, false)).toBe('2 "um" heard, 2 cut, 0 left in; 0 stumble cut; rough times')
+  })
+})
+
+describe('the end of every word is kept (his report, 2026-11-11: "it just cut off the end of my words")', () => {
+  it('a part that stops inside a word, or right at its end, runs on past it', () => {
+    const keep = [
+      { start: 0, end: 1.0 },
+      { start: 1.6, end: 3 },
+    ]
+    // "money" ends at 1.04: the pause had grown into its fading end.
+    const out = keepWordEnds(keep, [{ start: 0.7, end: 1.04 }], [], 3)
+    expect(out[0].end).toBeCloseTo(1.04 + WORD_TAIL_SEC, 3)
+    expect(out[1]).toEqual({ start: 1.6, end: 3 })
+  })
+
+  it('leaves a part alone when the word ended well before the cut', () => {
+    const keep = [{ start: 0, end: 1.2 }, { start: 1.6, end: 3 }]
+    expect(keepWordEnds(keep, [{ start: 0.7, end: 1.0 }], [], 3)).toEqual(keep)
+  })
+
+  it('never runs into the next part (they join) or into an "um" being cut', () => {
+    const close = keepWordEnds([{ start: 0, end: 1.0 }, { start: 1.05, end: 2 }], [{ start: 0.6, end: 1.02 }], [], 2)
+    expect(close).toEqual([{ start: 0, end: 2 }])
+    const um = keepWordEnds([{ start: 0, end: 1.0 }, { start: 1.5, end: 2 }], [{ start: 0.6, end: 1.02 }], [{ start: 1.03, end: 1.45 }], 2)
+    expect(um[0].end).toBeCloseTo(1.03, 3)
+  })
+
+  it('a word cut on purpose (its start not kept) stays cut', () => {
+    const keep = [{ start: 0, end: 1 }, { start: 2, end: 3 }]
+    expect(keepWordEnds(keep, [{ start: 1.2, end: 1.5 }], [], 3)).toEqual(keep)
+  })
+
+  it('never past the end of the video', () => {
+    expect(keepWordEnds([{ start: 0, end: 2.95 }], [{ start: 2.5, end: 2.98 }], [], 3)[0].end).toBe(3)
   })
 })

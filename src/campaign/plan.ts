@@ -222,6 +222,9 @@ export async function planCampaignCut(
   let aligned = false
   let fillersHeard: CampaignPlan['fillersHeard']
   let forRecheck: Float32Array | null = null
+  // The words the letter model timed exactly: their ends are kept whole
+  // (keepWordEnds) - the speech model's own ends are too rough for that.
+  let exactWords: Range[] = []
   let audibleSec = duration
   if (wantWords && mono16k) {
     const audible = Math.min(duration, audioStart + mono16k.length / WHISPER_SAMPLE_RATE)
@@ -276,6 +279,7 @@ export async function planCampaignCut(
         const evened = timed.words.map((w) => (w.aligned === false ? { ...w, start: w.start - extraLate, end: w.end - extraLate } : w))
         spoken = spokenWords(evened, ALIGNED_LATE_SEC)
         aligned = true
+        exactWords = timed.words.filter((w) => w.aligned !== false && !isFillerWord(w.text) && w.end > w.start).map((w) => ({ start: w.start, end: w.end }))
         if (options.cleanSpeech) {
           // The cuts again from the exact times - an "um" placed to the frame
           // gets a corridor that is really between its neighbours - with the
@@ -367,6 +371,9 @@ export async function planCampaignCut(
     checks = result.checks
     noiseNote = result.note
   }
+  // Never the end of a word: a cut starts only once each word he says has
+  // finished (his report, 2026-11-11: "it just cut off the end of my words").
+  if (exactWords.length > 0) keep = keepWordEnds(keep, exactWords, mergeRanges([...fillerWords, ...stutters]), duration)
   return {
     keep,
     duration,
@@ -381,6 +388,41 @@ export async function planCampaignCut(
     ...(checks ? { checks } : {}),
     ...(noiseNote ? { noiseNote } : {}),
   }
+}
+
+/** How much past a word's exact end is kept: the last sound of a word ("s",
+ *  "t", a breath out) fades below the silence line before it is over, and
+ *  the letter model puts the end on the last letter's peak, not its tail. */
+export const WORD_TAIL_SEC = 0.08
+
+/** The kept parts with every word's end kept: a part that stops inside a
+ *  word, or less than WORD_TAIL_SEC after it, runs on to that - never into
+ *  the next part (they then join) or into an "um" or stumble being cut.
+ *  Only words whose start is kept: a word cut on purpose stays cut. Words
+ *  are exact times (the letter model's). His report, 2026-11-11: "it just
+ *  cut off the end of my words" - the pauses had grown into the words'
+ *  fading ends. */
+export function keepWordEnds(keep: readonly Range[], words: readonly Range[], meantToCut: readonly Range[], duration: number, tail = WORD_TAIL_SEC): Range[] {
+  const out = keep.map((r) => ({ ...r }))
+  for (const word of words) {
+    const i = out.findIndex((r) => word.start >= r.start - 0.01 && word.start < r.end)
+    if (i < 0) continue
+    const part = out[i]
+    const want = Math.min(duration, word.end + tail)
+    if (part.end >= want) continue
+    const next = out[i + 1]?.start ?? duration
+    const um = meantToCut.find((r) => r.start >= part.end - 0.001 && r.start < want)
+    const end = Math.min(want, next, um ? um.start : Infinity)
+    if (end > part.end) part.end = end
+  }
+  // Parts that now touch are one.
+  const joined: Range[] = []
+  for (const r of out) {
+    const last = joined[joined.length - 1]
+    if (last && r.start <= last.end + 1e-6) last.end = Math.max(last.end, r.end)
+    else joined.push(r)
+  }
+  return joined
 }
 
 /** One line for the report: what was heard and what was cut. */
