@@ -31,8 +31,9 @@ export interface CutCheck {
   end: number
   /** noise: a short sound with no word in it, cut. maybe-word: a longer one
    *  that could have been a quiet word, cut after a second listen found none.
-   *  long-sound: a long stretch with no words, left in. */
-  kind: 'noise' | 'maybe-word' | 'long-sound'
+   *  long-sound: a long stretch with no words, left in.
+   *  um: an "um" found by its sound (umFind.ts), cut. */
+  kind: 'noise' | 'maybe-word' | 'long-sound' | 'um'
   /** Whether the stretch is out of the video now. */
   cut: boolean
   /** How loud its loudest moment was, in dB (0 is the loudest there is). */

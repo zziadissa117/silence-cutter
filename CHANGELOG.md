@@ -3,6 +3,27 @@
 Newest first. Every change says what it does, how to use it, and how it works
 underneath. Kept up to date with each commit.
 
+## Your voice, and "um"s found by their sound
+App only: run ./deploy.sh.
+- His ask: teach the cutter how each person talks so it cuts silences perfectly; and "in each video, when it notices
+  an 'um' ... try to fix it ... and point it out to me in the captions."
+- **Your voice (Settings -> Speech -> Your voice, and a reminder on the Videos tab until it's done):** about 45
+  seconds on the mic you film with - 3 s of quiet, a paragraph read the way you talk, a few "um"s, a breath. From it
+  (`voiceProfile.ts`): your room on that mic, your voice, how low your word endings go, your natural gap between
+  words, your "um". Every talking video is then cut with the silence line under your word endings (never above the
+  one you set, never 15 dB under it) and no pause shorter than your natural gap. A video that sounds clearly
+  different (another mic or phone) is cut without it, and after two in a row the Videos tab asks you to record it
+  again. Kept on this phone (talking videos made on the Cutter server don't use it yet).
+- **"Um"s by their sound (`umFind.ts`), every talking video:** the speech model leaves "um"s out of what it writes -
+  why cutting them never worked. Now, with every word timed exactly, your voice held steadily between two words with
+  no word on it is an "um"/"uh"; each one is heard a second time on its own, and if a real word is heard there it
+  stays. The rest are cut, never into the words either side, and listed: in the captions ('"Um"s cut', each to
+  listen to and Put back) and in the edit screen's "Check these". Needs the exact word timing; videos without it
+  ("rough times") are left as they were. A report line per video says how many were found, cut and kept.
+- The old Settings switch is renamed "Also cut stumbles and the "um"s it hears in words (old way)" - best left off.
+- Tests: `voiceProfile.test.ts`, `umFind.test.ts`. The voice setup was run in a browser with a fake mic: it records,
+  measures and saves. Not tried on an iPhone or on his real recordings.
+
 ## Green screen steps get your own words too
 App only: run ./deploy.sh.
 - His ask: the Words on a phone screen, for green screen product steps too. Batch tab -> a green screen format -> each

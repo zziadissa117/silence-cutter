@@ -199,6 +199,8 @@ export interface CutsControl {
   subscribe(listener: (t: number, playing: boolean) => void): () => void
   /** Cuts this stretch of the recording out (a phrase said twice: the first try). */
   cut(range: Range): void
+  /** Puts this stretch of the recording back in (an "um" that was a word). */
+  putBack(range: Range): void
 }
 
 /** Which line each word goes on, from where it starts on the timeline: the
@@ -425,6 +427,7 @@ const KIND_TEXT: Record<CutCheck['kind'], string> = {
   noise: 'Short noise',
   'maybe-word': 'Might be a quiet word',
   'long-sound': 'Long sound, no words heard',
+  um: 'An "um"',
 }
 
 /** One sound to check: what it is, where, how long and loud, and what to do. */
@@ -1428,6 +1431,7 @@ export function CutsEditor({
       },
       repaint,
       cut: (range: Range) => change(cutOut(keep, range)),
+      putBack: (range: Range) => change(putBack(keep, range)),
       subscribe: (listener) => {
         listeners.current.add(listener)
         return () => listeners.current.delete(listener)

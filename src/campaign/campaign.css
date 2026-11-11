@@ -1383,3 +1383,14 @@ html.editor-dark, html.editor-dark body { background: #000; }
 .step-texts-side .btn { white-space: normal; text-align: center; }
 .step-text-edit .seg { display: flex; }
 .step-text-edit .seg button { flex: 1; }
+
+/* Your voice (VoiceSetup.tsx). */
+.voice-step { display: flex; flex-direction: column; align-items: center; gap: 12px; text-align: center; padding: 24px 0; }
+.voice-step h2 { margin: 0; font-size: 22px; }
+.voice-read { margin: 0; padding: 16px; border-radius: 14px; background: var(--surface); font-size: 19px; line-height: 1.5; text-align: left; }
+.voice-dot { width: 18px; height: 18px; border-radius: 50%; background: var(--bad); animation: voice-pulse 1.2s ease-in-out infinite; }
+@keyframes voice-pulse { 50% { opacity: 0.35; transform: scale(0.8); } }
+.voice-facts { margin: 0; padding-left: 18px; display: flex; flex-direction: column; gap: 6px; }
+.voice-ask { display: flex; align-items: center; gap: 12px; text-align: left; }
+.voice-ask span { flex: 1; }
+.voice-mic { display: block; text-align: left; } .voice-mic p { margin: 0; line-height: 1.4; }

@@ -141,6 +141,7 @@ export function EditScreen({
       subscribe: (listener) => control.current?.subscribe(listener) ?? (() => {}),
       onTyping: setTyping,
       cut: (range) => control.current?.cut(range),
+      putBack: (range) => control.current?.putBack(range),
     }),
     [],
   )

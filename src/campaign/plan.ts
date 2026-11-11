@@ -36,8 +36,10 @@ import { transcribeOnDevice } from '../media/transcribe'
 import { pieceCuts, type HeardFiller, type TimedWord } from './align'
 import type { AlignMessage, AlignRequest } from './align.worker'
 import { ALIGNED_LATE_SEC, HEARD_LATE_SEC, captionWords, snapToOnsets, spokenWords, type CaptionWord } from './captions'
-import { LONG_SEC, TINY_SEC, cutNoise, loneSounds, peakDbIn, peaksOf, protectWords, type CutCheck, type WordSpan } from './noiseCuts'
+import { LONG_SEC, TINY_SEC, cutNoise, cutOut, loneSounds, peakDbIn, peaksOf, protectWords, type CutCheck, type WordSpan } from './noiseCuts'
 import { partWindows } from './timedWords'
+import { findUms, heardOnlyFiller } from './umFind'
+import { loadProfile, percentile, withProfile } from './voiceProfile'
 
 /** How long the letter model may go without a word before it is given up
  *  on, and the captions keep the speech model's own times. */
@@ -213,6 +215,13 @@ export async function planCampaignCut(
     }
   }
 
+  // His voice, measured once (voiceProfile.ts): the line under his word
+  // endings, no pause shorter than his natural gap - on his own talking only,
+  // and only when this video sounds like him on that mic.
+  const talking = options.listen && !options.keepWhole && !options.quietIsFine
+  const profile = talking ? loadProfile() : null
+  const tuned = withProfile(settings, levels, profile)
+  settings = tuned.settings
   const silences = findSilentRanges(levels, settings)
 
   let fillerWords: Range[] = []
@@ -222,6 +231,7 @@ export async function planCampaignCut(
   let aligned = false
   let fillersHeard: CampaignPlan['fillersHeard']
   let forRecheck: Float32Array | null = null
+  let forUms: Float32Array | null = null
   // The words the letter model timed exactly: their ends are kept whole
   // (keepWordEnds) - the speech model's own ends are too rough for that.
   let exactWords: Range[] = []
@@ -236,6 +246,8 @@ export async function planCampaignCut(
     // The model's second listen at the stretches that might be noise needs
     // the samples too, after the first listen has taken them.
     forRecheck = options.cutNoise && !options.keepWhole ? mono16k.slice() : null
+    // The "um"s found by their sound are heard again on their own too.
+    forUms = talking && options.align && !forRecheck ? mono16k.slice() : forRecheck
     const share = forAligning ? 0.85 : 1
     const heard = await transcribeOnDevice(mono16k, WHISPER_SAMPLE_RATE, windows, {
       prompt: options.prompt,
@@ -371,9 +383,41 @@ export async function planCampaignCut(
     checks = result.checks
     noiseNote = result.note
   }
+  // "Um"s by their sound (umFind.ts): his voice held where no word is, heard
+  // again on its own - a real word there stays. Each one cut is listed.
+  let ums: Range[] = []
+  if (talking && aligned && forUms && exactWords.length >= 2) {
+    const found = findUms(
+      [...exactWords].sort((a, b) => a.start - b.start),
+      levels,
+      { lineDb: silenceLineDb(levels, settings), speechDb: profile && tuned.used ? profile.speechDb : percentile(levels.map((l) => l.db).filter(Number.isFinite), 0.9), umDb: tuned.used ? profile?.umDb : undefined },
+    ).filter((u) => keep.reduce((n, k) => n + Math.max(0, Math.min(k.end, u.end) - Math.max(k.start, u.start)), 0) > (u.end - u.start) / 2)
+    if (found.length > 0) {
+      try {
+        const again = await transcribeOnDevice(
+          forUms,
+          WHISPER_SAMPLE_RATE,
+          found.map((u) => ({ start: Math.max(0, u.start - 0.15), end: Math.min(audibleSec, u.end + 0.15) })),
+          { prompt: options.prompt, padQuiet: true, audioStart, onModelDownload: options.onModelDownload },
+        )
+        ums = found.filter((u) => heardOnlyFiller(again.filter((w) => w.start < u.end && w.end > u.start), isFillerWord))
+      } catch (error) {
+        // Not heard again: nothing is known, so nothing is cut.
+        report({ page: 'campaign', kind: 'fallback', phase: 'ums', message: error instanceof Error ? error.message : String(error) })
+      }
+      for (const u of ums) keep = cutOut(keep, u)
+      checks = [...(checks ?? []), ...ums.map((u) => ({ start: u.start, end: u.end, kind: 'um' as const, cut: true }))]
+    }
+    report({
+      page: 'campaign',
+      kind: 'check',
+      phase: 'ums',
+      message: `${found.length} "um" found by sound, ${ums.length} cut, ${found.length - ums.length} kept (a word heard again); voice setup ${profile ? (tuned.used ? 'used' : 'not matching this mic') : 'not done'}`,
+    })
+  }
   // Never the end of a word: a cut starts only once each word he says has
   // finished (his report, 2026-11-11: "it just cut off the end of my words").
-  if (exactWords.length > 0) keep = keepWordEnds(keep, exactWords, mergeRanges([...fillerWords, ...stutters]), duration)
+  if (exactWords.length > 0) keep = keepWordEnds(keep, exactWords, mergeRanges([...fillerWords, ...stutters, ...ums]), duration)
   return {
     keep,
     duration,

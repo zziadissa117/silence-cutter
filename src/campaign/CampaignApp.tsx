@@ -54,6 +54,7 @@ import { HeadlineLook, JobRow } from './JobRow'
 import type { PictureReview, PopReview } from './CaptionReview'
 import { CutsEditor } from './CutsEditor'
 import { EditScreen, type EditedCuts } from './EditScreen'
+import { VoiceSetup, voiceReminder } from './VoiceSetup'
 import { CheckQuestions } from './CheckQuestions'
 import { keptWords, talkWords } from './talkCaptions'
 import {
@@ -1164,6 +1165,8 @@ export function CampaignApp() {
   const [settingUpPosting, setSettingUpPosting] = useState(false)
   /** The Cutter's own camera (Recorder.tsx) is open. */
   const [recordingOpen, setRecordingOpen] = useState(false)
+  // Your voice (VoiceSetup.tsx), from the reminder on the Videos tab.
+  const [voiceOpen, setVoiceOpen] = useState(false)
   /** What he just recorded, by its name: opened in the timeline editor by
    *  itself once it is cut (his ask, 2026-11-03: ✓ brings him there). */
   const [editorWanted, setEditorWanted] = useState<string | null>(null)
@@ -1179,6 +1182,7 @@ export function CampaignApp() {
   // caption check below.
   const captionSaveTimer = useRef(0)
   const [tab, setTab] = useState<Tab>(() => (window.location.hash === '#posts' ? 'posts' : 'videos'))
+  const voiceAsk = useMemo(() => voiceReminder(), [voiceOpen, tab]) // eslint-disable-line react-hooks/exhaustive-deps
   // Posts is a tab of its own now (TabBar): opening it is going to it.
   const showPosts = tab === 'posts'
   const setShowPosts = useCallback((on: boolean) => setTab(on ? 'posts' : 'videos'), [])
@@ -3814,6 +3818,18 @@ export function CampaignApp() {
         />
       ) : mode === 'day' || !campaign || !angle || (mode === 'one' && !isReaction(campaign)) ? (
         <>
+          {voiceAsk ? (
+            <div className="callout voice-ask">
+              <span>
+                {voiceAsk === 'none'
+                  ? 'Set up your voice - 45 seconds, once - so the cutter knows how you talk and never cuts your words.'
+                  : 'Your last videos sound different from your voice setup - a new mic? Record it again on the mic you film with.'}
+              </span>
+              <button type="button" className="btn small primary" onClick={() => setVoiceOpen(true)}>
+                {voiceAsk === 'none' ? 'Set up' : 'Again'}
+              </button>
+            </div>
+          ) : null}
           <button type="button" className="btn primary wide record-btn" onClick={() => setRecordingOpen(true)}>
             <span className="record-dot" aria-hidden /> Record a video
           </button>
@@ -4678,7 +4694,9 @@ export function CampaignApp() {
           onHeadline: (text) => setHeadline(reviewJob.id, text),
           onHeadlineDone: () => saveHeadline(reviewJob.id),
           vocabulary: vocabularyFor(reviewJob),
-          riskSpans: (reviewJob.day?.plan?.checks ?? []).filter((c) => c.kind !== 'noise').map((c) => ({ start: c.start, end: c.end })),
+          riskSpans: (reviewJob.day?.plan?.checks ?? []).filter((c) => c.kind !== 'noise' && c.kind !== 'um').map((c) => ({ start: c.start, end: c.end })),
+          // The "um"s cut by their sound, to listen to and put back (umFind.ts).
+          ums: (reviewJob.day?.plan?.checks ?? []).filter((c) => c.kind === 'um').map((c) => ({ start: c.start, end: c.end })),
           onRecheck: posting ? (phrases) => recheckCaptions(phrases, vocabularyFor(reviewJob), reviewJob.campaignId, recheckContextFor(reviewJob)) : undefined,
           recheckKey: reviewJob.id,
           position: reviewJob.day?.captionPosition ?? defaultCaptionPosition(),
@@ -4691,6 +4709,8 @@ export function CampaignApp() {
           pictures: pictureReviewFor(reviewJob),
         }}
       />
+    ) : voiceOpen ? (
+      <VoiceSetup onClose={() => setVoiceOpen(false)} />
     ) : recordingOpen ? (
       <Recorder
         onCancel={() => setRecordingOpen(false)}

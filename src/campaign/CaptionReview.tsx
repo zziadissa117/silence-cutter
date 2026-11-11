@@ -133,6 +133,8 @@ export interface EmbeddedVideo {
   onTyping(typing: boolean): void
   /** Cuts a stretch out (the first try of a phrase said twice). */
   cut?(range: { start: number; end: number }): void
+  /** Puts a stretch that was cut back in (an "um" that wasn't one). */
+  putBack?(range: { start: number; end: number }): void
 }
 
 /** Each pop-up's still, to show its box at its size on the frame. */
@@ -256,6 +258,7 @@ export function CaptionReview({
   recheckKey,
   vocabulary = [],
   riskSpans = [],
+  ums = [],
   pops,
   pictures,
   embedded,
@@ -303,6 +306,8 @@ export function CaptionReview({
   vocabulary?: string[]
   /** Moments of sounds the cutter cut or was unsure about. */
   riskSpans?: Span[]
+  /** The "um"s cut by their sound (umFind.ts), on the recording's timeline. */
+  ums?: Span[]
   /** Bank videos said in this take, and how they pop up - absent when none
    *  is said. */
   pops?: PopReview
@@ -593,6 +598,20 @@ export function CaptionReview({
     )
   }
 
+  const umsCut = (
+    <UmFlags
+      ums={ums}
+      onListen={(u) => {
+        if (embedded) embedded.playFrom(Math.max(0, u.start - 1.2))
+        else if (video.current) {
+          video.current.currentTime = Math.max(0, u.start - 1.2)
+          void video.current.play().catch(() => {})
+        }
+      }}
+      onPutBack={embedded?.putBack ? (u) => embedded.putBack?.(u) : undefined}
+    />
+  )
+
   const saidTwice = (
     <RepeatFlags
       repeats={repeats}
@@ -611,6 +630,7 @@ export function CaptionReview({
     return (
       <>
       {saidTwice}
+      {umsCut}
       <QuickCheck
         texts={texts}
         heard={asHeard}
@@ -647,6 +667,7 @@ export function CaptionReview({
     >
       {embedded ? <div className="group-title review-embedded-title">Captions</div> : null}
       {embedded ? saidTwice : null}
+      {umsCut}
       {embedded ? null : (
       <div className="review-top">
         <div className="review-head">
@@ -907,6 +928,39 @@ export function CaptionReview({
         </button>
       </div>
     </section>
+  )
+}
+
+/** The "um"s the cutter cut by their sound (his ask, 2026-11-11: "try to fix
+ *  it ... and point it out to me in the captions"): each to listen to, and -
+ *  on the same page as the cuts - to put back if it was a real word. */
+function UmFlags({ ums, onListen, onPutBack }: { ums: Span[]; onListen: (u: Span) => void; onPutBack?: (u: Span) => void }) {
+  const [back, setBack] = useState<Set<number>>(new Set())
+  if (ums.length === 0) return null
+  return (
+    <div className="repeat-flags um-flags">
+      <div className="label">"Um"s cut · {ums.length - back.size}</div>
+      {ums.map((u) => (
+        <div className="repeat-row" key={u.start}>
+          <button type="button" className="repeat-text" onClick={() => onListen(u)}>
+            <span>{back.has(u.start) ? 'Put back' : '"um" cut'}</span>
+            <span className="hint"> · {formatTime(u.start)} · listen</span>
+          </button>
+          {onPutBack && !back.has(u.start) ? (
+            <button
+              type="button"
+              className="btn small"
+              onClick={() => {
+                onPutBack(u)
+                setBack((b) => new Set(b).add(u.start))
+              }}
+            >
+              Put back
+            </button>
+          ) : null}
+        </div>
+      ))}
+    </div>
   )
 }
 

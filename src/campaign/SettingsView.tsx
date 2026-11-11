@@ -3,6 +3,9 @@
 
 import { useEffect, useState } from 'react'
 
+import { VoiceSetup } from './VoiceSetup'
+import { loadProfile } from './voiceProfile'
+
 import type { PresetName } from '../media/silenceMath'
 import { People } from './People'
 import type { Session, SyncState } from './cloud'
@@ -219,6 +222,9 @@ export function SettingsView({
 }) {
   const used = useSpaceUsed()
   const [limitsOpen, setLimitsOpen] = useState(false)
+  // Your voice, measured once (VoiceSetup.tsx).
+  const [voiceOpen, setVoiceOpen] = useState(false)
+  if (voiceOpen) return <VoiceSetup onClose={() => setVoiceOpen(false)} />
   if (limitsOpen && posting) {
     return <PostingLimits profile={posting.profile} onChanged={onLimitsChanged} onBack={() => setLimitsOpen(false)} />
   }
@@ -379,6 +385,19 @@ export function SettingsView({
 
       <div className="list-title">Speech</div>
       <div className="card-group">
+      <div className="setting">
+        <div className="setting-text">
+          <span className="row-name">Your voice</span>
+          <span className="row-line wrap">
+            {loadProfile()
+              ? `Set up${loadProfile()?.mic ? ` on "${loadProfile()?.mic}"` : ''} - every video is cut for your voice. Again after a new mic.`
+              : 'Not set up: 45 seconds so the cutter knows how you talk and never cuts your words.'}
+          </span>
+        </div>
+        <button type="button" className={`btn small${loadProfile() ? '' : ' primary'}`} onClick={() => setVoiceOpen(true)}>
+          {loadProfile() ? 'Again' : 'Set up'}
+        </button>
+      </div>
       <label className="toggle">
         <input type="checkbox" checked={voice} onChange={(e) => onVoice(e.target.checked)} />
         <span>
@@ -391,10 +410,10 @@ export function SettingsView({
       <label className="toggle">
         <input type="checkbox" checked={cleanSpeech} onChange={(e) => onCleanSpeech(e.target.checked)} />
         <span>
-          <span className="label">Also cut "um"s and stumbles</span>
+          <span className="label">Also cut stumbles and the "um"s it hears in words (old way)</span>
           <span className="hint tip" style={{ display: 'block' }}>
-            Each one is cut only where the sound agrees it is on its own; one said straight into a word stays. The
-            edit screen shows every cut.
+            Best left off. "Um"s are now found by their sound in every video, cut, and listed in the captions to put
+            back with a tap.
           </span>
         </span>
       </label>
