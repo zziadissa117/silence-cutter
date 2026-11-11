@@ -35,6 +35,7 @@ export function MoreView({
     ...(trialReels
       ? [{ tab: 'trial' as const, icon: <BatchIcon />, name: 'Trial reels', line: 'A viral reel made again and again, posted as Instagram Trial Reels' }]
       : []),
+    { tab: 'warmups', icon: <VideosIcon />, name: 'Warm-ups', line: 'Short set posts to film in seconds, between the batch videos' },
     { tab: 'pictures', icon: <PicturesIcon />, name: 'Bank', line: 'Pictures, videos and songs your videos use' },
     { tab: 'settings', icon: <SettingsIcon />, name: 'Settings', line: 'Posting, sign-in, people, the server, video defaults' },
   ]

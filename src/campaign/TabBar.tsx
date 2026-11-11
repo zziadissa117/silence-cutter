@@ -9,10 +9,10 @@ import type { ReactNode } from 'react'
 
 import { AnalyticsIcon, BatchIcon, MoreIcon, PostsIcon, VideosIcon } from './icons'
 
-export type Tab = 'videos' | 'posts' | 'formats' | 'batch' | 'analytics' | 'campaigns' | 'pictures' | 'settings' | 'more' | 'trial' | 'motion'
+export type Tab = 'videos' | 'posts' | 'formats' | 'batch' | 'analytics' | 'campaigns' | 'pictures' | 'settings' | 'more' | 'trial' | 'motion' | 'warmups'
 
 /** The screens reached from More: the More tab stays lit on them. */
-export const UNDER_MORE: readonly Tab[] = ['more', 'campaigns', 'formats', 'pictures', 'settings', 'trial', 'motion']
+export const UNDER_MORE: readonly Tab[] = ['more', 'campaigns', 'formats', 'pictures', 'settings', 'trial', 'motion', 'warmups']
 
 const TABS: { tab: Tab; label: string; icon: ReactNode }[] = [
   { tab: 'videos', label: 'Videos', icon: <VideosIcon /> },

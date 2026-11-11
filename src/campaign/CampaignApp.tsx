@@ -36,6 +36,7 @@ import { copiesToMake, dislikedBy, keepStopped, nextInLine, oneAtATime, overfull
 import { NOT_ALLOWED, trialAngle, trialFileName, withAccounts } from './trialLoop'
 import { AnalyticsView, addHeadline, answerSuggestion, saveTarget, useCampaignRows } from './AnalyticsView'
 import { FormatsView, type FormatClips } from './FormatsView'
+import { WarmupView } from './WarmupView'
 import { TrialView } from './TrialView'
 import { MotionView } from './MotionView'
 import { afterMixing, daysLine, mixesOf, spreadOver } from './formats'
@@ -4692,6 +4693,8 @@ export function CampaignApp() {
       <MoreView campaigns={ownCampaigns.length} onOpen={setTab} workToLose={workToLose} trialReels={posting?.profile.trialReels === true} />
     ) : tab === 'motion' ? (
       <MotionView onBack={() => setTab('more')} />
+    ) : tab === 'warmups' ? (
+      <WarmupView onBack={() => setTab('more')} />
     ) : tab === 'trial' ? (
       <TrialView
         campaigns={campaigns}

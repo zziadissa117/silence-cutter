@@ -1317,3 +1317,14 @@ html.editor-dark, html.editor-dark body { background: #000; }
   flex: 1; min-width: 0; text-align: left; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
   padding: 0; border: 0; background: none; color: inherit; font: inherit; font-size: 15px; cursor: pointer;
 }
+
+/* --- Warm-ups (More -> Warm-ups, 2026-11-11) ------------------------------ */
+.warmup-card { display: flex; flex-direction: column; gap: 8px; padding: 14px; border-radius: 14px; background: var(--surface); border: 1px solid var(--edge); }
+.warmup-head { display: flex; flex-direction: column; gap: 2px; }
+.warmup-script { margin: 0; white-space: pre-wrap; line-height: 1.4; }
+.warmup-sound { display: flex; align-items: center; gap: 8px; }
+.warmup-example { width: 100%; max-height: 60svh; border-radius: 10px; background: #000; }
+.warmup-cats { overflow-x: auto; flex-wrap: nowrap; }
+.warmup-cats button { white-space: nowrap; }
+.warmup-waiting { display: flex; flex-direction: column; gap: 10px; }
+.warmups .actions-row { display: flex; flex-wrap: wrap; gap: 8px; }

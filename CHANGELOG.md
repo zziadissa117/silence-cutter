@@ -3,6 +3,26 @@
 Newest first. Every change says what it does, how to use it, and how it works
 underneath. Kept up to date with each commit.
 
+## Warm-ups, step 1: the shared ideas
+App and server: run ./deploy.sh (it runs ./deploy-server.sh too - the ideas are kept by the cutter function).
+Needs deploying: run ./deploy-server.sh
+**What he said (2026-11-11):** a section for warm-up posts - "an already set text, an already set sound, an already set
+amount of seconds, around 7 seconds, an already set editing" - that anyone using the Cutter can add to and use, his and
+Ilyan's first, anyone else's waiting for his approval (he can change them first); categories Training and AI, new ones
+approved by him. Under Trial reels in More.
+- More -> **Warm-ups**: the ideas by category (All, Training, AI, and any approved), each with its example (a link that
+  opens the post in Instagram or TikTok, or a video), how to film it, its headline (and look), its sound (played with
+  ▶) and its length. + Idea adds one: title, category, example, how to film it, headline, sound (from the music bank or
+  the phone - a video's sound is taken out of it), length (3 to 30 s, 7 to start).
+- His own ideas and categories go up at once; anyone else's wait under "Waiting for your OK" at the top of his screen -
+  Approve, Change it, Refuse. Ideas list his first, then his partners', then everyone else's.
+- Settings -> People -> **Partner** (per login, e.g. Ilyan): their ideas come right after his and go up without waiting.
+- Server: cutter actions `warmups`, `warmup-upload`, `warmup-save`, `warmup-approve`, `warmup-remove`, `warmup-urls`,
+  `warmcat-add`, `warmcat-approve`, `partner` (`cutter/warmups.ts`; rows `warmup:<id>` / `warmcat:<id>` in cutter_config,
+  files `warmup/<sha>` in cutter-files - an idea's sound has to play on every login, and each login's music bank is its own).
+- Next: filming several in one go, then the weekly posting per campaign.
+- Tests: `cutter/warmups.test.ts`, `people.test.tsx`.
+
 ## Motion graphics: everything in the middle square, more natural, his captions and his sound effects
 App and server: run ./deploy.sh (it runs ./deploy-server.sh too - Claude's instructions are in the postiz function).
 Needs deploying: run ./deploy-server.sh

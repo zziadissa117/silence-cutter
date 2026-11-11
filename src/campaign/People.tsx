@@ -7,7 +7,7 @@
 
 import { useEffect, useState } from 'react'
 
-import { CloudError, inviteLink, listPeople, makeInvite, pauseLogin, removeDevice, setTrialReels, type Person } from './cloud'
+import { CloudError, inviteLink, listPeople, makeInvite, pauseLogin, removeDevice, setPartner, setTrialReels, type Person } from './cloud'
 
 function untilLabel(iso: string): string {
   return new Date(iso).toLocaleString(undefined, { weekday: 'short', hour: 'numeric', minute: '2-digit' })
@@ -122,6 +122,17 @@ export function People() {
                   onClick={() => void change(() => setTrialReels(p.name, !p.trial))}
                 >
                   {p.trial ? 'Turn off' : 'Turn on'}
+                </button>
+              </div>
+            ) : null}
+            {p.status === 'active' && p.only !== 'trial' ? (
+              <div className="setting">
+                <div className="setting-text">
+                  <span className="row-line">Partner</span>
+                  <span className="row-line">{p.partner ? 'Their warm-up ideas come first and go up at once' : 'Their warm-up ideas wait for your OK'}</span>
+                </div>
+                <button type="button" className={`btn small${p.partner ? '' : ' primary'}`} onClick={() => void change(() => setPartner(p.name, !p.partner))}>
+                  {p.partner ? 'Turn off' : 'Turn on'}
                 </button>
               </div>
             ) : null}

@@ -66,6 +66,21 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 import { MUSIC_DIR, cleanSong, sameSong, songsFrom, type SharedSong } from './songs.ts'
 import { INVITE_MS, MAX_DEVICES, cleanLoginName, deviceFrom, isActive, roomForDevice, songPrefix, type Device } from './invite.ts'
 import webpush from 'npm:web-push@3.6.7'
+import {
+  CATEGORY_KEY,
+  IDEA_KEY,
+  PARTNERS_CONFIG,
+  WARMUP_DIR,
+  categoriesFor,
+  categoryId,
+  cleanCategoryName,
+  cleanIdea,
+  filesOf,
+  ideasFor,
+  rowsOf,
+  type WarmupCategory,
+  type WarmupIdea,
+} from './warmups.ts'
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!
 const SERVICE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
@@ -435,14 +450,16 @@ async function people(spaceId: string): Promise<Response> {
   const { data: devices } = rows.length > 0
     ? await db.from('cutter_devices').select('*').in('space_id', rows.map((r) => r.id)).is('removed_at', null).order('first_seen')
     : { data: [] }
-  const values = await configValues([TRIAL_CONFIG, TRIAL_ONLY_CONFIG])
+  const values = await configValues([TRIAL_CONFIG, TRIAL_ONLY_CONFIG, PARTNERS_CONFIG])
   const trial = trialSpaces(values[TRIAL_CONFIG])
   const only = trialSpaces(values[TRIAL_ONLY_CONFIG])
+  const partners = trialSpaces(values[PARTNERS_CONFIG])
   return reply({
     people: rows.map((row) => ({
       name: row.name,
       status: row.status ?? 'active',
       trial: trial.includes(row.id),
+      partner: partners.includes(row.id),
       ...(only.includes(row.id) ? { only: 'trial' } : {}),
       until: row.status === 'invited' ? row.invite_until : null,
       since: row.created_at,
@@ -694,6 +711,128 @@ async function songUrls(spaceId: string, body: Record<string, unknown>): Promise
   return reply({ urls })
 }
 
+// --- Warm-up posts (warmups.ts) ----------------------------------------------
+//   warmups          { token }                 -> { ideas, categories, owner, partner }
+//   warmup-upload    { token, sha }            -> { url }        a signed upload for an idea's sound or example
+//   warmup-save      { token, idea }           -> { idea }       new or changed: his own, or any as the owner
+//   warmup-approve   { token, id, approve }    -> { ideas }      owner only: up for everyone, or refused (gone)
+//   warmup-remove    { token, id }             -> { removed }    the owner, or whoever added it
+//   warmup-urls      { token, shas }           -> { urls }       the files of the ideas this login sees
+//   warmcat-add      { token, name }           -> { category }   a new category (the owner's and partners' at once)
+//   warmcat-approve  { token, id, approve }    -> { categories } owner only
+//   partner          { token, name, on }       -> { people }     owner only: a partner's ideas come first, up at once
+
+async function warmupRows<T>(prefix: string, ok: (v: T) => boolean): Promise<T[]> {
+  const { data, error } = await db.from('cutter_config').select('value').like('key', `${prefix}%`)
+  if (error) throw new Error('The server could not read the warm-ups.')
+  return rowsOf<T>((data ?? []) as { value: string }[], ok)
+}
+
+const allIdeas = () => warmupRows<WarmupIdea>(IDEA_KEY, (i) => typeof i.id === 'string' && typeof i.title === 'string')
+const allCategories = () => warmupRows<WarmupCategory>(CATEGORY_KEY, (c) => typeof c.id === 'string' && typeof c.name === 'string')
+
+async function warmupFileThere(sha: string): Promise<boolean> {
+  const { data } = await db.storage.from(BUCKET).list(WARMUP_DIR, { search: sha, limit: 1 })
+  return (data ?? []).some((f: { name: string }) => f.name === sha)
+}
+
+async function warmupAction(spaceId: string, body: Record<string, unknown>): Promise<Response> {
+  const owner = await ownerSpace()
+  const isOwner = spaceId === owner
+  const partners = trialSpaces((await configValues([PARTNERS_CONFIG]))[PARTNERS_CONFIG])
+  const trusted = isOwner || partners.includes(spaceId)
+  const id = typeof body.id === 'string' ? body.id : ''
+  const save = (key: string, value: unknown) => db.from('cutter_config').upsert({ key, value: JSON.stringify(value) }, { onConflict: 'key' })
+  const listed = async () => ({
+    ideas: ideasFor(await allIdeas(), spaceId, owner, partners),
+    categories: categoriesFor(await allCategories(), spaceId, owner),
+    owner: isOwner,
+    partner: partners.includes(spaceId),
+  })
+
+  switch (body.action) {
+    case 'warmups':
+      return reply(await listed())
+    case 'warmup-upload': {
+      const sha = typeof body.sha === 'string' && SHA.test(body.sha) ? body.sha : null
+      if (!sha) return reply({ error: 'Which file?' }, 400)
+      const { data } = await db.storage.from(BUCKET).createSignedUploadUrl(`${WARMUP_DIR}/${sha}`)
+      return reply({ url: data?.signedUrl ?? null })
+    }
+    case 'warmup-save': {
+      const sent = body.idea && typeof body.idea === 'object' ? (body.idea as Record<string, unknown>) : null
+      const before = sent && typeof sent.id === 'string' ? (await allIdeas()).find((i) => i.id === sent.id) : undefined
+      // Someone else's: only the owner changes it; his own only while it waits.
+      if (before && !isOwner && !(before.by === spaceId && before.status === 'waiting')) return reply({ error: 'Only the owner can change this idea.' }, 403)
+      const { data: me } = await db.from('cutter_spaces').select('name').eq('id', spaceId).maybeSingle()
+      const by = before ? { space: before.by, name: before.byName } : { space: spaceId, name: (me?.name as string | undefined) ?? '' }
+      const idea = cleanIdea(sent, by, before?.status ?? (trusted ? 'approved' : 'waiting'))
+      if (!idea) return reply({ error: 'That idea needs a title and a category.' }, 400)
+      for (const file of [idea.sound, idea.example && 'video' in idea.example ? idea.example.video : null]) {
+        if (file && !(await warmupFileThere(file.sha))) return reply({ error: "A file hasn't arrived yet.", later: true }, 409)
+      }
+      const { error } = await save(`${IDEA_KEY}${idea.id}`, idea)
+      if (error) return reply({ error: 'The server could not keep the idea.' }, 500)
+      return reply({ idea })
+    }
+    case 'warmup-approve': {
+      if (!isOwner) return reply(NOT_OWNER, 403)
+      const idea = (await allIdeas()).find((i) => i.id === id)
+      if (!idea) return reply(await listed())
+      if (body.approve === true) await save(`${IDEA_KEY}${idea.id}`, { ...idea, status: 'approved' })
+      else await db.from('cutter_config').delete().eq('key', `${IDEA_KEY}${idea.id}`)
+      return reply(await listed())
+    }
+    case 'warmup-remove': {
+      const idea = (await allIdeas()).find((i) => i.id === id)
+      if (!idea) return reply({ removed: false })
+      if (!isOwner && idea.by !== spaceId) return reply({ error: 'Only the owner, or whoever added it, can take it out.' }, 403)
+      const { error } = await db.from('cutter_config').delete().eq('key', `${IDEA_KEY}${idea.id}`)
+      if (error) return reply({ error: 'The server could not take the idea out.' }, 500)
+      return reply({ removed: true })
+    }
+    case 'warmup-urls': {
+      const mine = filesOf(ideasFor(await allIdeas(), spaceId, owner, partners))
+      const shas = (Array.isArray(body.shas) ? body.shas : []).filter((s): s is string => typeof s === 'string' && SHA.test(s) && mine.has(s))
+      if (shas.length === 0) return reply({ urls: {} })
+      const { data, error } = await db.storage.from(BUCKET).createSignedUrls(shas.slice(0, 100).map((sha) => `${WARMUP_DIR}/${sha}`), 3600)
+      if (error) return reply({ error: 'The server could not find the files.' }, 500)
+      const urls: Record<string, string> = {}
+      for (const entry of data ?? []) if (entry.signedUrl && entry.path) urls[entry.path.split('/').pop()!] = entry.signedUrl
+      return reply({ urls })
+    }
+    case 'warmcat-add': {
+      const name = cleanCategoryName(body.name)
+      if (!name) return reply({ error: 'What is the category called?' }, 400)
+      const known = categoriesFor(await allCategories(), spaceId, owner).find((c) => c.name.toLowerCase() === name.toLowerCase())
+      if (known) return reply({ category: known })
+      const category: WarmupCategory = { id: `${categoryId(name)}-${Date.now().toString(36)}`, name, status: trusted ? 'approved' : 'waiting', by: spaceId, addedAt: Date.now() }
+      const { error } = await save(`${CATEGORY_KEY}${category.id}`, category)
+      if (error) return reply({ error: 'The server could not keep the category.' }, 500)
+      return reply({ category })
+    }
+    case 'warmcat-approve': {
+      if (!isOwner) return reply(NOT_OWNER, 403)
+      const category = (await allCategories()).find((c) => c.id === id)
+      if (category) {
+        if (body.approve === true) await save(`${CATEGORY_KEY}${category.id}`, { ...category, status: 'approved' })
+        else await db.from('cutter_config').delete().eq('key', `${CATEGORY_KEY}${category.id}`)
+      }
+      return reply({ categories: categoriesFor(await allCategories(), spaceId, owner) })
+    }
+    case 'partner': {
+      if (!isOwner) return reply(NOT_OWNER, 403)
+      const name = cleanLoginName(body.name)
+      const { data: space } = name ? await db.from('cutter_spaces').select('id').eq('name', name).neq('id', owner).maybeSingle() : { data: null }
+      if (!space) return reply({ error: 'Which login?' }, 400)
+      const now = partners.filter((p) => p !== space.id)
+      await setConfig(PARTNERS_CONFIG, JSON.stringify(body.on === true ? [...now, space.id] : now))
+      return people(spaceId)
+    }
+  }
+  return reply({ error: 'Unknown action.' }, 400)
+}
+
 const KINDS = new Set(['failed', 'retried', 'fallback', 'interrupted', 'lost-pick', 'empty-pick', 'check', 'crash'])
 const MAX_REPORTS = 20
 /** Reports from a phone that is not signed in: this many a minute from one
@@ -805,6 +944,16 @@ Deno.serve(async (req) => {
       return removeSong(spaceId, body).catch((error) => reply({ error: (error as Error).message }, 500))
     case 'song-urls':
       return songUrls(spaceId, body).catch((error) => reply({ error: (error as Error).message }, 500))
+    case 'warmups':
+    case 'warmup-upload':
+    case 'warmup-save':
+    case 'warmup-approve':
+    case 'warmup-remove':
+    case 'warmup-urls':
+    case 'warmcat-add':
+    case 'warmcat-approve':
+    case 'partner':
+      return warmupAction(spaceId, body).catch((error) => reply({ error: (error as Error).message }, 500))
     default:
       return reply({ error: 'Unknown action.' }, 400)
   }

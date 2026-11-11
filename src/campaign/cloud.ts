@@ -182,11 +182,19 @@ export interface Person {
   trial?: boolean
   /** Made for Trial reels and nothing else. */
   only?: 'trial'
+  /** A partner: their warm-up ideas first, up without waiting. */
+  partner?: boolean
 }
 
 /** Trial reels on or off for a login he made (the main login only). */
 export async function setTrialReels(name: string, on: boolean): Promise<Person[]> {
   return (await askShared<{ people: Person[] }>('trial', { name, on }))?.people ?? []
+}
+
+/** A partner (Ilyan): their warm-up ideas come first, after his own, and go
+ *  up without waiting for his OK. */
+export async function setPartner(name: string, on: boolean): Promise<Person[]> {
+  return (await askShared<{ people: Person[] }>('partner', { name, on }))?.people ?? []
 }
 
 /** Pauses a login he made (every call refused, its data kept), or lets it go. */

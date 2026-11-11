@@ -54,7 +54,8 @@ describe('a link for Trial reels only', () => {
     await act(async () => root.render(<People />))
     await flush()
     expect(host.textContent).toContain('Trial reels only · on 0 phones')
-    // Only jake (a normal login) has the switch.
-    expect([...host.querySelectorAll('button')].filter((b) => b.textContent === 'Turn on')).toHaveLength(1)
+    // Only jake (a normal login) has the switches: Trial reels, and Partner.
+    expect([...host.querySelectorAll('button')].filter((b) => b.textContent === 'Turn on')).toHaveLength(2)
+    expect(host.textContent).toContain('Partner')
   })
 })
