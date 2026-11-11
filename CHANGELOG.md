@@ -3,6 +3,15 @@
 Newest first. Every change says what it does, how to use it, and how it works
 underneath. Kept up to date with each commit.
 
+## Fields you can see
+App only: run ./deploy.sh.
+- His report: on the new warm-up idea form "I don't even see any outlines ... I wouldn't know that this is a text
+  area." In light mode a field was filled with the same grey as the page around it, with no border - invisible
+  anywhere a form sits straight on the page (warm-up ideas, filming a warm-up, motion graphics, and others).
+- Now a field straight on the page is a white box with a thin outline (dark mode: a dark box with an outline); a
+  field on a white card keeps its grey fill, as before. Tapped, its outline turns blue with a soft glow. The - and +
+  of a stepper (a warm-up's length) are real buttons now, not bare signs. All in `campaign.css`, so every screen.
+
 ## Warm-ups: an account forgotten for a day gets one
 App only: run ./deploy.sh.
 - His ask: "whenever there's a day I maybe sometimes forget to post on certain campaigns ... a warm-up video ... so it
