@@ -7,13 +7,38 @@
 import { useEffect, useRef, useState } from 'react'
 
 import { LevelMeter } from '../media/audio'
-import { loadProfile, measureProfile, offCount, saveProfile, type SetupMarks, type VoiceProfile } from './voiceProfile'
+import {
+  addProfile,
+  chooseVoice,
+  chosenVoice,
+  loadProfile,
+  loadProfiles,
+  measureProfile,
+  micName,
+  offCount,
+  removeProfile,
+  type SetupMarks,
+  type VoiceProfile,
+} from './voiceProfile'
 
 const QUIET_SEC = 3
 const BREATH_SEC = 3
 
-export const READ_TEXT =
-  "So here's the thing nobody tells you about posting every day. It's not about being perfect. You film it, you cut it, and you post it - then you do it again tomorrow. Most people stop after a week, because they think it should be easier by now. It does get easier. Just not as fast as you'd like."
+/** What he reads, written to touch every part of talking a cutter can get
+ *  wrong (his ask, 2026-11-11: "a specific paragraph ... to hit every single
+ *  area of our speech"): words that start soft ("honestly", "here", "five",
+ *  "thirty") and end soft ("fast", "it", "facts", "shifts", "half"); a fast
+ *  list with no pause; a question; numbers; short pauses at the commas and
+ *  long ones where it says so; a last word that trails off. Each line on its
+ *  own, a long pause between lines. */
+export const READ_LINES: readonly string[] = [
+  "Honestly, here's what I've learned from posting every single day.",
+  'First, film it fast. Second, fix the sound. Third, post it - then forget it.',
+  'Does it feel weird at first? Of course it does.',
+  'But after thirty days, sixty videos, maybe a hundred, something shifts.',
+  "You stop overthinking it, you just say what you think... and that's it.",
+]
+export const READ_TEXT = READ_LINES.join(' ')
 
 type Step = 'intro' | 'quiet' | 'read' | 'um' | 'breath' | 'measuring' | 'done' | 'failed'
 
@@ -103,8 +128,7 @@ export function VoiceSetup({ onClose }: { onClose: () => void }) {
         setStep('failed')
         return
       }
-      saveProfile(profile)
-      setMade(profile)
+      setMade(addProfile({ ...profile, name: micName(label) }))
       setStep('done')
     } catch (error) {
       setProblem(`It couldn't be measured: ${error instanceof Error ? error.message : String(error)}`)
@@ -164,7 +188,7 @@ export function VoiceSetup({ onClose }: { onClose: () => void }) {
               </select>
             </label>
           ) : null}
-          {had ? <p className="hint">Done before{had.mic ? ` on "${had.mic}"` : ''} - recording again replaces it.</p> : null}
+          {had ? <p className="hint">Recording on a mic you set up before replaces that one; another mic is added as another voice.</p> : null}
           {problem ? <div className="error">{problem}</div> : null}
           <div className="actions-row">
             <button type="button" className="btn primary" onClick={() => void start()}>
@@ -189,7 +213,15 @@ export function VoiceSetup({ onClose }: { onClose: () => void }) {
         <div className="voice-step">
           <div className="voice-dot" aria-hidden />
           <h2>Read this out loud, the way you talk</h2>
-          <p className="voice-read">{READ_TEXT}</p>
+          <div className="voice-read">
+            {READ_LINES.map((line, i) => (
+              <p key={i}>
+                {line}
+                {i < READ_LINES.length - 1 ? <span className="voice-pause"> · pause · </span> : null}
+              </p>
+            ))}
+          </div>
+          <p className="hint">Your normal speed. Stop for a second where it says pause.</p>
           <button
             type="button"
             className="btn primary wide"
@@ -234,7 +266,10 @@ export function VoiceSetup({ onClose }: { onClose: () => void }) {
 
       {step === 'done' && made ? (
         <>
-          <p className="lede">Done. Every video you make from now on is cut for your voice on this mic.</p>
+          <p className="lede">
+            Done: "{made.name}". Every video that sounds like it is cut for your voice on that mic
+            {loadProfiles().length > 1 ? ' - the Cutter picks the right voice for each video by itself' : ''}.
+          </p>
           <ul className="voice-facts">
             <li>Your room: {Math.round(made.roomDb)} dB · your voice: {Math.round(made.speechDb)} dB</li>
             <li>Your natural gap between words: {Math.round(made.gapSec * 100) / 100} s - never cut</li>
@@ -246,5 +281,60 @@ export function VoiceSetup({ onClose }: { onClose: () => void }) {
         </>
       ) : null}
     </section>
+  )
+}
+
+/** His voices in Settings: which one each video takes - automatic, or the one
+ *  he pins - each to take out, and another to add (another mic). */
+export function VoiceList({ onAdd }: { onAdd: () => void }) {
+  const [voices, setVoices] = useState(() => loadProfiles())
+  const [use, setUse] = useState(() => chosenVoice())
+  const pick = (id: string) => {
+    chooseVoice(id)
+    setUse(id)
+  }
+  return (
+    <div className="setting voice-list">
+      <div className="setting-text">
+        <span className="row-name">Your voice</span>
+        {voices.length === 0 ? (
+          <span className="row-line wrap">Not set up: 45 seconds so the cutter knows how you talk and never cuts your words.</span>
+        ) : (
+          <>
+            <span className="row-line wrap">Each video uses the voice it sounds like - or pin one (filming without your mic, say).</span>
+            <div className="warmup-chips">
+              <button type="button" className={`chip${use === 'auto' ? ' on' : ''}`} aria-pressed={use === 'auto'} onClick={() => pick('auto')}>
+                Automatic
+              </button>
+              {voices.map((v) => (
+                <button key={v.id} type="button" className={`chip${use === v.id ? ' on' : ''}`} aria-pressed={use === v.id} onClick={() => pick(v.id!)}>
+                  {v.name ?? 'My voice'}
+                </button>
+              ))}
+            </div>
+            {voices.map((v) => (
+              <span key={v.id} className="row-line">
+                {v.name ?? 'My voice'} · {new Date(v.at).toLocaleDateString()}{' '}
+                <button
+                  type="button"
+                  className="linkbtn"
+                  onClick={() => {
+                    if (!window.confirm(`Take out "${v.name ?? 'this voice'}"?`)) return
+                    removeProfile(v.id!)
+                    setVoices(loadProfiles())
+                    setUse(chosenVoice())
+                  }}
+                >
+                  take out
+                </button>
+              </span>
+            ))}
+          </>
+        )}
+      </div>
+      <button type="button" className={`btn small${voices.length === 0 ? ' primary' : ''}`} onClick={onAdd}>
+        {voices.length === 0 ? 'Set up' : '+ Voice'}
+      </button>
+    </div>
   )
 }

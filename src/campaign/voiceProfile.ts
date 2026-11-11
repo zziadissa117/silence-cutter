@@ -15,6 +15,9 @@
 import type { Level, SilenceSettings } from '../media/silenceMath'
 
 export interface VoiceProfile {
+  /** Which of his voices this is ("With my mic", "Phone mic"). */
+  id?: string
+  name?: string
   /** His room on that mic: where its quietest tenth sits, in dB. */
   roomDb: number
   /** His talking: where its loudest tenth sits. */
@@ -31,27 +34,87 @@ export interface VoiceProfile {
   at: number
 }
 
-const KEY = 'voice.profile'
+// Several of his voices (his ask, 2026-11-11: "sometimes I would have to
+// record without a mic"): one per mic. Each video takes the one it sounds
+// like by itself; he can pin one instead.
+const OLD_KEY = 'voice.profile'
+const KEY = 'voice.profiles'
+const USE_KEY = 'voice.use'
 const OFF_KEY = 'voice.offCount'
+/** At most this many voices kept. */
+const MOST = 4
 
-export function loadProfile(): VoiceProfile | null {
+const usable = (p: VoiceProfile | null | undefined): p is VoiceProfile => Boolean(p && Number.isFinite(p.roomDb) && Number.isFinite(p.speechDb))
+
+export function loadProfiles(): VoiceProfile[] {
   try {
     const raw = localStorage.getItem(KEY)
-    const p = raw ? (JSON.parse(raw) as VoiceProfile) : null
-    return p && Number.isFinite(p.roomDb) && Number.isFinite(p.speechDb) ? p : null
+    if (raw) return (JSON.parse(raw) as VoiceProfile[]).filter(usable).map((p, i) => ({ ...p, id: p.id ?? `v${i}` }))
+    const old = localStorage.getItem(OLD_KEY)
+    const one = old ? (JSON.parse(old) as VoiceProfile) : null
+    return usable(one) ? [{ ...one, id: 'v0', name: one.name ?? micName(one.mic) }] : []
   } catch {
-    return null
+    return []
   }
 }
 
-export function saveProfile(profile: VoiceProfile | null): void {
+function saveProfiles(list: VoiceProfile[]): void {
   try {
-    if (profile) localStorage.setItem(KEY, JSON.stringify(profile))
-    else localStorage.removeItem(KEY)
+    localStorage.setItem(KEY, JSON.stringify(list))
+    localStorage.removeItem(OLD_KEY)
     localStorage.removeItem(OFF_KEY)
   } catch {
     // Measured again next time.
   }
+}
+
+/** A voice's name from the mic it was recorded on. */
+export function micName(mic: string | undefined): string {
+  if (!mic || /iphone|built-in|default|internal|phone/i.test(mic)) return 'Phone mic'
+  return mic.replace(/\s*\(.*\)\s*$/, '').slice(0, 40) || 'My mic'
+}
+
+/** Any voice of his (for the reminder and Settings). */
+export function loadProfile(): VoiceProfile | null {
+  return loadProfiles()[0] ?? null
+}
+
+/** A new voice: in place of the one on the same mic, else added. */
+export function addProfile(profile: VoiceProfile): VoiceProfile {
+  const list = loadProfiles()
+  const name = profile.name ?? micName(profile.mic)
+  const same = list.find((p) => p.name === name)
+  const made = { ...profile, id: same?.id ?? `v${Date.now().toString(36)}`, name }
+  saveProfiles([...list.filter((p) => p.id !== made.id), made].slice(-MOST))
+  return made
+}
+
+export function removeProfile(id: string): void {
+  saveProfiles(loadProfiles().filter((p) => p.id !== id))
+  if (chosenVoice() === id) chooseVoice('auto')
+}
+
+/** 'auto': each video takes the voice it sounds like. Else the one he pinned. */
+export function chosenVoice(): string {
+  try {
+    return localStorage.getItem(USE_KEY) || 'auto'
+  } catch {
+    return 'auto'
+  }
+}
+
+export function chooseVoice(id: string): void {
+  try {
+    localStorage.setItem(USE_KEY, id)
+  } catch {
+    // Automatic, then.
+  }
+}
+
+/** Kept for one voice (the first version): saves it as his only one. */
+export function saveProfile(profile: VoiceProfile | null): void {
+  if (profile) saveProfiles([{ ...profile, id: profile.id ?? 'v0', name: profile.name ?? micName(profile.mic) }])
+  else saveProfiles([])
 }
 
 /** How many videos in a row sounded unlike the profile (another mic). */
@@ -159,17 +222,42 @@ export function soundsLike(levels: readonly Level[], profile: VoiceProfile): boo
   return Math.abs(speech - profile.speechDb) <= 10 && room <= profile.tailDb + 3
 }
 
-/** His settings for one video, with his profile in: the silence line under
+/** How far a video is from a voice: how much louder or quieter his voice and
+ *  his room are. */
+function distance(levels: readonly Level[], profile: VoiceProfile): number {
+  const heard = finite(levels)
+  return Math.abs(percentile(heard, 0.9) - profile.speechDb) + Math.abs(percentile(heard, 0.1) - profile.roomDb) / 2
+}
+
+/** The voice a video is cut with: the one he pinned, or - automatic - the one
+ *  it sounds most like, none when it sounds like none of them. */
+export function pickProfile(levels: readonly Level[], profiles: readonly VoiceProfile[], use = 'auto'): { profile: VoiceProfile | null; pinned: boolean } {
+  if (use !== 'auto') {
+    const pinned = profiles.find((p) => p.id === use)
+    if (pinned) return { profile: pinned, pinned: true }
+  }
+  const like = profiles.filter((p) => soundsLike(levels, p)).sort((a, b) => distance(levels, a) - distance(levels, b))
+  return { profile: like[0] ?? null, pinned: false }
+}
+
+/** His settings for one video, with his voice in: the silence line under
  *  his word endings (never higher than he set it, never far lower), and no
- *  pause shorter than his natural gap between words. The same settings when
- *  the video doesn't sound like him on that mic. */
-export function withProfile(settings: SilenceSettings, levels: readonly Level[], profile: VoiceProfile | null): { settings: SilenceSettings; used: boolean } {
-  if (!profile) return { settings, used: false }
-  const like = soundsLike(levels, profile)
-  noteOff(!like)
-  if (!like) return { settings, used: false }
+ *  pause shorter than his natural gap between words. Given several voices,
+ *  the one it sounds like (pickProfile), or the one he pinned (`use`). The
+ *  same settings when it sounds like none of them. */
+export function withProfile(
+  settings: SilenceSettings,
+  levels: readonly Level[],
+  voices: VoiceProfile | readonly VoiceProfile[] | null,
+  use = 'auto',
+): { settings: SilenceSettings; used: boolean; profile: VoiceProfile | null } {
+  const list = voices ? (Array.isArray(voices) ? voices : [voices as VoiceProfile]) : []
+  if (list.length === 0) return { settings, used: false, profile: null }
+  const { profile, pinned } = pickProfile(levels, list, use)
+  if (!pinned) noteOff(!profile)
+  if (!profile) return { settings, used: false, profile: null }
   const line = (profile.roomDb + profile.tailDb) / 2
   const thresholdDb = Math.max(settings.thresholdDb - 15, Math.min(settings.thresholdDb, line))
   const minSilenceSec = Math.min(0.6, Math.max(settings.minSilenceSec, profile.gapSec + 0.05))
-  return { settings: { ...settings, thresholdDb, minSilenceSec }, used: true }
+  return { settings: { ...settings, thresholdDb, minSilenceSec }, used: true, profile }
 }

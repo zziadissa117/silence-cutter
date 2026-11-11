@@ -1394,3 +1394,4 @@ html.editor-dark, html.editor-dark body { background: #000; }
 .voice-ask { display: flex; align-items: center; gap: 12px; text-align: left; }
 .voice-ask span { flex: 1; }
 .voice-mic { display: block; text-align: left; } .voice-mic p { margin: 0; line-height: 1.4; }
+.voice-read p { margin: 0 0 6px; } .voice-pause { color: var(--accent); font-size: 14px; font-weight: 600; white-space: nowrap; } .voice-list .warmup-chips { margin: 6px 0; }

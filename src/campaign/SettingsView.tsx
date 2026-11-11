@@ -3,8 +3,7 @@
 
 import { useEffect, useState } from 'react'
 
-import { VoiceSetup } from './VoiceSetup'
-import { loadProfile } from './voiceProfile'
+import { VoiceList, VoiceSetup } from './VoiceSetup'
 
 import type { PresetName } from '../media/silenceMath'
 import { People } from './People'
@@ -385,19 +384,7 @@ export function SettingsView({
 
       <div className="list-title">Speech</div>
       <div className="card-group">
-      <div className="setting">
-        <div className="setting-text">
-          <span className="row-name">Your voice</span>
-          <span className="row-line wrap">
-            {loadProfile()
-              ? `Set up${loadProfile()?.mic ? ` on "${loadProfile()?.mic}"` : ''} - every video is cut for your voice. Again after a new mic.`
-              : 'Not set up: 45 seconds so the cutter knows how you talk and never cuts your words.'}
-          </span>
-        </div>
-        <button type="button" className={`btn small${loadProfile() ? '' : ' primary'}`} onClick={() => setVoiceOpen(true)}>
-          {loadProfile() ? 'Again' : 'Set up'}
-        </button>
-      </div>
+      <VoiceList onAdd={() => setVoiceOpen(true)} />
       <label className="toggle">
         <input type="checkbox" checked={voice} onChange={(e) => onVoice(e.target.checked)} />
         <span>

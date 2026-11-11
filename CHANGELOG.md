@@ -3,6 +3,21 @@
 Newest first. Every change says what it does, how to use it, and how it works
 underneath. Kept up to date with each commit.
 
+## Your voice: a paragraph made to cover every part of talking, and a voice per mic
+App only: run ./deploy.sh.
+- His ask: "a specific paragraph ... to know exactly how to hit every single area of our speech", and "sometimes I
+  would have to record without a mic, but I'll just override".
+- The voice setup's reading is now five short lines, shown one under the other with "pause" where to stop a second:
+  soft starts and soft ends (honestly, five, thirty; fast, it, shifts), a quick list, a question, numbers, short pauses
+  at the commas and long ones between lines, and a last word that trails off (`VoiceSetup.READ_LINES`).
+- **Several voices, one per mic:** each setup is saved under its mic ("Phone mic", or your mic's name); setting up on
+  a mic you already have replaces that one, another mic is added (up to 4). Each video is cut with the voice it
+  sounds most like - automatically - or with the one you pin in Settings -> Speech -> Your voice (Automatic / each
+  voice, each with "take out", "+ Voice" for another). A pinned voice is used whatever the video sounds like.
+- The Videos tab reminder now says when your videos sound like none of your voices: add one, or pin one.
+- Underneath: `voiceProfile` `loadProfiles`, `addProfile`, `removeProfile`, `chosenVoice`/`chooseVoice`,
+  `pickProfile`; `withProfile` takes the list and the pin. Old single voices carry over. Tests: `voiceProfile.test.ts`.
+
 ## Your voice, and "um"s found by their sound
 App only: run ./deploy.sh.
 - His ask: teach the cutter how each person talks so it cuts silences perfectly; and "in each video, when it notices

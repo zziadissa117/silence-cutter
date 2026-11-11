@@ -39,7 +39,7 @@ import { ALIGNED_LATE_SEC, HEARD_LATE_SEC, captionWords, snapToOnsets, spokenWor
 import { LONG_SEC, TINY_SEC, cutNoise, cutOut, loneSounds, peakDbIn, peaksOf, protectWords, type CutCheck, type WordSpan } from './noiseCuts'
 import { partWindows } from './timedWords'
 import { findUms, heardOnlyFiller } from './umFind'
-import { loadProfile, percentile, withProfile } from './voiceProfile'
+import { chosenVoice, loadProfiles, percentile, withProfile } from './voiceProfile'
 
 /** How long the letter model may go without a word before it is given up
  *  on, and the captions keep the speech model's own times. */
@@ -219,8 +219,9 @@ export async function planCampaignCut(
   // endings, no pause shorter than his natural gap - on his own talking only,
   // and only when this video sounds like him on that mic.
   const talking = options.listen && !options.keepWhole && !options.quietIsFine
-  const profile = talking ? loadProfile() : null
-  const tuned = withProfile(settings, levels, profile)
+  const voices = talking ? loadProfiles() : []
+  const tuned = withProfile(settings, levels, voices, chosenVoice())
+  const profile = tuned.profile
   settings = tuned.settings
   const silences = findSilentRanges(levels, settings)
 
@@ -412,7 +413,7 @@ export async function planCampaignCut(
       page: 'campaign',
       kind: 'check',
       phase: 'ums',
-      message: `${found.length} "um" found by sound, ${ums.length} cut, ${found.length - ums.length} kept (a word heard again); voice setup ${profile ? (tuned.used ? 'used' : 'not matching this mic') : 'not done'}`,
+      message: `${found.length} "um" found by sound, ${ums.length} cut, ${found.length - ums.length} kept (a word heard again); voice ${tuned.used ? `"${profile?.name ?? 'set up'}"` : voices.length > 0 ? 'none matching this mic' : 'not set up'}`,
     })
   }
   // Never the end of a word: a cut starts only once each word he says has

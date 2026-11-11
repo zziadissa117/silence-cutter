@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 
 import { PRESETS, type Level } from '../media/silenceMath'
-import { measureProfile, soundsLike, withProfile } from './voiceProfile'
+import { measureProfile, pickProfile, soundsLike, withProfile } from './voiceProfile'
 
 function levelsOf(spans: [number, number, number][]): Level[] {
   const out: Level[] = []
@@ -52,7 +52,27 @@ describe('your voice, measured once (his ask, 2026-11-11)', () => {
     // A far louder voice: another mic - left as it was.
     const loud = take.map((l) => ({ ...l, db: l.db + 20 }))
     expect(soundsLike(loud, p)).toBe(false)
-    expect(withProfile(PRESETS.tight, loud, p)).toEqual({ settings: PRESETS.tight, used: false })
+    expect(withProfile(PRESETS.tight, loud, p)).toEqual({ settings: PRESETS.tight, used: false, profile: null })
     expect(withProfile(PRESETS.tight, take, null).used).toBe(false)
+  })
+})
+
+describe('several voices: with his mic, without (his ask, 2026-11-11)', () => {
+  const p = measureProfile(setup, { quietEnd: 3, readStart: 3, readEnd: 18 })!
+  const mic = { ...p, id: 'mic', name: 'Rode' }
+  const phone = { ...p, id: 'phone', name: 'Phone mic', speechDb: p.speechDb - 9, roomDb: p.roomDb + 6, tailDb: p.tailDb - 3 }
+  const take = setup.slice(0, 900)
+
+  it('each video takes the voice it sounds most like', () => {
+    expect(pickProfile(take, [phone, mic]).profile?.id).toBe('mic')
+    const quieter = take.map((l) => ({ ...l, db: l.db - 9 }))
+    expect(pickProfile(quieter, [mic, phone]).profile?.id).toBe('phone')
+  })
+
+  it('a pinned voice is used whatever the video sounds like; none matching is none', () => {
+    const loud = take.map((l) => ({ ...l, db: l.db + 25 }))
+    expect(pickProfile(loud, [mic, phone]).profile).toBeNull()
+    expect(pickProfile(loud, [mic, phone], 'phone')).toEqual({ profile: phone, pinned: true })
+    expect(withProfile(PRESETS.tight, loud, [mic, phone], 'phone').used).toBe(true)
   })
 })

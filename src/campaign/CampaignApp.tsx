@@ -3823,10 +3823,10 @@ export function CampaignApp() {
               <span>
                 {voiceAsk === 'none'
                   ? 'Set up your voice - 45 seconds, once - so the cutter knows how you talk and never cuts your words.'
-                  : 'Your last videos sound different from your voice setup - a new mic? Record it again on the mic you film with.'}
+                  : 'Your last videos sound like none of your voices - another mic? Add it as a voice (45 s), or pin one in Settings.'}
               </span>
               <button type="button" className="btn small primary" onClick={() => setVoiceOpen(true)}>
-                {voiceAsk === 'none' ? 'Set up' : 'Again'}
+                {voiceAsk === 'none' ? 'Set up' : 'Add a voice'}
               </button>
             </div>
           ) : null}
