@@ -245,6 +245,7 @@ export async function planCampaignCut(
   let audibleSec = duration
   // English, as always, unless the video is told to be French.
   let language: SpeechLanguage = 'en'
+  let frenchModel = ''
   if (wantWords && mono16k) {
     const audible = Math.min(duration, audioStart + mono16k.length / WHISPER_SAMPLE_RATE)
     audibleSec = audible
@@ -276,10 +277,16 @@ export async function planCampaignCut(
       padQuiet: true,
       audioStart,
       language,
+      onFrenchModel: (model) => (frenchModel = model),
       onModelDownload: options.onModelDownload,
       onProgress: (p) => options.onTranscribeProgress?.(p * share),
     })
     const heard = language === 'fr' ? frenchWords(listened) : listened
+    if (language === 'fr') {
+      // Which model heard it, and how it came out - to judge French by.
+      const said = heard.map((w) => w.text).join('').trim()
+      report({ page: 'campaign', kind: 'check', phase: 'language', message: `fr heard with ${frenchModel}: ${said.slice(0, 220)}` })
+    }
     ;({ words, fillerWords, stutters, spoken } = fromHeard(heard, levels, settings, duration, options.cleanSpeech))
     if (options.cleanSpeech) fillersHeard = { spoken: heard.filter((w) => isFillerWord(w.text)).length, letters: 0 }
     if (forAligning && heard.length > 0) {

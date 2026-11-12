@@ -3,6 +3,22 @@
 Newest first. Every change says what it does, how to use it, and how it works
 underneath. Kept up to date with each commit.
 
+## French heard with a much better model
+Needs deploying: run ./deploy-server.sh (the caption check's French rules), then ./deploy.sh.
+- His report (2026-11-12): "the french is detecting really bad". The reports show the language was told right (his
+  French test: fr 0.994; another phone's English video: en 0.858, and it was English) - it was the French words that
+  came out badly: they were heard by Whisper's tiny model, the weakest at French.
+- French is now heard by Whisper "small" - about half tiny's mistakes in French by Whisper's own measures. About
+  250 MB, downloaded once, the first time a French video is heard. English is unchanged (tiny.en), and the language
+  is still told by the tiny model, which does that well.
+- A phone that can't hold it steps down by itself, and remembers: out of memory while listening -> "base" at once;
+  the page dying while French was being heard -> the next one down from then on (`transcribe.frenchStep`). Closing
+  the app or switching away mid-listen doesn't count.
+- Claude's caption check is told French needs more fixing (sound-alike words, wrong endings, split words), and to keep
+  Québec French and its English words as he says them.
+- Each French video reports which model heard it and its first words, to judge the next fix by.
+- Tests: `french.test.ts`.
+
 ## Motion graphics: the call to action fits the video, in a place of its own
 Needs deploying: run ./deploy-server.sh (Claude's motion prompt), then ./deploy.sh.
 - His ask (2026-11-12): "CTA does not always have to be comment UGC at the same exact place".

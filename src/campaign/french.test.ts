@@ -70,3 +70,28 @@ describe('French as heard, for captions', () => {
     expect(noSpeechIn("C'est la meilleure appli que j'ai testée".split(' ').map((text) => ({ text: ` ${text}` })))).toBe(false)
   })
 })
+
+describe('the French model a phone hears with', () => {
+  it('starts with the best, and steps down for good after the page died while listening', async () => {
+    const { frenchStep } = await import('../media/transcribe')
+    localStorage.clear()
+    expect(frenchStep()).toBe(0)
+    // The page died while French was being heard with the best model.
+    localStorage.setItem('speech.frenchTrying', '0')
+    expect(frenchStep()).toBe(1)
+    expect(frenchStep()).toBe(1)
+    localStorage.setItem('speech.frenchTrying', '1')
+    expect(frenchStep()).toBe(2)
+    // Never past the smallest.
+    localStorage.setItem('speech.frenchTrying', '2')
+    expect(frenchStep()).toBe(2)
+  })
+
+  it('does not step down when he closed the page himself', async () => {
+    const { frenchStep } = await import('../media/transcribe')
+    localStorage.clear()
+    localStorage.setItem('speech.frenchTrying', '0')
+    window.dispatchEvent(new Event('pagehide'))
+    expect(frenchStep()).toBe(0)
+  })
+})

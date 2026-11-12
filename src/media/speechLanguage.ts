@@ -12,9 +12,16 @@ import type { Range } from './silenceMath'
 
 export type SpeechLanguage = 'en' | 'fr'
 
-/** The multilingual model, for telling the language and for hearing French.
- *  The same size as tiny.en, so it fits the same memory. */
+/** The multilingual model, for telling the language: the same size as
+ *  tiny.en, so it fits the same memory - and good at that one question. */
 export const MULTILINGUAL_MODEL = 'Xenova/whisper-tiny'
+
+/** The models French is heard with, best first. Tiny tells French well but
+ *  hears it badly (his test, 2026-11-12: "the french is detecting really
+ *  bad") - Whisper's own measures put small at about half tiny's French
+ *  errors. Small is about 250 MB, downloaded once; a phone that can't hold
+ *  it steps down to the next (transcribe.ts frenchStep) and remembers. */
+export const FRENCH_MODELS = ['Xenova/whisper-small', 'Xenova/whisper-base', MULTILINGUAL_MODEL] as const
 
 /** How much of his speech the language is told from: the most the model
  *  takes in one go. */

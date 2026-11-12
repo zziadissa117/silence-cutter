@@ -42,6 +42,9 @@ export interface TranscribeRequest {
   language?: SpeechLanguage
   /** Only tell the language of `samples` (some of his speech), nothing heard. */
   detect?: boolean
+  /** The model to hear with, in place of the language's own (French: the
+   *  biggest this phone can hold - transcribe.ts). */
+  model?: string
 }
 
 export type TranscribeMessage =
@@ -135,7 +138,7 @@ async function tellLanguage(asr: unknown, audio: Float32Array): Promise<{ langua
 const post = (message: TranscribeMessage) => self.postMessage(message)
 
 self.onmessage = async (event: MessageEvent<TranscribeRequest>) => {
-  const { samples, sampleRate, windows, prompt = '', fallbackPrompt = '', padQuiet = false, audioStart = 0, language = 'en', detect = false } = event.data
+  const { samples, sampleRate, windows, prompt = '', fallbackPrompt = '', padQuiet = false, audioStart = 0, language = 'en', detect = false, model } = event.data
   try {
     // Said to be alive while the runtime and model load: fetching the
     // runtime's own files reports no progress, and on a slow connection
@@ -147,7 +150,7 @@ self.onmessage = async (event: MessageEvent<TranscribeRequest>) => {
       if (Date.now() - loadStarted < 10 * 60_000) post({ type: 'alive' })
       else clearInterval(alive)
     }, 15_000)
-    const transcriber = await pipeline('automatic-speech-recognition', detect || language !== 'en' ? MULTILINGUAL_MODEL : MODEL_ID, {
+    const transcriber = await pipeline('automatic-speech-recognition', detect ? MULTILINGUAL_MODEL : (model ?? (language !== 'en' ? MULTILINGUAL_MODEL : MODEL_ID)), {
       progress_callback: (data: { status: string; progress?: number }) => {
         if (data.status === 'progress' && typeof data.progress === 'number') {
           post({ type: 'download', fraction: data.progress / 100 })
