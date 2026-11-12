@@ -155,6 +155,50 @@ describe('Motion graphics', () => {
   })
 })
 
+describe('Motion graphics: Play shows the plan moving before anything is made', () => {
+  it('plays his video over each cut, with the graphics drawn, and stops back on a still', async () => {
+    const cutPlan = { ...plan, keep: [{ start: 0, end: 4 }, { start: 6, end: 15 }] }
+    kept = { id: 'm1', file: new Blob(['x']), fileName: 'take.mov', ask: '', plan: cutPlan, storyboard: board, chat: [], costCents: 0 }
+    const play = vi.fn(async () => {})
+    const pause = vi.fn()
+    HTMLMediaElement.prototype.play = play as never
+    HTMLMediaElement.prototype.pause = pause
+    let frames: FrameRequestCallback[] = []
+    vi.stubGlobal('requestAnimationFrame', (f: FrameRequestCallback) => frames.push(f))
+    vi.stubGlobal('cancelAnimationFrame', () => {})
+    try {
+      await act(async () => root.render(<MotionView onBack={() => {}} />))
+      await settle()
+      const video = host.querySelector('video.motion-source') as HTMLVideoElement
+      expect(video).not.toBeNull()
+      let now = 0
+      Object.defineProperty(video, 'currentTime', { get: () => now, set: (v: number) => (now = v), configurable: true })
+      const button = host.querySelector('.motion-play') as HTMLButtonElement
+      await act(async () => button.click())
+      await settle()
+      expect(play).toHaveBeenCalledTimes(1)
+      expect(host.querySelector('.motion-play.on')).not.toBeNull()
+      // A frame inside what was cut: the video jumps over it, as the made video will.
+      now = 4.5
+      const tick = frames.at(-1)!
+      frames = []
+      await act(async () => tick(0))
+      expect(now).toBe(6)
+      const slider = host.querySelector('.motion-stage input[type=range]') as HTMLInputElement
+      expect(Number(slider.value)).toBeCloseTo(4)
+      // Pause: back on a still, where it stopped.
+      now = 8
+      await act(async () => (host.querySelector('.motion-play') as HTMLButtonElement).click())
+      await settle()
+      expect(pause).toHaveBeenCalled()
+      expect(host.querySelector('.motion-play.on')).toBeNull()
+      expect(Number((host.querySelector('.motion-stage input[type=range]') as HTMLInputElement).value)).toBeCloseTo(6)
+    } finally {
+      vi.unstubAllGlobals()
+    }
+  })
+})
+
 describe('Motion graphics: captions he can fix, as on Videos', () => {
   it("opens the Cutter's caption screen, and what he types is what the video shows", async () => {
     kept = { id: 'm1', file: new Blob(['x']), fileName: 'take.mov', ask: '', plan, storyboard: board, chat: [], costCents: 0 }

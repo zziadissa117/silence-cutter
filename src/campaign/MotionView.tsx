@@ -34,6 +34,7 @@ import { loadMusicBank, songFile, useMusicBank } from './musicBank'
 import { CaptionReview, type EmbeddedVideo } from './CaptionReview'
 import { clearSession, freshFile, loadSession, saveSession, type MotionSession } from './motion/session'
 import { cutLength, cutTiming, rawTimeAt } from './motion/track'
+import { cutTime } from './captions'
 import { motionPlan, postingHere, recheckCaptions } from './posting'
 import type { RecheckContext } from '../../supabase/functions/postiz/recheck.ts'
 import { hasShareSheet, shareVideo, useSharable } from './shareFile'
@@ -545,6 +546,66 @@ function PlanScreen({
   const reader = useRef<FrameReader | null>(null)
   const big = useRef<HTMLCanvasElement>(null)
   const [stills, setStills] = useState<Record<number, string>>({})
+  // Play: his video as it will be made - the cut, the graphics moving, the
+  // captions, his voice - live, before anything is made (2026-11-12: only
+  // stills before, "a lot of things are missing").
+  const [playing, setPlaying] = useState(false)
+  const player = useRef<HTMLVideoElement>(null)
+  const slider = useRef<HTMLInputElement>(null)
+  const clockLabel = useRef<HTMLSpanElement>(null)
+  const [videoUrl, setVideoUrl] = useState<string | null>(null)
+  useEffect(() => {
+    const made = URL.createObjectURL(session.file)
+    setVideoUrl(made)
+    return () => URL.revokeObjectURL(made)
+  }, [session.file])
+  useEffect(() => {
+    if (!playing) return
+    const video = player.current
+    const canvas = big.current
+    if (!video || !canvas) return
+    const keep = plan.keep
+    let frame = 0
+    let over = false
+    const stop = () => {
+      over = true
+      setPlaying(false)
+    }
+    const tick = () => {
+      if (over) return
+      let raw = video.currentTime
+      // Only what is kept: over each cut, as the video will be.
+      if (!keep.some((r) => raw >= r.start && raw < r.end - 0.03)) {
+        const next = keep.find((r) => r.start > raw + 0.01)
+        if (!next) return stop()
+        video.currentTime = next.start
+        raw = next.start
+      }
+      const t = cutTime(raw, keep)
+      drawLive(video, canvas, board, timing, shown, keep, t, choice)
+      if (slider.current) slider.current.value = String(t)
+      if (clockLabel.current) clockLabel.current.textContent = `${clock(t)} / ${clock(length)}`
+      frame = requestAnimationFrame(tick)
+    }
+    video.onended = stop
+    frame = requestAnimationFrame(tick)
+    return () => {
+      over = true
+      cancelAnimationFrame(frame)
+      video.onended = null
+      video.pause()
+      setAt(Math.min(length, cutTime(video.currentTime, keep)))
+    }
+  }, [playing]) // eslint-disable-line react-hooks/exhaustive-deps
+  // Started in the tap itself: iPhone Safari plays a video with sound only
+  // from his touch.
+  const togglePlay = () => {
+    const video = player.current
+    if (playing || !video) return setPlaying(false)
+    video.currentTime = rawTimeAt(at >= length - 0.2 ? 0 : at, plan.keep)
+    setPlaying(true)
+    void video.play().catch(() => setPlaying(false))
+  }
 
   useEffect(() => {
     reader.current = new FrameReader(session.file, STILL.width, STILL.height)
@@ -554,18 +615,18 @@ function PlanScreen({
     }
   }, [session.file])
 
-  // The big still, redrawn as he slides.
+  // The big still, redrawn as he slides - not while it plays.
   useEffect(() => {
     let alive = true
     const canvas = big.current
-    if (!canvas || !reader.current) return
+    if (playing || !canvas || !reader.current) return
     void drawStill(reader.current, canvas, board, timing, shown, plan.keep, at, choice).then(() => {
       if (!alive) return
     })
     return () => {
       alive = false
     }
-  }, [at, board, timing, shown, plan.keep, choice])
+  }, [at, board, timing, shown, plan.keep, choice, playing])
 
   // A small still of each scene, in its middle once its parts are up.
   useEffect(() => {
@@ -593,10 +654,39 @@ function PlanScreen({
     <div className="motion-plan">
       <p className="lede">Claude's plan. Slide to see any moment, or tap a scene. Change anything by telling Claude below - nothing is made until you tap Make.</p>
       <div className="motion-stage">
-        <canvas ref={big} width={STILL.width} height={STILL.height} className="motion-still" />
-        <input type="range" min={0} max={Math.max(0.1, length)} step={0.05} value={at} onChange={(e) => setAt(Number(e.target.value))} aria-label="Where in the video" />
+        <div className="motion-screen">
+          <canvas ref={big} width={STILL.width} height={STILL.height} className="motion-still" onClick={togglePlay} />
+          <button type="button" className={`motion-play${playing ? ' on' : ''}`} aria-label={playing ? 'Pause' : 'Play it as it will be made'} onClick={togglePlay}>
+            {playing ? (
+              <svg viewBox="0 0 24 24" aria-hidden>
+                <path d="M8 5v14M16 5v14" />
+              </svg>
+            ) : (
+              <svg viewBox="0 0 24 24" aria-hidden>
+                <path d="M8 5.5v13l10.5-6.5z" />
+              </svg>
+            )}
+          </button>
+          {videoUrl ? <video ref={player} className="motion-source" src={videoUrl} playsInline preload="auto" aria-hidden /> : null}
+        </div>
+        <input
+          ref={slider}
+          type="range"
+          min={0}
+          max={Math.max(0.1, length)}
+          step={0.05}
+          value={at}
+          onChange={(e) => {
+            setPlaying(false)
+            setAt(Number(e.target.value))
+          }}
+          aria-label="Where in the video"
+        />
         <div className="hint">
-          {clock(at)} / {clock(length)}
+          <span ref={clockLabel}>
+            {clock(at)} / {clock(length)}
+          </span>
+          {playing ? null : ' · tap the video to play it with the graphics'}
         </div>
       </div>
       <ul className="rows group motion-scenes">
@@ -694,6 +784,36 @@ function lastPartAt(scene: Storyboard['scenes'][number], timing: Timing): number
     if (part.kind === 'math') ats.push(...part.lines.map((l) => l.at), part.result.at)
   }
   return timing.start(Math.max(scene.from, ...ats))
+}
+
+/** One frame of the live preview: the playing video, moved down under the
+ *  board, the graphics, the caption - drawn by the render's own code. */
+function drawLive(
+  video: HTMLVideoElement,
+  canvas: HTMLCanvasElement,
+  board: Storyboard,
+  timing: Timing,
+  shown: ReturnType<typeof storyWords>,
+  keep: { start: number; end: number }[],
+  t: number,
+  choice?: CaptionChoice,
+): void {
+  const ctx = canvas.getContext('2d')
+  if (!ctx) return
+  const { width, height } = canvas
+  ctx.fillStyle = '#000'
+  ctx.fillRect(0, 0, width, height)
+  const drop = faceDropAt(board, timing, t, height)
+  fillBehindFace(ctx, width, drop)
+  if (video.videoWidth > 0) {
+    // Filling the frame like the render: cropped to 9:16, never stretched.
+    const scale = Math.max(width / video.videoWidth, height / video.videoHeight)
+    const w = video.videoWidth * scale
+    const h = video.videoHeight * scale
+    ctx.drawImage(video, (width - w) / 2, (height - h) / 2 + drop, w, h)
+  }
+  drawMotion(ctx, width, height, board, timing, t)
+  drawCaptionAt(ctx, width, height, shown, keep, t, choice, { storyboard: board, timing })
 }
 
 /** One frame as it will be made: his face (moved down under the board), the

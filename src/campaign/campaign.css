@@ -1140,7 +1140,14 @@ input[type='color']::-webkit-color-swatch { border: 0.5px solid var(--edge); bor
 .motion-bar > div { height: 100%; background: var(--accent, #5b50e8); transition: width 0.2s; }
 .motion-plan, .motion-done { display: flex; flex-direction: column; gap: 14px; }
 .motion-stage { display: flex; flex-direction: column; align-items: center; gap: 8px; }
-.motion-still { width: min(100%, 300px); aspect-ratio: 9 / 16; height: auto; border-radius: 14px; background: #000; }
+.motion-screen { position: relative; width: min(100%, 300px); }
+.motion-still { display: block; width: 100%; aspect-ratio: 9 / 16; height: auto; border-radius: 14px; background: #000; cursor: pointer; }
+/* Kept in the page (iPhone Safari stops giving frames of a hidden video), seen only through the canvas. */
+.motion-source { position: absolute; left: 0; top: 0; width: 2px; height: 2px; opacity: 0; pointer-events: none; }
+.motion-play { position: absolute; left: 50%; top: 50%; width: 64px; height: 64px; margin: -32px 0 0 -32px; border: 0; border-radius: 50%; display: grid; place-items: center; background: rgba(0, 0, 0, .45); backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px); color: #fff; transition: opacity .2s; }
+.motion-play svg { width: 28px; height: 28px; fill: #fff; stroke: #fff; stroke-width: 3; stroke-linecap: round; stroke-linejoin: round; }
+.motion-play.on { left: auto; top: auto; right: 10px; bottom: 10px; width: 40px; height: 40px; margin: 0; opacity: .7; }
+.motion-play.on svg { width: 18px; height: 18px; fill: none; }
 .motion-stage input[type=range] { width: min(100%, 360px); }
 .motion-scene { gap: 12px; }
 .motion-thumb { flex: none; width: 54px; aspect-ratio: 9 / 16; border-radius: 6px; background: var(--edge); object-fit: cover; }

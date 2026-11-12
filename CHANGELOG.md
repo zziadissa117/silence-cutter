@@ -3,7 +3,23 @@
 Newest first. Every change says what it does, how to use it, and how it works
 underneath. Kept up to date with each commit.
 
-## French heard with a much better model
+## Motion graphics: Play before making, and cleaner graphics
+- His ask (2026-11-12): "put more effort overall with motion graphics, it's obviously v1 right now and it's lazy
+  and sloppy, a lot of things are missing". Every look was drawn frame by frame here and what was wrong fixed.
+- Play: on the plan screen, tap the video (or the play button) and it plays as it will be made - his voice, the
+  cuts skipped, the graphics moving, the captions - before anything is made. Tap again to stop; the slider stays
+  where it stopped. Before, he could only slide through still pictures.
+- Glass look: one graphic at a time. The title, each card, the steps screen and the call to action now take turns
+  (`glass.glassSlots`): a card no longer comes up while the steps screen is leaving, nor the call to action over
+  the last card. Small words (labels, tags, notes, the stat's line) are bigger - some were about 8 pt on a phone;
+  the stat's bars no longer cover its line; the steps rows are bigger.
+- Board look: comes up with its first graphic (no empty board for a second), the graphics sit centred and slide up
+  as each new one arrives, and the board keeps showing the last scene while it stays up for the next. The hook
+  card and the call to action are big; the call to action is a card with its drawing and a pulse. While the board
+  is up, the caption sits on the line above his face instead of over it.
+- The made video uses the plan's own timing for these turns, so it matches what Play and the stills show.
+- Tests: `motion.test.ts`, `motionView.test.tsx`.
+
 Needs deploying: run ./deploy-server.sh (the caption check's French rules), then ./deploy.sh.
 - His report (2026-11-12): "the french is detecting really bad". The reports show the language was told right (his
   French test: fr 0.994; another phone's English video: en 0.858, and it was English) - it was the French words that
