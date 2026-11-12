@@ -34,6 +34,8 @@ Needs deploying: run ./deploy-server.sh (Claude's motion prompt, the new compare
 - Glass look: a new card for a contrast - "most people: 1 video a week" crossed out, then "me: 25 a day" sliding
   in ticked on the word he says it, "vs" between. Claude uses it when he contrasts them and him, before and after.
   It has its sounds, its punch-in and its boxes on the plan screen like the others.
+- "Another plan" next to the look: Claude makes a different take of the plan (other moments, other graphics, same
+  look) in one tap - no need to type what's wrong when you just want something else.
 - Tests: `motion.test.ts`, `motionView.test.tsx`.
 
 Needs deploying: run ./deploy-server.sh (the caption check's French rules), then ./deploy.sh.

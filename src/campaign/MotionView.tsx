@@ -70,6 +70,9 @@ function withinMinutes<T>(work: Promise<T>, minutes: number): Promise<T> {
   ])
 }
 
+/** What "Another plan" asks Claude: a different take, same look. */
+export const ANOTHER_PLAN = 'Make me a different plan for this video: other moments, other kinds of graphics, other words on them. Same look.'
+
 const clock = (t: number) => `${Math.floor(t / 60)}:${String(Math.floor(t % 60)).padStart(2, '0')}`
 
 const message = (error: unknown) => (error instanceof Error ? error.message : String(error))
@@ -514,8 +517,8 @@ function PlanScreen({
   const [draft, setDraft] = useState('')
   const [sending, setSending] = useState(false)
   const [chatProblem, setChatProblem] = useState<string | null>(null)
-  const send = async (): Promise<MotionSession | null> => {
-    const said = draft.trim()
+  const send = async (asked?: string): Promise<MotionSession | null> => {
+    const said = (asked ?? draft).trim()
     if (!said || sending || !session.plan || !session.storyboard) return null
     setSending(true)
     setChatProblem(null)
@@ -533,7 +536,7 @@ function PlanScreen({
         costCents: session.costCents + answer.costCents,
       }
       onChange(next)
-      setDraft('')
+      if (asked === undefined) setDraft('')
       return next
     } catch (error) {
       setChatProblem(message(error))
@@ -815,6 +818,10 @@ function PlanScreen({
         </span>
         <button type="button" className="linkbtn" disabled={making} onClick={() => window.confirm(`Plan it again as ${FORMAT_INFO[look === 'board' ? 'glass' : 'board'].name}? This plan is replaced.`) && onFormat(look === 'board' ? 'glass' : 'board')}>
           Switch to {look === 'board' ? 'Format 2 · Glass' : 'Format 1 · Board'}
+        </button>
+        {/* A different take in one tap, nothing to type (2026-11-12). */}
+        <button type="button" className="linkbtn" disabled={making || sending} onClick={() => void send(ANOTHER_PLAN)}>
+          {sending ? 'Planning…' : 'Another plan'}
         </button>
       </div>
       <button type="button" className="btn wide" disabled={making} onClick={onCaptions}>

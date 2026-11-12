@@ -52,7 +52,7 @@ vi.mock('./motion/make', async (original) => ({
   makeMotionVideo: (...a: unknown[]) => makeMotion(...(a as [])),
 }))
 
-import { MotionView } from './MotionView'
+import { ANOTHER_PLAN, MotionView } from './MotionView'
 
 ;(globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true
 
@@ -127,6 +127,19 @@ describe('Motion graphics', () => {
     expect(host.textContent).toContain('Took the cards out.')
     expect(host.textContent).toContain('Just the title now.')
     expect(saved.at(-1)?.storyboard).toEqual(changed)
+  })
+
+  it('Another plan: a different take from Claude in one tap, nothing to type', async () => {
+    kept = { id: 'm1', file: new Blob(['x']), fileName: 'take.mov', ask: '', plan, storyboard: board, chat: [], costCents: 0 }
+    const changed = { ...board, scenes: [{ ...board.scenes[0], says: 'Something else.' }] }
+    motionPlan.mockResolvedValue({ storyboard: changed, reply: 'New plan.', costCents: 2 })
+    await act(async () => root.render(<MotionView onBack={() => {}} />))
+    await settle()
+    const another = [...host.querySelectorAll('button')].find((b) => b.textContent === 'Another plan')!
+    await act(async () => another.click())
+    await settle()
+    expect(motionPlan).toHaveBeenCalledWith(expect.objectContaining({ storyboard: board, chat: [{ from: 'him', text: ANOTHER_PLAN }] }))
+    expect(host.textContent).toContain('Something else.')
   })
 
   it('Make with a change typed and not sent: sends it first, then makes from the changed plan', async () => {
