@@ -103,7 +103,7 @@ const CLIP_TOP = 24
 const CLIP_H = THUMB.height
 const WORD_TOP = CLIP_TOP + CLIP_H + 6
 const ROWS_TOP = WORD_TOP + WORD_LINES * 16 + 8
-const ROW_H = 30
+const ROW_H = 34
 
 const clampPx = (px: number) => Math.min(MAX_PX, Math.max(MIN_PX, px))
 
@@ -352,9 +352,16 @@ export interface Bar {
 /** What a finger on a bar does: moves it, or drags one of its ends. */
 export type BarGrip = 'move' | 'start' | 'end'
 
+/** How near a bar's end a finger has to land to stretch it, in px. */
+const BAR_EDGE_PX = 16
+/** How wide a picture he puts on starts, in % of the video's width. */
+const NEW_PICTURE_PCT = 60
+
 /** The rows under the clips, as in TikTok: one bar for each thing put on the
- *  video, in the first row free at its time. The one he tapped has an arrow
- *  at each end; holding its middle moves it. */
+ *  video, in the first row free at its time. A finger on any bar moves it
+ *  straight away - no tap first (his ask, 2026-11-12: "I don't have to click
+ *  it to drag and drop the overlay") - and on its end, stretches it. The one
+ *  he tapped has an arrow at each end. */
 function Bars({
   bars,
   px,
@@ -376,26 +383,43 @@ function Bars({
     <>
       {bars.map((b) => {
         const on = b.id === selected
-        const movable = on && b.kind !== 'headline'
+        const movable = b.kind !== 'headline'
         return (
           <div
             key={b.id}
             role="button"
             aria-label={`${b.label} at ${formatPrecise(b.at)}`}
-            className={`tl-bar ${b.kind}${on ? ' on' : ''}`}
+            className={`tl-bar ${b.kind}${on ? ' on' : ''}${movable ? ' movable' : ''}`}
             style={{ left: b.at * px, width: Math.max(28, b.seconds * px), top: top + (row.get(b.id) ?? 0) * ROW_H }}
             onClick={(e) => {
               e.stopPropagation()
               onSelect(b.id)
             }}
-            onPointerDown={movable ? (e) => onGrip(b.id, 'move', e) : undefined}
+            onPointerDown={
+              movable
+                ? (e) => {
+                    // Its ends stretch it, its middle moves it.
+                    const box = e.currentTarget.getBoundingClientRect()
+                    const edge = Math.min(BAR_EDGE_PX, box.width / 4)
+                    onGrip(b.id, e.clientX - box.left < edge ? 'start' : box.right - e.clientX < edge ? 'end' : 'move', e)
+                  }
+                : undefined
+            }
           >
             {b.thumb ? <img alt="" src={b.thumb} draggable={false} /> : null}
             <span className="tl-bar-label">{b.label}</span>
-            {movable ? (
+            {movable && on ? (
               <>
-                <span className="tl-bar-end start" aria-label="Drag to change when it starts" onPointerDown={(e) => onGrip(b.id, 'start', e)} />
-                <span className="tl-bar-end end" aria-label="Drag to change how long it stays" onPointerDown={(e) => onGrip(b.id, 'end', e)} />
+                <span className="tl-bar-end start" aria-label="Drag to change when it starts" onPointerDown={(e) => onGrip(b.id, 'start', e)}>
+                  <svg viewBox="0 0 10 16" aria-hidden>
+                    <path d="M7 2 2 8l5 6" />
+                  </svg>
+                </span>
+                <span className="tl-bar-end end" aria-label="Drag to change how long it stays" onPointerDown={(e) => onGrip(b.id, 'end', e)}>
+                  <svg viewBox="0 0 10 16" aria-hidden>
+                    <path d="M3 2l5 6-5 6" />
+                  </svg>
+                </span>
               </>
             ) : null}
           </div>
@@ -1006,8 +1030,10 @@ export function CutsEditor({
       source,
       at: Math.round(tRef.current * 100) / 100,
       seconds: defaults?.seconds ?? 3,
-      position: defaults?.position ?? 'top-right',
-      widthPct: defaults?.widthPct ?? 40,
+      // Big enough to see and to grab (his ask, 2026-11-12: "it's pretty
+      // small and hard to click"), in the middle, where a finger finds it.
+      position: 'middle',
+      widthPct: Math.max(NEW_PICTURE_PCT, defaults?.widthPct ?? 0),
     }
     const placed = isVideo(picture)
       ? { ...picture, position: 'middle' as const, widthPct: 70, ...(length ? { length, seconds: Math.round(Math.min(length, longestFor({ ...picture, length })) * 10) / 10 } : {}) }
@@ -1086,12 +1112,11 @@ export function CutsEditor({
       return kept.length === list.length ? list : kept
     })
   }, [selectedPic])
-  const goToPicture = (o: ManualPicture) => {
-    stop()
+  /** A tap on a bar: it is picked, and the playhead stays where he left it
+   *  (his ask, 2026-11-12: jumping to its start lost his place). */
+  const pickPicture = (o: ManualPicture) => {
+    setSelected(null)
     setSelectedPic(o.id)
-    scrollTo(o.at)
-    followTime(o.at)
-    seek(o.at)
   }
   const goToHeadline = () => {
     stop()
@@ -1518,6 +1543,8 @@ export function CutsEditor({
     down.preventDefault()
     down.stopPropagation()
     takeOver()
+    setSelected(null)
+    setSelectedPic(id)
     const el = down.currentTarget
     el.setPointerCapture?.(down.pointerId)
     const k = keepRef.current
@@ -1889,9 +1916,8 @@ export function CutsEditor({
                 selected={selectedPic}
                 onSelect={(id) => {
                   if (performance.now() - gripped.current < 400) return
-                  setSelected(null)
                   const o = overlays.find((x) => x.id === id)
-                  if (o) goToPicture(o)
+                  if (o) pickPicture(o)
                 }}
                 onGrip={onGrip}
               />
@@ -1915,10 +1941,11 @@ export function CutsEditor({
                 selected={selectedPic}
                 onSelect={(id) => {
                   if (performance.now() - gripped.current < 400) return
-                  setSelected(null)
                   const o = overlays.find((x) => x.id === id)
-                  if (id === HEADLINE) goToHeadline()
-                  else if (o) goToPicture(o)
+                  if (id === HEADLINE) {
+                    setSelected(null)
+                    setSelectedPic(HEADLINE)
+                  } else if (o) pickPicture(o)
                 }}
                 onGrip={onGrip}
               />
@@ -2079,32 +2106,6 @@ export function CutsEditor({
               <HeadlineLook value={selectedPicture.source.style} onPick={(style) => setWords(selectedPicture.id, { style })} />
             </>
           ) : null}
-          <div className="pic-edit-row">
-            <span className="label">{isSound(selectedPicture) ? 'Plays for' : 'On screen for'}</span>
-            <div className="stepper">
-              <button
-                type="button"
-                className="btn small icon-btn"
-                aria-label="Shorter"
-                disabled={selectedPicture.seconds <= PICTURE_SECONDS.min}
-                onClick={() => updatePicture(selectedPicture.id, { seconds: Math.max(PICTURE_SECONDS.min, selectedPicture.seconds - PICTURE_SECONDS.step) })}
-              >
-                −
-              </button>
-              <span className="stepper-value pic-seconds" aria-label="Seconds on screen">
-                {selectedPicture.seconds.toFixed(1)} s
-              </span>
-              <button
-                type="button"
-                className="btn small icon-btn"
-                aria-label="Longer"
-                disabled={selectedPicture.seconds >= longestFor(selectedPicture)}
-                onClick={() => updatePicture(selectedPicture.id, { seconds: Math.min(longestFor(selectedPicture), selectedPicture.seconds + PICTURE_SECONDS.step) })}
-              >
-                +
-              </button>
-            </div>
-          </div>
           {isSound(selectedPicture) ? (
             <>
               <label className="slider">
@@ -2127,43 +2128,13 @@ export function CutsEditor({
               <p className="hint">Plays over your voice from where its bar starts. Drag the bar to move it, its ends to make it shorter or longer.</p>
             </>
           ) : (
-            <>
-            <label className="slider">
-              <span>Size</span>
-              <input
-                type="range"
-                min={isText(selectedPicture) ? TEXT_WIDTH.min : PICTURE_WIDTH.min}
-                max={isText(selectedPicture) ? TEXT_WIDTH.max : PICTURE_WIDTH.max}
-                step={1}
-                value={selectedPicture.widthPct}
-                aria-label={`How big the ${kindOf(selectedPicture).toLowerCase()} is`}
-                onChange={(e) => updatePicture(selectedPicture.id, { widthPct: Number(e.target.value) })}
-              />
-              <output>{isText(selectedPicture) ? Math.round((selectedPicture.widthPct / TEXT_BASE_PCT) * 100) : selectedPicture.widthPct}%</output>
-            </label>
             <p className="hint">
-              {isText(selectedPicture) ? 'Drag them' : 'Drag it'} on the video to move {isText(selectedPicture) ? 'them' : 'it'}, pinch to make{' '}
-              {isText(selectedPicture) ? 'them' : 'it'} bigger or smaller.{isVideo(selectedPicture) ? ' Plays without its sound.' : ''}
+              Drag its bar to move it, its arrows to make it longer or shorter. {isText(selectedPicture) ? 'Drag them' : 'Drag it'} on the
+              video to move {isText(selectedPicture) ? 'them' : 'it'}, pinch to make {isText(selectedPicture) ? 'them' : 'it'} bigger or smaller.
+              {isVideo(selectedPicture) ? ' Plays without its sound.' : ''}
             </p>
-            </>
           )}
           <div className="actions-row">
-            <button
-              type="button"
-              className="btn small"
-              disabled={Math.abs(selectedPicture.at - t) < 0.05}
-              onClick={() => {
-                if (partAt(keepRef.current, tRef.current) < 0) return setPicNote(onCutPart)
-                updatePicture(selectedPicture.id, { at: Math.round(tRef.current * 100) / 100 })
-              }}
-            >
-              Start it here
-            </button>
-            {selectedPicture.center && !isText(selectedPicture) ? (
-              <button type="button" className="btn small" onClick={() => updatePicture(selectedPicture.id, { center: undefined })}>
-                Put back
-              </button>
-            ) : null}
             <button type="button" className="btn small danger" onClick={() => removePicture(selectedPicture.id)}>
               Delete {kindOf(selectedPicture).toLowerCase()}
             </button>

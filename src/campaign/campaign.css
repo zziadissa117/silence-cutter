@@ -1829,3 +1829,12 @@ img.mark { border-radius: 14px; }
   border-top: 1px solid rgb(255 255 255 / 0.07);
 }
 .cuts.tiktok .btn.primary { background: var(--accent-grad); box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.25), 0 10px 28px rgb(139 124 246 / 0.4); }
+/* Bars he moves straight away (2026-11-12): a finger on one holds it, not the
+   timeline; its ends stretch it, with arrows like a clip's when picked. */
+.cuts.tiktok .tl-bar { height: 28px; }
+.cuts.tiktok .tl-add-sound { height: 28px; }
+.tl-bar.movable { touch-action: none; cursor: grab; }
+.cuts.tiktok .tl-bar-end { top: -2px; bottom: -2px; width: 16px; display: grid; place-items: center; background: #fff; }
+.cuts.tiktok .tl-bar-end.start { left: -16px; border-radius: 8px 0 0 8px; }
+.cuts.tiktok .tl-bar-end.end { right: -16px; border-radius: 0 8px 8px 0; }
+.cuts.tiktok .tl-bar-end svg { width: 8px; height: 14px; fill: none; stroke: #000; stroke-width: 2.4; stroke-linecap: round; stroke-linejoin: round; pointer-events: none; }

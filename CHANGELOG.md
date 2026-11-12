@@ -3,6 +3,22 @@
 Newest first. Every change says what it does, how to use it, and how it works
 underneath. Kept up to date with each commit.
 
+## Edit screen: overlays dragged straight away, the playhead stays put
+App only: run ./deploy.sh.
+- His asks (2026-11-12): adjust an overlay by its length, not only its time; no "on screen for", no size, no
+  "Start it here" or "Put back" - just slide it or pull its arrows; bigger when put on; and tapping it must not
+  move the playhead ("I lose track of where I was"), nor should he have to tap it before dragging.
+- A finger on any bar in the timeline (picture, video, words, sound) moves it at once - no tap first. Near either
+  end it stretches it instead: longer or shorter, or starting earlier or later. The picked one shows white arrows
+  at both ends, like a clip's.
+- A tap on a bar only picks it: the playhead stays where he left it (it used to jump to the bar's start).
+- The panel under the timeline keeps only what has no other way: the words and their look for text, the volume
+  for a sound, Delete. The seconds stepper, the size slider, "Start it here" and "Put back" are gone - size is a
+  pinch on the video, place a drag.
+- A picture put on comes in at 60% of the width, in the middle, easy to see and grab (was 40% in a corner).
+- Bars a little taller (28 px) for a thumb.
+- Tests: `cutsPictures.test.tsx` (tap keeps the playhead, drag the end, drag the middle, no tap first).
+
 ## Reactions are music only; Posts by what goes out next; Settings, Batch and the edit screen redone
 App only: run ./deploy.sh. (The Cutter server rebuilds by itself from this push and makes reactions music-only too.)
 - Reactions (his ask: "I just film ... automatically it knows I'm doing a reaction. The music should take up 100% of

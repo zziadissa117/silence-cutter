@@ -173,7 +173,6 @@ describe('an overlay', () => {
     expect(host.querySelector('.pic-edit')?.textContent).toContain('Video at')
     expect(host.querySelector('.pic-edit')?.textContent).toContain('Plays without its sound.')
     expect(host.querySelector('video.cuts-video-preview')).not.toBeNull()
-    expect(button('Longer').disabled).toBe(true)
     await act(async () => (host.querySelector('.pic-edit .linkbtn') as HTMLButtonElement).click())
     const [video] = done(onDone)
     expect(video.source).toEqual({ kind: 'video', videoId: 'v1' })

@@ -1,6 +1,6 @@
-// A picture put on a video by hand, edited in the cuts editor: picked from
-// the row under the controls, made longer or shorter, bigger or smaller,
-// dragged to a spot, deleted.
+// A picture put on a video by hand, edited in the cuts editor: picked with a
+// tap that keeps the playhead where it was, its bar dragged straight away -
+// moved, or stretched by its end - dragged to a spot on the video, deleted.
 
 import { act } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
@@ -58,32 +58,50 @@ const done = (onDone: ReturnType<typeof vi.fn>) => {
 }
 
 describe('a picture on a video, in the cuts editor', () => {
-  it('opens under the video when picked, and can be made longer and shorter', async () => {
-    const onDone = await open()
+  it('is picked with a tap, and the playhead stays where he left it', async () => {
+    await open()
     expect(host.querySelector('.pic-edit')).toBeNull()
+    const before = host.querySelector('.cuts-timer')!.textContent
     await act(async () => (host.querySelector('.tl-bar.picture') as HTMLElement).click())
-    expect(host.querySelector('.pic-edit')?.textContent).toContain('3.0 s')
-    await act(async () => button('Longer').click())
-    await act(async () => button('Longer').click())
-    await act(async () => button('Shorter').click())
-    expect(host.querySelector('.pic-seconds')?.textContent).toBe('3.5 s')
-    // "Done" on the picture closes it; the page's Done keeps the changes.
-    await act(async () => (host.querySelector('.pic-edit .linkbtn') as HTMLButtonElement).click())
-    expect(done(onDone)[0].seconds).toBe(3.5)
+    expect(host.querySelector('.pic-edit')).not.toBeNull()
+    // Not sent to the picture's start (2 s): his place is kept.
+    expect(host.querySelector('.cuts-timer')!.textContent).toBe(before)
+    // Nothing to set by hand: no seconds, no size, no "Start it here".
+    expect(host.querySelector('.pic-edit')!.textContent).not.toMatch(/On screen for|Size|Start it here|Put back/)
+    expect(button('Longer')).toBeUndefined()
   })
 
-  it('is made bigger or smaller with the slider', async () => {
+  /** A finger on the bar, moved `dx` px, then let go - no tap first. */
+  const drag = async (at: 'middle' | 'end' | 'start', dx: number) => {
+    const bar = host.querySelector('.tl-bar.picture') as HTMLElement
+    bar.getBoundingClientRect = () => ({ left: 100, top: 0, width: 100, height: 28, right: 200, bottom: 28, x: 100, y: 0, toJSON: () => ({}) })
+    const x = at === 'middle' ? 150 : at === 'end' ? 195 : 105
+    const pointer = (type: string, clientX: number) => {
+      const e = new MouseEvent(type, { bubbles: true, clientX, clientY: 10 }) as MouseEvent & { pointerId: number }
+      Object.defineProperty(e, 'pointerId', { value: 1 })
+      bar.dispatchEvent(e)
+    }
+    await act(async () => pointer('pointerdown', x))
+    await act(async () => pointer('pointermove', x + dx))
+    await act(async () => pointer('pointerup', x + dx))
+  }
+
+  it('is made longer by dragging its end, straight away', async () => {
     const onDone = await open()
-    await act(async () => (host.querySelector('.tl-bar.picture') as HTMLElement).click())
-    const slider = host.querySelector('[aria-label="How big the picture is"]') as HTMLInputElement
-    const set = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!
-    await act(async () => {
-      set.call(slider, '72')
-      slider.dispatchEvent(new Event('input', { bubbles: true }))
-    })
-    expect(host.querySelector('.pic-edit output')?.textContent).toBe('72%')
-    await act(async () => (host.querySelector('.pic-edit .linkbtn') as HTMLButtonElement).click())
-    expect(done(onDone)[0].widthPct).toBe(72)
+    await drag('end', 60)
+    // Held, it is picked too.
+    expect(host.querySelector('.pic-edit')).not.toBeNull()
+    const made = done(onDone)[0]
+    expect(made.seconds).toBeGreaterThan(3)
+    expect(made.at).toBe(2)
+  })
+
+  it('is moved along the video by dragging its middle, straight away', async () => {
+    const onDone = await open()
+    await drag('middle', 60)
+    const made = done(onDone)[0]
+    expect(made.at).toBeGreaterThan(2)
+    expect(made.seconds).toBe(3)
   })
 
   it('is dragged to a spot of its own', async () => {
