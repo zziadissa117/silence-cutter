@@ -186,6 +186,12 @@ describe('Format 1: pop cards over his face, drawings that move, confetti', () =
     expect(captionPositionAt(withPop, time, 6, 'bottom')).toBe('bottom')
   })
 
+  it('with the board up, the caption goes to the seam - never over his lowered face', () => {
+    expect(captionPositionAt(withPop, time, 8.5, 'usual')).toBe('middle')
+    expect(captionPositionAt(withPop, time, 8.5, 'top')).toBe('middle')
+    expect(captionPositionAt(withPop, time, 8.5, 'bottom')).toBe('bottom')
+  })
+
   it('the pop card swishes in; only the board whooshes', () => {
     const sounds = motionSounds(withPop, (i) => words[i]?.start ?? Infinity)
     expect(sounds.find((s) => Math.abs(s.at - 1) < 0.01)?.sound).toBe('swish')

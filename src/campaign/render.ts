@@ -79,7 +79,7 @@ import { behindAt, type Kinetic } from './motion/glass'
 import { LiveCutout } from './motion/liveCutout'
 import { makeSound, type MotionSound } from './motion/sfx'
 import { captionPositionAt, drawMotion, faceDropAt, fillBehindFace } from './motion/draw'
-import { MotionTrack } from './motion/track'
+import { MotionTrack, cutTiming } from './motion/track'
 
 /** A pop-up clip's frames from its own start, timed from 0. */
 async function* fromStart(sink: CanvasSink, first: number, seconds: number): AsyncGenerator<WrappedCanvas> {
@@ -581,6 +581,9 @@ export async function renderCampaignCut(
     const motionTrack =
       graphics && (graphics.board.scenes.length + (graphics.board.hook ? 1 : 0) + (graphics.board.end ? 1 : 0) > 0 || graphics.kinetic) ? new MotionTrack(graphics.words, keep) : null
     if (graphics && formatOf(graphics.board) === 'glass' && graphics.board.scenes.some((s) => s.parts.some((p) => 'place' in p && p.place === 'behind'))) cutout = new LiveCutout()
+    // The whole plan's timing, every word known, for when each graphic comes
+    // and goes (the track's fills in as the render walks the parts).
+    const motionPlanTiming = graphics ? cutTiming(graphics.words, keep) : null
     // The glass look's captions: his shown words placed like the captions.
     const kineticTrack = graphics?.kinetic ? new MotionTrack(graphics.kinetic.words, keep) : null
     const kinetic: Kinetic | undefined =
@@ -899,7 +902,7 @@ export async function renderCampaignCut(
                 // texts, the headline, logo and captions still read on top.
                 if (motionTrack && graphics) {
                   const mask = cutout && behindAt(graphics.board, motionTrack.timing, timestamp) ? await cutout.maskOf(canvas) : null
-                  drawMotion(ctx, width, height, graphics.board, motionTrack.timing, timestamp, kinetic, mask)
+                  drawMotion(ctx, width, height, graphics.board, motionTrack.timing, timestamp, kinetic, mask, motionPlanTiming ?? undefined)
                 }
                 for (const t of texts) if (inWindow(timestamp, t.placer.times, t.seconds)) drawHeadline(ctx, t.layout)
                 if (headline && timestamp - talkStart < look.headline.seconds) drawHeadline(ctx, headline)

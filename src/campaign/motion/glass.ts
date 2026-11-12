@@ -81,6 +81,9 @@ export function squareOf(width: number, height: number): { x: number; y: number;
 /** Graphics are drawn this much smaller than they used to be, to sit well
  *  inside the square ("the visuals are a little bit too large"). */
 const CARD_SCALE = 0.85
+/** The small words on a card (labels, tags, notes), in u: never smaller, so
+ *  they read on a phone (2026-11-12: some were 2.1u, about 8 pt). */
+const LABEL_PX = 3.4
 
 /** Most words in one caption phrase, and a pause that ends one. */
 const PHRASE_WORDS = 5
@@ -270,32 +273,78 @@ function glassPanel(ctx: Ctx, frame: Frame, width: number, height: number, x: nu
 }
 
 // ---------------------------------------------------------------------------
+// One at a time: when each graphic comes in and when it is gone
+
+/** When a graphic starts coming in and when it is fully gone, on the
+ *  finished video. */
+export interface Slot {
+  start: number
+  gone: number
+}
+
+/** A graphic is up at least this long, even when the next one comes soon. */
+const MIN_UP = 1.4
+/** A beat of just him between two graphics. */
+const BREATH = 0.12
+
+/** Every graphic of the look in turn - the title, each card or steps screen,
+ *  the call to action - never two at once (2026-11-12: a card came up while
+ *  the steps screen was still leaving, the call to action over the last
+ *  card). One that would start before the last is gone cuts the last short,
+ *  down to MIN_UP; if that is not enough, it waits. `time`: the plan's own
+ *  timing, every word known (the render's fills in as it goes). */
+export function glassSlots(board: Storyboard, time: Timing): Map<object, Slot> {
+  const items: { key: object; start: number; gone: number }[] = []
+  if (board.title) items.push({ key: board.title, start: 0, gone: time.end(board.title.to) + HOLD + OUT_SEC })
+  const parts = board.scenes.flatMap((scene) => scene.parts).sort((a, b) => a.at - b.at)
+  for (const part of parts) {
+    if (!('to' in part)) continue
+    const stage = part.kind === 'steps'
+    items.push({ key: part, start: time.start(part.at) - LEAD, gone: time.end(part.to) + HOLD + (stage ? STAGE_SEC * 0.4 : 0) })
+  }
+  if (board.end) items.push({ key: board.end, start: time.start(board.end.at) - LEAD, gone: Infinity })
+  const slots = new Map<object, Slot>()
+  let last: { key: object; start: number; gone: number } | null = null
+  for (const item of items) {
+    if (!Number.isFinite(item.start)) continue
+    if (last && item.start < last.gone + BREATH) {
+      last.gone = Math.max(last.start + MIN_UP, item.start - BREATH)
+      if (item.start < last.gone + BREATH) item.start = last.gone + BREATH
+      if (item.gone < item.start + MIN_UP) item.gone = item.start + MIN_UP
+      slots.set(last.key, { start: last.start, gone: last.gone })
+    }
+    slots.set(item.key, { start: item.start, gone: item.gone })
+    last = item
+  }
+  return slots
+}
+
+// ---------------------------------------------------------------------------
 // The cards
 
 type CardPart = Extract<Part, { kind: 'tag' | 'blocks' | 'stat' | 'picture' }>
 
-/** How far a card is in (0 to 1) at `t`, and how far out at its end. */
-function cardLife(part: { at: number; to: number }, time: Timing, t: number): { p: number; out: number; at: number } | null {
-  const at = time.start(part.at)
-  const until = time.end(part.to) + HOLD
-  if (!(t >= at - LEAD) || t > until) return null
-  return { p: clamp01((t - at + LEAD) / IN_SEC), out: clamp01((until - t) / OUT_SEC), at }
+/** How far a card is in (0 to 1) at `t`, and how far out at its end - in
+ *  its slot (glassSlots), so never over another graphic. */
+function cardLife(slot: Slot | undefined, t: number): { p: number; out: number; at: number } | null {
+  if (!slot || !(t >= slot.start) || t > slot.gone) return null
+  return { p: clamp01((t - slot.start) / IN_SEC), out: clamp01((slot.gone - t) / OUT_SEC), at: slot.start + LEAD }
 }
 
 /** A card's size in u (a hundredth of the width). */
 function cardSize(ctx: Ctx, part: CardPart, u: number): { w: number; h: number } {
   switch (part.kind) {
     case 'tag': {
-      const label = part.label ? textWidth(ctx, part.label, 2.8 * u, 700) + 7 * u : 0
+      const label = part.label ? textWidth(ctx, part.label, LABEL_PX * u, 700) + 8 * u : 0
       const line = textWidth(ctx, part.text, 6.4 * u, 800) + (part.mark ? 3 * u : 0)
-      return { w: Math.min(88 * u, Math.max(46 * u, label, line) + 7 * u), h: part.label ? 19 * u : 13 * u }
+      return { w: Math.min(88 * u, Math.max(46 * u, label, line) + 7 * u), h: part.label ? 21 * u : 13 * u }
     }
     case 'blocks':
-      return { w: 82 * u, h: 19 * u }
+      return { w: 82 * u, h: 22 * u }
     case 'stat':
-      return { w: 40 * u, h: 36 * u }
+      return { w: 44 * u, h: 40 * u }
     case 'picture':
-      return { w: 32 * u, h: 34 * u }
+      return { w: 34 * u, h: 36 * u }
   }
 }
 
@@ -396,19 +445,19 @@ function drawCardInside(ctx: Ctx, part: CardPart, x: number, y: number, w: numbe
         ctx.save()
         ctx.globalAlpha *= lp
         const label = part.label
-        const lw = textWidth(ctx, label, 2.8 * u, 700) + 6 * u
-        const ly = y + 5.4 * u
+        const lw = textWidth(ctx, label, LABEL_PX * u, 700) + 7 * u
+        const ly = y + 6 * u
         ctx.strokeStyle = 'rgba(236, 122, 79, 0.45)'
         ctx.lineWidth = Math.max(1, 0.22 * u)
-        roundRect(ctx, x + 3.5 * u, ly - 2.1 * u, Math.min(lw, w - 7 * u), 4.2 * u, 2.1 * u)
+        roundRect(ctx, x + 3.5 * u, ly - 2.5 * u, Math.min(lw, w - 7 * u), 5 * u, 2.5 * u)
         ctx.stroke()
         ctx.fillStyle = GLASS_COLOURS.orange
         ctx.beginPath()
-        ctx.arc(x + 5.6 * u, ly, 0.6 * u, 0, Math.PI * 2)
+        ctx.arc(x + 5.8 * u, ly, 0.7 * u, 0, Math.PI * 2)
         ctx.fill()
-        text(ctx, label, x + 7.2 * u, ly + 0.1 * u, 2.8 * u, GLASS_COLOURS.orange, 700, 'left', w - 12 * u)
+        text(ctx, label, x + 7.6 * u, ly + 0.1 * u, LABEL_PX * u, GLASS_COLOURS.orange, 700, 'left', w - 12 * u)
         ctx.restore()
-        rowY = y + 12.6 * u
+        rowY = y + 14.2 * u
       }
       // The line, the marked words in an orange pill that wipes in.
       const px = Math.min(6.4 * u, (6.4 * u * (w - 9 * u)) / Math.max(1, textWidth(ctx, part.text, 6.4 * u, 800) + (part.mark ? 3 * u : 0)))
@@ -447,9 +496,9 @@ function drawCardInside(ctx: Ctx, part: CardPart, x: number, y: number, w: numbe
       const title = after > 0.5 && part.after ? part.after.text : part.title
       ctx.save()
       ctx.globalAlpha *= after > 0 ? Math.abs(after - 0.5) * 2 : 1
-      text(ctx, title, x + 3.5 * u, y + 5 * u, 4 * u, GLASS_COLOURS.ink, 800, 'left', w - 26 * u)
+      text(ctx, title, x + 3.5 * u, y + 6 * u, 5.2 * u, GLASS_COLOURS.ink, 800, 'left', w - (part.tag ? 26 : 7) * u)
       ctx.restore()
-      if (part.tag) text(ctx, part.tag, x + w - 3.5 * u, y + 5 * u, 2.5 * u, GLASS_COLOURS.blue, 700, 'right')
+      if (part.tag) text(ctx, part.tag, x + w - 3.5 * u, y + 6 * u, LABEL_PX * u, GLASS_COLOURS.blue, 700, 'right')
       // The row: each block pops in in turn; on "after" the red ones close up.
       const rowX = x + 3.5 * u
       const rowW = w - 7 * u
@@ -462,10 +511,11 @@ function drawCardInside(ctx: Ctx, part: CardPart, x: number, y: number, w: numbe
       for (let i = 0; i < count; i++) {
         const share = sizeOf(i)
         const bw = unit * share * stretch
-        const bp = clamp01((t - at - 0.15 - i * 0.04) / 0.2)
+        // From the moment the card is in: never an empty card.
+        const bp = clamp01((t - at + 0.05 - i * 0.03) / 0.2)
         if (bw > 0.2 && bp > 0) {
-          const by = y + 9.6 * u
-          const bh = 6.6 * u
+          const by = y + 11.6 * u
+          const bh = 7 * u
           ctx.save()
           ctx.globalAlpha *= bp
           const grad = ctx.createLinearGradient(0, by, 0, by + bh)
@@ -482,14 +532,15 @@ function drawCardInside(ctx: Ctx, part: CardPart, x: number, y: number, w: numbe
       return
     }
     case 'stat': {
-      if (part.tag) text(ctx, part.tag, x + w - 3.5 * u, y + 4.6 * u, 2.4 * u, GLASS_COLOURS.blue, 700, 'right', w - 6 * u)
+      if (part.tag) text(ctx, part.tag, x + w - 3.5 * u, y + 5 * u, LABEL_PX * u, GLASS_COLOURS.blue, 700, 'right', w - 6 * u)
       const counted = clamp01((t - at - 0.1) / 1)
-      text(ctx, countText(part.text, easeOut(counted)), x + w - 3.5 * u, y + 11.5 * u, 9 * u, GLASS_COLOURS.ink, 800, 'right', w - 6 * u)
-      if (part.sub) text(ctx, part.sub, x + w - 3.5 * u, y + 17.2 * u, 2.1 * u, GLASS_COLOURS.grey, 600, 'right', w - 6 * u)
-      // The bars grow in turn, then breathe a little.
+      text(ctx, countText(part.text, easeOut(counted)), x + w - 3.5 * u, y + 12.4 * u, 9 * u, GLASS_COLOURS.ink, 800, 'right', w - 6 * u)
+      if (part.sub) text(ctx, part.sub, x + w - 3.5 * u, y + 19 * u, LABEL_PX * u, GLASS_COLOURS.grey, 600, 'right', w - 6 * u)
+      // The bars grow in turn, then breathe a little - under the words,
+      // never over the small line.
       const bars = [0.5, 0.72, 0.46, 0.9, 0.66, 0.98]
       const areaY = y + h - 3.5 * u
-      const areaH = 15 * u
+      const areaH = 13 * u
       const gap = 1.2 * u
       const bw = (w - 7 * u - gap * (bars.length - 1)) / bars.length
       bars.forEach((height, i) => {
@@ -504,17 +555,17 @@ function drawCardInside(ctx: Ctx, part: CardPart, x: number, y: number, w: numbe
         roundRect(ctx, bx, areaY - bh, bw, bh, 0.9 * u)
         ctx.fill()
       })
-      confetti(ctx, x + w * 0.6, y + 11.5 * u, u, t - at - 1.1, part.at)
+      confetti(ctx, x + w * 0.6, y + 12.4 * u, u, t - at - 1.1, part.at)
       return
     }
     case 'picture': {
       if (part.tag) {
-        const tw = textWidth(ctx, part.tag, 2.3 * u, 700) + 3.6 * u
+        const tw = textWidth(ctx, part.tag, LABEL_PX * u, 700) + 4 * u
         ctx.strokeStyle = 'rgba(255, 255, 255, 0.5)'
         ctx.lineWidth = Math.max(1, 0.2 * u)
-        roundRect(ctx, x + 2.6 * u, y + 2.6 * u, Math.min(tw, w - 5.2 * u), 3.8 * u, 1.9 * u)
+        roundRect(ctx, x + 2.6 * u, y + 2.6 * u, Math.min(tw, w - 5.2 * u), 5 * u, 2.5 * u)
         ctx.stroke()
-        text(ctx, part.tag, x + 4.4 * u, y + 4.6 * u, 2.3 * u, '#ffffff', 700, 'left', w - 9 * u)
+        text(ctx, part.tag, x + 4.6 * u, y + 5.2 * u, LABEL_PX * u, '#ffffff', 700, 'left', w - 9 * u)
       }
       const life = t - at
       const bob = Math.sin(life * 2.4) * 0.9 * u
@@ -562,8 +613,8 @@ function entranceOf(part: CardPart): number {
   return Math.abs(Math.round(part.at * 7 + part.to * 3)) % 4
 }
 
-function drawCard(ctx: Ctx, frame: Frame, part: CardPart, width: number, height: number, t: number, time: Timing, cutout?: CanvasImageSource | null): void {
-  const life = cardLife(part, time, t)
+function drawCard(ctx: Ctx, frame: Frame, part: CardPart, width: number, height: number, t: number, time: Timing, cutout: CanvasImageSource | null | undefined, slot: Slot | undefined): void {
+  const life = cardLife(slot, t)
   if (!life) return
   const u = width / 100
   const { box, size, inside } = placeCard(ctx, part, width, height, cutout)
@@ -605,20 +656,19 @@ function drawCard(ctx: Ctx, frame: Frame, part: CardPart, width: number, height:
 // ---------------------------------------------------------------------------
 // The steps: the light screen, his video in a box
 
-/** How far the light screen of a steps part is up at `t`, 0 to 1. */
-function stageOf(part: Extract<Part, { kind: 'steps' }>, time: Timing, t: number): number {
-  const at = time.start(part.at) - LEAD
-  const until = time.end(part.to) + HOLD
-  if (!(t >= at) || t > until) return 0
-  return easeInOut(Math.min(clamp01((t - at) / STAGE_SEC), clamp01((until - t) / STAGE_SEC)))
+/** How far the light screen of a steps part is up at `t`, 0 to 1, in its slot. */
+function stageOf(slot: Slot | undefined, t: number): number {
+  if (!slot || !(t >= slot.start) || t > slot.gone) return 0
+  return easeInOut(Math.min(clamp01((t - slot.start) / STAGE_SEC), clamp01((slot.gone - t) / STAGE_SEC)))
 }
 
 /** The steps part up at `t`, with how far its screen is up. */
-export function stageAt(board: Storyboard, time: Timing, t: number): { part: Extract<Part, { kind: 'steps' }>; up: number } | null {
+export function stageAt(board: Storyboard, time: Timing, t: number, plan: Timing = time): { part: Extract<Part, { kind: 'steps' }>; up: number } | null {
+  const slots = glassSlots(board, plan)
   for (const scene of board.scenes) {
     for (const part of scene.parts) {
       if (part.kind !== 'steps') continue
-      const up = stageOf(part, time, t)
+      const up = stageOf(slots.get(part), t)
       if (up > 0) return { part, up }
     }
   }
@@ -630,7 +680,7 @@ export function stageAt(board: Storyboard, time: Timing, t: number): { part: Ext
  *  apart they are. */
 function rowsOf(width: number, height: number, u: number): { top: number; pitch: number; x: number; w: number; h: number } {
   const sq = squareOf(width, height)
-  return { top: sq.y + 8 * u, pitch: 9.4 * u, x: sq.x + 8 * u, w: sq.size - 16 * u, h: 7.8 * u }
+  return { top: sq.y + 9 * u, pitch: 11.4 * u, x: sq.x + 6 * u, w: sq.size - 12 * u, h: 9.6 * u }
 }
 
 function stageBox(rows: number, width: number, height: number, u: number): { x: number; y: number; w: number; h: number } {
@@ -699,7 +749,7 @@ function drawStage(ctx: Ctx, frame: Frame, part: Extract<Part, { kind: 'steps' }
   ctx.save()
   ctx.globalAlpha = clamp01(up * 1.6)
   const list = rowsOf(width, height, u)
-  if (part.tag) text(ctx, part.tag, list.x + u, list.top - 3.6 * u, 2.8 * u, GLASS_COLOURS.blue, 800, 'left', list.w)
+  if (part.tag) text(ctx, part.tag, list.x + u, list.top - 4.2 * u, 3.8 * u, GLASS_COLOURS.blue, 800, 'left', list.w)
   part.items.forEach((item, i) => {
     const at = time.start(item.at)
     const p = clamp01((t - at + LEAD) / 0.35)
@@ -727,24 +777,27 @@ function drawStage(ctx: Ctx, frame: Frame, part: Extract<Part, { kind: 'steps' }
     ctx.restore()
     const mid = rowY + rowH / 2
     ctx.fillStyle = colour
-    roundRect(ctx, rowX + 2.6 * u, mid - 2.8 * u, 5.6 * u, 5.6 * u, 1.3 * u)
+    roundRect(ctx, rowX + 2.6 * u, mid - 3.4 * u, 6.8 * u, 6.8 * u, 1.6 * u)
     ctx.fill()
-    text(ctx, String(i + 1), rowX + 5.4 * u, mid + 0.1 * u, 3 * u, '#ffffff', 800, 'center')
-    let tx = rowX + 10.4 * u
+    text(ctx, String(i + 1), rowX + 6 * u, mid + 0.1 * u, 3.8 * u, '#ffffff', 800, 'center')
+    let tx = rowX + 12 * u
     if (item.icon) {
-      drawIcon(ctx, item.icon, tx + 2.3 * u, mid, 4.6 * u, colour, t - at)
-      tx += 6.4 * u
+      drawIcon(ctx, item.icon, tx + 2.8 * u, mid, 5.6 * u, colour, t - at)
+      tx += 7.6 * u
     }
-    text(ctx, item.text, tx, mid + 0.1 * u, 3.9 * u, GLASS_COLOURS.ink, 800)
-    const tw = textWidth(ctx, item.text, 3.9 * u, 800)
-    if (item.note) text(ctx, item.note, tx + tw + 1.8 * u, mid + 0.3 * u, 2.3 * u, GLASS_COLOURS.grey, 500, 'left', Math.max(4 * u, rowX + rowW - (tx + tw + 1.8 * u) - (item.pill ? 17 * u : 3 * u)))
+    const pillW = item.pill ? textWidth(ctx, item.pill, 2.8 * u, 800) + 4 * u : 0
+    const room = rowX + rowW - tx - (item.pill ? pillW + 4 * u : 3 * u)
+    const textPx = Math.min(5 * u, (5 * u * room) / Math.max(1, textWidth(ctx, item.text, 5 * u, 800) + (item.note ? textWidth(ctx, item.note, 3.2 * u, 500) + 2 * u : 0)))
+    const notePx = Math.max(LABEL_PX * u * 0.85, (textPx / (5 * u)) * 3.2 * u)
+    text(ctx, item.text, tx, mid + 0.1 * u, Math.max(3.6 * u, textPx), GLASS_COLOURS.ink, 800, 'left', room)
+    const tw = Math.min(room, textWidth(ctx, item.text, Math.max(3.6 * u, textPx), 800))
+    if (item.note && room - tw > 6 * u) text(ctx, item.note, tx + tw + 2 * u, mid + 0.3 * u, notePx, GLASS_COLOURS.grey, 500, 'left', room - tw - 2 * u)
     if (item.pill) {
-      const pw = textWidth(ctx, item.pill, 1.9 * u, 800) + 3.4 * u
-      const px = rowX + rowW - 2.6 * u - pw
+      const px = rowX + rowW - 2.6 * u - pillW
       ctx.fillStyle = i % 2 === 0 ? '#7b5cf0' : GLASS_COLOURS.orange
-      roundRect(ctx, px, mid - 1.9 * u, pw, 3.8 * u, 1.9 * u)
+      roundRect(ctx, px, mid - 2.5 * u, pillW, 5 * u, 2.5 * u)
       ctx.fill()
-      text(ctx, item.pill, px + pw / 2, mid + 0.1 * u, 1.9 * u, '#ffffff', 800, 'center')
+      text(ctx, item.pill, px + pillW / 2, mid + 0.1 * u, 2.8 * u, '#ffffff', 800, 'center')
     }
     ctx.restore()
   })
@@ -754,13 +807,11 @@ function drawStage(ctx: Ctx, frame: Frame, part: Extract<Part, { kind: 'steps' }
 // ---------------------------------------------------------------------------
 // The title, the captions, the call to action
 
-function drawTitle(ctx: Ctx, title: NonNullable<Storyboard['title']>, board: Storyboard, width: number, height: number, t: number, time: Timing): void {
+function drawTitle(ctx: Ctx, title: NonNullable<Storyboard['title']>, slot: Slot | undefined, width: number, height: number, t: number): void {
   const u = width / 100
-  // Gone by the time the first card comes up, if that is sooner.
-  const first = board.scenes[0] ? time.start(board.scenes[0].from) - LEAD : Infinity
-  const until = Math.min(time.end(title.to) + HOLD, first - OUT_SEC)
-  if (t > until + OUT_SEC) return
-  const out = clamp01((until + OUT_SEC - t) / OUT_SEC)
+  // Gone by the time the first card comes up (glassSlots).
+  if (!slot || t > slot.gone) return
+  const out = clamp01((slot.gone - t) / OUT_SEC)
   const px = 6.6 * u
   // At most two lines, as even as can be.
   const words = title.text.split(/\s+/).filter(Boolean)
@@ -894,9 +945,9 @@ function drawCaptions(ctx: Ctx, kinetic: Kinetic, width: number, height: number,
   ctx.restore()
 }
 
-function drawCallToAction(ctx: Ctx, frame: Frame, end: NonNullable<Storyboard['end']>, width: number, height: number, t: number, time: Timing): void {
-  const at = time.start(end.at)
-  if (!(t >= at - LEAD)) return
+function drawCallToAction(ctx: Ctx, frame: Frame, end: NonNullable<Storyboard['end']>, width: number, height: number, t: number, slot: Slot | undefined): void {
+  if (!slot || !(t >= slot.start)) return
+  const at = slot.start + LEAD
   const u = width / 100
   const p = clamp01((t - at + LEAD) / 0.45)
   const value = end.text || DEFAULT_CTA
@@ -945,15 +996,17 @@ export function behindAt(_board: Storyboard, _time: Timing, _t: number): boolean
 /** Everything of the glass look at `t`. `cutout`: his mask for this frame
  *  (white where he is), so a card behind him has him drawn back over it;
  *  without it such a card is simply drawn over him. */
-export function drawGlassLook(ctx: Ctx, width: number, height: number, board: Storyboard, time: Timing, t: number, kinetic?: Kinetic, cutout?: CanvasImageSource | null): void {
+export function drawGlassLook(ctx: Ctx, width: number, height: number, board: Storyboard, time: Timing, t: number, kinetic?: Kinetic, cutout?: CanvasImageSource | null, plan: Timing = time): void {
   const frame = grabFrame(ctx, width, height)
-  const stage = stageAt(board, time, t)
+  // One graphic at a time, from the plan's own timing (glassSlots).
+  const slots = glassSlots(board, plan)
+  const stage = stageAt(board, time, t, plan)
   if (stage) drawStage(ctx, frame, stage.part, stage.up, width, height, t, time)
   const full = stage !== null && stage.up > 0.5
   if (!full) {
     const cards = board.scenes.flatMap((scene) => scene.parts.filter((p): p is CardPart => p.kind === 'tag' || p.kind === 'blocks' || p.kind === 'stat' || p.kind === 'picture'))
-    const behind = cards.filter((p) => p.place === 'behind' && cardLife(p, time, t) && placeCard(ctx, p, width, height, cutout).behind)
-    for (const part of behind) drawCard(ctx, frame, part, width, height, t, time, cutout)
+    const behind = cards.filter((p) => p.place === 'behind' && cardLife(slots.get(p), t) && placeCard(ctx, p, width, height, cutout).behind)
+    for (const part of behind) drawCard(ctx, frame, part, width, height, t, time, cutout, slots.get(part))
     if (behind.length > 0 && cutout && frame.copy) {
       // Him, cut out of the frame, back over the card.
       const him = scratch('him', width, height)
@@ -967,9 +1020,9 @@ export function drawGlassLook(ctx: Ctx, width: number, height: number, board: St
         ctx.drawImage(him.canvas, 0, 0)
       }
     }
-    for (const part of cards) if (!behind.includes(part)) drawCard(ctx, frame, part, width, height, t, time, cutout)
-    if (board.title) drawTitle(ctx, board.title, board, width, height, t, time)
+    for (const part of cards) if (!behind.includes(part)) drawCard(ctx, frame, part, width, height, t, time, cutout, slots.get(part))
+    if (board.title) drawTitle(ctx, board.title, slots.get(board.title), width, height, t)
     if (kinetic) drawCaptions(ctx, kinetic, width, height, t)
   }
-  if (board.end) drawCallToAction(ctx, frame, board.end, width, height, t, time)
+  if (board.end) drawCallToAction(ctx, frame, board.end, width, height, t, slots.get(board.end))
 }
