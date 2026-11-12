@@ -1144,12 +1144,21 @@ input[type='color']::-webkit-color-swatch { border: 0.5px solid var(--edge); bor
 .motion-still { display: block; width: 100%; aspect-ratio: 9 / 16; height: auto; border-radius: 14px; background: #000; cursor: pointer; }
 /* Kept in the page (iPhone Safari stops giving frames of a hidden video), seen only through the canvas. */
 .motion-source { position: absolute; left: 0; top: 0; width: 2px; height: 2px; opacity: 0; pointer-events: none; }
-.motion-play { position: absolute; left: 50%; top: 50%; width: 64px; height: 64px; margin: -32px 0 0 -32px; border: 0; border-radius: 50%; display: grid; place-items: center; background: rgba(0, 0, 0, .45); backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px); color: #fff; transition: opacity .2s; }
-.motion-play svg { width: 28px; height: 28px; fill: #fff; stroke: #fff; stroke-width: 3; stroke-linecap: round; stroke-linejoin: round; }
-.motion-play.on { left: auto; top: auto; right: 10px; bottom: 10px; width: 40px; height: 40px; margin: 0; opacity: .7; }
-.motion-play.on svg { width: 18px; height: 18px; fill: none; }
+.motion-play { position: absolute; right: 10px; bottom: 10px; height: 40px; padding: 0 16px 0 12px; border: 0; border-radius: 999px; display: flex; align-items: center; gap: 6px; background: rgba(0, 0, 0, .55); backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px); color: #fff; font: inherit; font-size: 15px; font-weight: 700; }
+.motion-play svg { width: 18px; height: 18px; fill: #fff; stroke: #fff; stroke-width: 3; stroke-linecap: round; stroke-linejoin: round; }
+.motion-play.on { width: 40px; padding: 0; justify-content: center; opacity: .75; }
+.motion-play.on svg { fill: none; }
 .motion-stage input[type=range] { width: min(100%, 360px); }
 .motion-scene { gap: 12px; }
+.motion-scenes .row-link[aria-expanded=true] { background: color-mix(in srgb, var(--accent, #5b50e8) 8%, transparent); }
+.motion-edit-row { padding: 4px 12px 12px; }
+.motion-edit { display: flex; flex-direction: column; gap: 10px; }
+.motion-edit-field { display: flex; flex-direction: column; gap: 4px; font-size: 13px; color: var(--muted); }
+.motion-edit-field input { width: 100%; min-height: 44px; font: inherit; font-size: 16px; color: var(--text); padding: 10px 12px; border-radius: 10px; border: 1px solid var(--edge); background: var(--surface); }
+.motion-edit-field input:focus { border-color: var(--focus); outline: none; }
+.motion-edit-actions { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.motion-edit-actions .linkbtn.danger { color: #d93a3a; }
+.motion-undo { display: flex; align-items: center; gap: 6px; justify-content: center; }
 .motion-thumb { flex: none; width: 54px; aspect-ratio: 9 / 16; border-radius: 6px; background: var(--edge); object-fit: cover; }
 .motion-chat { display: flex; flex-direction: column; gap: 8px; }
 .motion-turns { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }

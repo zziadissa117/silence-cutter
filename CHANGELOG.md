@@ -6,9 +6,15 @@ underneath. Kept up to date with each commit.
 ## Motion graphics: Play before making, and cleaner graphics
 - His ask (2026-11-12): "put more effort overall with motion graphics, it's obviously v1 right now and it's lazy
   and sloppy, a lot of things are missing". Every look was drawn frame by frame here and what was wrong fixed.
-- Play: on the plan screen, tap the video (or the play button) and it plays as it will be made - his voice, the
+- Play: on the plan screen, tap the video (or Play in its corner) and it plays as it will be made - his voice, the
   cuts skipped, the graphics moving, the captions - before anything is made. Tap again to stop; the slider stays
-  where it stopped. Before, he could only slide through still pictures.
+  where it stopped. Before, he could only slide through still pictures. (The button sits in the corner: in the
+  middle it covered the caption.)
+- Change a graphic yourself: tap any moment on the plan and its words open under it, each in its own box (the
+  title, each card's lines, the sum and its result, each step...). What you type is on the plan at once - the
+  picture and the list follow - no asking Claude and waiting for a typo. "Take this out" removes the moment, with
+  "Put it back" in case. The call to action can be reworded but stays (always one). A graphic's main words can't be
+  emptied by mistake. Claude sees your changes the next time you ask it something (`motion/editPlan.ts`).
 - Glass look: one graphic at a time. The title, each card, the steps screen and the call to action now take turns
   (`glass.glassSlots`): a card no longer comes up while the steps screen is leaving, nor the call to action over
   the last card. Small words (labels, tags, notes, the stat's line) are bigger - some were about 8 pt on a phone;

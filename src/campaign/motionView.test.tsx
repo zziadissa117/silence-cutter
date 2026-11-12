@@ -199,6 +199,59 @@ describe('Motion graphics: Play shows the plan moving before anything is made', 
   })
 })
 
+describe('Motion graphics: a moment changed by hand, without Claude', () => {
+  const type = async (box: HTMLInputElement, value: string) => {
+    await act(async () => {
+      Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!.call(box, value)
+      box.dispatchEvent(new Event('input', { bubbles: true }))
+    })
+  }
+
+  it('tapping a moment shows its words; what he types is the plan, kept', async () => {
+    kept = { id: 'm1', file: new Blob(['x']), fileName: 'take.mov', ask: '', plan, storyboard: board, chat: [], costCents: 0 }
+    await act(async () => root.render(<MotionView onBack={() => {}} />))
+    await settle()
+    const scene = host.querySelector('.motion-scene') as HTMLButtonElement
+    await act(async () => scene.click())
+    const box = host.querySelector('.motion-edit input') as HTMLInputElement
+    expect(box.value).toBe('Two contracts')
+    await type(box, 'Two deals')
+    expect(saved.at(-1)?.storyboard?.scenes[0].parts[0]).toMatchObject({ kind: 'title', text: 'Two deals' })
+    expect(host.textContent).toContain('Two deals')
+    // Emptied, the card keeps its words; the box gets them back when he leaves it.
+    await type(box, '')
+    expect(saved.at(-1)?.storyboard?.scenes[0].parts[0]).toMatchObject({ text: 'Two deals' })
+    await act(async () => box.dispatchEvent(new FocusEvent('focusout', { bubbles: true })))
+    expect((host.querySelector('.motion-edit input') as HTMLInputElement).value).toBe('Two deals')
+    expect(motionPlan).not.toHaveBeenCalled()
+  })
+
+  it('takes a moment out, and puts it back', async () => {
+    kept = { id: 'm1', file: new Blob(['x']), fileName: 'take.mov', ask: '', plan, storyboard: board, chat: [], costCents: 0 }
+    await act(async () => root.render(<MotionView onBack={() => {}} />))
+    await settle()
+    await act(async () => (host.querySelector('.motion-scene') as HTMLButtonElement).click())
+    const out = [...host.querySelectorAll('button')].find((b) => b.textContent === 'Take this out')!
+    await act(async () => out.click())
+    expect(saved.at(-1)?.storyboard?.scenes).toEqual([])
+    expect(host.querySelector('.motion-scene')).toBeNull()
+    const back = [...host.querySelectorAll('button')].find((b) => b.textContent === 'Put it back')!
+    await act(async () => back.click())
+    expect(saved.at(-1)?.storyboard).toEqual(board)
+  })
+
+  it('the call to action can be reworded but not taken out', async () => {
+    kept = { id: 'm1', file: new Blob(['x']), fileName: 'take.mov', ask: '', plan, storyboard: board, chat: [], costCents: 0 }
+    await act(async () => root.render(<MotionView onBack={() => {}} />))
+    await settle()
+    const cta = [...host.querySelectorAll('.motion-scenes .row-link')].find((b) => b.textContent?.includes('Call to action')) as HTMLButtonElement
+    await act(async () => cta.click())
+    expect([...host.querySelectorAll('button')].some((b) => b.textContent === 'Take this out')).toBe(false)
+    await type(host.querySelector('.motion-edit input') as HTMLInputElement, 'Save this')
+    expect(saved.at(-1)?.storyboard?.end?.text).toBe('Save this')
+  })
+})
+
 describe('Motion graphics: captions he can fix, as on Videos', () => {
   it("opens the Cutter's caption screen, and what he types is what the video shows", async () => {
     kept = { id: 'm1', file: new Blob(['x']), fileName: 'take.mov', ask: '', plan, storyboard: board, chat: [], costCents: 0 }

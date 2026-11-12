@@ -15,7 +15,7 @@
 // Every step is kept on the phone (motion/session.ts): closing the app never
 // loses the video or the plan. Only the words go to Claude, never the video.
 
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { Fragment, useEffect, useMemo, useRef, useState } from 'react'
 
 import type { CaptionWord } from './captions'
 
@@ -35,6 +35,7 @@ import { CaptionReview, type EmbeddedVideo } from './CaptionReview'
 import { clearSession, freshFile, loadSession, saveSession, type MotionSession } from './motion/session'
 import { cutLength, cutTiming, rawTimeAt } from './motion/track'
 import { cutTime } from './captions'
+import { fieldsOf, removable, sameSpot, withField, withoutSpot, type Spot } from './motion/editPlan'
 import { motionPlan, postingHere, recheckCaptions } from './posting'
 import type { RecheckContext } from '../../supabase/functions/postiz/recheck.ts'
 import { hasShareSheet, shareVideo, useSharable } from './shareFile'
@@ -546,6 +547,36 @@ function PlanScreen({
   const reader = useRef<FrameReader | null>(null)
   const big = useRef<HTMLCanvasElement>(null)
   const [stills, setStills] = useState<Record<number, string>>({})
+  // A moment tapped on the plan: its words to change, or taken out - no
+  // need to ask Claude for a typo (2026-11-12).
+  const [open, setOpen] = useState<Spot | null>(null)
+  const [undo, setUndo] = useState<Storyboard | null>(null)
+  const changeBoard = (next: Storyboard) => {
+    if (next !== board) onChange({ ...session, storyboard: next })
+  }
+  const tapSpot = (spot: Spot, time: number) => {
+    setPlaying(false)
+    setAt(time)
+    setUndo(null)
+    setOpen((was) => (sameSpot(was, spot) ? null : spot))
+  }
+  const editor = (spot: Spot) =>
+    sameSpot(open, spot) ? (
+      <li className="motion-edit-row">
+        <SpotEditor
+          key={JSON.stringify(spot)}
+          board={board}
+          spot={spot}
+          onBoard={changeBoard}
+          onRemove={() => {
+            setUndo(board)
+            setOpen(null)
+            changeBoard(withoutSpot(board, spot))
+          }}
+          onClose={() => setOpen(null)}
+        />
+      </li>
+    ) : null
   // Play: his video as it will be made - the cut, the graphics moving, the
   // captions, his voice - live, before anything is made (2026-11-12: only
   // stills before, "a lot of things are missing").
@@ -628,11 +659,14 @@ function PlanScreen({
     }
   }, [at, board, timing, shown, plan.keep, choice, playing])
 
-  // A small still of each scene, in its middle once its parts are up.
+  // A small still of each scene, in its middle once its parts are up -
+  // redrawn a moment after he stops typing, the old ones kept meanwhile.
+  const sceneCount = useRef(board.scenes.length)
   useEffect(() => {
     let alive = true
-    setStills({})
-    void (async () => {
+    if (sceneCount.current !== board.scenes.length) setStills({})
+    sceneCount.current = board.scenes.length
+    const timer = setTimeout(() => void (async () => {
       for (const [i, scene] of board.scenes.entries()) {
         if (!reader.current) return
         const t = Math.min(timing.end(scene.to), lastPartAt(scene, timing) + 0.8)
@@ -644,15 +678,16 @@ function PlanScreen({
         const url = canvas.toDataURL('image/jpeg', 0.7)
         setStills((s) => ({ ...s, [i]: url }))
       }
-    })()
+    })(), Object.keys(stills).length ? 400 : 0)
     return () => {
       alive = false
+      clearTimeout(timer)
     }
-  }, [board, timing, shown, plan.keep, choice])
+  }, [board, timing, shown, plan.keep, choice]) // eslint-disable-line react-hooks/exhaustive-deps
 
   return (
     <div className="motion-plan">
-      <p className="lede">Claude's plan. Slide to see any moment, or tap a scene. Change anything by telling Claude below - nothing is made until you tap Make.</p>
+      <p className="lede">Claude's plan. Tap the video to play it, or tap a moment to see it and change its words. Anything else, tell Claude below - nothing is made until you tap Make.</p>
       <div className="motion-stage">
         <div className="motion-screen">
           <canvas ref={big} width={STILL.width} height={STILL.height} className="motion-still" onClick={togglePlay} />
@@ -662,9 +697,12 @@ function PlanScreen({
                 <path d="M8 5v14M16 5v14" />
               </svg>
             ) : (
-              <svg viewBox="0 0 24 24" aria-hidden>
-                <path d="M8 5.5v13l10.5-6.5z" />
-              </svg>
+              <>
+                <svg viewBox="0 0 24 24" aria-hidden>
+                  <path d="M8 5.5v13l10.5-6.5z" />
+                </svg>
+                Play
+              </>
             )}
           </button>
           {videoUrl ? <video ref={player} className="motion-source" src={videoUrl} playsInline preload="auto" aria-hidden /> : null}
@@ -692,7 +730,7 @@ function PlanScreen({
       <ul className="rows group motion-scenes">
         {board.title ? (
           <li>
-            <button type="button" className="row-link" onClick={() => setAt(1.2)}>
+            <button type="button" className="row-link" aria-expanded={sameSpot(open, { kind: 'title' })} onClick={() => tapSpot({ kind: 'title' }, 1.2)}>
               <span className="row-text">
                 <span className="row-name">0:00 · Title over your head</span>
                 <span className="row-line">{board.title.text}</span>
@@ -700,9 +738,10 @@ function PlanScreen({
             </button>
           </li>
         ) : null}
+        {board.title ? editor({ kind: 'title' }) : null}
         {board.hook ? (
           <li>
-            <button type="button" className="row-link" onClick={() => setAt(timing.start(board.hook!.at) + 0.9)}>
+            <button type="button" className="row-link" aria-expanded={sameSpot(open, { kind: 'hook' })} onClick={() => tapSpot({ kind: 'hook' }, timing.start(board.hook!.at) + 0.9)}>
               <span className="row-text">
                 <span className="row-name">{clock(timing.start(board.hook.at))} · Over your face</span>
                 <span className="row-line">
@@ -713,9 +752,15 @@ function PlanScreen({
             </button>
           </li>
         ) : null}
-        {board.scenes.map((scene, i) => (
+        {board.hook ? editor({ kind: 'hook' }) : null}
+        {board.scenes.map((scene, i) => [
           <li key={`${scene.from}-${i}`}>
-            <button type="button" className="row-link motion-scene" onClick={() => setAt(Math.min(timing.end(scene.to), lastPartAt(scene, timing) + 0.8))}>
+            <button
+              type="button"
+              className="row-link motion-scene"
+              aria-expanded={sameSpot(open, { kind: 'scene', index: i })}
+              onClick={() => tapSpot({ kind: 'scene', index: i }, Math.min(timing.end(scene.to), lastPartAt(scene, timing) + 0.8))}
+            >
               {stills[i] ? <img src={stills[i]} alt="" className="motion-thumb" /> : <span className="motion-thumb" />}
               <span className="row-text">
                 <span className="row-name">
@@ -725,11 +770,12 @@ function PlanScreen({
                 <span className="row-line">{scene.says || scene.parts.map((p) => p.kind).join(', ')}</span>
               </span>
             </button>
-          </li>
-        ))}
+          </li>,
+          <Fragment key={`edit-${i}`}>{editor({ kind: 'scene', index: i })}</Fragment>,
+        ])}
         {board.end ? (
           <li>
-            <button type="button" className="row-link" onClick={() => setAt(timing.start(board.end!.at) + 0.5)}>
+            <button type="button" className="row-link" aria-expanded={sameSpot(open, { kind: 'end' })} onClick={() => tapSpot({ kind: 'end' }, timing.start(board.end!.at) + 0.5)}>
               <span className="row-text">
                 <span className="row-name">{clock(timing.start(board.end.at))} · Call to action</span>
                 <span className="row-line">{board.end.text}</span>
@@ -737,7 +783,23 @@ function PlanScreen({
             </button>
           </li>
         ) : null}
+        {board.end ? editor({ kind: 'end' }) : null}
       </ul>
+      {undo ? (
+        <p className="hint motion-undo">
+          Taken out.{' '}
+          <button
+            type="button"
+            className="linkbtn"
+            onClick={() => {
+              changeBoard(undo)
+              setUndo(null)
+            }}
+          >
+            Put it back
+          </button>
+        </p>
+      ) : null}
       <SoundEffects session={session} onChange={onChange} disabled={making} />
       <div className="motion-look">
         <span className="hint">
@@ -769,6 +831,57 @@ function PlanScreen({
         </button>
       </div>
       {session.costCents > 0 ? <p className="hint">Claude so far on this video: {session.costCents < 1 ? 'under 1¢' : `${Math.round(session.costCents)}¢`}</p> : null}
+    </div>
+  )
+}
+
+/** The words of one moment, each in its own box; changed as he types (an
+ *  emptied main line comes back when he leaves it), and a way to take the
+ *  moment out. */
+function SpotEditor({ board, spot, onBoard, onRemove, onClose }: { board: Storyboard; spot: Spot; onBoard: (next: Storyboard) => void; onRemove: () => void; onClose: () => void }) {
+  const fields = fieldsOf(board, spot)
+  const [typed, setTyped] = useState<Record<string, string>>({})
+  return (
+    <div className="motion-edit">
+      {fields.map((f) => (
+        <label key={f.key} className="motion-edit-field">
+          <span>{f.label}</span>
+          <input
+            type="text"
+            value={typed[f.key] ?? f.value}
+            maxLength={48}
+            enterKeyHint="done"
+            placeholder={f.optional ? 'Nothing' : undefined}
+            onChange={(e) => {
+              const value = e.target.value
+              setTyped((t) => ({ ...t, [f.key]: value }))
+              onBoard(withField(board, spot, f.key, value))
+            }}
+            onBlur={() =>
+              setTyped((t) => {
+                const rest = { ...t }
+                delete rest[f.key]
+                return rest
+              })
+            }
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') (e.target as HTMLInputElement).blur()
+            }}
+          />
+        </label>
+      ))}
+      <div className="motion-edit-actions">
+        {removable(spot) ? (
+          <button type="button" className="linkbtn danger" onClick={onRemove}>
+            Take this out
+          </button>
+        ) : (
+          <span className="hint">Always one at the end.</span>
+        )}
+        <button type="button" className="btn" onClick={onClose}>
+          Done
+        </button>
+      </div>
     </div>
   )
 }
