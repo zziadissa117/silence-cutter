@@ -36,6 +36,8 @@ import { clearSession, freshFile, loadSession, saveSession, type MotionSession }
 import { cutLength, cutTiming, rawTimeAt } from './motion/track'
 import { cutTime } from './captions'
 import { fieldsOf, removable, sameSpot, withField, withoutSpot, type Spot } from './motion/editPlan'
+import { motionCamera } from './motion/camera'
+import { placeFrame, type Framing } from './effects'
 import { motionPlan, postingHere, recheckCaptions } from './posting'
 import type { RecheckContext } from '../../supabase/functions/postiz/recheck.ts'
 import { hasShareSheet, shareVideo, useSharable } from './shareFile'
@@ -543,6 +545,8 @@ function PlanScreen({
   const words = useMemo(() => storyWords(plan), [plan])
   const timing = useMemo(() => cutTiming(words, plan.keep), [words, plan])
   const length = cutLength(plan.keep)
+  // The shot's moves, as the made video will have them.
+  const camera = useMemo(() => motionCamera(board, (i) => words[i]?.start ?? Infinity, plan.keep, session.id), [board, words, plan.keep, session.id])
   const [at, setAt] = useState(() => Math.min(length, Math.max(0, (board.scenes[0] ? timing.start(board.scenes[0].from) : 0) + 1.5)))
   const reader = useRef<FrameReader | null>(null)
   const big = useRef<HTMLCanvasElement>(null)
@@ -613,7 +617,7 @@ function PlanScreen({
         raw = next.start
       }
       const t = cutTime(raw, keep)
-      drawLive(video, canvas, board, timing, shown, keep, t, choice)
+      drawLive(video, canvas, board, timing, shown, keep, t, choice, camera.at(t))
       if (slider.current) slider.current.value = String(t)
       if (clockLabel.current) clockLabel.current.textContent = `${clock(t)} / ${clock(length)}`
       frame = requestAnimationFrame(tick)
@@ -651,13 +655,13 @@ function PlanScreen({
     let alive = true
     const canvas = big.current
     if (playing || !canvas || !reader.current) return
-    void drawStill(reader.current, canvas, board, timing, shown, plan.keep, at, choice).then(() => {
+    void drawStill(reader.current, canvas, board, timing, shown, plan.keep, at, choice, camera.at(at)).then(() => {
       if (!alive) return
     })
     return () => {
       alive = false
     }
-  }, [at, board, timing, shown, plan.keep, choice, playing])
+  }, [at, board, timing, shown, plan.keep, choice, playing, camera])
 
   // A small still of each scene, in its middle once its parts are up -
   // redrawn a moment after he stops typing, the old ones kept meanwhile.
@@ -673,7 +677,7 @@ function PlanScreen({
         const canvas = document.createElement('canvas')
         canvas.width = STILL.width
         canvas.height = STILL.height
-        await drawStill(reader.current, canvas, board, timing, shown, plan.keep, t, choice)
+        await drawStill(reader.current, canvas, board, timing, shown, plan.keep, t, choice, camera.at(t))
         if (!alive) return
         const url = canvas.toDataURL('image/jpeg', 0.7)
         setStills((s) => ({ ...s, [i]: url }))
@@ -910,6 +914,7 @@ function drawLive(
   keep: { start: number; end: number }[],
   t: number,
   choice?: CaptionChoice,
+  framing: Framing = { scale: 1, dx: 0 },
 ): void {
   const ctx = canvas.getContext('2d')
   if (!ctx) return
@@ -920,10 +925,14 @@ function drawLive(
   fillBehindFace(ctx, width, drop)
   if (video.videoWidth > 0) {
     // Filling the frame like the render: cropped to 9:16, never stretched.
+    // Then moved like the render: closer toward his face, still covering.
     const scale = Math.max(width / video.videoWidth, height / video.videoHeight)
     const w = video.videoWidth * scale
     const h = video.videoHeight * scale
-    ctx.drawImage(video, (width - w) / 2, (height - h) / 2 + drop, w, h)
+    const inner = placeFrame(framing, w, h)
+    const x = Math.min(0, Math.max(width - inner.width, (width - w) / 2 + inner.x))
+    const y = Math.min(0, Math.max(height - inner.height, (height - h) / 2 + inner.y))
+    ctx.drawImage(video, x, y + drop, inner.width, inner.height)
   }
   drawMotion(ctx, width, height, board, timing, t)
   drawCaptionAt(ctx, width, height, shown, keep, t, choice, { storyboard: board, timing })
@@ -940,6 +949,7 @@ async function drawStill(
   keep: { start: number; end: number }[],
   t: number,
   choice?: CaptionChoice,
+  framing: Framing = { scale: 1, dx: 0 },
 ): Promise<void> {
   const frame = await reader.frameAt(rawTimeAt(t, keep))
   const ctx = canvas.getContext('2d')
@@ -949,7 +959,10 @@ async function drawStill(
   ctx.fillRect(0, 0, width, height)
   const drop = faceDropAt(board, timing, t, height)
   fillBehindFace(ctx, width, drop)
-  if (frame) ctx.drawImage(frame as CanvasImageSource, 0, drop, width, height)
+  if (frame) {
+    const inner = placeFrame(framing, width, height)
+    ctx.drawImage(frame as CanvasImageSource, inner.x, inner.y + drop, inner.width, inner.height)
+  }
   drawMotion(ctx, width, height, board, timing, t)
   // The Cutter's own captions, in every look (his rule, 2026-11-11).
   drawCaptionAt(ctx, width, height, shown, keep, t, choice, { storyboard: board, timing })

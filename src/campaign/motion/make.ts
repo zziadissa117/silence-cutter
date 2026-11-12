@@ -6,12 +6,12 @@
 
 import { PRESETS, type PresetName } from '../../media/silenceMath'
 import { captionAt, captionRanges, captionScale, captionWords, cutTime, defaultCaptionSize, defaultCaptionStyle, drawStyledCaption, drawnWords, CAPTION_LEAD, PHRASE_HOLD_SEC, type CaptionPosition, type CaptionSize, type CaptionStyle, type CaptionWord } from '../captions'
-import { NO_EFFECTS } from '../effects'
+import { MOTION_EFFECTS, punchMoments } from './camera'
 import { blankAngle, blankCampaign, videoLook } from '../look'
 import { listen, type CampaignCallbacks } from '../pipeline'
 import type { CampaignPlan } from '../plan'
 import { renderCampaignCut } from '../render'
-import { formatOf, type EmphasisStyle, type Storyboard } from '../../../supabase/functions/postiz/motion.ts'
+import { type EmphasisStyle, type Storyboard } from '../../../supabase/functions/postiz/motion.ts'
 import { captionPositionAt, type Timing } from './draw'
 import { CAPTION_CENTER, kineticPhrases, type Kinetic } from './glass'
 import { bankSounds, motionSounds, type MotionSound } from './sfx'
@@ -170,12 +170,12 @@ export async function makeMotionVideo(
   const settings = videoSettings()
   const words = storyWords(plan)
   const caption = captionLook(choice)
-  // Like his example, the glass look's shot moves a little closer or back
-  // out at the cuts. The captions are the Cutter's own in every look - word
-  // by word or phrase by phrase, as on Videos (his rule, 2026-11-11: "It's
-  // not necessary to have different ones for any format, ever again").
-  const glass = formatOf(board) === 'glass'
-  const look = { ...videoLook(blankCampaign('motion'), blankAngle('motion', 'Motion graphics')), effects: { ...NO_EFFECTS, ...(glass ? { cutPunch: 'subtle' as const } : {}) } }
+  // The shot moves in both looks: a slow push-in as it opens, closer or back
+  // out at some cuts (like his example), a punch-in as a big moment lands
+  // (camera.ts). The captions are the Cutter's own in every look - word by
+  // word or phrase by phrase, as on Videos (his rule, 2026-11-11: "It's not
+  // necessary to have different ones for any format, ever again").
+  const look = { ...videoLook(blankCampaign('motion'), blankAngle('motion', 'Motion graphics')), effects: MOTION_EFFECTS }
   const rendered = await renderCampaignCut(
     file,
     {
@@ -184,7 +184,7 @@ export async function makeMotionVideo(
       headlineText: '',
       logoMoments: [],
       soundMoments: [],
-      brandMoments: [],
+      brandMoments: punchMoments(board, (i) => words[i]?.start ?? Infinity),
       pictureMoments: [],
       bankCues: [],
       seed,

@@ -24,6 +24,12 @@ underneath. Kept up to date with each commit.
   card and the call to action are big; the call to action is a card with its drawing and a pulse. While the board
   is up, the caption sits on the line above his face instead of over it.
 - The made video uses the plan's own timing for these turns, so it matches what Play and the stills show.
+- The shot moves, in both looks (`motion/camera.ts`): a slow push-in on his face as the video opens, a little closer
+  or back out at some cuts, and a quick punch-in as a big moment lands - a card over his face, a number, the call to
+  action (at most 6, at least 5 s apart, never while the board covers his face). The board look's picture never
+  moved before; the glass look only at cuts. Play and the stills show the same moves.
+- Board look: a graphic arriving no longer lands on the one above it while that one is still sliding up - it rides
+  in under it - and nothing on the board ever hangs over his face.
 - Tests: `motion.test.ts`, `motionView.test.tsx`.
 
 Needs deploying: run ./deploy-server.sh (the caption check's French rules), then ./deploy.sh.

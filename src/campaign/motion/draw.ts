@@ -434,11 +434,20 @@ function liveLayout(scene: Scene, width: number, height: number, t: number, time
   if (mix >= 1) return { ...after, scale: full.scale }
   const was = stack(before)
   const lerp = (a: number, b: number) => a + (b - a) * mix
-  return {
-    boxes: after.boxes.map((b, k) => (b && was.boxes[k] ? { ...b, y: lerp(was.boxes[k]!.y + (was.originY - after.originY) / full.scale, b.y) } : b)),
-    originY: after.originY,
-    scale: full.scale,
+  const boxes = after.boxes.map((b, k) => (b && was.boxes[k] ? { ...b, y: lerp(was.boxes[k]!.y + (was.originY - after.originY) / full.scale, b.y) } : b))
+  // The new part rides in with its neighbour: placed at once where it ends
+  // up, it sat on the part above while that one was still sliding up.
+  const order = boxes.flatMap((b, k) => (b ? [k] : []))
+  const at = order.indexOf(newest)
+  const mine = boxes[newest]
+  if (mine && at > 0) {
+    const above = boxes[order[at - 1]]!
+    boxes[newest] = { ...mine, y: above.y + above.h + PART_GAP * u }
+  } else if (mine && at === 0 && order.length > 1) {
+    const below = boxes[order[1]]!
+    boxes[newest] = { ...mine, y: below.y - mine.h - PART_GAP * u }
   }
+  return { boxes, originY: after.originY, scale: full.scale }
 }
 
 // ---------------------------------------------------------------------------
@@ -979,6 +988,10 @@ export function drawMotion(ctx: Ctx, width: number, height: number, board: Story
     if (fade <= 0) return
     const layout = liveLayout(scene, width, height, t, time)
     ctx.save()
+    // On the board only: a part sliding in never hangs over his face.
+    ctx.beginPath()
+    ctx.rect(0, 0, width, (BOARD_BOTTOM + 0.015) * height)
+    ctx.clip()
     ctx.globalAlpha = fade * clamp01(up * 1.4)
     ctx.translate(0, layout.originY)
     ctx.translate(width / 2, 0)
