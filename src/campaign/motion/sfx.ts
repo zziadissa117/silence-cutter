@@ -162,6 +162,10 @@ function partCues(part: Part, cues: SoundCue[]): void {
       cues.push({ sound: 'swish', at: part.at })
       cues.push({ sound: 'ding', at: part.at + 2 })
       return
+    case 'compare':
+      cues.push({ sound: 'swish', at: part.at })
+      cues.push({ sound: 'ding', at: part.right.at })
+      return
     case 'steps':
       cues.push({ sound: 'whoosh', at: part.at })
       for (const item of part.items) cues.push({ sound: 'pop', at: item.at })

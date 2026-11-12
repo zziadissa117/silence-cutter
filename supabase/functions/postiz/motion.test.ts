@@ -202,6 +202,26 @@ describe('Format 2, the glass look (his example reel, 2026-11-08)', () => {
     expect(board.scenes[1].parts[0]).toMatchObject({ mark: '', place: 'face' })
   })
 
+  it('a comparison needs both sides; his side comes in on its own word, inside the card', () => {
+    const board = cleanStoryboard(
+      {
+        format: 'glass',
+        scenes: [
+          { from: 2, to: 14, says: '', parts: [{ kind: 'compare', at: 2, to: 14, place: 'low', left: { label: 'most people', text: '1 video a week' }, right: { label: 'me', text: '25 a day', at: 40 } }] },
+          { from: 20, to: 30, says: '', parts: [{ kind: 'compare', at: 20, to: 30, left: { text: 'before' }, right: { label: 'me' } }] },
+        ],
+      },
+      50,
+    )
+    expect(board.scenes).toHaveLength(1)
+    const part = board.scenes[0].parts[0]
+    expect(part).toMatchObject({ kind: 'compare', place: 'face', left: { label: 'most people', text: '1 video a week' }, right: { label: 'me', text: '25 a day' } })
+    expect(part.kind === 'compare' && part.right.at).toBeLessThanOrEqual(part.kind === 'compare' ? part.to : 0)
+    expect(MOTION_SYSTEM).toContain('- compare:')
+    // Not a board part.
+    expect(cleanStoryboard({ format: 'board', scenes: [{ from: 2, to: 14, says: '', parts: [{ kind: 'compare', at: 2, to: 14, left: { text: 'a' }, right: { text: 'b', at: 5 } }] }] }, 20).scenes).toEqual([])
+  })
+
   it('a list of steps needs two rows, as Claude wrote them (no forced capitals, 2026-11-11), in order', () => {
     const board = cleanStoryboard(
       { format: 'glass', scenes: [{ from: 0, to: 30, says: '', parts: [{ kind: 'steps', at: 0, to: 30, tag: 'the pipeline', items: [{ text: 'rough cut', at: 6, icon: 'tools' }, { text: 'intake', note: 'copy raw in', at: 2, icon: 'nope' }] }] }] },

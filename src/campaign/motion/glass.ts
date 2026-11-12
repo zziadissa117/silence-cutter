@@ -322,7 +322,8 @@ export function glassSlots(board: Storyboard, time: Timing): Map<object, Slot> {
 // ---------------------------------------------------------------------------
 // The cards
 
-type CardPart = Extract<Part, { kind: 'tag' | 'blocks' | 'stat' | 'picture' }>
+type CardPart = Extract<Part, { kind: 'tag' | 'blocks' | 'stat' | 'picture' | 'compare' }>
+const isCard = (p: Part): p is CardPart => p.kind === 'tag' || p.kind === 'blocks' || p.kind === 'stat' || p.kind === 'picture' || p.kind === 'compare'
 
 /** How far a card is in (0 to 1) at `t`, and how far out at its end - in
  *  its slot (glassSlots), so never over another graphic. */
@@ -345,6 +346,8 @@ function cardSize(ctx: Ctx, part: CardPart, u: number): { w: number; h: number }
       return { w: 44 * u, h: 40 * u }
     case 'picture':
       return { w: 34 * u, h: 36 * u }
+    case 'compare':
+      return { w: 84 * u, h: 26 * u }
   }
 }
 
@@ -591,7 +594,84 @@ function drawCardInside(ctx: Ctx, part: CardPart, x: number, y: number, w: numbe
       ctx.restore()
       return
     }
+    case 'compare': {
+      // Left: the usual way, its words crossed out once it is read. Right:
+      // his way, sliding in on its own word, ticked, on a green tint.
+      const gutter = 8 * u
+      const half = (w - 7 * u - gutter) / 2
+      const lx = x + 3.5 * u
+      const rx = lx + half + gutter
+      const labelY = y + 6.6 * u
+      const textY = y + 16 * u
+      const fit = (value: string) => Math.min(6.2 * u, (6.2 * u * (half - 1 * u)) / Math.max(1, textWidth(ctx, value, 6.2 * u, 800)))
+      if (part.left.label) text(ctx, part.left.label, lx, labelY, LABEL_PX * u, GLASS_COLOURS.grey, 700, 'left', half - 7 * u)
+      const leftPx = fit(part.left.text)
+      const strike = easeOut(clamp01((t - at - 0.45) / 0.3))
+      text(ctx, part.left.text, lx, textY, leftPx, strike >= 1 ? GLASS_COLOURS.grey : GLASS_COLOURS.ink, 800, 'left', half)
+      if (strike > 0) {
+        const lw = Math.min(half, textWidth(ctx, part.left.text, leftPx, 800))
+        ctx.save()
+        ctx.strokeStyle = GLASS_COLOURS.red
+        ctx.lineWidth = Math.max(1, 0.55 * u)
+        ctx.lineCap = 'round'
+        ctx.beginPath()
+        ctx.moveTo(lx, textY)
+        ctx.lineTo(lx + lw * strike, textY)
+        ctx.stroke()
+        ctx.restore()
+        cross(ctx, lx + half - 2.6 * u, labelY, 4.2 * u * easeBack(strike))
+      }
+      // Between them, a thin line with "vs" on it.
+      ctx.save()
+      ctx.strokeStyle = 'rgba(20, 24, 38, 0.12)'
+      ctx.lineWidth = Math.max(1, 0.2 * u)
+      const mid = lx + half + gutter / 2
+      ctx.beginPath()
+      ctx.moveTo(mid, y + 3.5 * u)
+      ctx.lineTo(mid, y + h - 3.5 * u)
+      ctx.stroke()
+      ctx.fillStyle = '#ffffff'
+      ctx.beginPath()
+      ctx.arc(mid, textY, 3 * u, 0, Math.PI * 2)
+      ctx.fill()
+      text(ctx, 'vs', mid, textY + 0.1 * u, 2.7 * u, GLASS_COLOURS.grey, 800, 'center')
+      ctx.restore()
+      const rp = clamp01((t - time.start(part.right.at) + LEAD) / 0.35)
+      if (rp > 0) {
+        ctx.save()
+        ctx.globalAlpha *= rp
+        const slide = (1 - easeOut(rp)) * 6 * u
+        ctx.fillStyle = 'rgba(34, 180, 94, 0.13)'
+        roundRect(ctx, rx - 2 * u + slide, y + 2 * u, half + 3.5 * u, h - 4 * u, 2.4 * u)
+        ctx.fill()
+        if (part.right.label) text(ctx, part.right.label, rx + slide, labelY, LABEL_PX * u, GLASS_COLOURS.green, 800, 'left', half - 7 * u)
+        text(ctx, part.right.text, rx + slide, textY, fit(part.right.text), GLASS_COLOURS.ink, 800, 'left', half)
+        ctx.restore()
+        const ticked = 4.6 * u * easeBack(clamp01((t - time.start(part.right.at) - 0.15) / 0.35))
+        if (ticked > 0) tick(ctx, rx + half - 2.6 * u, labelY, ticked)
+      }
+      return
+    }
   }
+}
+
+/** A small red square with a cross: the way that doesn't work. */
+function cross(ctx: Ctx, cx: number, cy: number, size: number): void {
+  if (size <= 0) return
+  ctx.save()
+  ctx.fillStyle = GLASS_COLOURS.red
+  roundRect(ctx, cx - size / 2, cy - size / 2, size, size, size * 0.25)
+  ctx.fill()
+  ctx.strokeStyle = '#ffffff'
+  ctx.lineWidth = size * 0.14
+  ctx.lineCap = 'round'
+  ctx.beginPath()
+  ctx.moveTo(cx - size * 0.2, cy - size * 0.2)
+  ctx.lineTo(cx + size * 0.2, cy + size * 0.2)
+  ctx.moveTo(cx + size * 0.2, cy - size * 0.2)
+  ctx.lineTo(cx - size * 0.2, cy + size * 0.2)
+  ctx.stroke()
+  ctx.restore()
 }
 
 /** Where a card goes this frame, and whether it is behind him: a card meant
@@ -1004,7 +1084,7 @@ export function drawGlassLook(ctx: Ctx, width: number, height: number, board: St
   if (stage) drawStage(ctx, frame, stage.part, stage.up, width, height, t, time)
   const full = stage !== null && stage.up > 0.5
   if (!full) {
-    const cards = board.scenes.flatMap((scene) => scene.parts.filter((p): p is CardPart => p.kind === 'tag' || p.kind === 'blocks' || p.kind === 'stat' || p.kind === 'picture'))
+    const cards = board.scenes.flatMap((scene) => scene.parts.filter(isCard))
     const behind = cards.filter((p) => p.place === 'behind' && cardLife(slots.get(p), t) && placeCard(ctx, p, width, height, cutout).behind)
     for (const part of behind) drawCard(ctx, frame, part, width, height, t, time, cutout, slots.get(part))
     if (behind.length > 0 && cutout && frame.copy) {

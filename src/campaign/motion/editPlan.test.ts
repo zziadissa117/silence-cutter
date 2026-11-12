@@ -57,6 +57,16 @@ describe('changing the plan by hand', () => {
     expect(withField(board, { kind: 'scene', index: 5 }, 'parts.0.text', 'x')).toBe(board)
   })
 
+  it("a comparison's two sides, each changeable", () => {
+    const glass = cleanStoryboard(
+      { format: 'glass', scenes: [{ from: 2, to: 14, says: '', parts: [{ kind: 'compare', at: 2, to: 14, left: { label: 'most people', text: '1 video a week' }, right: { label: 'me', text: '25 a day', at: 8 } }] }] },
+      20,
+    )
+    expect(fieldsOf(glass, { kind: 'scene', index: 0 }).map((f) => f.label)).toEqual(['Left, small line', 'Left (crossed out)', 'Right, small line', 'Right (ticked)'])
+    const next = withField(glass, { kind: 'scene', index: 0 }, 'parts.0.right.text', '30 a day')
+    expect(next.scenes[0].parts[0]).toMatchObject({ right: { text: '30 a day', at: 8 } })
+  })
+
   it('takes a moment out, but never the call to action', () => {
     expect(withoutSpot(board, { kind: 'scene', index: 0 }).scenes.map((s) => s.says)).toEqual(['The math.'])
     expect(withoutSpot(board, { kind: 'hook' }).hook).toBeNull()

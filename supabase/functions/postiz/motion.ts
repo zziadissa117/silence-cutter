@@ -106,6 +106,10 @@ export type Part =
   | { kind: 'stat'; at: number; to: number; tag: string; text: string; sub: string; place: Place }
   /** A picture: a big emoji (or a drawing) with a small label. */
   | { kind: 'picture'; at: number; to: number; tag: string; emoji: string; icon?: Icon; place: Place }
+  /** Two halves side by side: the usual way, crossed out, and his way,
+   *  ticked, coming in on its own word ("most people: 1 video a week" -
+   *  "me: 25 a day"). Added 2026-11-12: a contrast had no card of its own. */
+  | { kind: 'compare'; at: number; to: number; left: { label: string; text: string }; right: { label: string; text: string; at: number }; place: Place }
   /** The full light screen: numbered steps, each on its word, his video
    *  shrunk into a box under them. */
   | { kind: 'steps'; at: number; to: number; tag: string; items: { text: string; note: string; at: number; icon?: Icon; pill: string }[] }
@@ -117,7 +121,7 @@ export const BOARD_PARTS: readonly PartKind[] = ['title', 'note', 'cards', 'list
 
 /** A scene of pop cards only: over his face, the board stays down. */
 export const popScene = (scene: Pick<Scene, 'parts'>): boolean => scene.parts.length > 0 && scene.parts.every((p) => p.kind === 'pop')
-export const GLASS_PARTS: readonly PartKind[] = ['tag', 'blocks', 'stat', 'picture', 'steps']
+export const GLASS_PARTS: readonly PartKind[] = ['tag', 'blocks', 'stat', 'picture', 'compare', 'steps']
 
 /** Where a glass card sits. Only 'face' is made now - above his face, over
  *  his forehead; the others stay for plans made before (drawn there too). */
@@ -215,6 +219,7 @@ Parts:
 - blocks: a row of blue blocks with some red ones (the waste), a "title" ("the dead space") and an optional small "tag"; optional "after": on its word the red ones disappear and the title becomes its "text" ("no more filler"). For before/after, removing waste, saving time.
 - stat: a big number counting up ("2x", "$3,000", "25 a day") with an optional small "tag" and "sub", bars growing under it. Only numbers he says.
 - picture: a card with a big "emoji" that shows the thing and a small "tag" naming it. Rarely.
+- compare: two halves side by side - "left", the usual way (what most people do, before, the old way), crossed out; "right", his way (after, the new way), ticked, coming in on its own word ("right.at", when he says his side). Each a small "label" ("most people", "me") and a short "text" ("1 video a week", "25 a day"). For a contrast he actually makes - them vs him, before vs after.
 - steps: the whole screen turns light blue with his video in a box under a numbered list; optional "tag" over it and up to 5 "items", each on its word: "text" one or two words, "note" a few small words, an "icon", optional "pill". Only when he lists steps - at most once a video, 4 to 10 seconds.
 Also in "glass":
 - "title": written over his head at the very start, 2 to 6 words in his own words - the promise of the video - until word "to" (about 3 seconds). Leave it out if his first sentence makes no promise.
@@ -264,6 +269,7 @@ Parts - "kind" and its fields:
   {"kind": "blocks", "at": 15, "to": 26, "place": "low", "title": "the dead space", "tag": "", "after": {"at": 22, "text": "no more filler"}}
   {"kind": "stat", "at": 15, "to": 22, "place": "side", "tag": "views", "text": "2x", "sub": "in one week"}
   {"kind": "picture", "at": 15, "to": 21, "place": "side", "tag": "the app", "emoji": "📱"}
+  {"kind": "compare", "at": 15, "to": 27, "place": "face", "left": {"label": "most people", "text": "1 video a week"}, "right": {"label": "me", "text": "25 a day", "at": 21}}
   {"kind": "steps", "at": 15, "to": 40, "tag": "my setup", "items": [{"text": "Film", "note": "one take", "at": 16, "icon": "video", "pill": ""}]}
 Every "at", "from", "to" is a word number.`
 
@@ -479,6 +485,17 @@ function cleanPart(raw: Record<string, unknown>, from: number, to: number, words
       if (!emoji && !icon) return null
       return { kind: 'picture', at, to: cardEnd(raw.to), tag: str(raw.tag, 24), emoji, ...(icon ? { icon } : {}), place: ABOVE_FACE }
     }
+    case 'compare': {
+      const half = (value: unknown) => (value && typeof value === 'object' ? (value as Record<string, unknown>) : {})
+      const left = half(raw.left)
+      const right = half(raw.right)
+      const leftText = str(left.text, 24)
+      const rightText = str(right.text, 24)
+      if (!leftText || !rightText) return null
+      const end = cardEnd(raw.to)
+      const rightAt = Math.max(at, Math.min(end, inside(right.at, Math.round((at + end) / 2))))
+      return { kind: 'compare', at, to: end, left: { label: str(left.label, 20), text: leftText }, right: { label: str(right.label, 20), text: rightText, at: rightAt }, place: ABOVE_FACE }
+    }
     case 'steps': {
       const items = list(raw.items)
         .slice(0, L.stepItems)
@@ -624,6 +641,10 @@ function clampPart(part: Part, from: number, to: number): void {
     case 'blocks':
       part.to = Math.max(part.at, clamp(part.to))
       if (part.after) part.after.at = Math.max(part.at, Math.min(part.to, part.after.at))
+      break
+    case 'compare':
+      part.to = Math.max(part.at, clamp(part.to))
+      part.right.at = Math.max(part.at, Math.min(part.to, part.right.at))
       break
     case 'steps':
       part.to = Math.max(part.at, clamp(part.to))

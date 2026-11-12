@@ -4,6 +4,7 @@ Newest first. Every change says what it does, how to use it, and how it works
 underneath. Kept up to date with each commit.
 
 ## Motion graphics: Play before making, and cleaner graphics
+Needs deploying: run ./deploy-server.sh (Claude's motion prompt, the new compare card), then ./deploy.sh.
 - His ask (2026-11-12): "put more effort overall with motion graphics, it's obviously v1 right now and it's lazy
   and sloppy, a lot of things are missing". Every look was drawn frame by frame here and what was wrong fixed.
 - Play: on the plan screen, tap the video (or Play in its corner) and it plays as it will be made - his voice, the
@@ -30,6 +31,9 @@ underneath. Kept up to date with each commit.
   moved before; the glass look only at cuts. Play and the stills show the same moves.
 - Board look: a graphic arriving no longer lands on the one above it while that one is still sliding up - it rides
   in under it - and nothing on the board ever hangs over his face.
+- Glass look: a new card for a contrast - "most people: 1 video a week" crossed out, then "me: 25 a day" sliding
+  in ticked on the word he says it, "vs" between. Claude uses it when he contrasts them and him, before and after.
+  It has its sounds, its punch-in and its boxes on the plan screen like the others.
 - Tests: `motion.test.ts`, `motionView.test.tsx`.
 
 Needs deploying: run ./deploy-server.sh (the caption check's French rules), then ./deploy.sh.

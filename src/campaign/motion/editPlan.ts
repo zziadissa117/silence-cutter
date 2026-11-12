@@ -61,6 +61,13 @@ function partFields(part: Part, at: string, many: boolean, n: number): Field[] {
       return [field(`${at}.text`, name('Number'), part.text), field(`${at}.tag`, name('Small line'), part.tag, true), field(`${at}.sub`, name('Line under it'), part.sub, true)]
     case 'picture':
       return [field(`${at}.emoji`, name('Emoji'), part.emoji, true), field(`${at}.tag`, name('Line'), part.tag, true)]
+    case 'compare':
+      return [
+        field(`${at}.left.label`, name('Left, small line'), part.left.label, true),
+        field(`${at}.left.text`, name('Left (crossed out)'), part.left.text),
+        field(`${at}.right.label`, name('Right, small line'), part.right.label, true),
+        field(`${at}.right.text`, name('Right (ticked)'), part.right.text),
+      ]
     case 'steps':
       return [
         field(`${at}.tag`, name('Heading'), part.tag, true),

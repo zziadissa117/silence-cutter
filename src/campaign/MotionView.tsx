@@ -404,6 +404,7 @@ function glassLabel(scene: Storyboard['scenes'][number]): string {
   const part = scene.parts[0]
   if (!part) return ''
   if (part.kind === 'steps') return 'Light screen with your steps'
+  if (part.kind === 'compare') return 'Glass card above your face: theirs vs yours'
   const where = 'place' in part ? 'above your face' : ''
   return `Glass card ${where}`
 }
@@ -414,7 +415,9 @@ function glassLabel(scene: Storyboard['scenes'][number]): string {
 function recheckContext(session: MotionSession): RecheckContext {
   const board = session.storyboard
   const onScreen = (board?.scenes ?? []).flatMap((scene) =>
-    scene.parts.flatMap((part) => ('text' in part && typeof part.text === 'string' ? [part.text] : part.kind === 'cards' ? part.cards.map((c) => c.badge) : [])),
+    scene.parts.flatMap((part) =>
+      'text' in part && typeof part.text === 'string' ? [part.text] : part.kind === 'cards' ? part.cards.map((c) => c.badge) : part.kind === 'compare' ? [part.left.text, part.right.text] : [],
+    ),
   )
   return {
     campaign: 'Motion graphics - his own talking video',
@@ -899,6 +902,7 @@ function lastPartAt(scene: Storyboard['scenes'][number], timing: Timing): number
     if (part.kind === 'tiles') ats.push(...part.steps.map((s) => s.at))
     if (part.kind === 'phones') ats.push(...part.items.map((i) => i.at), ...part.prices.map((p) => p.at))
     if (part.kind === 'math') ats.push(...part.lines.map((l) => l.at), part.result.at)
+    if (part.kind === 'compare') ats.push(part.right.at)
   }
   return timing.start(Math.max(scene.from, ...ats))
 }

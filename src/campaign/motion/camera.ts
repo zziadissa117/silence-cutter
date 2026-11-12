@@ -34,6 +34,7 @@ export function punchMoments(board: Storyboard, wordStart: (index: number) => nu
       if (part.kind === 'pop' || part.kind === 'stat' || part.kind === 'picture') at.push(part.at)
       else if (part.kind === 'tag' && part.mark) at.push(part.at)
       else if (part.kind === 'blocks' && part.after) at.push(part.after.at)
+      else if (part.kind === 'compare') at.push(part.right.at)
     }
   }
   if (board.end) at.push(board.end.at)
