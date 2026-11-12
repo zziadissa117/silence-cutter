@@ -3,6 +3,18 @@
 Newest first. Every change says what it does, how to use it, and how it works
 underneath. Kept up to date with each commit.
 
+## Motion graphics: the call to action fits the video, in a place of its own
+Needs deploying: run ./deploy-server.sh (Claude's motion prompt), then ./deploy.sh.
+- His ask (2026-11-12): "CTA does not always have to be comment UGC at the same exact place".
+- The words: his own when he says one; otherwise Claude writes one that fits the video, 2 to 5 words, in his
+  language, not the same one every video ('Comment "UGC"' only when the video is about UGC; 'Save this for later',
+  'Send this to a friend', 'Follow for part 2'...), never promising what the video doesn't (a link, a guide).
+- The place: each video gets its own - over his head or in the middle in the glass look (still nothing below his
+  face), at the top, in the middle or low in the board look. When he asks Claude to put it somewhere, it goes there.
+- Its icon fits it: a speech bubble for a comment, a star for a save, a person or heart for a follow, an arrow for
+  a share (was always the speech bubble).
+- Tests: `motion.test.ts`.
+
 ## French videos: told by themselves, heard in French, captioned in French
 Needs deploying: run ./deploy-server.sh (the caption and caption-check prompts), then ./deploy.sh.
 - His ask (2026-11-12): his friend makes French videos; captions and motion graphics have to work in French, with

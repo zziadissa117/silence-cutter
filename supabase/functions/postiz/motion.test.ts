@@ -65,7 +65,7 @@ describe('the motion graphics storyboard Claude writes, made safe', () => {
       12,
     )
     expect(board.hook).toMatchObject({ at: 0, to: 5 })
-    expect(board.end).toEqual({ at: 11, text: 'Follow for more' })
+    expect(board.end).toMatchObject({ at: 11, text: 'Follow for more' })
   })
 
   it('answers nothing for nothing', () => {
@@ -213,11 +213,29 @@ describe('Format 2, the glass look (his example reel, 2026-11-08)', () => {
     expect(cleanStoryboard({ format: 'glass', scenes: [{ from: 0, to: 9, says: '', parts: [{ kind: 'steps', at: 0, items: [{ text: 'one', at: 1 }] }] }] }, 10).scenes).toEqual([])
   })
 
-  it('always ends on a call to action: his own, or Comment "UGC"', () => {
-    expect(cleanStoryboard({ format: 'glass', scenes: [] }, 30).end).toEqual({ at: 24, text: DEFAULT_CTA })
-    expect(cleanStoryboard({ format: 'board', scenes: [], end: { at: 27, text: 'Comment UGC for the guide' } }, 30).end).toEqual({ at: 27, text: 'Comment UGC for the guide' })
+  it('always ends on a call to action: his own, or one written for the video', () => {
+    expect(cleanStoryboard({ format: 'glass', scenes: [] }, 30).end).toMatchObject({ at: 24, text: DEFAULT_CTA })
+    expect(cleanStoryboard({ format: 'board', scenes: [], end: { at: 27, text: 'Comment UGC for the guide' } }, 30).end).toMatchObject({ at: 27, text: 'Comment UGC for the guide' })
     expect(DEFAULT_CTA).toBe('Comment "UGC"')
     expect(MOTION_SYSTEM).toContain('ALWAYS')
+    // Not "Comment UGC" every time (his ask, 2026-11-12).
+    expect(MOTION_SYSTEM).toContain('not the same one every video')
+  })
+
+  it('puts the call to action in a place of its own per video, and where he asks', () => {
+    const placeFor = (words: number, text: string, format: 'board' | 'glass' = 'board') =>
+      cleanStoryboard({ format, scenes: [], end: { at: words - 2, text } }, words).end!.place
+    const places = new Set([10, 11, 12, 13, 14, 15].map((n) => placeFor(n, 'Save this for later')))
+    expect(places.size).toBeGreaterThan(1)
+    // The glass look keeps it above his face: never low.
+    for (let n = 10; n < 20; n++) expect(placeFor(n, 'Follow for more', 'glass')).not.toBe('low')
+    expect(cleanStoryboard({ format: 'board', scenes: [], end: { at: 8, text: 'Follow', place: 'low' } }, 10).end!.place).toBe('low')
+    expect(cleanStoryboard({ format: 'glass', scenes: [], end: { at: 8, text: 'Follow', place: 'low' } }, 10).end!.place).not.toBe('low')
+  })
+
+  it("keeps the call to action's icon when it is one of the drawings", () => {
+    expect(cleanStoryboard({ format: 'glass', scenes: [], end: { at: 8, text: 'Save this', icon: 'star' } }, 10).end!.icon).toBe('star')
+    expect(cleanStoryboard({ format: 'glass', scenes: [], end: { at: 8, text: 'Save this', icon: 'unicorn' } }, 10).end!.icon).toBeUndefined()
   })
 
   it('the old Format 2 is gone: a plan saying "words" is drawn as the board', () => {

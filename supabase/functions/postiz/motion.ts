@@ -143,9 +143,15 @@ export interface Storyboard {
   hook: { at: number; to: number; label: string; text: string } | null
   scenes: Scene[]
   /** The call to action at the end - always one (his ask, 2026-11-08):
-   *  what he says, most often "Comment UGC"; DEFAULT_CTA when he says none. */
-  end: { at: number; text: string } | null
+   *  what he says, or one that fits the video - not always "Comment UGC",
+   *  nor always in the same place (his ask, 2026-11-12). */
+  end: { at: number; text: string; place?: CtaPlace; icon?: Icon } | null
 }
+
+/** Where the call to action shows: over his head, in the middle, or low
+ *  (the board look only - the glass look keeps everything above his face). */
+export type CtaPlace = 'top' | 'middle' | 'low'
+export const CTA_PLACES: Record<Format, readonly CtaPlace[]> = { board: ['top', 'middle', 'low'], glass: ['top', 'middle'] }
 
 export const EMPTY_STORYBOARD: Storyboard = { format: 'board', emphasis: [], title: null, hook: null, scenes: [], end: null }
 
@@ -214,7 +220,10 @@ Also in "glass":
 - "title": written over his head at the very start, 2 to 6 words in his own words - the promise of the video - until word "to" (about 3 seconds). Leave it out if his first sentence makes no promise.
 - The captions are the Cutter's own and are burned in already: never repeat his sentence word for word on a card.
 
-Call to action ("end"), in both looks, ALWAYS: at his last sentence. If he says one ("comment UGC", "follow for more"), put his words, short ('Comment "UGC"'). If he says none, put 'Comment "UGC"'.
+Call to action ("end"), in both looks, ALWAYS, at his last sentence:
+- "text": if he says one ("comment UGC", "follow for more"), his words, short ('Comment "UGC"'). If he says none, write one that fits this video, 2 to 5 words, in his language - and not the same one every video: 'Comment "UGC"' only when the video is about UGC; others like 'Follow for more', 'Save this for later', 'Send this to a friend', 'Try it yourself', 'Follow for part 2'. Never promise something the video doesn't (a link, a guide, a giveaway).
+- "place": only when he asks where it goes - "top" (over his head), "middle", or "low" (the board look only). Otherwise leave it out: the Cutter puts it in a different place from video to video.
+- "icon": one from the list that fits it ("chat" for a comment, "user" or "heart" for a follow, "star" for a save, "arrow" for a share, "play" for a part 2).
 
 Rules:
 - Only what he actually says. Never invent numbers, names, prices or claims.
@@ -238,7 +247,7 @@ export const MOTION_ANSWER = `Answer with ONE JSON object and nothing else - no 
   "scenes": [
     {"from": 14, "to": 40, "says": "what shows, for him", "parts": [ ...parts... ]}
   ],
-  "end": {"at": 120, "text": "Comment \"UGC\""}             (always)
+  "end": {"at": 120, "text": "Save this for later", "icon": "star"}             (always; "place" only when he asks)
 }
 Parts - "kind" and its fields:
   {"kind": "title", "at": 14, "text": "...", "icon": "chart-up"}
@@ -490,6 +499,14 @@ function cleanPart(raw: Record<string, unknown>, from: number, to: number, words
 /** Claude's storyboard made safe to draw: every word number inside the
  *  words, scenes in order and apart, every list at most its limit, every
  *  text short. `words`: how many words there are. */
+/** The call to action's place: Claude's when it fits the look, else one
+ *  picked by `seed` (the video's own), so videos differ. */
+export function ctaPlace(format: Format, asked: unknown, seed: number): CtaPlace {
+  const places = CTA_PLACES[format]
+  if (typeof asked === 'string' && (places as readonly string[]).includes(asked)) return asked as CtaPlace
+  return places[Math.abs(Math.round(seed)) % places.length]
+}
+
 export function cleanStoryboard(value: unknown, words: number): Storyboard {
   if (!value || typeof value !== 'object' || words <= 0) return EMPTY_STORYBOARD
   const raw = value as Record<string, unknown>
@@ -544,7 +561,14 @@ export function cleanStoryboard(value: unknown, words: number): Storyboard {
   // DEFAULT_CTA over his last words.
   const endRaw = raw.end && typeof raw.end === 'object' ? (raw.end as Record<string, unknown>) : null
   const endText = (endRaw && str(endRaw.text, 32)) || DEFAULT_CTA
-  const end = { at: endRaw && str(endRaw.text, 32) ? wordAt(endRaw.at, words, Math.max(0, words - 6)) : Math.max(0, words - 6), text: endText }
+  const end = {
+    at: endRaw && str(endRaw.text, 32) ? wordAt(endRaw.at, words, Math.max(0, words - 6)) : Math.max(0, words - 6),
+    text: endText,
+    // Where Claude put it, or - not said - a place of its own for this
+    // video, so they aren't all in the same spot (his ask, 2026-11-12).
+    place: ctaPlace(format, endRaw?.place, words + endText.length),
+    ...(endRaw && typeof endRaw.icon === 'string' && (ICONS as readonly string[]).includes(endRaw.icon) ? { icon: endRaw.icon as Icon } : {}),
+  }
   // Each word once, in order.
   const emphasis: Emphasis[] = []
   if (format === 'glass') {

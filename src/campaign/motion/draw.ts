@@ -858,7 +858,9 @@ function drawEnd(ctx: Ctx, end: NonNullable<Storyboard['end']>, width: number, h
   const fitted = fitText(ctx, end.text, width * 0.8, 3.4 * u, 700)
   ctx.font = font(fitted.px, 700)
   const w = ctx.measureText(fitted.text).width + 4 * u
-  const y = 0.075 * height
+  // At the top as it always was, in the middle, or low over his chest - a
+  // place of its own per video (his ask, 2026-11-12).
+  const y = (end.place === 'middle' ? 0.45 : end.place === 'low' ? 0.7 : 0.075) * height
   popIn(ctx, p, width / 2, y, () => {
     ctx.fillStyle = COLOURS.purple
     roundRect(ctx, (width - w) / 2, y - 3 * u, w, 6 * u, 1.4 * u)

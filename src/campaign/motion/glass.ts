@@ -905,7 +905,9 @@ function drawCallToAction(ctx: Ctx, frame: Frame, end: NonNullable<Storyboard['e
   const w = Math.min(90 * u, badge + 3 * u + textWidth(ctx, value, px, 800) + 8 * u)
   const h = 15 * u
   const x = width / 2 - w / 2
-  const y = height * 0.53 - h / 2
+  // Over his head, at the top of the square, or in the middle as it always
+  // was - a place of its own per video (his ask, 2026-11-12).
+  const y = end.place === 'top' ? squareOf(width, height).y + 6 * u : height * 0.53 - h / 2
   ctx.save()
   ctx.globalAlpha = clamp01(p * 2)
   ctx.translate(width / 2, y + h / 2 + (1 - easeOut(p)) * 6 * u)
@@ -924,7 +926,7 @@ function drawCallToAction(ctx: Ctx, frame: Frame, end: NonNullable<Storyboard['e
     ctx.stroke()
     ctx.restore()
   }
-  drawIconBadge(ctx, 'chat', x + 3 * u + badge / 2, y + h / 2, badge, GLASS_COLOURS.orange, t - at)
+  drawIconBadge(ctx, end.icon ?? 'chat', x + 3 * u + badge / 2, y + h / 2, badge, GLASS_COLOURS.orange, t - at)
   text(ctx, value, x + 3 * u + badge + 2.6 * u, y + h / 2 + 0.2 * u, px, GLASS_COLOURS.ink, 800, 'left', w - badge - 9 * u)
   ctx.restore()
 }
