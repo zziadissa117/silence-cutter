@@ -169,6 +169,8 @@ export async function listen(
     quietIsFine,
     keepWhole,
     cutNoise: wantNoise,
+    // English or French, told from the video itself (his ask, 2026-11-12).
+    detectLanguage: true,
     onAnalyseProgress: callbacks.onAnalyseProgress,
     onModelDownload: callbacks.onModelDownload,
     onTranscribeProgress: callbacks.onTranscribeProgress,

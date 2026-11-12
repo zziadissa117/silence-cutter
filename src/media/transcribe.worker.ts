@@ -10,13 +10,14 @@
 // a loop folded (campaign/timedWords.ts); the plain cutter sends neither and
 // gets exactly the plain model it always had.
 
-import { pipeline } from '@huggingface/transformers'
+import { Tensor, pipeline } from '@huggingface/transformers'
 
 import { QUIET_PAD_SEC, addHeard, keepInWindow, padWithQuiet, stuckOn, timedWords, unstuck, type TimestampedChunk } from '../campaign/timedWords'
 import { pointRuntimeAtCdn } from './ort'
 
 import type { WordChunk } from './fillerWords'
 import type { Range } from './silenceMath'
+import { MULTILINGUAL_MODEL, languageFromScores, languageTokens, type SpeechLanguage } from './speechLanguage'
 
 export interface TranscribeRequest {
   samples: Float32Array
@@ -36,6 +37,11 @@ export interface TranscribeRequest {
   /** The time `samples[0]` sits at in the video. Windows are in the video's
    *  time, so a window's first sample is (start - audioStart) in. */
   audioStart?: number
+  /** The language he speaks (speechLanguage.ts). English, the default, is
+   *  heard by tiny.en as it always was; French by the multilingual model. */
+  language?: SpeechLanguage
+  /** Only tell the language of `samples` (some of his speech), nothing heard. */
+  detect?: boolean
 }
 
 export type TranscribeMessage =
@@ -45,6 +51,7 @@ export type TranscribeMessage =
   | { type: 'loaded' }
   | { type: 'progress'; fraction: number }
   | { type: 'done'; words: WordChunk[] }
+  | { type: 'language'; language: SpeechLanguage; en: number; fr: number }
   | { type: 'error'; message: string }
 
 /** tiny.en, not base.en, and only because of memory. With base.en a 51s take
@@ -57,6 +64,9 @@ export type TranscribeMessage =
  *  300ms from where it was said. fillerWords.ts checks every cut against the
  *  loudness curve before making it for exactly that reason. */
 const MODEL_ID = 'Xenova/whisper-tiny.en'
+
+/** The model's own word for each language, as its config names them. */
+const LANGUAGE_NAME: Record<SpeechLanguage, string> = { en: 'english', fr: 'french' }
 
 /** A moment between windows for the browser to clear away what the last one
  *  left behind. Without it the leftovers pile up faster than they are freed. */
@@ -76,7 +86,7 @@ interface Tokens {
  *  then <|startoftranscript|> to begin. Null - and the model listens with no
  *  prompt - if any of it can't be built, so a surprise in the library costs
  *  the prompt, never the transcription. */
-function promptIds(tokenizer: Tokens, prompt: string): number[] | null {
+function promptIds(tokenizer: Tokens, prompt: string, language: SpeechLanguage = 'en'): number[] | null {
   if (!prompt.trim()) return null
   try {
     const special = (token: string) =>
@@ -85,18 +95,47 @@ function promptIds(tokenizer: Tokens, prompt: string): number[] | null {
         : tokenizer.encode(token, { add_special_tokens: false })[0]
     const previous = special('<|startofprev|>')
     const start = special('<|startoftranscript|>')
+    // The multilingual model is told the language and the task after the
+    // start, as it would be with no prompt - or it might translate.
+    const after = language === 'en' ? [] : [special(`<|${language}|>`), special('<|transcribe|>')]
     const text = tokenizer.encode(` ${prompt.trim()}`, { add_special_tokens: false })
-    if (![previous, start, ...text].every((id) => Number.isInteger(id))) return null
-    return [previous, ...text, start]
+    if (![previous, start, ...after, ...text].every((id) => Number.isInteger(id))) return null
+    return [previous, ...text, start, ...after]
   } catch {
     return null
   }
 }
 
+interface LanguageModel {
+  processor: (audio: Float32Array) => Promise<{ input_features: unknown }>
+  model: ((inputs: Record<string, unknown>) => Promise<{ logits: { data: ArrayLike<number>; dims: number[] } }>) & {
+    generation_config?: { decoder_start_token_id?: number; lang_to_id?: Record<string, number> } | null
+  }
+}
+
+/** The language of `audio`: the multilingual model's next token after
+ *  "start of transcript", English against French (speechLanguage.ts). */
+async function tellLanguage(asr: unknown, audio: Float32Array): Promise<{ language: SpeechLanguage; en: number; fr: number }> {
+  const { processor, model } = asr as LanguageModel
+  const config = model.generation_config
+  const tokens = languageTokens(config?.lang_to_id)
+  const start = config?.decoder_start_token_id
+  if (!tokens || typeof start !== 'number') return { language: 'en', en: 1, fr: 0 }
+  const { input_features } = await processor(audio)
+  const { logits } = await model({
+    input_features,
+    decoder_input_ids: new Tensor('int64', BigInt64Array.from([BigInt(start)]), [1, 1]),
+  })
+  const size = logits.dims[logits.dims.length - 1]
+  const data = logits.data
+  const row = Array.from({ length: size }, (_, i) => Number(data[data.length - size + i]))
+  return languageFromScores(row, tokens)
+}
+
 const post = (message: TranscribeMessage) => self.postMessage(message)
 
 self.onmessage = async (event: MessageEvent<TranscribeRequest>) => {
-  const { samples, sampleRate, windows, prompt = '', fallbackPrompt = '', padQuiet = false, audioStart = 0 } = event.data
+  const { samples, sampleRate, windows, prompt = '', fallbackPrompt = '', padQuiet = false, audioStart = 0, language = 'en', detect = false } = event.data
   try {
     // Said to be alive while the runtime and model load: fetching the
     // runtime's own files reports no progress, and on a slow connection
@@ -108,7 +147,7 @@ self.onmessage = async (event: MessageEvent<TranscribeRequest>) => {
       if (Date.now() - loadStarted < 10 * 60_000) post({ type: 'alive' })
       else clearInterval(alive)
     }, 15_000)
-    const transcriber = await pipeline('automatic-speech-recognition', MODEL_ID, {
+    const transcriber = await pipeline('automatic-speech-recognition', detect || language !== 'en' ? MULTILINGUAL_MODEL : MODEL_ID, {
       progress_callback: (data: { status: string; progress?: number }) => {
         if (data.status === 'progress' && typeof data.progress === 'number') {
           post({ type: 'download', fraction: data.progress / 100 })
@@ -116,15 +155,23 @@ self.onmessage = async (event: MessageEvent<TranscribeRequest>) => {
       },
     }).finally(() => clearInterval(alive))
     post({ type: 'loaded' })
+    if (detect) {
+      post({ type: 'language', ...(await tellLanguage(transcriber, samples)) })
+      return
+    }
     const tokenizer = transcriber.tokenizer as unknown as Tokens
-    const primed = promptIds(tokenizer, prompt)
-    const fallback = promptIds(tokenizer, fallbackPrompt)
+    const primed = promptIds(tokenizer, prompt, language)
+    const fallback = promptIds(tokenizer, fallbackPrompt, language)
+    // French (or any but English): said in so many words, so the model
+    // writes down what he says rather than translating it.
+    const told = language === 'en' ? {} : { language: LANGUAGE_NAME[language], task: 'transcribe' }
 
     /** What the model heard in `audio`, which starts at `offset` in the
      *  video's time, as words on the video's timeline. */
     const hear = async (audio: Float32Array, offset: number, ids: number[] | null): Promise<WordChunk[]> => {
       const result = await transcriber(audio, {
         return_timestamps: 'word',
+        ...told,
         ...(ids ? { decoder_input_ids: ids } : {}),
       } as Parameters<typeof transcriber>[1])
       const output = Array.isArray(result) ? result[0] : result
@@ -162,6 +209,7 @@ self.onmessage = async (event: MessageEvent<TranscribeRequest>) => {
       } else {
         const result = await transcriber(slice, {
           return_timestamps: 'word',
+          ...told,
           ...(primed ? { decoder_input_ids: primed } : {}),
         } as Parameters<typeof transcriber>[1])
         const output = Array.isArray(result) ? result[0] : result

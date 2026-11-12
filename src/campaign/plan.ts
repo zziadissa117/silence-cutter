@@ -32,7 +32,8 @@ import {
   type SilenceSettings,
 } from '../media/silenceMath'
 import { report } from '../report'
-import { transcribeOnDevice } from '../media/transcribe'
+import { detectLanguage, transcribeOnDevice } from '../media/transcribe'
+import { MADE_UP_FRENCH, type SpeechLanguage } from '../media/speechLanguage'
 import { pieceCuts, type HeardFiller, type TimedWord } from './align'
 import type { AlignMessage, AlignRequest } from './align.worker'
 import { ALIGNED_LATE_SEC, HEARD_LATE_SEC, captionWords, snapToOnsets, spokenWords, type CaptionWord } from './captions'
@@ -150,6 +151,8 @@ export interface CampaignPlan {
   /** The sound's loudness over the recording, 10 bars a second from 0 to 1,
    *  for drawing it under the cuts timeline. */
   peaks?: number[]
+  /** Spoken in French (speechLanguage.ts); absent, English. */
+  language?: 'fr'
 }
 
 /** A clip kept as it is, with nothing heard in it. */
@@ -178,6 +181,9 @@ export async function planCampaignCut(
     keepWhole?: boolean
     /** Cut the sounds with no speech in them, never a word (noiseCuts.ts). */
     cutNoise?: boolean
+    /** Tell English from French before listening (speechLanguage.ts); off,
+     *  it is heard as English. */
+    detectLanguage?: boolean
     onAnalyseProgress?: (fraction: number) => void
     onModelDownload?: (fraction: number) => void
     onTranscribeProgress?: (fraction: number) => void
@@ -237,27 +243,43 @@ export async function planCampaignCut(
   // (keepWordEnds) - the speech model's own ends are too rough for that.
   let exactWords: Range[] = []
   let audibleSec = duration
+  // English, as always, unless the video is told to be French.
+  let language: SpeechLanguage = 'en'
   if (wantWords && mono16k) {
     const audible = Math.min(duration, audioStart + mono16k.length / WHISPER_SAMPLE_RATE)
     audibleSec = audible
     const windows = speechWindows(silences, audible)
+    if (options.detectLanguage && windows.length > 0) {
+      try {
+        const told = await detectLanguage(mono16k, WHISPER_SAMPLE_RATE, windows, { audioStart, onModelDownload: options.onModelDownload })
+        language = told.language
+        report({ page: 'campaign', kind: 'check', phase: 'language', message: `${told.language} (en ${told.en}, fr ${told.fr})` })
+      } catch (error) {
+        // Not told: heard as English, as before.
+        report({ page: 'campaign', kind: 'fallback', phase: 'language', message: error instanceof Error ? error.message : String(error) })
+      }
+    }
     // The speech model's worker takes the samples; the letter model needs
-    // them after it.
-    const forAligning = options.align ? mono16k.slice() : null
+    // them after it. The letter model knows English letters only: French
+    // keeps the speech model's own times.
+    const forAligning = options.align && language === 'en' ? mono16k.slice() : null
     // The model's second listen at the stretches that might be noise needs
     // the samples too, after the first listen has taken them.
     forRecheck = options.cutNoise && !options.keepWhole ? mono16k.slice() : null
     // The "um"s found by their sound are heard again on their own too.
     forUms = talking && options.align && !forRecheck ? mono16k.slice() : forRecheck
     const share = forAligning ? 0.85 : 1
-    const heard = await transcribeOnDevice(mono16k, WHISPER_SAMPLE_RATE, windows, {
-      prompt: options.prompt,
+    const listened = await transcribeOnDevice(mono16k, WHISPER_SAMPLE_RATE, windows, {
+      // In French, the names alone: the "um" prompt is English words.
+      prompt: language === 'fr' ? (options.fallbackPrompt ?? '') : options.prompt,
       fallbackPrompt: options.fallbackPrompt,
       padQuiet: true,
       audioStart,
+      language,
       onModelDownload: options.onModelDownload,
       onProgress: (p) => options.onTranscribeProgress?.(p * share),
     })
+    const heard = language === 'fr' ? frenchWords(listened) : listened
     ;({ words, fillerWords, stutters, spoken } = fromHeard(heard, levels, settings, duration, options.cleanSpeech))
     if (options.cleanSpeech) fillersHeard = { spoken: heard.filter((w) => isFillerWord(w.text)).length, letters: 0 }
     if (forAligning && heard.length > 0) {
@@ -362,7 +384,7 @@ export async function planCampaignCut(
           forRecheck,
           WHISPER_SAMPLE_RATE,
           worth.map(({ c }) => ({ start: Math.max(0, c.range.start - 0.25), end: Math.min(audibleSec, c.range.end + 0.25) })),
-          { prompt: options.prompt, padQuiet: true, audioStart, onModelDownload: options.onModelDownload },
+          { prompt: language === 'fr' ? (options.fallbackPrompt ?? '') : options.prompt, padQuiet: true, audioStart, language, onModelDownload: options.onModelDownload },
         )
         for (const { c, i } of worth) {
           const found = again.filter((w) => w.start < c.range.end + 0.1 && w.end > c.range.start - 0.1)
@@ -418,6 +440,11 @@ export async function planCampaignCut(
   }
   // Never the end of a word: a cut starts only once each word he says has
   // finished (his report, 2026-11-11: "it just cut off the end of my words").
+  // In French, the speech model's own word ends - a little late, so they
+  // keep a little more, never less.
+  if (exactWords.length === 0 && language === 'fr' && spoken) {
+    exactWords = spoken.filter((w) => !isFillerWord(w.text) && w.end > w.start).map((w) => ({ start: w.start, end: w.end + HEARD_LATE_SEC }))
+  }
   if (exactWords.length > 0) keep = keepWordEnds(keep, exactWords, mergeRanges([...fillerWords, ...stutters, ...ums]), duration)
   return {
     keep,
@@ -432,7 +459,42 @@ export async function planCampaignCut(
     peaks,
     ...(checks ? { checks } : {}),
     ...(noiseNote ? { noiseNote } : {}),
+    ...(language === 'fr' ? { language } : {}),
   }
+}
+
+/** French as heard, made ready for captions: a "?" or "!" French writes
+ *  after a space ("vrai ?") goes with its word, not on a caption of its own;
+ *  and what the model makes up over silence (film subtitle credits) is
+ *  dropped. */
+export function frenchWords(heard: readonly WordChunk[]): WordChunk[] {
+  const said = MADE_UP_FRENCH.test(heard.map((w) => w.text).join(' ')) ? dropMadeUp(heard) : [...heard]
+  const out: WordChunk[] = []
+  for (const w of said) {
+    const previous = out[out.length - 1]
+    if (previous && /^\s*[?!:;»%]+\s*$/.test(w.text)) {
+      out[out.length - 1] = { ...previous, text: `${previous.text}\u00a0${w.text.trim()}`, end: Math.max(previous.end, w.end) }
+    } else out.push(w)
+  }
+  return out
+}
+
+/** The sentences that are made-up phrases taken out, word for word; every
+ *  other sentence kept as heard. A sentence ends on a word ending in . ! ?
+ *  or … */
+function dropMadeUp(heard: readonly WordChunk[]): WordChunk[] {
+  const out: WordChunk[] = []
+  let sentence: WordChunk[] = []
+  const close = () => {
+    if (!MADE_UP_FRENCH.test(sentence.map((w) => w.text).join(''))) out.push(...sentence)
+    sentence = []
+  }
+  for (const w of heard) {
+    sentence.push(w)
+    if (/[.!?…]\s*$/.test(w.text)) close()
+  }
+  close()
+  return out
 }
 
 /** How much past a word's exact end is kept: the last sound of a word ("s",

@@ -12,12 +12,15 @@ import type { Level, Range } from './silenceMath'
  *  through with no resampling of its own. */
 export const WHISPER_SAMPLE_RATE = 16000
 
-/** English fillers, lowercased, punctuation stripped. Whisper sometimes
+/** Fillers, lowercased, punctuation stripped. Whisper sometimes
  *  spells these a few different ways ("umm" vs "um"), so this is a small set
  *  rather than one exact string. Not here on purpose: "mm"/"mhm" (agreeing),
  *  "eh" (a question), "oh" (a word) - said on purpose, and kept. */
 const FILLER_WORDS = new Set([
   'um', 'umm', 'ummm', 'uh', 'uhh', 'uhhh', 'uhm', 'uhmm', 'er', 'err', 'erm', 'hmm', 'hmmm', 'hm', 'ah', 'ahh', 'ahm',
+  // French (2026-11-12): "euh" and how it gets spelled. Not "bah", "ben" or
+  // "hein" - French says those on purpose.
+  'euh', 'euhh', 'euhhh', 'heu', 'heuu', 'eeuh',
 ])
 
 /** Whether a heard word is a filler ("um", "uh"...), whatever its case and

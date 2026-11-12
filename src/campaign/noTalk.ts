@@ -12,20 +12,27 @@
 import type { ManualPicture } from './manualPictures'
 import type { HeadlineStyle } from './look'
 import { TEXT_BASE_PCT } from './manualPictures'
+import { MADE_UP_FRENCH } from '../media/speechLanguage'
 
 /** Fewer words than this heard is no talking: the speech model makes up a
  *  word or two ("you", "[Music]") over sound with nobody speaking. */
 export const NO_SPEECH_WORDS = 3
 
+/** The words of French hearing's made-up subtitle credits. */
+const CREDIT_WORD = /^\W*(sous|titres?|titrage|sous-?titres?|sous-?titrage|réalisés?|par|la|communauté|de|d'amara\.org|amara\.org|merci|d'avoir|regardé|abonnez-vous)\W*$/i
+
 /** What the speech model writes over sound with nobody talking. */
-const MADE_UP = new Set(['you', 'thank', 'thanks', 'bye', 'for', 'watching', 'subscribe', 'music', 'applause', 'laughter', 'okay', 'oh'])
+const MADE_UP = new Set(['you', 'thank', 'thanks', 'bye', 'for', 'watching', 'subscribe', 'music', 'applause', 'laughter', 'okay', 'oh', 'merci', 'musique'])
 
 /** Whether a take has no talking in it: (almost) nothing heard, or only what
  *  the model makes up over other sound - its usual words, or one phrase
  *  looping ("you're not going to be a good one" over and over, heard over a
  *  plain tone, 2026-11-06), which nobody says in a real take. */
 export function noSpeechIn(words: readonly { text: string }[]): boolean {
-  const said = words
+  // French hearing's made-up subtitle credits ("Sous-titres réalisés par
+  // ...") are nobody talking either.
+  const heard = MADE_UP_FRENCH.test(words.map((w) => w.text).join('')) ? words.filter((w) => !CREDIT_WORD.test(w.text)) : words
+  const said = heard
     .filter((w) => /[\p{L}\p{N}]/u.test(w.text) && !/^\s*[[(].*[\])]\s*$/.test(w.text))
     .map((w) => w.text.toLowerCase().replace(/[^\p{L}\p{N}']+/gu, ''))
     .filter(Boolean)

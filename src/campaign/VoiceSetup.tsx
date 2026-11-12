@@ -40,6 +40,26 @@ export const READ_LINES: readonly string[] = [
 ]
 export const READ_TEXT = READ_LINES.join(' ')
 
+/** The same paragraph for someone who talks French (2026-11-12): words that
+ *  start soft ("honnêtement", "voilà") and end soft ("vite", "son",
+ *  "change"), a fast list, a question, numbers, the same pauses. */
+export const READ_LINES_FR: readonly string[] = [
+  "Honnêtement, voilà ce que j'ai appris en postant tous les jours.",
+  "D'abord, filme vite. Ensuite, soigne le son. Enfin, poste - puis oublie.",
+  "Est-ce que c'est bizarre au début ? Bien sûr que oui.",
+  'Mais après trente jours, soixante vidéos, peut-être cent, quelque chose change.',
+  "Tu arrêtes de trop réfléchir, tu dis juste ce que tu penses... et c'est tout.",
+]
+
+/** French when the phone is set to French; he can switch with a tap. */
+function phoneSpeaksFrench(): boolean {
+  try {
+    return (navigator.languages ?? [navigator.language]).some((l) => /^fr\b/i.test(l ?? ''))
+  } catch {
+    return false
+  }
+}
+
 type Step = 'intro' | 'quiet' | 'read' | 'um' | 'breath' | 'measuring' | 'done' | 'failed'
 
 /** Shown on the Videos tab: no voice set up yet, or his videos sound unlike it. */
@@ -55,6 +75,8 @@ export function VoiceSetup({ onClose }: { onClose: () => void }) {
   const [problem, setProblem] = useState<string | null>(null)
   const [left, setLeft] = useState(0)
   const [made, setMade] = useState<VoiceProfile | null>(null)
+  const [french, setFrench] = useState(phoneSpeaksFrench)
+  const lines = french ? READ_LINES_FR : READ_LINES
   const recorder = useRef<MediaRecorder | null>(null)
   const stream = useRef<MediaStream | null>(null)
   const chunks = useRef<Blob[]>([])
@@ -212,15 +234,18 @@ export function VoiceSetup({ onClose }: { onClose: () => void }) {
       {step === 'read' ? (
         <div className="voice-step">
           <div className="voice-dot" aria-hidden />
-          <h2>Read this out loud, the way you talk</h2>
-          <div className="voice-read">
-            {READ_LINES.map((line, i) => (
+          <h2>{french ? 'Lis ça à voix haute, comme tu parles' : 'Read this out loud, the way you talk'}</h2>
+          <div className="voice-read" lang={french ? 'fr' : 'en'}>
+            {lines.map((line, i) => (
               <p key={i}>
                 {line}
-                {i < READ_LINES.length - 1 ? <span className="voice-pause"> · pause · </span> : null}
+                {i < lines.length - 1 ? <span className="voice-pause"> · pause · </span> : null}
               </p>
             ))}
           </div>
+          <button type="button" className="linkbtn" onClick={() => setFrench((f) => !f)}>
+            {french ? 'Read it in English' : 'Lire en français'}
+          </button>
           <p className="hint">Your normal speed. Stop for a second where it says pause.</p>
           <button
             type="button"
@@ -239,8 +264,12 @@ export function VoiceSetup({ onClose }: { onClose: () => void }) {
       {step === 'um' ? (
         <div className="voice-step">
           <div className="voice-dot" aria-hidden />
-          <h2>Now say your "um"s</h2>
-          <p className="voice-read">"Um" … "uh" … "umm" … the way you do when you think - with a pause between each.</p>
+          <h2>{french ? 'Maintenant, dis tes "euh"' : 'Now say your "um"s'}</h2>
+          <p className="voice-read">
+            {french
+              ? '"Euh" … "heu" … "euhh" … comme quand tu réfléchis - avec une pause entre chaque.'
+              : '"Um" … "uh" … "umm" … the way you do when you think - with a pause between each.'}
+          </p>
           <button
             type="button"
             className="btn primary wide"

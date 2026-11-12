@@ -13,6 +13,7 @@ First understand what he is saying, the way a person who knows the brand and lis
 
 Rules:
 - Fix only what was misheard. Never reword what he really said, never "improve" his grammar, slang or style, never add or drop a thought, never translate. If he said it, it stays, even if it is clumsy.
+- He may speak French: then the captions are French, and you fix them as French - its spelling and accents (é, è, à, ç), its elisions (c'est, l'app, j'ai) - never in English.
 - Never add, remove, merge or split phrases. Never reorder them.
 - Brand, product and people's names spelled exactly as the brand writes them.
 - Amounts and numbers as a viewer reads them best ("20K", "$500", "3x").

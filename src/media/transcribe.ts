@@ -2,6 +2,7 @@ import type { WordChunk } from './fillerWords'
 import { SilenceCutError } from './errors'
 import type { Range } from './silenceMath'
 import type { TranscribeMessage, TranscribeRequest } from './transcribe.worker'
+import { speechSample, type SpeechLanguage } from './speechLanguage'
 
 /** How long the speech model may go without a word - no download progress,
  *  no window finished - before it is given up on. Loading the model after
@@ -23,6 +24,8 @@ export interface TranscribeOptions {
   /** The time `samples[0]` sits at in the video; a phone's sound can start a
    *  little before zero. The windows are in the video's time. */
   audioStart?: number
+  /** The language he speaks; English (the default) as it always was. */
+  language?: SpeechLanguage
   onModelDownload?: (f: number) => void
   onProgress?: (f: number) => void
 }
@@ -35,13 +38,38 @@ export async function transcribeOnDevice(
   samples: Float32Array,
   sampleRate: number,
   windows: Range[],
-  { prompt = '', fallbackPrompt = '', padQuiet = false, audioStart = 0, onModelDownload, onProgress }: TranscribeOptions = {},
+  { prompt = '', fallbackPrompt = '', padQuiet = false, audioStart = 0, language, onModelDownload, onProgress }: TranscribeOptions = {},
 ): Promise<WordChunk[]> {
   if (windows.length === 0) return []
+  const request: TranscribeRequest = { samples, sampleRate, windows, prompt, fallbackPrompt, padQuiet, audioStart, ...(language && language !== 'en' ? { language } : {}) }
+  return askWorker(request, (message) => (message.type === 'done' ? message.words : undefined), { onModelDownload, onProgress })
+}
+
+/** The language he speaks in `windows` of `samples` - English or French -
+ *  told from up to 30 s of it by the multilingual model, in a worker of its
+ *  own (speechLanguage.ts). `samples` stay usable: a copy is sent. */
+export async function detectLanguage(
+  samples: Float32Array,
+  sampleRate: number,
+  windows: Range[],
+  { audioStart = 0, onModelDownload }: Pick<TranscribeOptions, 'audioStart' | 'onModelDownload'> = {},
+): Promise<{ language: SpeechLanguage; en: number; fr: number }> {
+  const heard = speechSample(samples, sampleRate, windows, audioStart)
+  if (heard.length < sampleRate) return { language: 'en', en: 1, fr: 0 }
+  const request: TranscribeRequest = { samples: heard, sampleRate, windows: [], detect: true }
+  return askWorker(request, (message) => (message.type === 'language' ? { language: message.language, en: message.en, fr: message.fr } : undefined), { onModelDownload })
+}
+
+/** One request to a speech worker of its own, ended as soon as it answers. */
+async function askWorker<T>(
+  request: TranscribeRequest,
+  answer: (message: TranscribeMessage) => T | undefined,
+  { onModelDownload, onProgress }: Pick<TranscribeOptions, 'onModelDownload' | 'onProgress'>,
+): Promise<T> {
   const worker = new Worker(new URL('./transcribe.worker.ts', import.meta.url), { type: 'module' })
   let quiet: ReturnType<typeof setTimeout> | undefined
   try {
-    return await new Promise<WordChunk[]>((resolve, reject) => {
+    return await new Promise<T>((resolve, reject) => {
       let started = false
       let downloaded = 0
       // A model fetch that stalls, a runtime that wedges, or a worker the
@@ -72,8 +100,10 @@ export async function transcribeOnDevice(
           onModelDownload?.(downloaded)
         } else if (message.type === 'loaded') onProgress?.(0)
         else if (message.type === 'progress') onProgress?.(message.fraction)
-        else if (message.type === 'done') resolve(message.words)
-        else if (NO_CONNECTION.test(message.message)) {
+        else if (message.type !== 'error') {
+          const value = answer(message)
+          if (value !== undefined) resolve(value)
+        } else if (NO_CONNECTION.test(message.message)) {
           reject(
             new SilenceCutError(
               'The speech model has to be downloaded once (about 40 MB). Connect to the internet and try again, or turn off "um"s and captions.',
@@ -93,8 +123,7 @@ export async function transcribeOnDevice(
               ),
         )
       }
-      const request: TranscribeRequest = { samples, sampleRate, windows, prompt, fallbackPrompt, padQuiet, audioStart }
-      worker.postMessage(request, [samples.buffer])
+      worker.postMessage(request, [request.samples.buffer])
     })
   } finally {
     clearTimeout(quiet)

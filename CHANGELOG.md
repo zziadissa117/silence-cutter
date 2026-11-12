@@ -3,6 +3,30 @@
 Newest first. Every change says what it does, how to use it, and how it works
 underneath. Kept up to date with each commit.
 
+## French videos: told by themselves, heard in French, captioned in French
+Needs deploying: run ./deploy-server.sh (the caption and caption-check prompts), then ./deploy.sh.
+- His ask (2026-11-12): his friend makes French videos; captions and motion graphics have to work in French, with
+  nothing to choose - "it just automatically sets those".
+- Before: the Cutter listened with an English-only model (whisper-tiny.en), so French came out as nonsense.
+- Now each video's language is told first: up to 30 s of the talking goes to the multilingual model (whisper-tiny,
+  the same size), which says which language comes next - French only when it is clearly surer of French than of
+  English; anything unclear stays English, exactly as before (`media/speechLanguage.ts`, `transcribe.detectLanguage`).
+  It runs in a worker of its own that is ended at once, so the phone's memory is as before.
+- A French video is heard by the multilingual model, told "French, write it down" (never translate). The English
+  letter model that times words exactly is skipped for French (it only knows English letters); captions use the
+  speech model's own times, and word endings are protected from them.
+- French captions: a "?" or "!" written after a space stays with its word, and the subtitle credits Whisper makes up
+  over silence ("Sous-titres réalisés par la communauté d'Amara.org") are dropped. "Euh" is cut like "um" (not
+  "bah", "ben" or "hein"). A take with only those credits is a reaction (no talking).
+- Claude keeps the language: the post caption and title are written in the language of the video (unless the
+  campaign's rules say otherwise), and the caption check fixes French as French. Motion graphics and headlines
+  already wrote in the language he speaks.
+- Settings -> Your voice: the paragraph to read is in French on a phone set to French, with "Lire en français" /
+  "Read it in English" to switch.
+- Each video sends a `check` report "language: fr (en 0.02, fr 0.97)" to see what was told.
+- The first time, the multilingual model downloads once (about 40 MB), on every phone - it also tells English.
+- Tests: `french.test.ts`.
+
 ## Edit screen: overlays dragged straight away, the playhead stays put
 App only: run ./deploy.sh.
 - His asks (2026-11-12): adjust an overlay by its length, not only its time; no "on screen for", no size, no
