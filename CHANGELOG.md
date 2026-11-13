@@ -3,6 +3,37 @@
 Newest first. Every change says what it does, how to use it, and how it works
 underneath. Kept up to date with each commit.
 
+## Talking head batches: every clip cut like the Cutter, checked by him one by one
+- His report (2026-11-13), point by point:
+  - "remove the leeway, just cut like the cutter is already doing and make sure to use my voice because they have
+    been recorded with my mic": the extra room is gone - the cut is his own pacing exactly - and his voices (Settings
+    -> Your voice) are used. On the Cutter server they never were: its page has none of his voices. They now go with
+    every order, so clips cut there, and his talking videos listened to there, follow his voice on his mic.
+  - "You can add some zooms ... exactly like the cutter": each clip gets the zooms his talking videos get (the
+    campaign's effects, else Settings' - punch-ins at the cuts, the push-in, a hit when the brand's name is said).
+  - "if I add a video in the product steps manually myself, it should get edited too": a talking head step's + Add
+    edits the clip the same way. "Edit the N clips added as filmed" edits the ones already in.
+  - "Make sure you point out to me every single video and add a way to check with me if that video goes in the right
+    place" and "The captions must be editable. And claude must check them EXACTLY like the cutter": no edited clip
+    goes in the batch by itself any more. "Check N clips" opens them one by one, full screen: on top, which clip and
+    where it goes (the step it was put in lit, "Not sure - check it" when it wasn't sure, any other step a tap away,
+    Leave out); under it the Cutter's own caption check - the clip with its captions, Claude reading them by itself,
+    every phrase to retype, the caption style and size (kept for the whole format). Approve puts it in the batch
+    with its captions; only then do videos use it. Its step learns how he says it.
+  - "Make it so we can check 'Use edits in hooks' or not": a switch under Your hook (on to start). On, his hooks are
+    edited and checked like the steps' clips; off, they play as filmed.
+- The same recording dropped in again is edited again and takes the old clip's place (it was turned away before), so
+  the clips cut with the old room can simply be dropped in again.
+- Underneath: `prepareDrop` (`dropSettings`: his preset, `voicesHere`, effects; `cutDropped` with `wordMoments`),
+  `plan.planCampaignCut` `voices`, `talkOrder` `ListenOrder.voices`/`DropOrder.voices|effects|brandWords`,
+  `dropQueue.ts` (the clips waiting for his check, per format), `DropIn.tsx` (the engine; `dropInto` for + Add),
+  `DropCheck.tsx`, `BankFile.edited`/`captions` (his checked captions travel with the bank, so the Cutter server's
+  videos draw them), `BatchFormat.rawHooks`/`captionStyle`/`captionSize`, `CaptionReview` `top`/`backLabel`.
+  The Cutter server rebuilds itself from this push.
+- Not run here: the listening (the speech model can't be downloaded in this test setup) and his phone. The check
+  screen was looked at on an iPhone-sized screen. Tests: `dropInView.test.tsx`, `dropCheck.test.tsx`,
+  `dropQueue.test.ts`, `stepMatch.test.ts`, `batchView.test.tsx`.
+
 ## Batch tab: an open format has room again
 - His report (2026-11-13): "when I make a talking head batch, I feel like it's so squeezed in together. There's no
   place for anything."

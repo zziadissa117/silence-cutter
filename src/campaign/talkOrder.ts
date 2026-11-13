@@ -8,6 +8,7 @@
 // Postiz exactly as the phone would. Shared by both sides; plain data only.
 
 import type { CaptionPosition, CaptionSize, CaptionStyle, CaptionWord } from './captions'
+import type { Voices } from './voiceProfile'
 import type { AngleEffects } from './effects'
 import type { CampaignPosting, HeadlinePlace, HeadlineStyle, PopCue } from './look'
 import type { ManualPicture } from './manualPictures'
@@ -27,6 +28,8 @@ export interface ListenOrder {
   /** Time the captions with the letter model. */
   align: boolean
   keepWhole: boolean
+  /** His voices from the phone - the server's page has none (voiceProfile.ts). */
+  voices?: Voices
 }
 
 /** Make it, with everything he decided, and send it. */
@@ -98,11 +101,17 @@ export interface DropOrder {
   cleanSpeech: boolean
   voice: boolean
   names: string[]
+  /** His voices from the phone, so it is cut to his own pacing on his mic. */
+  voices?: Voices
+  /** The zooms his talking videos get (the campaign's effects), and the
+   *  brand's words they fire on - "exactly like the cutter". */
+  effects?: AngleEffects
+  brandWords?: string[]
 }
 
 /** What a drop-in sends back: the cut clip as a bank file, his words in it. */
 export interface DropResult {
-  file: { id: string; name: string; type: string; size: number; fp?: string; from?: string; seconds?: number }
+  file: { id: string; name: string; type: string; size: number; fp?: string; from?: string; seconds?: number; edited?: boolean }
   words: CaptionWord[]
   text: string
 }

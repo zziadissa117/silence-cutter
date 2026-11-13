@@ -19,7 +19,10 @@ export function talkKey(clip: Pick<BankFile, 'id' | 'fp'>): string {
   return `${KEY}${clip.fp ?? clip.id}`
 }
 
-export function keptWords(clip: Pick<BankFile, 'id' | 'fp'>): CaptionWord[] | null {
+export function keptWords(clip: Pick<BankFile, 'id' | 'fp' | 'captions'>): CaptionWord[] | null {
+  // Checked by him (DropCheck.tsx): kept with the clip itself, so the Cutter
+  // server's videos draw them too.
+  if (clip.captions) return clip.captions
   try {
     const raw = localStorage.getItem(talkKey(clip))
     if (!raw) return null

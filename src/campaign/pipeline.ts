@@ -11,6 +11,7 @@
 // only then makes each - without listening again.
 
 import { DEFAULT_POP_POSITION, POP_SIZE, type PopPosition } from './popVideo'
+import type { Voices } from './voiceProfile'
 import type { AngleEffects } from './effects'
 import { SilenceCutError } from '../media/errors'
 import { isFillerWord, isFillerWordDetectionSupported } from '../media/fillerWords'
@@ -146,7 +147,8 @@ export async function listen(
     quietIsFine = false,
     keepWhole = false,
     cutNoise = cutNoiseOn(),
-  }: { cleanSpeech: boolean; hear: boolean; names: string[]; align?: boolean; quietIsFine?: boolean; keepWhole?: boolean; cutNoise?: boolean },
+    voices,
+  }: { cleanSpeech: boolean; hear: boolean; names: string[]; align?: boolean; quietIsFine?: boolean; keepWhole?: boolean; cutNoise?: boolean; voices?: Voices },
   callbacks: CampaignCallbacks = {},
 ): Promise<CampaignPlan> {
   if (hear && !isFillerWordDetectionSupported()) {
@@ -171,6 +173,7 @@ export async function listen(
     cutNoise: wantNoise,
     // English or French, told from the video itself (his ask, 2026-11-12).
     detectLanguage: true,
+    ...(voices ? { voices } : {}),
     onAnalyseProgress: callbacks.onAnalyseProgress,
     onModelDownload: callbacks.onModelDownload,
     onTranscribeProgress: callbacks.onTranscribeProgress,

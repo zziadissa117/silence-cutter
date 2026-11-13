@@ -1,45 +1,52 @@
-// "Drop in all videos" on a talking head format (his ask, 2026-11-13): all
-// his short clips at once - each heard, cut, captioned and put in the
-// product step whose name he says in it (prepareDrop.ts, stepMatch.ts) - or,
-// in a format he set to take hooks, a clip that says no step's name goes to
-// his hooks. Then one quick list to check: what he says in each and where it
-// went, the unsure ones first, somewhere else or "Leave out" in one tap.
-// What he moves teaches the step his wording for next time. A recording
-// dropped in before is not kept twice.
+// The clips of a talking head format, edited the way the Cutter edits his
+// talking videos (prepareDrop.ts) and then checked by him one by one
+// (DropCheck.tsx) before any video uses them.
+//
+// - "Drop in all videos" (his ask, 2026-11-13): all his short clips at once.
+// - A clip he adds to a step with its + Add, or to his hooks (unless he keeps
+//   them as filmed - BatchFormat.rawHooks), goes the same way (his report,
+//   2026-11-13: "if I add a video in the product steps manually myself, it
+//   should get edited too").
+// - Clips he added before as filmed: "Edit the clips added as filmed".
+// - The same recording again: edited again, in place of the one in the batch.
 //
 // With his Cutter server up, the clips go there (his ask, 2026-11-13: "move it
 // to the server"): the phone only sends them, the server hears and cuts
-// several at once, and the phone puts each in its step as it comes back - a
-// copy downloaded for the phone too. What is still on the server is
-// remembered, so he can close the app and find them sorted when he is back
-// here. With no server, the phone does it all, as before.
+// several at once, and each comes back to the check - a copy downloaded for
+// the phone too. What is still on the server is remembered, so he can close
+// the app. With no server, the phone does it all.
 
 import { useEffect, useRef, useState } from 'react'
 
 import { VideoPicker } from '../VideoPicker'
 import type { BankFile, BatchBank, BatchStep } from './batch'
+import { addToQueue, loadQueue, notEdited, placeOf, QUEUE_EVENT, sameRecording, suggestPlace, type ToCheck } from './dropQueue'
+import type { AngleEffects } from './effects'
 import { fingerprint } from './fingerprint'
 import { cutName, dropSettings, prepareClip, type DropPhase } from './prepareDrop'
-import { learned, matchStep } from './stepMatch'
-import { retireBankFiles, saveBankFile } from './store'
-import { rememberWords } from './talkCaptions'
+import { loadBankFile, saveBankFile } from './store'
 import { downloadFile, dropTalk, orderDrop, serverLetDown, talkNow, talkServerUp, upload } from './talkLink'
 import { talkFileId, type DropResult } from './talkOrder'
 
-/** A clip on the server, not back yet - or sorted in, its copy for the
- *  phone still to come down (`sorted`: its bank file's id). */
+export { HOOK } from './dropQueue'
+
+/** A clip on the server, not back yet - or back, its copy for the phone
+ *  still to come down (`back`). */
 interface Waiting {
   id: string
   name: string
   from: string
   progress?: number
-  sorted?: string
+  /** Where he asked it to go, and the clip it takes the place of. */
+  to?: string | null
+  replaces?: string
+  back?: boolean
   /** Times the copy for the phone failed to come down. */
   tries?: number
 }
 
-/** After this many failed downloads the phone stops asking: the batch
- *  still has the clip on the server. */
+/** After this many failed downloads the phone stops asking: the clip waits
+ *  for his check all the same, and is fetched again when he opens it. */
 const MOST_TRIES = 5
 
 const WAITING_KEY = 'batch.dropping:'
@@ -64,20 +71,28 @@ function saveWaiting(formatId: string, list: Waiting[]): void {
 
 const LOOK_EVERY_MS = 3000
 
-/** Where a dropped clip goes: a step's id, his hooks, or nowhere yet. */
-export const HOOK = 'hook'
-const OUT = 'out'
-
-interface Row {
-  /** The clip as picked. */
+/** One clip to edit: a recording he picked, or a clip already in the batch. */
+interface Item {
+  /** The recording, when it is on this phone. */
+  blob: Blob | null
+  /** The clip in the batch it is (edited in place), when it is one. */
+  replaces?: BankFile
   name: string
-  /** The cut clip, kept - absent when it couldn't be used. */
-  file?: BankFile
-  text: string
-  /** A step's id, HOOK, or null: not sure where, waiting for his pick. */
-  place: string | null
-  sure: boolean
-  failed?: string
+  from: string
+  /** Where he asked it to go (a step's or the hooks' + Add). */
+  to?: string | null
+}
+
+/** The + Add buttons of each open talking head format, edited here. */
+const dropTargets = new Map<string, (files: File[], to: string) => void>()
+
+/** His clips edited like a drop-in and checked, for a step's or the hooks'
+ *  + Add - false when that format's drop-in isn't on screen. */
+export function dropInto(formatId: string, files: File[], to: string): boolean {
+  const run = dropTargets.get(formatId)
+  if (!run) return false
+  run(files, to)
+  return true
 }
 
 const PHASE: Record<DropPhase, string> = { model: 'Getting the listening ready', listening: 'Listening', cutting: 'Cutting' }
@@ -85,25 +100,37 @@ const PHASE: Record<DropPhase, string> = { model: 'Getting the listening ready',
 export function DropIn({
   formatId,
   steps,
+  hookFiles,
   hooks,
+  rawHooks,
   names,
+  effects,
+  brandWords,
   getBank,
-  keep,
+  onCheck,
 }: {
   formatId: string
   /** This format's product steps. */
   steps: BatchStep[]
+  /** This format's hooks (the clips of him). */
+  hookFiles: BankFile[]
   /** A clip that says no step's name is a hook (BatchFormat.dropHooks). */
   hooks: boolean
+  /** His hooks kept as filmed (BatchFormat.rawHooks). */
+  rawHooks: boolean
   /** The campaign's brand words, heard right. */
   names: string[]
+  /** The zooms his talking videos get, and the words the brand hit fires on. */
+  effects: AngleEffects
+  brandWords: string[]
   getBank: () => BatchBank | null
-  keep: (bank: BatchBank) => void
+  /** Opens the check of the clips waiting for it. */
+  onCheck: () => void
 }) {
-  const [rows, setRows] = useState<Row[]>([])
   const [running, setRunning] = useState<{ at: number; of: number; name: string; phase: string } | null>(null)
+  const [failed, setFailed] = useState<{ name: string; why: string }[]>([])
   const stop = useRef(false)
-  const ids = new Set(steps.map((s) => s.id))
+  const [queue, setQueue] = useState<ToCheck[]>(() => loadQueue(formatId))
   const [waiting, setWaitingState] = useState<Waiting[]>(() => loadWaiting(formatId))
   const waitingRef = useRef(waiting)
   const setWaiting = (next: Waiting[]) => {
@@ -111,70 +138,135 @@ export function DropIn({
     saveWaiting(formatId, next)
     setWaitingState(next)
   }
-
-  /** The bank with `file` taken out of every step and the hooks, and put in
-   *  `to` (a step, HOOK, or null for nowhere). */
-  const placed = (bank: BatchBank, file: BankFile, to: string | null): BatchBank => {
-    const reactions = bank.reactions.filter((r) => r.id !== file.id)
-    return {
-      ...bank,
-      reactions: to === HOOK ? [...reactions, { ...file, formats: [formatId], talks: true }] : reactions.length === bank.reactions.length ? bank.reactions : reactions,
-      steps: (bank.steps ?? []).map((st) => {
-        const without = st.files.filter((f) => f.id !== file.id)
-        return st.id === to ? { ...st, files: [...without, file] } : without.length === st.files.length ? st : { ...st, files: without }
-      }),
+  useEffect(() => {
+    const onQueue = (event: Event) => {
+      if ((event as CustomEvent<{ formatId: string }>).detail.formatId === formatId) setQueue(loadQueue(formatId))
     }
-  }
+    window.addEventListener(QUEUE_EVENT, onQueue)
+    return () => window.removeEventListener(QUEUE_EVENT, onQueue)
+  }, [formatId])
 
-  /** Already in this batch, dropped in before - or on its way back from the server. */
-  const droppedBefore = (bank: BatchBank, from: string) =>
-    [...bank.reactions, ...(bank.steps ?? []).flatMap((s) => s.files)].some((f) => f.from === from) || waitingRef.current.some((w) => w.from === from)
+  const cut = () => dropSettings({ effects, brandWords })
+  const fail = (name: string, why: unknown) => setFailed((f) => [...f, { name, why: why instanceof Error ? why.message : String(why) }])
 
-  /** A cut clip in its step (or the hooks), and on the check list. */
-  const sortIn = (name: string, clip: DropResult) => {
+  /** A clip back, edited: waiting for his check, where it would go worked
+   *  out (dropQueue.suggestPlace). */
+  const toCheck = (name: string, clip: DropResult, { to, replaces }: { to?: string | null; replaces?: string }) => {
     const bank = getBank()
-    if (!bank) return
-    const file: BankFile = clip.file
-    const match = matchStep(clip.text, (bank.steps ?? []).filter((s) => ids.has(s.id)))
-    const place = match.stepId ?? (hooks ? HOOK : null)
-    if (place) keep(placed(bank, file, place))
-    setRows((r) => [...r, { name, file, text: clip.text, place, sure: match.sure && place !== null }])
+    const { place, sure } = suggestPlace(bank, steps, clip.text, { to, replaces, hooks })
+    setQueue(addToQueue(formatId, { file: clip.file, name, text: clip.text, words: clip.words, place, sure, ...(replaces ? { replaces } : {}) }))
   }
+
+  /** Already on its way or waiting for his check: not edited twice. */
+  const onItsWay = (from: string) => waitingRef.current.some((w) => w.from === from) || loadQueue(formatId).some((q) => q.file.from === from)
 
   /** Each clip up to the server with its order; the server does the rest.
    *  The server failing to take one: that one and the rest done here. */
-  const sendAll = async (files: File[]) => {
-    const cut = dropSettings()
-    for (const [i, file] of files.entries()) {
+  const sendAll = async (items: Item[]) => {
+    const how = cut()
+    for (const [i, item] of items.entries()) {
       if (stop.current) break
-      const say = (phase: string) => setRunning({ at: i + 1, of: files.length, name: file.name, phase })
+      const say = (phase: string) => setRunning({ at: i + 1, of: items.length, name: item.name, phase })
       say('Sending to your server')
-      const from = await fingerprint(file)
-      const bank = getBank()
-      if (bank && droppedBefore(bank, from)) {
-        setRows((r) => [...r, { name: file.name, text: '', place: null, sure: true, failed: 'already in' }])
-        continue
-      }
       try {
         const id = `d${crypto.randomUUID().replace(/-/g, '').slice(0, 20)}`
-        const fileId = talkFileId('t', id)
-        await upload(fileId, file, file.name, file.type || 'video/quicktime', (p) => say(`Sending to your server ${Math.round(p * 100)}%`))
-        await orderDrop({ id, fileId, outId: crypto.randomUUID(), outName: cutName(file.name), from, ...cut, names })
-        setWaiting([...waitingRef.current, { id, name: file.name, from }])
+        // A clip of the batch that isn't on this phone is cut from the
+        // server's own copy.
+        let fileId = item.replaces?.id ?? ''
+        if (item.blob) {
+          fileId = talkFileId('t', id)
+          await upload(fileId, item.blob, item.name, item.blob.type || 'video/quicktime', (p) => say(`Sending to your server ${Math.round(p * 100)}%`))
+        } else if (!fileId) throw new Error('not on this phone')
+        await orderDrop({ id, fileId, outId: crypto.randomUUID(), outName: cutName(item.name), from: item.from, ...how, names })
+        setWaiting([...waitingRef.current, { id, name: item.name, from: item.from, ...(item.to !== undefined ? { to: item.to } : {}), ...(item.replaces ? { replaces: item.replaces.id } : {}) }])
       } catch {
         serverLetDown()
-        return onPhone(files.slice(i))
+        return onPhone(items.slice(i))
       }
     }
     setRunning(null)
   }
 
-  /** The copy for the phone, down from the server - kept only while the
-   *  batch still has the clip. Done with it there once it is here. */
+  /** All on this phone: no server, or it stopped taking them. */
+  const onPhone = async (items: Item[]) => {
+    const how = cut()
+    for (const [i, item] of items.entries()) {
+      if (stop.current) break
+      setRunning({ at: i + 1, of: items.length, name: item.name, phase: PHASE.listening })
+      try {
+        const blob = item.blob ?? (item.replaces ? await loadBankFile(item.replaces) : null)
+        if (!blob) throw new Error('not on this phone')
+        const clip = await prepareClip(blob, {
+          name: item.name,
+          names,
+          cut: how,
+          from: item.from,
+          onPhase: (phase, p) => setRunning({ at: i + 1, of: items.length, name: item.name, phase: `${PHASE[phase]}${p > 0 && p < 1 ? ` ${Math.round(p * 100)}%` : ''}` }),
+        })
+        toCheck(item.name, clip, { to: item.to, replaces: item.replaces?.id })
+      } catch (error) {
+        fail(item.name, error)
+      }
+    }
+    setRunning(null)
+  }
+
+  const go = async (items: Item[]) => {
+    stop.current = false
+    if (items.length === 0) return
+    // His server up: it does the listening and cutting, several at once.
+    if (await talkServerUp().catch(() => false)) return sendAll(items)
+    return onPhone(items)
+  }
+
+  /** Recordings he picked: each edited, in place of the same one in the
+   *  batch when it is there already. */
+  const run = async (files: File[], to?: string) => {
+    setFailed([])
+    const items: Item[] = []
+    for (const file of files) {
+      const from = await fingerprint(file)
+      if (onItsWay(from) || items.some((x) => x.from === from)) {
+        fail(file.name, 'already on its way to your check')
+        continue
+      }
+      const bank = getBank()
+      const same = bank ? sameRecording(bank, formatId, from) : null
+      items.push({ blob: file, name: file.name, from, ...(to !== undefined ? { to } : {}), ...(same ? { replaces: same } : {}) })
+    }
+    await go(items)
+  }
+
+  /** Clips already in the batch as he filmed them, edited now. */
+  const editOld = async (files: BankFile[]) => {
+    setFailed([])
+    const bank = getBank()
+    const items: Item[] = []
+    for (const file of files) {
+      const blob = await loadBankFile(file).catch(() => null)
+      const from = file.from ?? file.fp ?? (blob ? await fingerprint(blob) : file.id)
+      if (onItsWay(from)) continue
+      items.push({ blob, replaces: file, name: file.name, from, to: bank ? placeOf(bank, file.id) : null })
+    }
+    await go(items)
+  }
+
+  // A step's or the hooks' + Add, edited here.
+  const runRef = useRef(run)
+  runRef.current = run
+  useEffect(() => {
+    const target = (files: File[], to: string) => void runRef.current(files, to)
+    dropTargets.set(formatId, target)
+    return () => {
+      if (dropTargets.get(formatId) === target) dropTargets.delete(formatId)
+    }
+  }, [formatId])
+
+  /** The copy for the phone, down from the server. Done with the order
+   *  there once it is here. */
   const fetching = useRef(new Set<string>())
-  const fetchCopy = (w: Waiting) => {
-    const fileId = w.sorted
-    if (!fileId || fetching.current.has(w.id)) return
+  const fetchCopy = (w: Waiting, fileId: string) => {
+    if (fetching.current.has(w.id)) return
     fetching.current.add(w.id)
     const finish = (change: Partial<Waiting> | null) => {
       fetching.current.delete(w.id)
@@ -183,9 +275,7 @@ export function DropIn({
     }
     void downloadFile(fileId)
       .then(async (blob) => {
-        const bank = getBank()
-        const used = bank && [...bank.reactions, ...(bank.steps ?? []).flatMap((st) => st.files)].some((f) => f.id === fileId)
-        if (used) await saveBankFile(fileId, blob)
+        await saveBankFile(fileId, blob)
         void dropTalk(w.id)
         finish(null)
       })
@@ -196,8 +286,8 @@ export function DropIn({
       })
   }
 
-  // What the server has finished, sorted in as it comes back - also after he
-  // closed the app and came back here.
+  // What the server has finished, to his check as it comes back - also
+  // after he closed the app and came back here.
   const looking = useRef(false)
   const look = async () => {
     if (looking.current) return
@@ -206,24 +296,30 @@ export function DropIn({
       const there = await talkNow().catch(() => null)
       if (!there) return
       let next = waitingRef.current
+      const copies: [Waiting, string][] = []
       for (const w of waitingRef.current) {
-        if (w.sorted) continue
         const rec = there[w.id]
+        if (w.back) {
+          const fileId = rec?.dropped?.file.id ?? loadQueue(formatId).find((q) => q.file.from === w.from)?.file.id
+          if (fileId) copies.push([w, fileId])
+          else next = next.filter((x) => x.id !== w.id)
+          continue
+        }
         if (!rec) {
-          setRows((r) => [...r, { name: w.name, text: '', place: null, sure: false, failed: 'the server lost it - drop it in again' }])
+          fail(w.name, 'the server lost it - drop it in again')
           next = next.filter((x) => x.id !== w.id)
         } else if (rec.state === 'made' && rec.dropped) {
-          rememberWords(rec.dropped.file, rec.dropped.words)
-          sortIn(w.name, rec.dropped)
-          next = next.map((x) => (x.id === w.id ? { ...x, sorted: rec.dropped!.file.id } : x))
+          toCheck(w.name, rec.dropped, { to: w.to, replaces: w.replaces })
+          next = next.map((x) => (x.id === w.id ? { ...x, back: true } : x))
+          copies.push([{ ...w, back: true }, rec.dropped.file.id])
         } else if (rec.state === 'failed') {
-          setRows((r) => [...r, { name: w.name, text: '', place: null, sure: false, failed: rec.error ?? 'failed on the server' }])
+          fail(w.name, rec.error ?? 'failed on the server')
           void dropTalk(w.id)
           next = next.filter((x) => x.id !== w.id)
         } else next = next.map((x) => (x.id === w.id ? { ...x, progress: rec.progress } : x))
       }
       setWaiting(next)
-      for (const w of next) fetchCopy(w)
+      for (const [w, fileId] of copies) fetchCopy(w, fileId)
     } finally {
       looking.current = false
     }
@@ -237,80 +333,17 @@ export function DropIn({
     return () => window.clearInterval(timer)
   }, [waiting.length > 0]) // eslint-disable-line react-hooks/exhaustive-deps
 
-  const run = async (files: File[]) => {
-    stop.current = false
-    // His server up: it does the listening and cutting, several at once.
-    if (await talkServerUp().catch(() => false)) return sendAll(files)
-    return onPhone(files)
-  }
-
-  /** All on this phone: no server, or it stopped taking them. */
-  const onPhone = async (files: File[]) => {
-    for (const [i, file] of files.entries()) {
-      if (stop.current) break
-      setRunning({ at: i + 1, of: files.length, name: file.name, phase: PHASE.listening })
-      try {
-        const from = await fingerprint(file)
-        const before = getBank()
-        if (before && droppedBefore(before, from)) {
-          setRows((r) => [...r, { name: file.name, text: '', place: null, sure: true, failed: 'already in' }])
-          continue
-        }
-        const clip = await prepareClip(file, {
-          names,
-          from,
-          onPhase: (phase, p) => setRunning({ at: i + 1, of: files.length, name: file.name, phase: `${PHASE[phase]}${p > 0 && p < 1 ? ` ${Math.round(p * 100)}%` : ''}` }),
-        })
-        const bank = getBank()
-        if (!bank) break
-        const match = matchStep(clip.text, (bank.steps ?? []).filter((s) => ids.has(s.id)))
-        const place = match.stepId ?? (hooks ? HOOK : null)
-        if (place) keep(placed(bank, clip.file, place))
-        setRows((r) => [...r, { name: file.name, file: clip.file, text: clip.text, place, sure: match.sure && place !== null }])
-      } catch (error) {
-        setRows((r) => [...r, { name: file.name, text: '', place: null, sure: false, failed: error instanceof Error ? error.message : String(error) }])
-      }
-    }
-    setRunning(null)
-  }
-
-  /** A clip moved elsewhere, or left out. */
-  const move = (row: Row, to: string) => {
-    const bank = getBank()
-    if (!bank || !row.file) return
-    keep(placed(bank, row.file, to === OUT ? null : to))
-    if (to === OUT) void retireBankFiles([row.file.id]).catch(() => {})
-    setRows((all) => all.map((r) => (r === row ? { ...r, place: to === OUT ? null : to, sure: true, failed: to === OUT ? 'Left out' : undefined } : r)))
-  }
-
-  /** Checked: each step remembers how he said it; clips left nowhere go. */
-  const done = () => {
-    const bank = getBank()
-    if (bank) {
-      keep({
-        ...bank,
-        steps: (bank.steps ?? []).map((st) => {
-          const said = rows.filter((r) => r.place === st.id && r.file && r.text)
-          return said.length > 0 ? { ...st, heard: said.reduce((h, r) => learned(h, r.text), st.heard) } : st
-        }),
-      })
-    }
-    const loose = rows.filter((r) => r.file && !r.place && r.failed !== 'Left out').map((r) => r.file!.id)
-    if (loose.length > 0) void retireBankFiles(loose).catch(() => {})
-    setRows([])
-  }
-
-  if (steps.length === 0) return null
-  const cutting = waiting.filter((w) => !w.sorted).length
-  const toLook = (r: Row) => !r.failed && (!r.sure || !r.place)
-  const unsure = rows.filter(toLook)
-  const ordered = [...rows].sort((a, b) => Number(!toLook(a)) - Number(!toLook(b)))
-  const nameOf = (place: string | null) => (place === HOOK ? 'a hook' : (steps.find((s) => s.id === place)?.name ?? 'no step'))
-  const failedLine = (row: Row) =>
-    row.failed === 'Left out' ? `${row.name}: left out` : row.failed === 'already in' ? `${row.name}: already in from before` : `${row.name}: couldn't use it (${row.failed})`
+  const cutting = waiting.filter((w) => !w.back).length
+  const asFilmed = notEdited(steps, rawHooks ? [] : hookFiles)
+  const canDrop = steps.length > 0 || hooks
 
   return (
     <div className="drop-in">
+      {queue.length > 0 ? (
+        <button type="button" className="btn primary wide drop-check-btn" onClick={onCheck}>
+          Check {queue.length} clip{queue.length === 1 ? '' : 's'}
+        </button>
+      ) : null}
       {running ? (
         <div className="drop-in-running">
           <span className="row-name">
@@ -324,57 +357,37 @@ export function DropIn({
             Stop after this one
           </button>
         </div>
-      ) : (
-        <VideoPicker className="btn small primary" label="Drop in all videos" onFiles={(files) => files.length > 0 && void run(files)}>
+      ) : canDrop ? (
+        <VideoPicker className={`btn small${queue.length > 0 ? '' : ' primary'}`} label="Drop in all videos" onFiles={(files) => files.length > 0 && void run(files)}>
           Drop in all videos
         </VideoPicker>
-      )}
+      ) : null}
       {cutting > 0 ? (
         <p className="hint">
-          Your server is cutting {cutting} more clip{cutting === 1 ? '' : 's'}
-          {running ? '' : ' - you can close the app; they are sorted into their steps when you are back here'}.
+          Your server is editing {cutting} more clip{cutting === 1 ? '' : 's'}
+          {running ? '' : ' - you can close the app; they wait here for your check'}.
         </p>
       ) : null}
-      {!running && rows.length === 0 ? (
+      {queue.length > 0 && !running ? <p className="hint">Each one: where it goes and its captions. It is in your videos once you approve it.</p> : null}
+      {!running && queue.length === 0 && cutting === 0 && canDrop ? (
         <p className="hint">
-          Pick all your clips at once: each is cut, captioned and put in the step whose name you say in it
-          {hooks ? ' - one that says no step is a hook' : ''}.
+          Pick all your clips at once: each is cut like your talking videos, zoomed, captioned and put in the step whose name you say in it
+          {hooks ? ' - one that says no step is a hook' : ''}. Then you check every one.
         </p>
       ) : null}
-      {rows.length > 0 ? (
-        <div className="drop-in-check">
-          <div className="group-title">
-            Check them · {rows.length} clip{rows.length === 1 ? '' : 's'}
-            {unsure.length > 0 ? ` · ${unsure.length} to look at` : ' · all sure'}
-          </div>
-          <ul className="rows group">
-            {ordered.map((row, k) => (
-              <li key={`${row.name}-${k}`} className={`drop-in-row${toLook(row) ? ' unsure' : ''}`}>
-                <div className="row-text">
-                  <span className="row-line">{row.failed ? failedLine(row) : `“${row.text}”`}</span>
-                  {toLook(row) ? <span className="hint warn-text">{row.place ? `Not sure - looks like ${nameOf(row.place)}` : 'Not sure where it goes'}</span> : null}
-                </div>
-                {row.file && row.failed !== 'Left out' ? (
-                  <select value={row.place ?? ''} aria-label={`Where ${row.name} goes`} onChange={(e) => e.target.value && move(row, e.target.value)}>
-                    {row.place ? null : <option value="">Pick where</option>}
-                    {hooks ? <option value={HOOK}>Hook</option> : null}
-                    {steps.map((s) => (
-                      <option key={s.id} value={s.id}>
-                        {s.name}
-                      </option>
-                    ))}
-                    <option value={OUT}>Leave out</option>
-                  </select>
-                ) : null}
-              </li>
-            ))}
-          </ul>
-          {!running ? (
-            <button type="button" className="btn primary wide" onClick={done}>
-              {rows.some((r) => r.file && !r.place && r.failed !== 'Left out') ? 'Done - clips with nowhere to go are left out' : 'Looks good'}
-            </button>
-          ) : null}
-        </div>
+      {asFilmed.length > 0 && !running ? (
+        <button type="button" className="btn small" onClick={() => void editOld(asFilmed)}>
+          Edit the {asFilmed.length} clip{asFilmed.length === 1 ? '' : 's'} added as filmed
+        </button>
+      ) : null}
+      {failed.length > 0 ? (
+        <ul className="drop-in-failed">
+          {failed.map((f, k) => (
+            <li key={`${f.name}-${k}`} className="hint warn-text">
+              {f.name}: {f.why === 'already on its way to your check' ? f.why : `couldn't edit it (${f.why})`}
+            </li>
+          ))}
+        </ul>
       ) : null}
     </div>
   )

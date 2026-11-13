@@ -40,7 +40,7 @@ import { ALIGNED_LATE_SEC, HEARD_LATE_SEC, captionWords, snapToOnsets, spokenWor
 import { LONG_SEC, TINY_SEC, cutNoise, cutOut, loneSounds, peakDbIn, peaksOf, protectWords, type CutCheck, type WordSpan } from './noiseCuts'
 import { partWindows } from './timedWords'
 import { findUms, heardOnlyFiller } from './umFind'
-import { chosenVoice, loadProfiles, percentile, withProfile } from './voiceProfile'
+import { chosenVoice, loadProfiles, percentile, withProfile, type Voices } from './voiceProfile'
 
 /** How long the letter model may go without a word before it is given up
  *  on, and the captions keep the speech model's own times. */
@@ -184,6 +184,9 @@ export async function planCampaignCut(
     /** Tell English from French before listening (speechLanguage.ts); off,
      *  it is heard as English. */
     detectLanguage?: boolean
+    /** His voices, when they are not on this page (the Cutter server's): the
+     *  phone's, sent with the work. Absent: this page's own. */
+    voices?: Voices
     onAnalyseProgress?: (fraction: number) => void
     onModelDownload?: (fraction: number) => void
     onTranscribeProgress?: (fraction: number) => void
@@ -225,8 +228,8 @@ export async function planCampaignCut(
   // endings, no pause shorter than his natural gap - on his own talking only,
   // and only when this video sounds like him on that mic.
   const talking = options.listen && !options.keepWhole && !options.quietIsFine
-  const voices = talking ? loadProfiles() : []
-  const tuned = withProfile(settings, levels, voices, chosenVoice())
+  const voices = talking ? (options.voices?.profiles ?? loadProfiles()) : []
+  const tuned = withProfile(settings, levels, voices, options.voices?.chosen ?? chosenVoice())
   const profile = tuned.profile
   settings = tuned.settings
   const silences = findSilentRanges(levels, settings)

@@ -656,7 +656,7 @@ listened to (`talkOrder.toServer`, `SERVER_FROM`) and a server that answers `/ta
 
 - **Listening.** `CampaignApp.talkTick` (every 3 s, and at once when videos are added) marks them `onServer:
   'listen'` (kept on the job row - `store.setJobFields`), and `sendForListening` sends each recording up
-  (`/files`, id `t-<job>`, made H.264 fast if it is HEVC) and a `ListenOrder` (`PUT /talk/<job>`). The phone's own
+  (`/files`, id `t-<job>`, made H.264 fast if it is HEVC) and a `ListenOrder` (`PUT /talk/<job>`, with his voices - `voiceProfile.voicesHere`; the server's page has none). The phone's own
   queue leaves them alone, and while 3+ wait for a server that is up it starts none of them itself. The server's
   page (`serverTalk.talkLoop`) listens to up to 4 at once (`atOnce`, from its memory), writing progress and the plan
   back (`/local/talk/<id>`). The phone reads `GET /talk`, takes the plan (`GET /talk/<id>`) and sorts it and writes
@@ -677,19 +677,30 @@ listened to (`talkOrder.toServer`, `SERVER_FROM`) and a server that answers `/ta
   campaign doesn't post from this phone - and a video made there can't be edited again from Posts (its recording
   left the phone).
 
-### Dropped-in step clips on the server (`DropIn.tsx`, `talkOrder.DropOrder`, `serverTalk.runDrop`, his ask 2026-11-13)
+### A talking head's clips: edited, then checked one by one (`DropIn.tsx`, `dropQueue.ts`, `DropCheck.tsx`, his asks 2026-11-13)
 
-"Drop in all videos" on a talking head format, with the server up (`talkServerUp`), sends each recording up (`t-<id>`,
-so HEVC is made H.264 and it goes with its order) with a `DropOrder` (`PUT /talk/<id>`, kind `drop`: the phone's
-cut settings with the drop-in's room - `prepareDrop.dropSettings` - the brand words, the bank file id and name the
-cut clip gets, the recording's fingerprint). The server's page hears and cuts up to 3 at once alongside its listening
-(`prepareDrop.cutDropped`, the same code the phone runs), keeps the cut clip on its disk as that bank file
-(`PUT /local/files/<id>` - `from: null`, so the phone never sends it again), and tells back a `DropResult` (the bank
-file, its words on the cut's clock, the text). The phone waits with the ids in localStorage (`batch.dropping:<format>`)
-and reads `GET /talk` every 3 s while the drop-in is on screen - also after the app was closed - and sorts each into
-its step (`stepMatch`) as it comes back, keeps its words (`talkCaptions.rememberWords`), downloads a copy for itself
-(`GET /files/<id>`, kept only while the batch still has the clip) and then lets the order go (`DELETE /talk/<id>`).
-The server not taking one (an upload failing): that one and the rest are done on the phone (`prepareClip`).
+Every clip of a talking head format the Cutter edits - "Drop in all videos", a step's + Add (`dropInto`), his hooks'
++ Add unless `BatchFormat.rawHooks`, "Edit the N clips added as filmed" - is cut exactly like his talking videos:
+his preset (`prepareDrop.dropSettings`), his voices (`voiceProfile.voicesHere`; `plan.planCampaignCut` `voices` -
+the Cutter server's page has none of its own), and the campaign's zooms (`effectsFor(angle.effects, defaultEffects())`,
+brand hits from `moments.wordMoments`). Edited, it does not go in the batch: it waits in `dropQueue` (localStorage
+`batch.toCheck:<format>`, with where it would go - `suggestPlace`: where he asked, where the clip it replaces is, else
+`stepMatch`). "Check N clips" opens `DropCheck`: full screen (a fixed layer over the tab bar), one clip at a time, the
+Cutter's own `CaptionReview` (Claude's automatic check once per clip, every phrase editable, style and size kept on
+the format - `BatchFormat.captionStyle/captionSize`) with where it goes in its `top` (steps as chips, Hook, Leave out,
+"Not sure" when unsure). Approve: `dropQueue.placed` puts it in its step or hooks with `edited` and `captions` (the
+words he approved - `talkCaptions.keptWords` prefers them, so the server's videos draw them too), retires the clip it
+replaces, and the step learns his wording. The same recording again replaces its earlier clip (`sameRecording`).
+
+With his Cutter server up (`talkServerUp`), each recording goes up (`t-<id>`, so HEVC is made H.264 and it goes with its
+order; a clip of the batch already there is cut from the server's copy) with a `DropOrder` (`PUT /talk/<id>`, kind
+`drop`: settings, voices, effects, brand words, the bank file id and name the cut clip gets, the recording's
+fingerprint). The server's page cuts up to 3 at once alongside its listening (`serverTalk.runDrop`, the same
+`prepareDrop.cutDropped`), keeps the cut clip on its disk as that bank file (`PUT /local/files/<id>` - `from: null`, so
+the phone never sends it again), and tells back a `DropResult`. The phone waits with the ids in localStorage
+(`batch.dropping:<format>`), reads `GET /talk` every 3 s while the format is open - also after the app was closed -
+puts each into the check, downloads a copy (`GET /files/<id>`) and then lets the order go (`DELETE /talk/<id>`). The
+server not taking one (an upload failing): that one and the rest are done on the phone (`prepareClip`).
 
 ## The engine (`engine/`, on Railway)
 

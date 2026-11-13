@@ -48,7 +48,9 @@ import {
 } from './batch'
 import { StepOrder } from './StepOrder'
 import { CaptionHeight } from './CaptionHeight'
-import { DropIn } from './DropIn'
+import { DropCheck } from './DropCheck'
+import { DropIn, HOOK, dropInto } from './DropIn'
+import { defaultEffects, effectsFor } from './defaultEffects'
 import { StepTexts } from './StepTexts'
 import { BatchStatus } from './BatchStatus'
 import { Mark } from './Mark'
@@ -337,6 +339,8 @@ export function BatchView({
     })
   /** The format open below its card; "+ Add a format" choosing a kind. */
   const [openFormat, setOpenFormat] = useState<string | null>(null)
+  // The format whose edited clips he is checking one by one (DropCheck.tsx).
+  const [checking, setChecking] = useState<string | null>(null)
   const [choosingKind, setChoosingKind] = useState(false)
   /** The batch the engine is making for this campaign, as it last said. */
   const [engineState, setEngineState] = useState<EngineJob | null>(null)
@@ -1186,7 +1190,7 @@ export function BatchView({
   /** One step of the product showcase: its clips, one of which - the moment
    *  something happens in it - goes in each video. Its name on a line of its
    *  own, what is on it under, its buttons under that, its clips closed. */
-  const stepList = (step: BatchStep, index: number, talking = false) => {
+  const stepList = (step: BatchStep, index: number, talking = false, formatId?: string) => {
     const own = step.texts ? (talking ? withoutName(step, step.texts) : step.texts) : null
     const words = own && own.length > 0 ? own.map((t) => `"${t.text}"`).join(', ') : null
     const overlays = step.overlays?.length ?? 0
@@ -1207,7 +1211,13 @@ export function BatchView({
           <button type="button" className="btn small" aria-expanded={wordsFor === step.id} onClick={() => setWordsFor(wordsFor === step.id ? null : step.id)}>
             Words & overlays
           </button>
-          <VideoPicker className="btn small" label={`Add clips for ${step.name}`} onFiles={(files) => void add({ step: step.id }, files)}>
+          {/* A talking head's clip added by hand is edited and checked like a
+              drop-in (his report, 2026-11-13: "it should get edited too"). */}
+          <VideoPicker
+            className="btn small"
+            label={`Add clips for ${step.name}`}
+            onFiles={(files) => (talking && formatId && dropInto(formatId, files, step.id) ? undefined : void add({ step: step.id }, files))}
+          >
             + Add
           </VideoPicker>
         </div>
@@ -1317,7 +1327,33 @@ export function BatchView({
                     ? 'You, cut out of your background and put in the corner. Talking: the video lasts as long as you do.'
                     : 'They go first, with the headline over them - slowly zooming in. No sound but the music.',
                 f.id,
+                // Edited and checked like the steps' clips, unless he keeps them raw.
+                f.kind === 'talking' && !f.rawHooks ? (files) => void (dropInto(f.id, files, HOOK) || add({ format: f.id, as: 'reactions' }, files)) : undefined,
               )}
+              {/* His pick per format (2026-11-13: "Make it so we can check 'Use
+                  edits in hooks' or not because we might want to just keep the
+                  raw hooks sometimes"). */}
+              {f.kind === 'talking' ? (
+                <div className="format-box">
+                  <div className="setting">
+                    <div className="setting-text">
+                      <span className="row-name">Use edits in hooks</span>
+                      <span className="row-line">
+                        {f.rawHooks
+                          ? 'Off: your hooks play as you filmed them.'
+                          : 'On: your hooks are cut, zoomed and captioned like your talking videos - you check each one.'}
+                      </span>
+                    </div>
+                    <input
+                      type="checkbox"
+                      className="switch"
+                      checked={!f.rawHooks}
+                      aria-label="Use edits in hooks"
+                      onChange={(e) => changeFormat(f.id, { rawHooks: e.target.checked ? undefined : true })}
+                    />
+                  </div>
+                </div>
+              ) : null}
             </div>
 
             <div className="format-section">
@@ -1407,6 +1443,42 @@ export function BatchView({
                   onClose={() => setOrdering(null)}
                 />
               ) : null}
+              {/* His clips edited like his talking videos and checked one by
+                  one before any video uses them (DropIn.tsx, DropCheck.tsx) -
+                  dropped in all at once, or added to a step or his hooks. */}
+              {f.kind === 'talking' ? (
+                <div className="format-box drop-box">
+                  <DropIn
+                    formatId={f.id}
+                    steps={steps}
+                    hookFiles={sub.reactions}
+                    hooks={Boolean(f.dropHooks)}
+                    rawHooks={Boolean(f.rawHooks)}
+                    names={campaign.brandWords ?? []}
+                    effects={angle.effects ? effectsFor(angle.effects, defaultEffects()) : defaultEffects()}
+                    brandWords={campaign.brandWords ?? []}
+                    getBank={() => bankRef.current}
+                    onCheck={() => setChecking(f.id)}
+                  />
+                  {/* His pick per format (2026-11-13: "make it so I choose each
+                      new format"): dropped clips can be hooks too. */}
+                  {steps.length > 0 ? (
+                    <div className="setting">
+                      <div className="setting-text">
+                        <span className="row-name">Dropped clips can be hooks</span>
+                        <span className="row-line">{f.dropHooks ? "On: a clip that says no step's name becomes a hook." : 'Off: every dropped clip goes to a product step.'}</span>
+                      </div>
+                      <input
+                        type="checkbox"
+                        className="switch"
+                        checked={Boolean(f.dropHooks)}
+                        aria-label="Dropped clips can be hooks"
+                        onChange={(e) => changeFormat(f.id, { dropHooks: e.target.checked || undefined })}
+                      />
+                    </div>
+                  ) : null}
+                </div>
+              ) : null}
               {steps.length > 0 ? (
                 <>
                   <p className="hint tip">
@@ -1416,29 +1488,7 @@ export function BatchView({
                         ? 'Each video plays one clip of every step behind you, in order, whole.'
                         : 'Each video plays one clip of every step, in order: the moment something happens in it, or all of it when it is short.'}
                   </p>
-                  {/* All his clips at once, cut, captioned and put in their steps
-                      (his ask, 2026-11-13) - a talking head whose steps are set. */}
-                  {f.kind === 'talking' ? (
-                    <div className="format-box drop-box">
-                      <DropIn formatId={f.id} steps={steps} hooks={Boolean(f.dropHooks)} names={campaign.brandWords ?? []} getBank={() => bankRef.current} keep={keep} />
-                      {/* His pick per format (2026-11-13: "make it so I choose each
-                          new format"): dropped clips can be hooks too. */}
-                      <div className="setting">
-                        <div className="setting-text">
-                          <span className="row-name">Dropped clips can be hooks</span>
-                          <span className="row-line">{f.dropHooks ? "On: a clip that says no step's name becomes a hook." : 'Off: every dropped clip goes to a product step.'}</span>
-                        </div>
-                        <input
-                          type="checkbox"
-                          className="switch"
-                          checked={Boolean(f.dropHooks)}
-                          aria-label="Dropped clips can be hooks"
-                          onChange={(e) => changeFormat(f.id, { dropHooks: e.target.checked || undefined })}
-                        />
-                      </div>
-                    </div>
-                  ) : null}
-                  <div className="step-cards">{steps.map((st, i) => stepList(st, i, f.kind === 'talking'))}</div>
+                  <div className="step-cards">{steps.map((st, i) => stepList(st, i, f.kind === 'talking', f.id))}</div>
                 </>
               ) : (
                 list(
@@ -1499,7 +1549,7 @@ export function BatchView({
   /** The files of a list: one format's only, when `formatId` is given. */
   const filesIn = (kind: Kind, formatId?: string): BankFile[] =>
     !bank ? [] : formatId && kind !== 'music' ? bank[kind].filter((f) => f.formats?.includes(formatId)) : bank[kind]
-  const list = (kind: Kind, title: string, hint: string, formatId?: string) => (
+  const list = (kind: Kind, title: string, hint: string, formatId?: string, onAdd?: (files: File[]) => void) => (
     <div className="group">
       <div className="bank-head">
         <span className="group-title">
@@ -1526,7 +1576,7 @@ export function BatchView({
           <VideoPicker
             className="btn small"
             label={`Add ${title.toLowerCase()}`}
-            onFiles={(files) => void add(formatId ? { format: formatId, as: kind as 'reactions' | 'products' } : kind, files)}
+            onFiles={(files) => (onAdd ? onAdd(files) : void add(formatId ? { format: formatId, as: kind as 'reactions' | 'products' } : kind, files))}
           >
             + Add
           </VideoPicker>
@@ -1640,7 +1690,27 @@ export function BatchView({
   })
   const showStatus = Boolean(bank) && (running || makingNow !== null || waitingNow > 0 || failedNow > 0 || statusProblem !== null || days.some((d) => d.ready > 0))
 
+  // Checking a format's edited clips: a layer over the whole screen, one clip
+  // at a time - the tab stays under it, so clips the Cutter server finishes
+  // meanwhile still come in (DropIn keeps reading them).
+  const checkingFormat = checking && bank ? formatList.find((f) => f.id === checking) : undefined
+  const checkLayer =
+    checkingFormat && bank ? (
+      <DropCheck
+        key={checkingFormat.id}
+        format={checkingFormat}
+        steps={formatBank(bank, checkingFormat).steps ?? []}
+        campaign={campaign}
+        getBank={() => bankRef.current}
+        keep={keep}
+        onFormat={(patch) => changeFormat(checkingFormat.id, patch)}
+        onClose={() => setChecking(null)}
+      />
+    ) : null
+
   return (
+    <>
+    {checkLayer}
     <section className="screen batch">
       <div className="screen-head">
         <h1>Batch</h1>
@@ -2264,6 +2334,7 @@ export function BatchView({
       ) : null}
       {watching ? <ClipViewer file={watching.file} note={watching.note} onClose={() => setWatching(null)} onTakeOut={watching.out} /> : null}
     </section>
+    </>
   )
 }
 

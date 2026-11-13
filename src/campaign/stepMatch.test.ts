@@ -3,7 +3,7 @@
 
 import { describe, expect, it } from 'vitest'
 
-import { withLeeway } from './prepareDrop'
+import { dropSettings } from './prepareDrop'
 import { PRESETS } from '../media/silenceMath'
 import { learned, matchStep, wordsOf } from './stepMatch'
 
@@ -44,10 +44,18 @@ describe('which step a clip goes to', () => {
 })
 
 describe('the cut of a dropped-in clip', () => {
-  it('is his usual cut with a little more room', () => {
-    const cut = withLeeway(PRESETS.balanced)
-    expect(cut.minSilenceSec).toBeGreaterThan(PRESETS.balanced.minSilenceSec)
-    expect(cut.paddingSec).toBeGreaterThan(PRESETS.balanced.paddingSec)
-    expect(cut.thresholdDb).toBe(PRESETS.balanced.thresholdDb)
+  // His report (2026-11-13): "remove the leeway, just cut like the cutter is
+  // already doing and make sure to use my voice".
+  it('is exactly his usual cut, with his voices and the zooms it is given', () => {
+    localStorage.setItem('voice.profiles', JSON.stringify([{ id: 'v1', name: 'My mic', roomDb: -60, speechDb: -20, tailDb: -40, gapSec: 0.3, at: 1 }]))
+    localStorage.setItem('voice.use', 'v1')
+    const effects = { cutPunch: 'subtle', hookPush: 'off', brandHit: 'strong', logoPop: false } as const
+    const cut = dropSettings({ effects, brandWords: ['Pump Fun'] })
+    // One of his presets exactly - no extra room.
+    expect(Object.values(PRESETS).some((p) => JSON.stringify(p) === JSON.stringify(cut.settings))).toBe(true)
+    expect(cut.voices).toMatchObject({ chosen: 'v1', profiles: [{ id: 'v1', name: 'My mic' }] })
+    expect(cut.effects).toEqual(effects)
+    expect(cut.brandWords).toEqual(['Pump Fun'])
+    localStorage.clear()
   })
 })

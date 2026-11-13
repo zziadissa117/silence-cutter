@@ -245,6 +245,7 @@ import { SERVER_MODE } from './serverFlag'
 import { keepEven } from './keepEven'
 import { linkBatches, SERVER_URL_EVENT, serverUrl } from './serverLink'
 import { dropTalk, orderListen, orderMake, serverLetDown, talkNow, talkPlan, talkServerUp, upload } from './talkLink'
+import { voicesHere } from './voiceProfile'
 import { popsSaid, talkFileId, toServer, type MakeOrder, type TalkSummary } from './talkOrder'
 import { clipTexts, clipsOf, headlineSeconds, noSpeechIn, songForReaction } from './noTalk'
 import { reportMaking, SERVER_BANKS_EVENT, SERVER_COMMAND_EVENT, SERVER_STOP_EVENT, serverLog, type ServerCommand, type ServerMaking } from './serverMode'
@@ -849,6 +850,8 @@ export function CampaignApp() {
             names: dayWords(campaigns, [...bankRef.current, ...videoBankRef.current]),
             align: captionsRef.current,
             keepWhole: job.noCut === true,
+            // His voices: the server's page has none of its own.
+            voices: voicesHere(),
           })
           talkOrdered.current.add(job.id)
           patchJob(job.id, { status: 'queued', progress: 0 })
@@ -2068,7 +2071,12 @@ export function CampaignApp() {
           // every copy (trialLoop.TrialTalk) - never heard again.
           const trialTalk = trialLook ? batchBank?.trial?.sources.find((s) => s.id === trialLook.sourceId)?.talk : undefined
           if (trialTalk && captionsRef.current) said = drawnWords(trialTalk.words, bareRef.current)
-          const talkingClip = next.montage.bank && keepsVoice && !trialLook ? next.montage.bank.reaction : null
+          // As the clip is in the bank now: its captions as he checked them
+          // (BankFile.captions), whenever this video was planned.
+          const talkingClip =
+            next.montage.bank && keepsVoice && !trialLook
+              ? (batchBank?.reactions.find((r) => r.id === next.montage!.bank!.reaction.id) ?? next.montage.bank.reaction)
+              : null
           if (talkingClip && captionsRef.current) {
             try {
               if (!keptWords(talkingClip)) setPhase('listening', 0)
@@ -2100,10 +2108,11 @@ export function CampaignApp() {
                 stepSaid.push(null)
                 continue
               }
+              const stepFile = batchBank?.steps?.flatMap((st) => st.files).find((f) => f.id === step.file.id) ?? step.file
               try {
-                if (!keptWords(step.file)) setPhase('listening', 0)
+                if (!keptWords(stepFile)) setPhase('listening', 0)
                 const words = await watched(
-                  talkWords(step.file, clip, {
+                  talkWords(stepFile, clip, {
                     settings: next.settings,
                     names: jobCampaign.brandWords ?? [],
                     onModel: (p) => setPhase('model', p),
@@ -2195,10 +2204,11 @@ export function CampaignApp() {
                 ? {
                     captions: {
                       words: said,
-                      // The height he dragged them to for this format, or the usual.
+                      // The height he dragged them to for this format, or the usual;
+                      // the look he picked on its caption check (DropCheck.tsx).
                       position: jobFormat?.captionY ?? defaultCaptionPosition(),
-                      size: defaultCaptionSize(),
-                      style: defaultCaptionStyle(),
+                      size: jobFormat?.captionSize ?? defaultCaptionSize(),
+                      style: jobFormat?.captionStyle ?? defaultCaptionStyle(),
                       steps: stepSaid,
                     },
                   }

@@ -9,6 +9,7 @@
 // itself. What was made is kept, so the next batch carries on where this
 // one left off.
 
+import type { CaptionSize, CaptionStyle, CaptionWord } from './captions'
 import type { EmojiSprite } from './emojiSprites'
 import type { HeadlineStyle } from './look'
 import type { TrialBank } from './trialLoop'
@@ -57,6 +58,13 @@ export interface BankFile {
   /** Cut from this recording (its fingerprint) by a drop-in, so dropping
    *  the same recording in again doesn't keep it twice. */
   from?: string
+  /** Cut, zoomed and heard the way the Cutter does his talking videos
+   *  (prepareDrop.ts) - a clip he dropped in or added to a talking head's
+   *  steps or hooks (his ask, 2026-11-13). Absent: as he filmed it. */
+  edited?: boolean
+  /** Its captions as he checked them (DropCheck.tsx), on the clip's own
+   *  clock - every video of it draws these, here or on the Cutter server. */
+  captions?: CaptionWord[]
 }
 
 /** What one kind of video in a batch is: his silent reaction then the
@@ -86,6 +94,14 @@ export interface BatchFormat {
    *  centre as a share of the video's height (captions.CaptionSpot). Absent:
    *  the usual place (his ask, 2026-11-13). */
   captionY?: number
+  /** A talking head's hooks kept as he filmed them: not cut, zoomed or
+   *  checked (his ask, 2026-11-13: "we might want to just keep the raw hooks
+   *  sometimes"). Absent: his hooks are edited like the steps' clips. */
+  rawHooks?: boolean
+  /** A talking head's captions: one word at a time or highlighted, and how
+   *  big - picked on the caption check of its clips. Absent: Settings'. */
+  captionStyle?: CaptionStyle
+  captionSize?: CaptionSize
   /** Drop in all videos: a clip that says no step's name is one of his hooks
    *  (the talking part at the start) - his pick, per format (2026-11-13).
    *  Absent: every dropped clip goes to a step. */

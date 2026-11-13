@@ -800,4 +800,16 @@ describe('one batch for the account, in formats', () => {
     // Its steps edited from the section's own button.
     expect([...host.querySelectorAll('button')].some((b) => b.textContent === 'Edit steps')).toBe(true)
   })
+
+  it("a talking format's hooks are edited unless he switches Use edits in hooks off (his ask, 2026-11-13)", async () => {
+    storedBank = { ...bank, formats: [{ id: 't', kind: 'talking', name: 'Talk' }], reactions: bank.reactions.map((r) => ({ ...r, formats: ['t'] })), products: [] }
+    await show({})
+    await openFirstFormat()
+    const edits = host.querySelector('input[aria-label="Use edits in hooks"]') as HTMLInputElement
+    expect(edits.checked).toBe(true)
+    // Its hooks as filmed can be edited now.
+    expect([...host.querySelectorAll('button')].some((b) => b.textContent === 'Edit the 3 clips added as filmed')).toBe(true)
+    await act(async () => edits.click())
+    expect((await savedBank()).formats?.[0].rawHooks).toBe(true)
+  })
 })

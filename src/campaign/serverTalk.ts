@@ -74,7 +74,8 @@ async function runListen(order: ListenOrder): Promise<void> {
   const plan = await listen(
     file,
     order.settings,
-    { cleanSpeech: order.cleanSpeech, hear: true, names: order.names, align: order.align, keepWhole: order.keepWhole },
+    // His voices came with the order: this page has none of its own.
+    { cleanSpeech: order.cleanSpeech, hear: true, names: order.names, align: order.align, keepWhole: order.keepWhole, ...(order.voices ? { voices: order.voices } : {}) },
     {
       onAnalyseProgress: (p) => onProgress(p * 0.2),
       onTranscribeProgress: (p) => onProgress(0.2 + p * 0.8),
@@ -185,6 +186,10 @@ async function runDrop(order: DropOrder): Promise<void> {
     settings: order.settings,
     cleanSpeech: order.cleanSpeech,
     voice: order.voice,
+    voices: order.voices,
+    effects: order.effects,
+    brandWords: order.brandWords,
+    seed: order.from,
     names: order.names,
     onPhase: (phase, p) => onProgress(phase === 'cutting' ? 0.6 + p * 0.4 : p * 0.6),
   })
@@ -192,7 +197,7 @@ async function runDrop(order: DropOrder): Promise<void> {
   if (!saved.ok) throw new SilenceCutError("The cut clip couldn't be kept on the server's disk.")
   const seconds = (await filmingOf(cut.blob).catch(() => null))?.seconds
   const dropped: DropResult = {
-    file: { id: order.outId, name: order.outName, type: 'video/mp4', size: cut.blob.size, fp: await fingerprint(cut.blob), from: order.from, ...(seconds ? { seconds } : {}) },
+    file: { id: order.outId, name: order.outName, type: 'video/mp4', size: cut.blob.size, fp: await fingerprint(cut.blob), from: order.from, edited: true, ...(seconds ? { seconds } : {}) },
     words: cut.words,
     text: cut.text,
   }

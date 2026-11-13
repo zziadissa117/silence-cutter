@@ -1937,3 +1937,32 @@ img.mark { border-radius: 14px; }
   background: color-mix(in srgb, var(--text) 7%, transparent); color: var(--text); font: inherit; font-size: 15px; font-weight: 600; }
 .format-foot { margin-top: 2px; }
 .step-card .step-texts-side .btn { padding: 8px 10px; min-height: 44px; font-size: 14px; line-height: 1.2; }
+
+/* His check of a talking head's edited clips (DropCheck.tsx): over the whole
+   screen like the Cutter's own check, where the clip goes above its video -
+   one short block: which clip, Not sure, Leave out, and a row of steps to tap,
+   the one it is in lit. */
+main.tabbed > .drop-check-screen, .drop-check-screen { position: fixed; inset: 0; z-index: 60; overflow-y: auto; overscroll-behavior: contain; background: var(--ink);
+  padding: calc(env(safe-area-inset-top) + 24px) 16px calc(env(safe-area-inset-bottom) + 16px); }
+.drop-check-screen .review-frame { height: min(27svh, 320px); }
+.drop-check-place { display: flex; flex-direction: column; gap: 6px; padding: 8px 12px 10px; border-radius: 14px;
+  background: color-mix(in srgb, var(--text) 6%, transparent); }
+.drop-check-place.unsure { background: color-mix(in srgb, #ffd60a 14%, transparent); }
+.drop-check-place.out { background: color-mix(in srgb, #ff453a 14%, transparent); }
+.drop-check-line { display: flex; align-items: center; gap: 8px; min-height: 32px; }
+.drop-check-line .row-name { flex: none; }
+.drop-check-unsure { font-size: 12px; font-weight: 700; color: #1c1c1e; background: #ffd60a; border-radius: 999px; padding: 2px 8px; white-space: nowrap; }
+.drop-check-out { margin-left: auto; min-height: 32px; font-size: 14px; color: #ff6961; }
+.drop-check-out.active { color: var(--accent); }
+.drop-check-place > .hint { margin: 0; font-size: 14px; }
+.drop-check-goes { color: var(--text); font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.drop-check-steps { display: flex; gap: 6px; overflow-x: auto; scrollbar-width: none; margin: 0 -12px; padding: 2px 12px; }
+.drop-check-steps::-webkit-scrollbar { display: none; }
+.drop-check-steps button { flex: none; display: inline-flex; align-items: center; gap: 6px; max-width: 86%; min-height: 34px; padding: 0 12px;
+  border-radius: 999px; border: 1px solid var(--hairline); background: color-mix(in srgb, var(--text) 6%, transparent); color: var(--text);
+  font: inherit; font-size: 14px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; cursor: pointer; }
+.drop-check-steps button .step-num { width: 20px; height: 20px; font-size: 11px; }
+.drop-check-steps button.active { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 24%, transparent); }
+.drop-check-btn { min-height: 46px; }
+.drop-in-failed { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 4px; }
+.drop-box:has(> .drop-in:empty:only-child) { display: none; }

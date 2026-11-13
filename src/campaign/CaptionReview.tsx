@@ -29,6 +29,7 @@ import {
   retimePhrase,
   type CaptionPosition,
   type CaptionSize,
+  type CaptionSpot,
   type CaptionStyle,
   type CaptionWord,
   PHRASE_HOLD_SEC,
@@ -264,6 +265,8 @@ export function CaptionReview({
   embedded,
   quick = false,
   onTimeline,
+  top,
+  backLabel = 'Videos',
 }: {
   name: string
   /** The video itself, or null while it is being fetched from storage. */
@@ -288,8 +291,9 @@ export function CaptionReview({
   onHeadlineDone?: () => void
   /** Captions with no punctuation: the preview shows them as they'll be. */
   bare?: boolean
-  /** Where the caption sits on the frame, and a way to move it. */
-  position?: CaptionPosition
+  /** Where the caption sits on the frame (one of the places, or a height a
+   *  batch format was dragged to), and a way to move it. */
+  position?: CaptionSpot
   onPosition?: (position: CaptionPosition) => void
   /** How big the caption is on the frame, and a way to change it. */
   size?: CaptionSize
@@ -322,6 +326,10 @@ export function CaptionReview({
   quick?: boolean
   /** Leaves the quick check for the full timeline editor, same video. */
   onTimeline?: () => void
+  /** Shown with the video, above it - a batch clip's step (DropCheck.tsx). */
+  top?: ReactNode
+  /** What the back button goes back to. */
+  backLabel?: string
 }) {
   // The phrases as heard: each keeps its moment however it is retyped.
   const [heard] = useState(() => phrasesOf(initial))
@@ -586,7 +594,7 @@ export function CaptionReview({
       <section className={embedded ? 'review review-embedded' : 'screen review'}>
         {embedded ? null : (
           <button type="button" className="back" onClick={() => onClose(words)}>
-            <ChevronLeft /> Videos
+            <ChevronLeft /> {backLabel}
           </button>
         )}
         <p className="lede">No words were heard in this video, so there are no captions to check.</p>
@@ -672,7 +680,7 @@ export function CaptionReview({
       <div className="review-top">
         <div className="review-head">
           <button type="button" className="back" onClick={() => onClose(words)}>
-            <ChevronLeft /> Videos
+            <ChevronLeft /> {backLabel}
           </button>
           <span className="review-count">
             {current + 1} / {phrases.length}
@@ -683,6 +691,7 @@ export function CaptionReview({
             </button>
           ) : null}
         </div>
+        {top}
         <div className="review-frame" style={{ aspectRatio: String(aspect) }} onClick={() => playFrom(current)}>
           {url ? (
             <video

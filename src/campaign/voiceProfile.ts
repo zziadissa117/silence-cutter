@@ -111,6 +111,20 @@ export function chooseVoice(id: string): void {
   }
 }
 
+/** His voices and which one to use, as one thing - sent with work done on
+ *  the Cutter server, whose own page has none of them (his report,
+ *  2026-11-13: "make sure to use my voice because they have been recorded
+ *  with my mic"). */
+export interface Voices {
+  profiles: VoiceProfile[]
+  chosen: string
+}
+
+/** His voices on this phone, to send. */
+export function voicesHere(): Voices {
+  return { profiles: loadProfiles(), chosen: chosenVoice() }
+}
+
 /** Kept for one voice (the first version): saves it as his only one. */
 export function saveProfile(profile: VoiceProfile | null): void {
   if (profile) saveProfiles([{ ...profile, id: profile.id ?? 'v0', name: profile.name ?? micName(profile.mic) }])
