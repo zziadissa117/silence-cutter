@@ -736,6 +736,21 @@ describe('one batch for the account, in formats', () => {
     expect(host.textContent).toContain('Needs a clip of you and a product showcase')
   })
 
+  it('opens Product steps inside its own format, under the button - not at the top of the tab (his report, 2026-11-13)', async () => {
+    storedBank = { ...bank, formats: [{ id: 'r', kind: 'reaction', name: 'Reaction' }, { id: 't', kind: 'talking', name: 'Talk' }], products: bank.products.map((p) => ({ ...p, formats: ['r'] })), reactions: bank.reactions.map((r) => ({ ...r, formats: ['r'] })) }
+    await show({})
+    const talk = [...host.querySelectorAll('.format-head')][1] as HTMLButtonElement
+    await act(async () => talk.click())
+    const steps = [...host.querySelectorAll('button')].find((b) => b.textContent?.startsWith('Product steps')) as HTMLButtonElement
+    await act(async () => steps.click())
+    const editor = host.querySelector('.step-order') as HTMLElement
+    expect(editor).toBeTruthy()
+    // In the talking format's card, after its button.
+    expect(editor.closest('.format-card')).toBe(talk.closest('.format-card'))
+    expect(steps.compareDocumentPosition(editor) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    expect(editor.textContent).toContain('A step you talk over shows your captions instead of its name')
+  })
+
   it('uses the product of another format with one pick', async () => {
     storedBank = { ...bank, formats: [{ id: 'r', kind: 'reaction', name: 'Reaction' }, { id: 't', kind: 'talking', name: 'Talk' }], products: bank.products.map((p) => ({ ...p, formats: ['r'] })), reactions: bank.reactions.map((r) => ({ ...r, formats: ['r'] })) }
     await show({})

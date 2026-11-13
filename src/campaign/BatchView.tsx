@@ -1325,6 +1325,18 @@ export function BatchView({
                 </select>
               ) : null}
             </div>
+            {/* Opened right here, under the button he tapped - it used to open
+                at the top of the Batch tab, above everything (his report,
+                2026-11-13: "why is it going on top?"). */}
+            {ordering === f.id ? (
+              <StepOrder
+                campaignName={campaign.name}
+                steps={(bank.steps ?? []).filter((st) => st.formats?.includes(f.id))}
+                talking={f.kind === 'talking'}
+                onSave={saveOrderFor(f.id)}
+                onClose={() => setOrdering(null)}
+              />
+            ) : null}
             {green ? (
               <div className="group">
                 <div className="group-title">Your corner</div>
@@ -1595,15 +1607,6 @@ export function BatchView({
           stopAll={
             scheduledHere > 0 ? { label: `Stop and take out the ${scheduledHere} scheduled`, busy: saving === 'Stopping…', run: () => void stopEverything() } : null
           }
-        />
-      ) : null}
-
-      {bank && ordering ? (
-        <StepOrder
-          campaignName={campaign.name}
-          steps={(bank.steps ?? []).filter((st) => st.formats?.includes(ordering))}
-          onSave={saveOrderFor(ordering)}
-          onClose={() => setOrdering(null)}
         />
       ) : null}
 

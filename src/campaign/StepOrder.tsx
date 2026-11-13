@@ -21,11 +21,14 @@ const blank = (n: number): Draft => ({ id: crypto.randomUUID(), name: `Step ${n}
 export function StepOrder({
   campaignName,
   steps,
+  talking = false,
   onSave,
   onClose,
 }: {
   campaignName: string
   steps: BatchStep[]
+  /** A talking head's steps: one he talks over shows his captions, not its name. */
+  talking?: boolean
   /** The steps as they now are; a step taken out goes with its clips. */
   onSave: (steps: BatchStep[]) => void
   onClose: () => void
@@ -62,6 +65,7 @@ export function StepOrder({
         The steps every video shows after the reaction, always in this order. Each step gets its own clips below; every video takes
         one clip per step and plays the moment something happens in it - a short clip plays whole. Each step's name is written over
         its clip as a headline, exactly as you type it (e.g. DRAW SOMETHING); leave "Step 1" for no words.
+        {talking ? ' A step you talk over shows your captions instead of its name - never both.' : ''}
       </p>
       <ol className="step-list">
         {drafts.map((d, i) => (

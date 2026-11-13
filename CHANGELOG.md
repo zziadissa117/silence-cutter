@@ -3,6 +3,13 @@
 Newest first. Every change says what it does, how to use it, and how it works
 underneath. Kept up to date with each commit.
 
+## Product steps open where he taps them
+- His report (2026-11-13): tapping "Product steps" in a format put the steps editor "on top of me" - it opened at
+  the top of the Batch tab, above everything, far from the button.
+- Now it opens inside that format's card, right under the button. In a talking head it also says a step he talks
+  over shows his captions instead of its name.
+- Tests: `batchView.test.tsx`.
+
 ## Batch formats: headline on top, or not
 - His ask (2026-11-13): the clip of him can be the hook by itself (a horizontal clip with its own words) - "make it
   so I can choose if I want one or not".
