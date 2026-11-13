@@ -3,6 +3,15 @@
 Newest first. Every change says what it does, how to use it, and how it works
 underneath. Kept up to date with each commit.
 
+## Batch formats: headline on top, or not
+- His ask (2026-11-13): the clip of him can be the hook by itself (a horizontal clip with its own words) - "make it
+  so I can choose if I want one or not".
+- Each format card (Batch tab) has a "Headline on top" switch, on as before. Off: no words over the clip of him -
+  no headline and no Claude + X - and the format's videos are mixed from his clips, products and songs alone. It
+  reaches videos already planned but not made yet. A talking head keeps its captions either way. The card says
+  "no headline" when it is off.
+- Tests: `batchFormats.test.ts`.
+
 ## Talking head batches: one kind of words per clip
 - His point (2026-11-13): "a headline on top and then always a caption in every single clip. Does not make sense."
 - Now, in a talking head batch: his talking clip has the headline (the hook) and his captions, as before; a product

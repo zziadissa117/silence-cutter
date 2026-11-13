@@ -74,6 +74,11 @@ export interface BatchFormat {
   corner?: { side: 'left' | 'right'; sizePct: number }
   /** Green screen: he talks in these, so his voice is kept. */
   voice?: boolean
+  /** No headline (hook words) over the clip of him - the clip is the hook
+   *  itself, e.g. a wide clip with its own words (his ask, 2026-11-13: "make
+   *  it so I can choose if I want one or not"). Absent: a headline, as
+   *  always. */
+  noHeadline?: boolean
 }
 
 export const FORMAT_KINDS: { kind: FormatKind; label: string; hint: string }[] = [
@@ -668,6 +673,9 @@ export function formatBank(bank: BatchBank, format: BatchFormat): BatchBank {
     products: bank.products.filter(mine),
     steps: steps && steps.length > 0 ? steps : undefined,
     ...(format.corner ? { corner: format.corner } : {}),
+    // No headline: no words over him at all - not the headlines, not
+    // Claude + X - and the videos mixed from his clips, products and songs.
+    ...(format.noHeadline ? { headlines: [], looks: undefined, hook: undefined, headlineStyles: undefined, headlineStyle: undefined, formula: undefined } : {}),
     voice: undefined,
     formats: [],
   }

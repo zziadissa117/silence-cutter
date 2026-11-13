@@ -43,7 +43,7 @@ import { TrialView } from './TrialView'
 import { MotionView } from './MotionView'
 import { afterMixing, daysLine, mixesOf, spreadOver } from './formats'
 import type { ViewsByAccount } from './analytics'
-import { bareName, filesOf, formatOfReaction, formatTalks, stepTexts, stepTitle, styleFor, stylesOf, type BankFile, type BatchBank } from './batch'
+import { bareName, filesOf, formatOfReaction, formatTalks, formatsOf, stepTexts, stepTitle, styleFor, stylesOf, type BankFile, type BatchBank } from './batch'
 import { followFavour } from './batchFavour'
 import { playsWhole } from './stepPiece'
 import { CampaignsView } from './CampaignsView'
@@ -1989,6 +1989,10 @@ export function CampaignApp() {
         // it was mixed with, while he still has it picked), in place of the
         // angle's.
         const batchBank = next.batch ? await loadBatchBank(next.campaignId).catch(() => null) : null
+        // Its format set to no headline: no words over him - reaching videos
+        // planned before he switched it (BatchFormat.noHeadline).
+        const noHook = Boolean(next.batch?.format && batchBank && formatsOf(batchBank).find((f) => f.id === next.batch!.format)?.noHeadline)
+        const hookText = noHook ? '' : next.headlineText
         const batchStyle = batchBank ? styleFor(next.montage?.bank?.headlineStyle, stylesOf(batchBank), next.id) : undefined
         // A Trial loop's video: the viral reel's words, in its look, at this
         // video's place (trialLoop.ts).
@@ -2037,7 +2041,7 @@ export function CampaignApp() {
           }
           setPhase('cutting', 0)
           result = await watched(
-            makeGreenScreen(background, cut, jobCampaign, jobAngle, next.headlineText, green, (p) => setPhase('cutting', p), {
+            makeGreenScreen(background, cut, jobCampaign, jobAngle, hookText, green, (p) => setPhase('cutting', p), {
               reactionName: file instanceof File ? file.name : undefined,
               // A reaction he talks in keeps his voice (batch.talksIn).
               ...(keepsVoice ? { voice: file } : {}),
@@ -2127,7 +2131,7 @@ export function CampaignApp() {
           // A step's own words, each where he put it on the phone screen
           // (StepTexts.tsx) - as the step is set now.
           const ownTexts = stepped ? [null, ...stepped.map((s) => (stepOf(s)?.texts ? stepTexts(stepOf(s)) : null))] : undefined
-          const hook = next.montage.bank?.formula
+          const hook = noHook ? undefined : next.montage.bank?.formula
           const formula = hook
             ? {
                 left: hook.left ? await bankFileOf(hook.left) : null,
@@ -2137,7 +2141,7 @@ export function CampaignApp() {
               }
             : null
           result = await watched(
-            makeMontage([file, ...rest], jobCampaign, jobAngle, next.headlineText, track, (p) => setPhase('cutting', p), {
+            makeMontage([file, ...rest], jobCampaign, jobAngle, hookText, track, (p) => setPhase('cutting', p), {
               seed: next.id,
               // A batch takes its campaign's effects and nothing else - not
               // Settings' default effects: "if a campaign says no effects,

@@ -126,3 +126,19 @@ describe('his voice in a talking head format (his report, 2026-11-08: "all the r
     expect(talksIn({ voice: true }, { id: 'x', name: 'x', type: 'video/mp4', size: 1 })).toBe(true)
   })
 })
+
+describe('a format with no headline (his ask, 2026-11-13: the clip of him is the hook)', () => {
+  it('makes its videos with no words over him, the other formats keep theirs', () => {
+    const bank = godari({ formats: formats.map((f) => (f.id === 't' ? { ...f, noHeadline: true } : f)) })
+    const sub = formatBank(bank, bank.formats![1])
+    expect(sub.headlines).toEqual([])
+    expect(sub.formula).toBeUndefined()
+    const plan = planVideos(bank, slots(9), { id: 'h', rand: () => 0.4 })
+    for (const v of plan.videos) {
+      if (v.batch.format === 't') expect(v.headline).toBe('')
+      if (v.batch.format === 'r') expect(['one', 'two']).toContain(v.headline)
+    }
+    // Still something to make.
+    expect(missingFor(sub)).toEqual([])
+  })
+})

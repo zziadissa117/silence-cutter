@@ -1246,6 +1246,7 @@ export function BatchView({
           <span className="hint">
             {sub.reactions.length} clip{sub.reactions.length === 1 ? '' : 's'} of you · {products}
             {f.kind === 'greenscreen' && f.voice ? ' · your voice' : ''}
+            {f.noHeadline ? ' · no headline' : ''}
           </span>
           <span className={`hint${missingHere.length > 0 && !f.paused ? ' warn-text' : ''}`}>{status}</span>
           {!f.paused && bank.formatShares?.[f.id] && bank.formatShares[f.id] !== 1 ? (
@@ -1267,12 +1268,27 @@ export function BatchView({
               'reactions',
               f.kind === 'talking' ? 'You talking - the hook' : 'You',
               f.kind === 'talking'
-                ? 'Your hook: each plays whole with your voice, the headline and captions of what you say over it. Then the product steps, with your voice too. Each clip is listened to once, the first time it is used.'
+                ? `Your hook: each plays whole with your voice, ${f.noHeadline ? 'captions' : 'the headline and captions'} of what you say over it. Then the product steps, with your voice too. Each clip is listened to once, the first time it is used.`
                 : green
                   ? 'You, cut out of your background and put in the corner. Talking: the video lasts as long as you do.'
                   : 'They go first, with the headline over them - slowly zooming in. No sound but the music.',
               f.id,
             )}
+            {/* His pick, per format (2026-11-13): the clip of him can be the
+                hook by itself - no headline over it. */}
+            <div className="setting">
+              <div className="setting-text">
+                <span className="row-name">Headline on top</span>
+                <span className="row-line">{f.noHeadline ? 'Off: the clip of you is the hook, no words over it.' : 'The hook, over the clip of you.'}</span>
+              </div>
+              <input
+                type="checkbox"
+                className="switch"
+                checked={!f.noHeadline}
+                aria-label="Headline on top"
+                onChange={(e) => changeFormat(f.id, { noHeadline: e.target.checked ? undefined : true })}
+              />
+            </div>
             {green ? (
               <div className="setting">
                 <div className="setting-text">
