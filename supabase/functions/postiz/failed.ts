@@ -95,7 +95,12 @@ export function missingAccounts<T extends FailedAccount & { held?: unknown }>(
     (a) =>
       !a.held &&
       (failed.some((ref) => ref.integration === a.id) ||
-        ids.some((ref) => ref.integration === a.id && !there.has(ref.postId) && named.has(accountName(a.name, a.platform, all)))),
+        ids.some(
+          (ref) =>
+            ref.integration === a.id &&
+            !there.has(ref.postId) &&
+            (named.has(accountName(a.name, a.platform, all)) || (Boolean(a.profile) && named.has(userName(a)))),
+        )),
   )
 }
 
@@ -191,4 +196,19 @@ export function clearOfTaken(at: number, taken: readonly number[], until: number
 /** The end of a day's good YouTube hours, for the day `at` falls on. */
 export function goodHoursEnd(at: number): number {
   return dayHour(localDate(new Date(at), YOUTUBE_DAY_TZ), YOUTUBE_DAY_TO)
+}
+
+/** How many times a post that didn't go out is posted again by itself
+ *  before it is left to him (his ask, 2026-11-13: "automatically set it to
+ *  where it's going to post it again by the next available time frame"). */
+export const AUTO_AGAIN = 2
+
+/** When a post that missed `platforms` goes again by itself: YouTube's next
+ *  good hours when only YouTube missed (its daily limit is the usual
+ *  reason); otherwise the campaign's next free time (`campaignNext`) when it
+ *  is within the day, or half an hour from now. Never sooner than 10 minutes. */
+export function againAt({ platforms, postAt, now, campaignNext }: { platforms: string[]; postAt: number; now: number; campaignNext: number | null }): number {
+  if (platforms.length > 0 && platforms.every((p) => p.startsWith('youtube'))) return youtubeRetryTime(postAt, now)
+  if (campaignNext !== null && campaignNext >= now + 10 * 60_000 && campaignNext <= now + 24 * 60 * 60_000) return campaignNext
+  return now + 30 * 60_000
 }

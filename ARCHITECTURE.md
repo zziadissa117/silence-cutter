@@ -212,13 +212,28 @@ has a new id: `reconnectedAs` finds it by platform + username (name if none kept
 it into every campaign, the cached accounts and the posts not in Postiz yet. Any missed account not connected
 (or Postiz's `refreshNeeded`): nothing posts, and he is told to reconnect it. "Reconnect in Postiz" beside the
 button opens Postiz.
+**Didn't go out, posted again by itself** (2026-11-13): every post that misses an account (`checkPosted`, a
+post Postiz lost) is set to go again at the next free time - `failed.ts` `againAt`: YouTube's next good hours
+when only YouTube missed, else the campaign's next free time within the day (`nextTryAt`, `nextSlot`), else in
+30 min - `AUTO_AGAIN` (2) times, then it is his; never a trial reel or one through Buffer (`missedFields`). Each
+one sends a push (`notifyMissed`) that opens `campaign.html#posts/missed/<id>`: the service worker passes the
+hash to an open app (`CampaignApp` -> `hashchange`), and `PostsView` shows that post on top (`MissedSheet`) with
+"Post it myself" (action `self`: no more tries, status `posted`, note "You posted it yourself ...", the video and
+caption to save/copy - `watchLink` keeps the server's copy for these) or "Let the Cutter post it" (action
+`later`: `retry_at` at the next free time, or `retry` for a `failed` one).
 A tap while Postiz's hour is used up is queued, not refused (`postAgainSoon`: `retry_at` on a `posted`/`error`
 row, note "Posting again as soon as Postiz has room."); `retryMissing` (tick) posts them. A YouTube account missed
 is posted to again by itself once, at 00:10 Pacific (`failed.ts` `youtubeDayStarts`: YouTube's daily upload limit
 starts over then; `missedFields` in `checkPosted`, `attempts` counts the tries made by itself). Every missed account
 sends a push (`checkPosted`, `checkBuffer`, `giveUpUnconfirmed`, `retryMissing`). A refused tap shows under its post.
 
-**The Posts screen** (`PostsView.tsx`, `postsList.ts`): To approve, Ready, Scheduled fold each campaign into one
+**The Posts screen, 2026-11-13** (`postsList.postsOrder`): To approve on top (every `waiting`, soonest first,
+"Approve all" in its head); then one block per day of what is set to go - approved, scheduled, and missed posts
+going again at their `retryAt` (`goingAgain`, `goesAt`) - Today and Tomorrow open, later days a line he opens;
+Just posted; and what didn't go out and won't go again, folded at the bottom. Accounts are the platforms' marks
+(`PlatformIcons.tsx`), usernames once a post is opened.
+
+**The Posts screen** (older notes) (`PostsView.tsx`, `postsList.ts`): To approve, Ready, Scheduled fold each campaign into one
 row (`foldCampaigns`; in To approve and Ready only batch videos - his own posts are read one by one), opened day by
 day (`byDay`). A campaign waiting for him shows its first 3 open with their video (`PREVIEW`) and "Approve all N". His 3rd yes in one batch approves the rest of it on the server (`batch.batchTrusted`, `postiz` `approveRestOfBatch`; later arrivals in `prepare`).
 The list's `videoUrl` is Postiz's copy, or before Postiz has one the server's own, signed for a 6-hour window

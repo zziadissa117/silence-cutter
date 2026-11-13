@@ -3,6 +3,33 @@
 Newest first. Every change says what it does, how to use it, and how it works
 underneath. Kept up to date with each commit.
 
+## Posts: To approve on top, days apart, platform logos, and a notification for every post that didn't go out
+Needs deploying: run ./deploy-server.sh (posting again by itself, the notification's link, Post it myself / Let the
+Cutter post it), then ./deploy.sh.
+- His ask (2026-11-13): "The videos that have to be at the top are the videos that are up for approval ... I cannot
+  be scrolling and looking for videos for approval ... Then ... today, ... Saturday and Sunday ... make the
+  separation more clear"; "Why can't you just put the logos ... It's so much slop"; "I don't like that at the top,
+  top, top, it says 'Didn't go out' ... send me a notification ... automatically set it to where it's going to post
+  it again by the next available time frame ... do you want to post it yourself now, or do you want the cutter to
+  post it back later?"
+- To approve: always the first thing on the Posts screen, in its own lit card, every post waiting for him, the one
+  going out soonest first, with Approve all in its heading.
+- Then a card per day - "Today", "Tomorrow", then the weekday ("Sunday", "Monday") - each with its date and how
+  many go out that day. Today and Tomorrow are open; later days are one line each, tapped open. Then Just posted.
+- Accounts are shown as the TikTok / Instagram / YouTube / Facebook logos (a small number when there are two
+  accounts on one platform; a paused one faded). The usernames are there once a post is opened.
+- Didn't go out: no more banner at the top. When a post misses an account, the Cutter sets it to go again by
+  itself at the next free time - YouTube's next good hours when only YouTube missed, otherwise the campaign's next
+  free time today, otherwise in half an hour - up to 2 times, then it's his. It sits in its day at that time,
+  marked "Posting again", showing only the logo it missed. Trial reels and posts that went through Buffer are not
+  posted again by themselves.
+- Every post that doesn't go out sends a notification ("VAZA didn't go out on @ziad.debates - The Cutter posts it
+  again Sat 9:40 AM. Tap to post it yourself instead."). Tapping it opens that post on top of the Posts screen:
+  "Post it myself" stops the Cutter posting it and gives Save video and Copy caption; "Let the Cutter post it"
+  leaves it (or sets it at the next free time when it wasn't). What didn't go out and won't go again sits folded at
+  the bottom, with the same two choices when opened.
+- Tests: `postsList.test.ts`, `postsView.test.tsx`, `postsFlow.test.tsx`, `failed.test.ts` (`againAt`, a post
+  Postiz lost, named by @username - "Post again" used to say Postiz didn't say which account).
 ## Batch formats: headline on top, or not
 - His ask (2026-11-13): the clip of him can be the hook by itself (a horizontal clip with its own words) - "make it
   so I can choose if I want one or not".

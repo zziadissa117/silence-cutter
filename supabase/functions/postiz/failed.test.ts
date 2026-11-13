@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { accountName, baseNote, failedRefs, missingAccounts, namesIn, notPostedNote, clearOfTaken, reconnectedAs, youtubeRetryTime, youtubeTime } from './failed'
+import { accountName, againAt, baseNote, failedRefs, missingAccounts, namesIn, notPostedNote, clearOfTaken, reconnectedAs, youtubeRetryTime, youtubeTime } from './failed'
 
 const accounts = [
   { id: 'yt', name: 'Ilyan Hamdane', platform: 'youtube' },
@@ -155,5 +155,37 @@ describe('clearOfTaken', () => {
     const at = Date.parse('2026-10-30T13:00:00Z')
     expect(clearOfTaken(at, [], at + 3_600_000)).toBe(at)
     expect(clearOfTaken(at, [at + 10 * 60_000], at + 5 * 3_600_000)).toBe(at + 60 * 60_000)
+  })
+})
+
+describe('againAt: when a post that did not go out goes again by itself', () => {
+  const NOW = Date.parse('2026-11-13T15:00:00Z')
+  it("takes the campaign's next free time when it is within the day", () => {
+    const next = NOW + 2 * 3_600_000
+    expect(againAt({ platforms: ['instagram-standalone'], postAt: NOW - 600_000, now: NOW, campaignNext: next })).toBe(next)
+  })
+  it('goes in half an hour when the campaign has no free time soon', () => {
+    expect(againAt({ platforms: ['tiktok-business'], postAt: NOW, now: NOW, campaignNext: null })).toBe(NOW + 30 * 60_000)
+    expect(againAt({ platforms: ['facebook'], postAt: NOW, now: NOW, campaignNext: NOW + 3 * 24 * 3_600_000 })).toBe(NOW + 30 * 60_000)
+    expect(againAt({ platforms: ['facebook'], postAt: NOW, now: NOW, campaignNext: NOW + 60_000 })).toBe(NOW + 30 * 60_000)
+  })
+  it("waits for YouTube's next good hours when only YouTube missed", () => {
+    const at = againAt({ platforms: ['youtube'], postAt: NOW, now: NOW, campaignNext: NOW + 3_600_000 })
+    expect(at).toBe(youtubeRetryTime(NOW, NOW))
+  })
+})
+
+describe('missingAccounts: a post Postiz no longer has, named by username', () => {
+  it('finds the account its note names by @username', () => {
+    const accounts = [
+      { id: 'ig', name: 'Zayed', platform: 'instagram-standalone', profile: 'betttr.zayed' },
+      { id: 'tt', name: 'zayed', platform: 'tiktok-business', profile: 'better.zayed' },
+    ]
+    const ids = [
+      { postId: 'p1', integration: 'ig' },
+      { postId: 'p2', integration: 'tt' },
+    ]
+    const found = [{ id: 'p2', state: 'PUBLISHED', integration: { id: 'tt' } }]
+    expect(missingAccounts(accounts, ids, found as never, 'Not posted to @betttr.zayed. Postiz no longer has it.').map((a) => a.id)).toEqual(['ig'])
   })
 })

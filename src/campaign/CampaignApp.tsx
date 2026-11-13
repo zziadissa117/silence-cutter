@@ -1202,7 +1202,7 @@ export function CampaignApp() {
   // Caption fixes are written to disk a moment after each change - see the
   // caption check below.
   const captionSaveTimer = useRef(0)
-  const [tab, setTab] = useState<Tab>(() => (window.location.hash === '#posts' ? 'posts' : 'videos'))
+  const [tab, setTab] = useState<Tab>(() => (window.location.hash.startsWith('#posts') ? 'posts' : 'videos'))
   const voiceAsk = useMemo(() => voiceReminder(), [voiceOpen, tab]) // eslint-disable-line react-hooks/exhaustive-deps
   // Posts is a tab of its own now (TabBar): opening it is going to it.
   const showPosts = tab === 'posts'
@@ -1413,7 +1413,14 @@ export function CampaignApp() {
   }, [])
   useEffect(() => {
     const onMessage = (event: MessageEvent) => {
-      if ((event.data as { type?: string } | null)?.type === 'open') setShowPosts(true)
+      const data = event.data as { type?: string; hash?: string } | null
+      if (data?.type !== 'open') return
+      setShowPosts(true)
+      // A notification about one post ("didn't go out") opens it there.
+      if (data.hash && data.hash.startsWith('#posts/')) {
+        history.replaceState(null, '', `${window.location.pathname}${data.hash}`)
+        window.dispatchEvent(new HashChangeEvent('hashchange'))
+      }
     }
     navigator.serviceWorker?.addEventListener('message', onMessage)
     return () => navigator.serviceWorker?.removeEventListener('message', onMessage)
@@ -5065,7 +5072,7 @@ export function CampaignApp() {
           tab={tab}
           onTab={(next) => {
             setTab(next)
-            if (next !== 'posts' && window.location.hash === '#posts') history.replaceState(null, '', window.location.pathname)
+            if (next !== 'posts' && window.location.hash.startsWith('#posts')) history.replaceState(null, '', window.location.pathname)
           }}
           dots={{ analytics: analyticsRows.some((r) => r.suggestion) }}
           counts={{ posts: posting ? toApprove : 0 }}

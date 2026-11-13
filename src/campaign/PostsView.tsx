@@ -1,10 +1,13 @@
 // The Posts screen: every finished video on its way to Postiz, and what
 // became of it.
 //
-// In the order he reads it (his ask, 2026-11-11): what is still going up,
-// what didn't go out in the last day, then one list of everything still to go
-// out by its time - the next first, to approve or already set - and at the
-// bottom what went out in the last few hours (postsList.postsOrder). Every post can be saved to the
+// In the order he reads it (his ask, 2026-11-13): what waits for his yes,
+// always on top; then what is set to go out, a block per day - Today,
+// Tomorrow, then each day by name; what went out in the last few hours; and
+// at the bottom what didn't go out and won't go again by itself
+// (postsList.postsOrder). A post that didn't go out goes again by itself at
+// the next free time, and he is told by a notification that opens it here:
+// post it himself now, or let the Cutter post it (MissedSheet). Every post can be saved to the
 // phone or shared, from the phone's own copy while it has one, Postiz's
 // otherwise: Inflow's and Lock in's approvals go out by hand.
 //
@@ -16,20 +19,20 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { shortNumber } from './analytics'
 import { dayLabel } from './batch'
 import { hasShareSheet, shareVideo, useSharable } from './shareFile'
-import { ChevronLeft, PlusIcon } from './icons'
+import { ChevronDown, ChevronLeft, PlusIcon } from './icons'
 import type { Campaign } from './look'
 import { NewPost } from './NewPost'
 import { StopPicker } from './StopPicker'
 import { jobOfPostKey, EDIT_WINDOW_MS } from './store'
 import { MusicAfter, useCanChangeMusic } from './MusicAfter'
-import { JUST_POSTED_MS, byDay, campaignsIn, localDay, postsOrder, rememberShown, shownCampaign } from './postsList'
+import { JUST_POSTED_MS, byDay, campaignsIn, goingAgain, localDay, missedAccounts, missedPost, postsOrder, rememberShown, shownCampaign } from './postsList'
+import { PlatformIcons } from './PlatformIcons'
 import { canAddMusic } from './musicAfterSend'
 import { copyKind, forgetSend, localVideo, retryStuck, sending, tidySends, watchSending, type Sending } from './outbox'
 import {
   PostingError,
   accountLabel,
   linkLabel,
-  handleOf,
   isBeingRemade,
   lastPosts,
   listPosts,
@@ -48,8 +51,6 @@ import {
 } from './posting'
 
 const POLL_MS = 15_000
-/** Up next shows this many until he asks for the rest. */
-const NEXT_SHOWN = 15
 /** How many of a batch waiting for him are shown open, to check. */
 const PREVIEW = 3
 /** As the server's batch.ts BATCH_TRUST: his 3rd yes in a batch approves the rest. */
@@ -269,7 +270,15 @@ function WaitingPost({
         <span className="state-chip now">{post.ready ? 'Tap Post' : brand ? 'Brand' : 'To approve'}</span>
       </div>
       <div className="post-line">
-        {post.accounts.map((a) => (a.held ? `${accountLabel(a)} (${a.held === 'paused' ? 'paused - waiting' : "today's limit - waiting"})` : accountLabel(a))).join(', ')}
+        <PlatformIcons accounts={post.accounts} />
+        {post.accounts.some((a) => a.held) ? (
+          <span className="post-held">
+            {post.accounts
+              .filter((a) => a.held)
+              .map((a) => `${accountLabel(a)} ${a.held === 'paused' ? 'paused' : "at today's limit"}`)
+              .join(', ')}
+          </span>
+        ) : null}
       </div>
       {post.error ? <div className="hint warn-text">{post.error}</div> : null}
       {post.ready ? (
@@ -411,56 +420,65 @@ function OtherPost({
   const [open, setOpen] = useState(false)
   const [addingMusic, setAddingMusic] = useState(false)
   const musicWord = useCanChangeMusic(post) ? 'Change music' : 'Add music'
-  const tone =
-    post.status === 'posted' ? (post.error ? 'warn' : 'ok') : post.status === 'error' || post.status === 'failed' ? 'bad' : 'later'
+  const missed = missedPost(post)
+  const again = goingAgain(post)
+  const tone = again ? 'warn' : post.status === 'posted' ? (post.error ? 'warn' : 'ok') : missed ? 'bad' : 'later'
   // Sent through Buffer, the backup, instead of Postiz.
   const viaBuffer = (post.viaBuffer ?? []).length > 0 ? ' · via Buffer' : ''
-  const line =
-    post.status === 'posted'
-      ? `Posted · ${post.accounts.filter((a) => !a.held).map((a) => (handleOf(a) ? `@${handleOf(a)}` : a.name)).join(', ')}${viaBuffer}`
-      : post.status === 'scheduled'
-        ? `${post.accounts.map(accountLabel).join(', ')}${viaBuffer}`
-        : post.status === 'failed' || post.status === 'error'
-          ? (post.error ?? 'Failed')
-          : post.status === 'approved'
-            ? `Approved · ${post.accounts.map(accountLabel).join(', ')}`
-            : post.status === 'writing'
-              ? post.error ?? 'Writing the caption…'
-              : 'Sending…'
+  const live = post.accounts.filter((a) => !a.held)
+  // In the row, the platforms' marks; the usernames once it is opened (his
+  // ask, 2026-11-13).
+  const line = missed ? (
+    <>
+      <span>Didn't go out on</span>
+      <PlatformIcons accounts={missedAccounts(post)} />
+      {again ? <span>· posting again {timeLabel(post.retryAt)}</span> : null}
+    </>
+  ) : (
+    <>
+      <PlatformIcons accounts={post.status === 'posted' ? live : post.accounts} />
+      {post.status === 'writing' ? <span>{post.error ?? 'Writing the caption…'}</span> : null}
+      {post.status === 'uploading' ? <span>Sending…</span> : null}
+      {viaBuffer ? <span>{viaBuffer.slice(3)}</span> : null}
+    </>
+  )
   const links = Object.entries(post.links)
   // Its views, once the server has read them (postiz/views.ts).
   const views = post.status === 'posted' && post.views ? Object.values(post.views).reduce((n, v) => n + (Number(v) || 0), 0) : null
   return (
-    <li className="post">
+    <li className={`post${missed ? ' missed-row' : ''}`}>
       <button type="button" className="post-head as-button" onClick={() => setOpen((o) => !o)} aria-expanded={open}>
-        <span className="post-time">{post.status === 'failed' ? '-' : timeLabel(post.postAt)}</span>
+        <span className="post-time">{again ? timeLabel(post.retryAt) : post.status === 'failed' ? '-' : timeLabel(post.postAt)}</span>
         <span className="post-title">{post.campaignName}</span>
         <span className={`state-chip ${tone}`}>
-          {post.status === 'posted'
-            ? post.error
-              ? 'Partly'
-              : 'Posted'
-            : post.status === 'failed'
-              ? 'Not posted'
-              : post.status === 'error'
-                ? 'Failed'
-                : waitingForTime(post)
-                  ? 'Scheduled'
-                  : 'Going out'}
+          {again
+            ? 'Posting again'
+            : post.status === 'posted'
+              ? post.error?.startsWith('Not posted to')
+                ? 'Partly'
+                : 'Posted'
+              : post.status === 'failed'
+                ? 'Not posted'
+                : post.status === 'error'
+                  ? 'Failed'
+                  : waitingForTime(post)
+                    ? 'Scheduled'
+                    : 'Going out'}
         </span>
       </button>
-      <div className={`post-line${tone === 'bad' ? ' bad' : tone === 'warn' ? ' warn' : ''}`}>
+      <div className={`post-line icons${tone === 'bad' ? ' bad' : tone === 'warn' && missed ? ' warn' : ''}`}>
         {line}
         {views !== null ? <span className="views-pill">{shortNumber(views)} views</span> : null}
       </div>
       {open ? (
         <>
+          <div className="post-accounts">{post.accounts.map(accountLabel).join(', ')}</div>
+          {post.error && (missed || post.status === 'posted') ? <div className="hint warn-text">{post.error}</div> : null}
           {post.caption ? <div className="post-caption-read">{post.caption}</div> : null}
           <Watch post={post} />
           {onRedo ? <RedoBatch onRedo={onRedo} /> : null}
         </>
       ) : null}
-      {post.status === 'posted' && post.error ? <div className="hint warn-text">{post.error}</div> : null}
       {(post.status === 'scheduled' || post.status === 'approved') && post.error ? (
         <div className={`hint${post.error.startsWith("The caption couldn't") ? ' warn-text' : ''}`}>{post.error}</div>
       ) : null}
@@ -478,23 +496,22 @@ function OtherPost({
       ) : null}
       {addingMusic ? <MusicAfter post={post} campaigns={campaigns} onDone={onChanged} onClose={() => setAddingMusic(false)} /> : null}
       {problem ? <p className="hint warn-text">{problem}</p> : null}
+      {/* A missed row stays one line in the list; opened, his two ways. */}
+      {missed && !open ? null : (
+      <>
+      {missed ? <MissedChoice post={post} busy={busy} onAct={onAct} /> : null}
       <div className="post-actions">
-        <SaveVideo post={post} />
+        {missed ? null : <SaveVideo post={post} />}
         <EditAgain post={post} editable={editable} onEdit={onEdit} />
         {canAddMusic(post) ? (
           <button type="button" className="linkbtn" onClick={() => setAddingMusic((m) => !m)}>
             {addingMusic ? 'Hide music' : musicWord}
           </button>
         ) : null}
-        {post.status === 'failed' ? (
-          <button type="button" className="btn small" disabled={busy} onClick={() => onAct('retry')}>
-            {busy ? 'Trying…' : 'Try again'}
-          </button>
-        ) : null}
         {post.status === 'error' || (post.status === 'posted' && post.error?.startsWith('Not posted to')) ? (
           <>
-            <button type="button" className="btn small primary" disabled={busy} onClick={() => onAct('retry-accounts')}>
-              {busy ? 'Trying…' : post.status === 'error' ? 'Post again' : 'Post again to the missing ones'}
+            <button type="button" className="linkbtn" disabled={busy} onClick={() => onAct('retry-accounts')}>
+              {busy ? 'Trying…' : 'Post again now'}
             </button>
             {/* An account that won't post (mostly YouTube): disconnect and
                 reconnect it there, then the button above posts to it at once,
@@ -515,8 +532,139 @@ function OtherPost({
           </button>
         ) : null}
       </div>
+      </>
+      )}
     </li>
   )
+}
+
+/** Copies the caption, for posting it by hand. */
+function CopyCaption({ text }: { text: string }) {
+  const [copied, setCopied] = useState(false)
+  return (
+    <button
+      type="button"
+      className="btn small"
+      onClick={() =>
+        void navigator.clipboard
+          ?.writeText(text)
+          .then(() => setCopied(true))
+          .catch(() => setCopied(false))
+      }
+    >
+      {copied ? 'Caption copied' : 'Copy caption'}
+    </button>
+  )
+}
+
+/** A post that didn't go out: his two ways (his ask, 2026-11-13: "Do you
+ *  want to post it yourself now, or do you want the cutter to post it back
+ *  later?"). The Cutter has already set it to go again at the next free time
+ *  (postiz missedFields); posting it himself stops that, and hands him the
+ *  video and its caption. */
+function MissedChoice({ post, busy, onAct }: { post: ServerPost; busy: boolean; onAct: (action: PostAction) => void }) {
+  const mine = Boolean(post.error?.startsWith('You posted it yourself'))
+  const [chose, setChose] = useState<'self' | 'later' | null>(mine ? 'self' : null)
+  const again = goingAgain(post)
+  if (chose === 'self' || mine) {
+    return (
+      <div className="missed-choice">
+        <p className="hint">Save the video, copy the caption, and post it on {missedAccounts(post).map(accountLabel).join(', ')}. The Cutter won't post it again.</p>
+        <div className="post-actions">
+          <SaveVideo post={post} primary />
+          {post.caption ? <CopyCaption text={post.caption} /> : null}
+        </div>
+      </div>
+    )
+  }
+  if (chose === 'later' && again) {
+    return <p className="hint missed-choice">The Cutter posts it again {whenLabel(post.retryAt)}. Nothing to do.</p>
+  }
+  return (
+    <div className="missed-choice">
+      <p className="missed-ask">
+        {again
+          ? `The Cutter posts it again ${whenLabel(post.retryAt)}. Or post it yourself now?`
+          : post.status === 'failed'
+            ? 'Post it yourself now, or let the Cutter try again?'
+            : 'Post it yourself now, or let the Cutter post it at the next free time?'}
+      </p>
+      <div className="post-actions">
+        <button
+          type="button"
+          className="btn small primary"
+          disabled={busy}
+          onClick={() => {
+            setChose('self')
+            onAct('self')
+          }}
+        >
+          Post it myself
+        </button>
+        <button
+          type="button"
+          className="btn small"
+          disabled={busy}
+          onClick={() => {
+            setChose('later')
+            if (!again) onAct('later')
+          }}
+        >
+          {again ? 'Let the Cutter post it' : busy ? 'Setting it…' : 'Let the Cutter post it'}
+        </button>
+      </div>
+    </div>
+  )
+}
+
+/** The post a "didn't go out" notification opens, on top of the Posts
+ *  screen: what missed, the video, and his two ways. */
+function MissedSheet({
+  post,
+  loaded,
+  busy,
+  problem,
+  onAct,
+  onClose,
+}: {
+  post: ServerPost | null
+  loaded: boolean
+  busy: boolean
+  problem?: string
+  onAct: (action: PostAction) => void
+  onClose: () => void
+}) {
+  return (
+    <div className="missed-sheet" role="dialog" aria-label="A post that didn't go out">
+      <div className="missed-sheet-head">
+        <span className="missed-sheet-title">{post ? post.campaignName : "Didn't go out"}</span>
+        <button type="button" className="linkbtn" onClick={onClose}>
+          Close
+        </button>
+      </div>
+      {!post ? (
+        <p className="hint">{loaded ? 'That post is no longer here.' : 'Getting it…'}</p>
+      ) : !missedPost(post) && !post.error?.startsWith('You posted it yourself') ? (
+        <p className="hint">It went out after all - nothing to do.</p>
+      ) : (
+        <>
+          <div className={`post-line icons${missedPost(post) ? ' bad' : ''}`}>
+            <span>{missedPost(post) ? "Didn't go out on" : 'Yours to post on'}</span>
+            <PlatformIcons accounts={missedPost(post) ? missedAccounts(post) : post.accounts} size={24} />
+          </div>
+          {post.error ? <div className="hint">{post.error.replace(/ (Posting again|Still not posted)\b.*$/s, '')}</div> : null}
+          <Watch post={post} />
+          {problem ? <p className="hint warn-text">{problem}</p> : null}
+          <MissedChoice post={post} busy={busy} onAct={onAct} />
+        </>
+      )}
+    </div>
+  )
+}
+
+/** The post id in "#posts/missed/<id>", the link a notification opens. */
+function missedIn(hash: string): string | null {
+  return hash.match(/^#posts\/missed\/([\w-]+)/)?.[1] ?? null
 }
 
 /** "7:55 PM" - the day is the list's own heading. */
@@ -552,13 +700,17 @@ function RedoBatch({ onRedo }: { onRedo: (mode: RedoMode) => Promise<void> }) {
   )
 }
 
-/** "Today", "Tomorrow" or "Sat, Oct 31". */
-function dayTitle(date: string | null): string {
-  if (!date) return 'No time yet'
+/** A day block's heading: "Today" / "Fri, Nov 13", "Tomorrow" / "Sat, Nov
+ *  14", then the weekday itself - "Sunday" / "Nov 15" - for the week ahead. */
+function dayTitle(date: string | null): { name: string; date: string } {
+  if (!date) return { name: 'No time yet', date: '' }
   const today = localDay(new Date().toISOString())
-  if (date === today) return 'Today'
-  if (date === localDay(new Date(Date.now() + 24 * 3_600_000).toISOString())) return 'Tomorrow'
-  return dayLabel(date)
+  if (date === today) return { name: 'Today', date: dayLabel(date) }
+  if (date === localDay(new Date(Date.now() + 24 * 3_600_000).toISOString())) return { name: 'Tomorrow', date: dayLabel(date) }
+  const at = new Date(`${date}T12:00:00`)
+  const ahead = (at.getTime() - Date.now()) / 86_400_000
+  if (ahead < 6.5) return { name: at.toLocaleDateString(undefined, { weekday: 'long' }), date: at.toLocaleDateString(undefined, { month: 'short', day: 'numeric' }) }
+  return { name: dayLabel(date), date: '' }
 }
 
 /** A video that can't go up until he does something - its copy gone from
@@ -702,13 +854,33 @@ export function PostsView({
   const [stopping, setStopping] = useState(false)
   // One campaign at a time, or all of them - remembered on this phone.
   const [shown, setShown] = useState<string | null>(shownCampaign)
-  const [allNext, setAllNext] = useState(false)
+  // Day blocks he opened or closed; by itself Today and Tomorrow are open,
+  // later days are one line each he opens with a tap.
+  const [dayOpen, setDayOpen] = useState<Record<string, boolean>>({})
   const outgoing = useSending()
+  const [loaded, setLoaded] = useState(false)
+  // The post a "didn't go out" notification opened (#posts/missed/<id>).
+  const [focus, setFocus] = useState<string | null>(() => missedIn(window.location.hash))
+  useEffect(() => {
+    const onHash = () => {
+      const id = missedIn(window.location.hash)
+      if (!id) return
+      setFocus(id)
+      window.scrollTo?.(0, 0)
+    }
+    window.addEventListener('hashchange', onHash)
+    return () => window.removeEventListener('hashchange', onHash)
+  }, [])
+  const closeFocus = () => {
+    setFocus(null)
+    if (missedIn(window.location.hash)) history.replaceState(null, '', `${window.location.pathname}#posts`)
+  }
 
   const load = useCallback(async (fresh = false) => {
     try {
       const next = await listPosts(fresh)
       setPosts(next)
+      setLoaded(true)
       setProblem(null)
       void tidySends(next)
     } catch (error) {
@@ -763,8 +935,8 @@ export function PostsView({
       const message = error instanceof Error ? error.message : String(error)
       postProblem(
         post.id,
-        action === 'ready' && /unknown action/i.test(message)
-          ? "Post later needs the server updated first - run ./deploy-server.sh in silence-cutter."
+        (action === 'ready' || action === 'self' || action === 'later') && /unknown action/i.test(message)
+          ? 'This needs the server updated first - run ./deploy-server.sh in silence-cutter.'
           : message,
       )
     } finally {
@@ -817,19 +989,19 @@ export function PostsView({
   // is still getting ready (the last parts arriving, Claude writing the
   // caption) - seconds to minutes, then each goes into Up next.
   const working = view.filter((p) => (p.status === 'uploading' || p.status === 'writing') && !sendingKeys.has(p.key))
-  // One list by time, the next first; then what went out in the last hours
-  // (postsList.postsOrder). Approved is scheduled, to him: it goes at its time.
+  // To approve on top; then what is set to go, by day; then what went out in
+  // the last hours (postsList.postsOrder). Approved is scheduled, to him.
   const order = postsOrder(view)
   // The first few of a batch waiting for him open with their video, to check.
   const firstOfBatch = new Set(
     [...new Set(waiting.filter((p) => p.batch).map((p) => p.campaignId))].flatMap((id) =>
-      order.next.filter((p) => p.status === 'waiting' && p.batch && p.campaignId === id).slice(0, PREVIEW).map((p) => p.id),
+      order.toApprove.filter((p) => p.batch && p.campaignId === id).slice(0, PREVIEW).map((p) => p.id),
     ),
   )
   /** A batch post still to go: its batch's captions can be redone. */
   const redoFor = (post: ServerPost) => {
     if (!post.batch) return undefined
-    const batch = order.next.filter((p) => p.batch && p.campaignId === post.campaignId)
+    const batch = [...order.toApprove, ...order.next].filter((p) => p.batch && p.campaignId === post.campaignId && !missedPost(p))
     return (mode: RedoMode) => redoBatch(batch, mode)
   }
   const other = (post: ServerPost) => (
@@ -878,11 +1050,6 @@ export function PostsView({
       <div className="screen-head">
         <h1>Posts</h1>
         <div className="actions-row">
-          {approvable.length > 1 && !stopping ? (
-            <button type="button" className="btn small primary" disabled={approvingAll} onClick={() => void approveAll()}>
-              {approvingAll ? 'Approving…' : `Approve all ${approvable.length}`}
-            </button>
-          ) : null}
           {canStop.length > 0 && !stopping ? (
             <button type="button" className="btn small" onClick={() => setStopping(true)}>
               Select
@@ -933,6 +1100,20 @@ export function PostsView({
         </div>
       ) : null}
 
+      {focus ? (
+        <MissedSheet
+          post={allPosts.find((p) => p.id === focus) ?? null}
+          loaded={loaded}
+          busy={busy.has(focus)}
+          problem={postProblems[focus]}
+          onAct={(action) => {
+            const post = allPosts.find((p) => p.id === focus)
+            if (post) void act(post, action)
+          }}
+          onClose={closeFocus}
+        />
+      ) : null}
+
       {inPosts.length > 1 ? (
         // One box, not a button for each of up to 30 campaigns.
         <select className="posts-filter" aria-label="Show campaign" value={showing ?? ''} onChange={(e) => show(e.target.value || null)}>
@@ -965,62 +1146,96 @@ export function PostsView({
         </ul>
       ) : null}
 
-      {order.missed.length > 0 ? (
-        <>
-          <div className="list-title bad">Didn't go out · {order.missed.length}</div>
-          <ul className="posts-list">{order.missed.map((post) => other(post))}</ul>
-        </>
+      {order.toApprove.length > 0 ? (
+        <section className="post-group to-approve">
+          <div className="group-head">
+            <span className="group-name">To approve</span>
+            <span className="group-count">{order.toApprove.length}</span>
+            {approvable.length > 1 && !stopping ? (
+              <button type="button" className="btn small primary" disabled={approvingAll} onClick={() => void approveAll()}>
+                {approvingAll ? 'Approving…' : `Approve all ${approvable.length}`}
+              </button>
+            ) : null}
+          </div>
+          {order.toApprove.some((p) => p.batch) ? <p className="hint tip">Approve {BATCH_TRUST} of a batch and the rest of it goes by itself.</p> : null}
+          <ul className="posts-list">
+            {order.toApprove.map((post) => (
+              <WaitingPost
+                key={post.id}
+                watchFirst={firstOfBatch.has(post.id)}
+                editable={editable}
+                onEdit={onEditAgain}
+                campaigns={campaigns}
+                onChanged={onMusicDone}
+                post={post}
+                busy={busy.has(post.id)}
+                problem={postProblems[post.id]}
+                onAct={(action, fields) => void act(post, action, fields)}
+                onRedo={redoFor(post)}
+              />
+            ))}
+          </ul>
+        </section>
       ) : null}
 
-      {order.next.length > 0 ? (
-        <>
-          <div className="list-title">
-            Up next <span className="list-count">{order.next.length}</span>
-          </div>
-          {order.next.some((p) => p.status === 'waiting' && p.batch) ? (
-            <p className="hint tip">Approve {BATCH_TRUST} of a batch and the rest of it goes by itself.</p>
-          ) : null}
-          {byDay(allNext ? order.next : order.next.slice(0, NEXT_SHOWN)).map(({ date, posts: day }) => (
-            <div key={date ?? 'none'} className="day-block">
-              <div className="day-title">{dayTitle(date)}</div>
-              <ul className="posts-list">
-                {day.map((post) =>
-                  post.status === 'waiting' ? (
-                    <WaitingPost
-                      key={post.id}
-                      watchFirst={firstOfBatch.has(post.id)}
-                      editable={editable}
-                      onEdit={onEditAgain}
-                      campaigns={campaigns}
-                      onChanged={onMusicDone}
-                      post={post}
-                      busy={busy.has(post.id)}
-                      problem={postProblems[post.id]}
-                      onAct={(action, fields) => void act(post, action, fields)}
-                      onRedo={redoFor(post)}
-                    />
-                  ) : (
-                    other(post)
-                  ),
-                )}
-              </ul>
-            </div>
-          ))}
-          {order.next.length > NEXT_SHOWN ? (
-            <button type="button" className="linkbtn see-more" onClick={() => setAllNext((a) => !a)}>
-              {allNext ? 'Show fewer' : `Show all ${order.next.length}`}
+      {byDay(order.next).map(({ date, posts: day }, i) => {
+        const key = date ?? 'none'
+        const title = dayTitle(date)
+        // Today and Tomorrow open by themselves - or the first day there is.
+        const near = i === 0 || title.name === 'Today' || title.name === 'Tomorrow'
+        const isOpen = dayOpen[key] ?? near
+        const missing = day.filter((p) => goingAgain(p)).length
+        return (
+          <section key={key} className={`post-group day-block${isOpen ? ' open' : ''}`}>
+            <button
+              type="button"
+              className="group-head day-title"
+              aria-expanded={isOpen}
+              onClick={() => setDayOpen((all) => ({ ...all, [key]: !isOpen }))}
+            >
+              <span className="group-name">{title.name}</span>
+              {title.date ? <span className="group-date">{title.date}</span> : null}
+              {missing > 0 ? <span className="state-chip warn">{missing} again</span> : null}
+              <span className="group-count">{day.length}</span>
+              <span className="group-chevron" aria-hidden>
+                <ChevronDown />
+              </span>
             </button>
-          ) : null}
-        </>
-      ) : null}
+            {isOpen ? <ul className="posts-list">{day.map((post) => other(post))}</ul> : null}
+          </section>
+        )
+      })}
 
       {order.justPosted.length > 0 ? (
-        <>
-          <div className="list-title">
-            Just posted <span className="list-count">last {JUST_POSTED_MS / 3_600_000} hours</span>
+        <section className="post-group done">
+          <div className="group-head">
+            <span className="group-name">Just posted</span>
+            <span className="group-date">last {JUST_POSTED_MS / 3_600_000} hours</span>
+            <span className="group-count">{order.justPosted.length}</span>
           </div>
           <ul className="posts-list">{order.justPosted.map((post) => other(post))}</ul>
-        </>
+        </section>
+      ) : null}
+
+      {/* What didn't go out and won't go again by itself: at the bottom, one
+          line he opens - each one also came as a notification. */}
+      {order.missed.length > 0 ? (
+        <section className={`post-group missed${dayOpen.missed ? ' open' : ''}`}>
+          <button
+            type="button"
+            className="group-head day-title"
+            aria-expanded={Boolean(dayOpen.missed)}
+            onClick={() => setDayOpen((all) => ({ ...all, missed: !all.missed }))}
+          >
+            <span className="group-name">Didn't go out</span>
+            <span className="group-date">last 24 hours</span>
+            <span className="group-count">{order.missed.length}</span>
+            <span className="group-chevron" aria-hidden>
+              <ChevronDown />
+            </span>
+          </button>
+          {dayOpen.missed ? <ul className="posts-list">{order.missed.map((post) => other(post))}</ul> : null}
+        </section>
       ) : null}
       </>
       )}

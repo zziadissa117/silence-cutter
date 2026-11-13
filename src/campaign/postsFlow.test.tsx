@@ -99,11 +99,16 @@ const onTheWay = () => host.querySelector('.on-the-way') as HTMLElement
 
 describe('the Posts screen', () => {
   it('lists an approved post with the scheduled ones, by its time, with a way to take it back', async () => {
+    // Next week's day is one line until he opens it.
+    for (const head of [...host.querySelectorAll('.day-block > .group-head[aria-expanded="false"]')] as HTMLButtonElement[]) {
+      await act(async () => head.click())
+    }
     expect(upNext()).toHaveLength(2)
     const [first, second] = upNext()
     // Tomorrow's first, then next week's approved one.
     expect(first.textContent).toContain('Scheduled')
-    expect(second.textContent).toContain('Approved · @traderzi2')
+    expect(second.querySelector('.pmark.instagram')).not.toBeNull()
+    expect(second.querySelector('.pmarks')!.getAttribute('aria-label')).toContain('@traderzi2')
     expect(second.textContent).toContain("Postiz didn't take it yet")
     expect(upNext().flatMap((row) => [...row.querySelectorAll('button')]).filter((b) => b.textContent === 'Take back')).toHaveLength(2)
   })
