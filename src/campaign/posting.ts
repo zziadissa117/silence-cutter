@@ -529,6 +529,20 @@ export function isBeingRemade(post: ServerPost, remaking: ReadonlySet<string>, n
   return post.status === 'waiting' || post.status === 'approved' || post.status === 'writing' || post.status === 'uploading'
 }
 
+/** Whether a post hasn't gone out yet: waiting for him, approved, being
+ *  sent, scheduled ahead, or stopped by a problem - still his to change. */
+export function stillToGoOut(post: Pick<ServerPost, 'status' | 'postAt'>, now = Date.now()): boolean {
+  if (post.status === 'posted' || post.status === 'rejected') return false
+  if (post.status === 'scheduled') return post.postAt === null || Date.parse(post.postAt) > now
+  return true
+}
+
+/** The jobs whose post hasn't gone out yet - their recordings are kept, so
+ *  Edit again works until it goes (store.stillKept). */
+export function goingOutJobs(posts: readonly Pick<ServerPost, 'key' | 'status' | 'postAt'>[], now = Date.now()): Set<string> {
+  return new Set(posts.filter((p) => stillToGoOut(p, now)).map((p) => p.key.split('~')[0]))
+}
+
 export function lastPosts(): ServerPost[] {
   try {
     return JSON.parse(localStorage.getItem(POSTS_KEY) ?? '[]') as ServerPost[]

@@ -829,10 +829,15 @@ engine/                        the engine on Railway (Python): engine/ its code,
 A finished *talking* video (plan present; not reaction, montage, batch, joined) is
 not forgotten when made: `store.markMade` stamps `madeAt` and keeps its job row
 (listen plan, captions, cuts, music) and raw recording for `EDIT_WINDOW_MS`
-(2 h). `expireMade` removes older ones (on load + every 5 min). Made jobs are
-never returned by `loadPendingJobs`, so they are not re-queued.
+(2 h) - and for as long as its post hasn't gone out (`store.stillKept` with
+`posting.goingOutJobs(lastPosts())`, at most `GOING_OUT_KEEP_MS`, 14 days; his ask
+2026-11-13). `expireMade` removes older ones (on load + every 5 min). Made jobs are
+never returned by `loadPendingJobs`, so they are not re-queued. A talking video made
+on the Cutter server is kept the same way on the phone (`markMade` when the server
+says it is made - it used to be forgotten at once, so it couldn't be edited).
 
-Posts view shows "Edit again · Xh left" when the post's job is in `editableJobs()`.
+Posts view shows "Edit again" beside Watch while the post hasn't gone out, and "Edit
+as new post · Xh left" after, when the post's job is in `editableJobs()`.
 `CampaignApp.editAgain` -> `store.reopenJob` (clears madeAt, `version`+1, `replaces` =
 old post key, day.approved=false) -> caption review (with Cuts + per-video music).
 Approving re-makes it; `sendToPostiz` sends under `postKeyOf(id, version)` (`id~2`)

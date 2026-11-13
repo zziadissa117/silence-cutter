@@ -207,3 +207,22 @@ describe('what went out', () => {
     expect(postAction).toHaveBeenCalledWith('retry-accounts', 'half')
   })
 })
+
+describe('Edit again (his ask, 2026-11-13: "I need to have the option for that at all times")', () => {
+  it('sits beside Watch on a post waiting for him, with no time running out, and opens the video', async () => {
+    const onEditAgain = vi.fn()
+    // The store is stubbed in this file: its post key -> video lookup made real.
+    const store = await import('./store')
+    vi.mocked(store.jobOfPostKey).mockImplementation((key: string) => key.split('~')[0])
+    // Made a day ago: long past the old two hours.
+    await act(async () =>
+      root.render(<PostsView campaigns={[]} onBack={() => {}} editable={{ w1: Date.now() - 24 * 3_600_000 }} onEditAgain={onEditAgain} />),
+    )
+    const post = upNext().find((p) => p.querySelector('button') && button('Edit again', p).length > 0)!
+    expect(post).toBeDefined()
+    // Not tucked away under More options.
+    expect(button('Edit again', post)[0].closest('details')).toBeNull()
+    await act(async () => button('Edit again', post)[0].click())
+    expect(onEditAgain).toHaveBeenCalledWith('w1')
+  })
+})

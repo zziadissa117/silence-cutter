@@ -3,6 +3,22 @@
 Newest first. Every change says what it does, how to use it, and how it works
 underneath. Kept up to date with each commit.
 
+## Edit again: always there until the video goes out
+- His report (2026-11-13): "why in the world did you remove the edit-again feature? ... I need to have the option
+  for that at all times." It wasn't taken out, but it was gone when he needed it, for two reasons:
+  - A talking video made on the Cutter server (3 or more waiting) had its recording and edits thrown off the phone
+    the moment the server finished it - so it could never be edited again. His Money pilot videos of 2026-11-13
+    were made there.
+  - On the phone, a video's recording was only kept 2 hours after it was made; a post waiting longer for approval
+    lost its Edit again.
+- Now:
+  - A video made on the server is kept on the phone like one made on the phone.
+  - A video can be edited again for as long as its post hasn't gone out - waiting for approval, approved, scheduled
+    ahead - and 2 hours after it is made, as before (at most 14 days, for the phone's space).
+  - On a post waiting for approval, "Edit again" sits beside Watch and Reject, not under More options.
+- The videos made on the server before this update can't be opened again: their recordings were already let go.
+- Tests: `editAgain.test.ts`, `postsView.test.tsx`.
+
 ## Steadying: only when it helps, and no more long waits
 - His report (2026-11-13): "the stabilization ... took me 2 whole minutes ... is it even worth it?" His reports
   showed why: his 68 s selfie take sat about 2 min 20 s in "Steadying" and was then thrown away as not steadier -

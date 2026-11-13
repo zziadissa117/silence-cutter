@@ -40,6 +40,7 @@ import {
   redoCaptions,
   redoSaid,
   stoppable,
+  stillToGoOut,
   whenLabel,
   type PostAction,
   type RedoMode,
@@ -188,10 +189,12 @@ function EditAgain({
 }) {
   const madeAt = editable[jobOfPostKey(post.key)]
   if (madeAt === undefined || post.status === 'rejected') return null
+  // Until it goes out it can always be edited (his ask, 2026-11-13); once
+  // out, for the rest of the window, as a new post.
+  const out = !stillToGoOut(post)
   const left = Math.max(0, madeAt + EDIT_WINDOW_MS - Date.now())
   const minutes = Math.ceil(left / 60_000)
   const label = minutes >= 60 ? `${Math.floor(minutes / 60)}h ${minutes % 60}m` : `${minutes}m`
-  const out = post.status === 'posted'
   return (
     <button
       type="button"
@@ -199,7 +202,7 @@ function EditAgain({
       title={out ? 'Already posted: editing makes a new post.' : 'Replaces this post.'}
       onClick={() => onEdit(post.key)}
     >
-      {out ? 'Edit as new post' : 'Edit again'} · {label} left
+      {out ? `Edit as new post · ${label} left` : 'Edit again'}
     </button>
   )
 }
@@ -317,6 +320,8 @@ function WaitingPost({
         <button type="button" className="linkbtn" onClick={() => setWatching((w) => !w)}>
           {watching ? 'Hide video' : 'Watch'}
         </button>
+        {/* Always in sight while it waits (his ask, 2026-11-13). */}
+        <EditAgain post={post} editable={editable} onEdit={onEdit} />
         <button
           type="button"
           className="linkbtn danger"
@@ -346,7 +351,6 @@ function WaitingPost({
             </button>
           ) : null}
           {brand ? null : <SaveVideo post={post} primary={false} />}
-          <EditAgain post={post} editable={editable} onEdit={onEdit} />
         </div>
         {onRedo ? <RedoBatch onRedo={onRedo} /> : null}
         {post.accounts.filter((a) => !a.held).length > 1 ? (

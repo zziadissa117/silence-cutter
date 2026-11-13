@@ -133,6 +133,7 @@ import {
   disconnect as disconnectPosting,
   isBeingRemade,
   lastPosts,
+  goingOutJobs,
   lastInsights,
   lastViews,
   listInsights,
@@ -933,7 +934,12 @@ export function CampaignApp() {
           }
           if (rec.state === 'made') {
             patchJob(job.id, { status: 'done', madeOnServer: true, onServer: undefined, progress: 1 })
-            await forgetJob(job.id)
+            // Kept like one made here - its recording and edits stay on the
+            // phone, so Edit again works (it was let go of at once, and he
+            // couldn't edit a video waiting for approval, 2026-11-13).
+            await setJobFields(job.id, { onServer: undefined })
+            await markMade(job.id)
+            void refreshEditable()
             void dropTalk(job.id)
           } else if (rec.state === 'failed') {
             report({ page: 'campaign', kind: 'fallback', phase: 'server making', message: rec.error ?? 'failed' })
@@ -1238,15 +1244,18 @@ export function CampaignApp() {
   const [notice, setNotice] = useState<string | null>(null)
 
   // Made videos whose recording is still on the phone, so they can be edited
-  // and made again: job id -> when made. They go EDIT_WINDOW_MS after.
+  // and made again: job id -> when made. They go once their post has gone
+  // out and EDIT_WINDOW_MS has passed (store.stillKept).
   const [editable, setEditable] = useState<Record<string, number>>({})
   // Made videos sent nowhere, kept for days - shown after a restart so they
   // can still be given a campaign.
   const [notMadeSent, setNotMadeSent] = useState<PendingJob[]>([])
   const sweepBankRef = useRef<() => void>(() => {})
   const refreshEditable = useCallback(async () => {
-    if ((await expireMade().catch(() => 0)) > 0) sweepBankRef.current()
-    setEditable(await editableJobs().catch(() => ({})))
+    // Kept as long as their post hasn't gone out, whatever the window.
+    const goingOut = goingOutJobs(lastPosts())
+    if ((await expireMade(Date.now(), goingOut).catch(() => 0)) > 0) sweepBankRef.current()
+    setEditable(await editableJobs(Date.now(), goingOut).catch(() => ({})))
     setNotMadeSent(await madeNotSent().catch(() => []))
   }, [])
   useEffect(() => {
@@ -2447,11 +2456,11 @@ export function CampaignApp() {
   /** Makes a batch video again with the headline and track he changed; its
    *  post is replaced when it is sent. */
   const makeBatchAgain = async (edit: NonNullable<typeof batchEditing>, fields: { headline: string; music: BankFile | null }) => {
-    const row = await reopenBatchJob(edit.id, edit.postKey, { headlineText: fields.headline, music: fields.music })
+    const row = await reopenBatchJob(edit.id, edit.postKey, { headlineText: fields.headline, music: fields.music }, goingOutJobs(lastPosts()))
     setBatchEditing(null)
     if (row) holdWhileRemade(edit.postKey)
     if (!row?.montage || !row.batch) {
-      setNotice(`The footage is only kept for ${EDIT_WINDOW_MS / 3_600_000} hours after a video is made, and this one's is gone.`)
+      setNotice(`This video's footage is no longer on the phone (it is kept until the post goes out, and ${EDIT_WINDOW_MS / 3_600_000} hours after).`)
       void refreshEditable()
       return
     }
@@ -2550,7 +2559,8 @@ export function CampaignApp() {
   }
 
   const editAgain = async (postKey: string) => {
-    const batchRow = await peekMadeBatch(jobOfPostKey(postKey))
+    const goingOut = goingOutJobs(lastPosts())
+    const batchRow = await peekMadeBatch(jobOfPostKey(postKey), goingOut)
     if (batchRow?.montage?.bank) {
       const bank = await loadBatchBank(batchRow.campaignId).catch(() => null)
       const current = batchRow.montage.bank.music
@@ -2561,9 +2571,9 @@ export function CampaignApp() {
       setBatchEditing({ id: batchRow.id, postKey, name: batchRow.fileName, headline: batchRow.headlineText, music: current, options, posted: old?.status === 'posted' })
       return
     }
-    const reopened = await reopenJob(jobOfPostKey(postKey), postKey)
+    const reopened = await reopenJob(jobOfPostKey(postKey), postKey, goingOut)
     if (!reopened) {
-      setNotice(`The original recording is only kept for ${EDIT_WINDOW_MS / 3_600_000} hours after a video is made, and this one's is gone.`)
+      setNotice(`This video's recording is no longer on the phone (it is kept until the post goes out, and ${EDIT_WINDOW_MS / 3_600_000} hours after).`)
       void refreshEditable()
       return
     }

@@ -197,6 +197,22 @@ export function keptFor(row: { unsent?: boolean }): number {
   return row.unsent ? UNSENT_KEEP_MS : EDIT_WINDOW_MS
 }
 
+/** The most a made video is kept for while its post still hasn't gone out
+ *  (waiting for approval, approved, scheduled ahead): Edit again stays
+ *  until it goes out (his ask, 2026-11-13: "I need to have the option for
+ *  that at all times"), but not for ever on a phone's disk. */
+export const GOING_OUT_KEEP_MS = 14 * 24 * 60 * 60 * 1000
+
+/** Whether a made job is still kept, to be edited again: inside its window,
+ *  or its post (`goingOut`: the jobs whose post hasn't gone out) still to go. */
+export function stillKept(row: { id: string; madeAt?: number; unsent?: boolean }, goingOut: ReadonlySet<string>, window = keptFor(row), now = Date.now()): boolean {
+  if (row.madeAt === undefined) return false
+  const age = now - row.madeAt
+  return age < window || (!SERVER_MODE && goingOut.has(row.id) && age < GOING_OUT_KEEP_MS)
+}
+
+const NONE: ReadonlySet<string> = new Set()
+
 /** The key a job's post goes under: the job's id for the first go,
  *  `id~2`, `id~3` for each go after. */
 export function postKeyOf(id: string, version = 1): string {
@@ -1299,9 +1315,9 @@ export async function markJobSent(id: string): Promise<void> {
   await db.jobs.update(id, { unsent: undefined }).catch(() => {})
 }
 
-/** The made jobs still inside their window: id -> when made. */
-export async function editableJobs(now = Date.now()): Promise<Record<string, number>> {
-  const rows = await db.jobs.filter((j) => j.madeAt !== undefined && now - j.madeAt < keptFor(j)).toArray()
+/** The made jobs still kept to be edited (stillKept): id -> when made. */
+export async function editableJobs(now = Date.now(), goingOut: ReadonlySet<string> = NONE): Promise<Record<string, number>> {
+  const rows = await db.jobs.filter((j) => stillKept(j, goingOut, keptFor(j), now)).toArray()
   return Object.fromEntries(rows.map((j) => [j.id, j.madeAt as number]))
 }
 
@@ -1316,8 +1332,9 @@ export async function madeNotSent(now = Date.now()): Promise<PendingJob[]> {
 export const UNSENT_KEEP_MAX = 10
 
 /** Lets go of made jobs past their window, recording and all - and unsent
- *  ones beyond the newest UNSENT_KEEP_MAX. */
-export async function expireMade(now = Date.now()): Promise<number> {
+ *  ones beyond the newest UNSENT_KEEP_MAX - but not one whose post hasn't
+ *  gone out yet (`goingOut`). */
+export async function expireMade(now = Date.now(), goingOut: ReadonlySet<string> = NONE): Promise<number> {
   // A held format video never goes by itself - only its recording does,
   // once it can no longer be edited, to give the phone its space back.
   const held = await db.jobs.filter((j) => j.held !== undefined && j.madeAt !== undefined && now - j.madeAt >= EDIT_WINDOW_MS).primaryKeys()
@@ -1325,7 +1342,13 @@ export async function expireMade(now = Date.now()): Promise<number> {
   const unsent = (await db.jobs.filter((j) => j.unsent === true && j.madeAt !== undefined).toArray()).sort((a, b) => (b.madeAt ?? 0) - (a.madeAt ?? 0))
   const tooMany = new Set(unsent.slice(UNSENT_KEEP_MAX).map((j) => j.id))
   const old = await db.jobs
-    .filter((j) => j.held === undefined && j.madeAt !== undefined && (now - j.madeAt >= keptFor(j) || (tooMany.has(j.id) && now - j.madeAt >= EDIT_WINDOW_MS)))
+    .filter(
+      (j) =>
+        j.held === undefined &&
+        j.madeAt !== undefined &&
+        !(goingOut.has(j.id) && stillKept(j, goingOut, keptFor(j), now)) &&
+        (now - j.madeAt >= keptFor(j) || (tooMany.has(j.id) && now - j.madeAt >= EDIT_WINDOW_MS)),
+    )
     .primaryKeys()
   for (const id of old) await forgetJob(id)
   return old.length
@@ -1334,10 +1357,10 @@ export async function expireMade(now = Date.now()): Promise<number> {
 /** A made batch video's row, still inside the edit window, without changing
  *  anything - for showing what can be edited. Null when it has expired or
  *  is not a batch video. */
-export async function peekMadeBatch(id: string): Promise<PendingJob | null> {
+export async function peekMadeBatch(id: string, goingOut: ReadonlySet<string> = NONE): Promise<PendingJob | null> {
   const row = await db.jobs.get(id)
   if (!row?.madeAt || !row.montage?.bank || !row.batch) return null
-  if (Date.now() - row.madeAt >= EDIT_WINDOW_MS) return null
+  if (!stillKept(row, goingOut, EDIT_WINDOW_MS)) return null
   const { addedAt: _added, ...meta } = row
   return meta
 }
@@ -1348,10 +1371,11 @@ export async function reopenBatchJob(
   id: string,
   replaces: string,
   fields: { headlineText: string; music: BankFile | null },
+  goingOut: ReadonlySet<string> = NONE,
 ): Promise<PendingJob | null> {
   const row = await db.jobs.get(id)
   if (!row?.madeAt || !row.montage?.bank) return null
-  if (Date.now() - row.madeAt >= EDIT_WINDOW_MS) return null
+  if (!stillKept(row, goingOut, EDIT_WINDOW_MS)) return null
   await db.jobs.update(id, {
     madeAt: undefined,
     version: (row.version ?? 1) + 1,
@@ -1367,11 +1391,11 @@ export async function reopenBatchJob(
 
 /** Takes a made job back to be edited: it is a job to make again, its next
  *  post a new version replacing the old. Null when it has expired. */
-export async function reopenJob(id: string, replaces: string): Promise<PendingJob | null> {
+export async function reopenJob(id: string, replaces: string, goingOut: ReadonlySet<string> = NONE): Promise<PendingJob | null> {
   const row = await db.jobs.get(id)
   const video = await db.videos.get(id)
   if (!row?.madeAt || !row.day?.plan || !video || video.blob.size === 0) return null
-  if (Date.now() - row.madeAt >= keptFor(row)) return null
+  if (!stillKept(row, goingOut)) return null
   const day = { ...row.day, approved: false, checked: false }
   await db.jobs.update(id, { madeAt: undefined, day, version: (row.version ?? 1) + 1, replaces, attempts: 0, unsent: undefined })
   const { addedAt: _added, ...meta } = (await db.jobs.get(id))!
