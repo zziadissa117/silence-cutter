@@ -9,6 +9,7 @@
 
 import type { Range } from '../../media/silenceMath'
 import { cutTime } from '../captions'
+import { keptLength, partLength, speedOf } from '../cuts'
 import { MomentPlacer } from '../timeline'
 import type { Timing } from './draw'
 
@@ -67,12 +68,13 @@ export function cutTiming(words: readonly Word[], keep: Range[], offset = 0): Ti
   }
 }
 
-/** The raw video's moment shown at `t` of the cut video - for a still. */
+/** The raw video's moment shown at `t` of the cut video - for a still. A
+ *  part sped up or slowed down (cuts.Part) counts at its speed. */
 export function rawTimeAt(t: number, keep: Range[]): number {
   let left = Math.max(0, t)
   for (const r of keep) {
-    const length = r.end - r.start
-    if (left < length) return r.start + left
+    const length = partLength(r)
+    if (left < length) return r.start + left * speedOf(r)
     left -= length
   }
   return keep.length > 0 ? keep[keep.length - 1].end - 0.05 : 0
@@ -80,5 +82,5 @@ export function rawTimeAt(t: number, keep: Range[]): number {
 
 /** How long the cut video is. */
 export function cutLength(keep: Range[]): number {
-  return keep.reduce((sum, r) => sum + (r.end - r.start), 0)
+  return keptLength(keep)
 }

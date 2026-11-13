@@ -18,6 +18,7 @@
 // Pure, with no browser in it, so the rules can be tested.
 
 import type { Range } from '../media/silenceMath'
+import { joinParts, speedOf, type Part } from './cuts'
 
 export interface WordSpan {
   text?: string
@@ -191,7 +192,12 @@ export function cutNoise(
 
 /** Puts a cut stretch back: it becomes kept again and joins its neighbours. */
 export function putBack(keep: readonly Range[], range: Range): Range[] {
-  return merge([...keep, range])
+  // At the speed of the part it joins (cuts.Part), so a sped-up clip stays
+  // sped up across what was put back.
+  const near = keep.find((k) => k.end >= range.start - 1e-3 && k.start <= range.end + 1e-3)
+  const speed = near ? speedOf(near) : 1
+  const back: Part = speed === 1 ? range : { ...range, speed }
+  return joinParts([...keep, back])
 }
 
 /** Cuts a stretch out of what is kept. */
@@ -202,8 +208,8 @@ export function cutOut(keep: readonly Range[], range: Range): Range[] {
       out.push({ ...k })
       continue
     }
-    if (range.start > k.start) out.push({ start: k.start, end: range.start })
-    if (range.end < k.end) out.push({ start: range.end, end: k.end })
+    if (range.start > k.start) out.push({ ...k, end: range.start })
+    if (range.end < k.end) out.push({ ...k, start: range.end })
   }
   return out.length > 0 ? out : keep.map((k) => ({ ...k }))
 }

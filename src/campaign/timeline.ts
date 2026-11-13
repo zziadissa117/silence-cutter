@@ -10,6 +10,7 @@
 // moment inside that range is placed with it.
 
 import type { Range } from '../media/silenceMath'
+import { speedOf } from './cuts'
 
 export class MomentPlacer {
   private readonly placed: number[] = []
@@ -30,9 +31,12 @@ export class MomentPlacer {
   enterRange(index: number, shift: number): void {
     const range = this.keep[index]
     const isLast = index === this.keep.length - 1
+    // A part sped up or slowed down (cuts.Part): its start lands where the
+    // shift says, what is after it in it sooner or later.
+    const speed = speedOf(range)
     while (this.next < this.moments.length && (isLast || this.moments[this.next] < range.end)) {
       const raw = Math.max(this.moments[this.next], range.start)
-      this.placed.push(raw + shift)
+      this.placed.push(range.start + shift + (raw - range.start) / speed)
       this.next++
     }
   }

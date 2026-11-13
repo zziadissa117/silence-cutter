@@ -374,11 +374,20 @@ export function retimePhrase(phrase: CaptionWord[], text: string): CaptionWord[]
 export function cutTime(raw: number, keep: Range[]): number {
   let t = 0
   for (const r of keep) {
+    // A part sped up or slowed down (cuts.Part) runs its moments faster or slower.
+    const speed = partSpeed(r)
     if (raw <= r.start) return t
-    if (raw < r.end) return t + (raw - r.start)
-    t += r.end - r.start
+    if (raw < r.end) return t + (raw - r.start) / speed
+    t += (r.end - r.start) / speed
   }
   return t
+}
+
+/** A kept part's speed (cuts.speedOf - repeated here so captions.ts needs
+ *  nothing from the edit screen's code). */
+function partSpeed(r: Range): number {
+  const s = (r as { speed?: number }).speed
+  return typeof s === 'number' && Number.isFinite(s) && s > 0 ? Math.min(3, Math.max(0.5, s)) : 1
 }
 
 /** Which of `words` get a caption: none while the headline is up - the

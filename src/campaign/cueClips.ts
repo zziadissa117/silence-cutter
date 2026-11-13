@@ -90,7 +90,7 @@ export function placeCues(words: CaptionWord[], keep: Range[], cues: Pick<ClipCu
       return
     }
     const at = Math.min(part.end - MIN_PART_SEC, Math.max(part.start + MIN_PART_SEC, end + AFTER_WORD_SEC))
-    cut = [...cut.slice(0, inside), { start: part.start, end: at }, { start: at, end: part.end }, ...cut.slice(inside + 1)]
+    cut = [...cut.slice(0, inside), { ...part, end: at }, { ...part, start: at }, ...cut.slice(inside + 1)]
     times.push({ cue: index, at })
   })
   const placed = times

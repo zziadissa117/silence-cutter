@@ -3,6 +3,26 @@
 Newest first. Every change says what it does, how to use it, and how it works
 underneath. Kept up to date with each commit.
 
+## Edit screen: a clip's Speed
+- His pick (2026-11-10, with Split and Delete for the TikTok-like editor) and his go (2026-11-13: "Do editor p3").
+- Tap a clip, then Speed: 0.5×, 0.75×, 1×, 1.25×, 1.5×, 2× or 3×. The clip gets shorter or longer on the timeline
+  (with a "2×" badge on it), the timer shows the new length, it plays at that speed in the editor with his voice at
+  its own pitch, and Undo takes it back. Split, trims, a cut put back or cut out all keep the clip's speed.
+- The finished video: that part's picture faster or slower (frames dropped when sped up, held when slowed down, so
+  the video keeps its frame rate - Instagram takes 23 to 60), his voice stretched to the new length with its pitch
+  kept (not a chipmunk, not a growl), and everything timed in it - captions, pictures, the logo, sounds, zooms,
+  motion graphics, music length - moved with it. Made the same way on the Cutter server.
+- Checked in a real render here (Chrome for Testing): a 12 s recording cut to 0-4 s as filmed, 5-9 s at 2×,
+  10-11 s at 0.5× came out exactly 8.0 s, 30 fps; a frame at 5 s shows the recording's 7 s, at 6.5 s its 10.25 s;
+  a 220 Hz tone stays 220 Hz in every part with an even level; the captions pop on their words.
+- Underneath: `cuts.Part.speed` on the kept part itself (`speedOf`, `partLength`, `keptLength`, `withSpeed`,
+  `joinParts` - parts at different speeds never merge; `frameSlots`), every raw-to-finished clock made speed-aware
+  (`cuts.outputTime/sourceAt/clipsOf`, `captions.cutTime`, `timeline.MomentPlacer`, `motion/track`), `render.ts`
+  (frames through `frameSlots`, a part's sound through `timeStretch.stretch` - WSOLA, no library), CutsEditor's
+  Speed tool and `playbackRate` with `preservesPitch`.
+- Not tried on an iPhone: Safari keeps the pitch when playing faster (`preservesPitch`), and the render's stretch is
+  the app's own. Tests: `speed.test.ts`, `timeStretch.test.ts`, `editorOverlays.test.tsx`.
+
 ## Captions in a see-through sheet over the screen, everywhere
 - His ask (2026-11-13): "I don't like the sort of caption scrollable feature, with a small screen it's horrible to
   use ... same scrollable but as a sort of overlay on screen. Take half or 75% of the screen, little opacity so we

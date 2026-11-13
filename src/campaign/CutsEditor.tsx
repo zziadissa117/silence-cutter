@@ -41,7 +41,7 @@ import {
   type ReactNode,
 } from 'react'
 
-import { totalDuration, type Range } from '../media/silenceMath'
+import type { Range } from '../media/silenceMath'
 import { cutOut, putBack, type CutCheck } from './noiseCuts'
 import type { CaptionWord } from './captions'
 import {
@@ -53,9 +53,13 @@ import {
   rulerSteps,
   snapTo,
   clipsOf,
+  keptLength,
   sourceAt,
+  speedOf,
   splitAt,
+  SPEEDS,
   trimPart,
+  withSpeed,
 } from './cuts'
 import { frameAt, THUMB, useFilmstrip, type Filmstrip } from './filmstrip'
 import { headlineFontReady } from './headlineFont'
@@ -275,7 +279,9 @@ const Track = memo(function Track({
         const first = Math.max(0, Math.floor(((from - clip.at) * px) / tile))
         const last = Math.min(Math.ceil(width / tile) - 1, Math.floor(((to - clip.at) * px) / tile))
         const tiles: { k: number; src: string | null }[] = []
-        for (let k = first; k <= last; k++) tiles.push({ k, src: frameAt(strip, part.start + (k * tile + tile / 2) / px) })
+        // A clip at another speed shows its footage squeezed or stretched.
+        const speed = speedOf(part)
+        for (let k = first; k <= last; k++) tiles.push({ k, src: frameAt(strip, part.start + ((k * tile + tile / 2) / px) * speed) })
         return (
           <div
             // By place, not by times: a clip being trimmed keeps its element,
@@ -288,6 +294,7 @@ const Track = memo(function Track({
               onSelect(selected === i ? null : i)
             }}
           >
+            {speed !== 1 ? <span className="tl-speed">{speedLabel(speed)}</span> : null}
             <div className="tl-frames">
               {tiles.map(({ k, src }) =>
                 src ? <img key={k} alt="" src={src} draggable={false} style={{ left: k * tile }} /> : <span key={k} className="tl-frame-empty" style={{ left: k * tile }} />,
@@ -319,7 +326,7 @@ const Track = memo(function Track({
             type="button"
             aria-label={`Check at ${formatPrecise(outputTime(keep, c.start))}`}
             className={`tl-flag${focus === i ? ' on' : ''}`}
-            style={{ left: outputTime(keep, c.start) * px, width: Math.max(10, (c.end - c.start) * px), top: CLIP_TOP - 6 }}
+            style={{ left: outputTime(keep, c.start) * px, width: Math.max(10, (outputTime(keep, c.end) - outputTime(keep, c.start)) * px), top: CLIP_TOP - 6 }}
             onClick={(e) => {
               e.stopPropagation()
               onFlag(i)
@@ -518,6 +525,9 @@ function Thumb({ o, url }: { o: ManualPicture; url?: string }) {
 
 /** A button of the toolbar along the bottom: an icon over its word, as in
  *  TikTok's editor. */
+/** "2×", "0.5×" - a clip's speed as the Speed tool shows it. */
+const speedLabel = (speed: number) => `${speed}×`
+
 function ToolButton({ label, icon, onClick, disabled = false, active = false }: { label: string; icon: ReactNode; onClick: () => void; disabled?: boolean; active?: boolean }) {
   return (
     <button type="button" className={`tl-tool${active ? ' on' : ''}`} aria-label={label} disabled={disabled} onClick={onClick}>
@@ -640,6 +650,13 @@ export function CutsEditor({
   const [t, setT] = useState(initial[0]?.start ?? 0)
   const [px, setPx] = useState(START_PX)
   const [selected, setSelected] = useState<number | null>(null)
+  /** The tapped clip's speeds are showing (its Speed tool). */
+  const [speedOpen, setSpeedOpen] = useState(false)
+  const [speedFor, setSpeedFor] = useState<number | null>(null)
+  if (speedFor !== selected) {
+    setSpeedFor(selected)
+    if (speedOpen) setSpeedOpen(false)
+  }
   const [shift, setShift] = useState<ClipShift | null>(null)
   const [playing, setPlaying] = useState(false)
   const [aspect, setAspect] = useState(9 / 16)
@@ -803,7 +820,7 @@ export function CutsEditor({
   const edges = useMemo(() => words.flatMap((w) => [w.start, w.end]), [words])
   const film = useFilmstrip(file, duration)
   const inPart = partAt(keep, t)
-  const total = totalDuration(keep)
+  const total = keptLength(keep)
 
   // --- The video: one frame asked for at a time, always the latest place.
   // While his finger moves the timeline, the nearest frame the phone can
@@ -863,7 +880,7 @@ export function CutsEditor({
         return
       }
       const k = keepRef.current
-      if (timer.current) timer.current.textContent = `${formatPrecise(outputTime(k, tRef.current))} / ${formatPrecise(totalDuration(k))}`
+      if (timer.current) timer.current.textContent = `${formatPrecise(outputTime(k, tRef.current))} / ${formatPrecise(keptLength(k))}`
       repaintRef.current()
       for (const listener of listeners.current) listener(tRef.current, false)
       window.clearTimeout(idleTime.current)
@@ -1079,7 +1096,7 @@ export function CutsEditor({
   const addSound = ({ source, length, file }: PickedSound) => {
     const id = newPictureId()
     if (file) newFiles.current.set(id, file)
-    const left = Math.max(PICTURE_SECONDS.min, totalDuration(keepRef.current) - outputTime(keepRef.current, tRef.current))
+    const left = Math.max(PICTURE_SECONDS.min, keptLength(keepRef.current) - outputTime(keepRef.current, tRef.current))
     const own = length ?? 10
     const sound: ManualPicture = {
       id,
@@ -1361,6 +1378,8 @@ export function CutsEditor({
     const until = range.end + 0.4
     v.currentTime = from
     v.muted = muteOwn
+    // A check is listened to as filmed.
+    v.playbackRate = 1
     playingRef.current = true
     setPlaying(true)
     void v.play().catch(() => stop())
@@ -1429,6 +1448,9 @@ export function CutsEditor({
     seeking.current.want = null
     v.currentTime = from
     v.muted = muteOwn
+    v.preservesPitch = true
+    ;(v as HTMLVideoElement & { webkitPreservesPitch?: boolean }).webkitPreservesPitch = true
+    v.playbackRate = speedOf(keepRef.current[partAt(keepRef.current, from)] ?? { start: 0, end: 0 })
     playingRef.current = true
     setPlaying(true)
     void v.play().catch(() => stop())
@@ -1440,6 +1462,11 @@ export function CutsEditor({
         return
       }
       if (next > now + 0.02) v.currentTime = next
+      // Each clip at its own speed, his voice at its own pitch (the
+      // finished video stretches it the same way - timeStretch.ts).
+      const part = partAt(keepRef.current, next)
+      const rate = part >= 0 ? speedOf(keepRef.current[part]) : 1
+      if (v.playbackRate !== rate) v.playbackRate = rate
       scrollTo(next)
       followTime(next)
       if (v.paused || v.ended) {
@@ -1552,7 +1579,7 @@ export function CutsEditor({
     const el = down.currentTarget
     el.setPointerCapture?.(down.pointerId)
     const k = keepRef.current
-    const total = totalDuration(k)
+    const total = keptLength(k)
     const before = now()
     const out0 = outputTime(k, o.at)
     const x0 = down.clientX
@@ -1959,6 +1986,26 @@ export function CutsEditor({
         <span className="cuts-playhead" aria-hidden />
       </div>
 
+      {clipTapped !== null && speedOpen ? (
+        <div className="tl-speeds" role="radiogroup" aria-label="This clip's speed">
+          {SPEEDS.map((sp) => (
+            <button
+              key={sp}
+              type="button"
+              role="radio"
+              aria-checked={speedOf(keep[clipTapped]) === sp}
+              className={speedOf(keep[clipTapped]) === sp ? 'on' : ''}
+              onClick={() => {
+                if (speedOf(keep[clipTapped]) === sp) return
+                record({ keep, overlays: overlaysRef.current })
+                setKeep(withSpeed(keep, clipTapped, sp))
+              }}
+            >
+              {speedLabel(sp)}
+            </button>
+          ))}
+        </div>
+      ) : null}
       <nav className="tl-tools" aria-label={clipTapped !== null ? 'This clip' : selectedPic ? 'What you tapped' : 'Add to the video'}>
         {clipTapped !== null ? (
           <>
@@ -1981,6 +2028,20 @@ export function CutsEditor({
               disabled={keep.length === 1}
               onClick={() => change(keep.filter((_, k) => k !== clipTapped))}
               icon={<path d="M5 7h14M10 7V5h4v2M7 7l1 12h8l1-12" />}
+            />
+            {/* His pick with Split and Delete (2026-11-10): the clip faster or
+                slower - its picture, his voice (its pitch kept) and all that
+                is timed in it (cuts.Part). */}
+            <ToolButton
+              label="Speed"
+              active={speedOpen}
+              onClick={() => setSpeedOpen((o) => !o)}
+              icon={
+                <>
+                  <path d="M4 15a8 8 0 1 1 16 0" />
+                  <path d="M12 15l4-5" />
+                </>
+              }
             />
           </>
         ) : selectedPic ? (

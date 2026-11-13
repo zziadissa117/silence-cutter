@@ -16,7 +16,8 @@ import type { AngleEffects } from './effects'
 import { SilenceCutError } from '../media/errors'
 import { isFillerWord, isFillerWordDetectionSupported } from '../media/fillerWords'
 import { cutSilence, cutSilenceFromFile } from '../media/silenceCut'
-import { totalDuration, type SilenceSettings } from '../media/silenceMath'
+import type { SilenceSettings } from '../media/silenceMath'
+import { keptLength } from './cuts'
 import { listeningPrompt } from './keywords'
 import {
   angleProblems,
@@ -330,7 +331,7 @@ export async function make(
     storedAs: rendered.storedAs,
     ...(rendered.voiceOnly ? { voiceOnly: rendered.voiceOnly } : {}),
     originalDurationSec: plan.duration,
-    newDurationSec: totalDuration(plan.keep) + joined.beforeSec + joined.afterSec + joined.middleSec,
+    newDurationSec: keptLength(middle.keep) + joined.beforeSec + joined.afterSec + joined.middleSec,
     cuts: plan.silences,
     ...(plan.checks?.some((c) => c.cut && c.kind === 'maybe-word') ? { soundsToCheck: plan.checks.filter((c) => c.cut && c.kind === 'maybe-word').length } : {}),
     ...(plan.cleanSpeech ? { fillerWords: plan.fillerWords, stutters: plan.stutters } : {}),

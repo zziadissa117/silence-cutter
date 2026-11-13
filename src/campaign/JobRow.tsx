@@ -10,7 +10,7 @@
 
 import { useEffect, useMemo, useState, type ReactNode } from 'react'
 
-import { totalDuration } from '../media/silenceMath'
+import { keptLength } from './cuts'
 import { ChevronDown, CloseIcon } from './icons'
 import type { PictureChoice } from './skipPictures'
 import { formatTime, outputName, type Job } from './jobs'
@@ -569,7 +569,7 @@ function SortedDetails({
         <div className="cuts-row">
           <span className="facts">
             {job.reaction ? 'Product clip: ' : ''}
-            {plan ? `${formatTime(plan.duration)} → ${formatTime(totalDuration(kept))}` : ''}
+            {plan ? `${formatTime(plan.duration)} → ${formatTime(keptLength(kept))}` : ''}
             {job.day?.keep ? ' · cuts fixed by hand' : ''}
             {toCheck > 0 ? ` · ${toCheck} sound${toCheck === 1 ? '' : 's'} to check` : ''}
           </span>

@@ -50,7 +50,9 @@ import { contiguousAudio, forwardOnly } from '../media/forwardOnly'
 import { createOutputSink } from '../media/outputSink'
 import { RangeReader, inTimestampOrder } from '../media/rangeReader'
 import { audioConversionFor, isSilenceCutSupported } from '../media/silenceCut'
-import { totalDuration, type Range } from '../media/silenceMath'
+import type { Range } from '../media/silenceMath'
+import { frameSlots, keptLength, partLength, speedOf } from './cuts'
+import { stretch } from './timeStretch'
 import type { VideoLook } from './look'
 import { CAPTION_LEAD, captionAt, drawStyledCaption, captionRanges, type CaptionPosition, type CaptionSize, type CaptionStyle, type CaptionWord, PHRASE_HOLD_SEC } from './captions'
 import { decoderGaveUp, eachSound, firstShown, openClip, pause, planesOf, visibleAgain, wholeOf, writeWhole, type Clip } from './clipParts'
@@ -90,6 +92,24 @@ async function* fromStart(sink: CanvasSink, first: number, seconds: number): Asy
 /** The most a quiet clip is lifted to meet his voice: more only brings up
  *  its hiss. */
 const CLIP_MAX_LIFT_DB = 12
+
+/** A sped-up or slowed-down part's sound goes to the joiner in blocks this long. */
+const STRETCHED_BLOCK = 4096
+
+/** A part's sound, read in pieces, as one run per channel. */
+function joinPlanes(pieces: readonly Float32Array[][]): Float32Array[] {
+  const channels = pieces[0]?.length ?? 0
+  const length = pieces.reduce((n, p) => n + (p[0]?.length ?? 0), 0)
+  return Array.from({ length: channels }, (_, c) => {
+    const plane = new Float32Array(length)
+    let at = 0
+    for (const piece of pieces) {
+      plane.set(piece[c], at)
+      at += piece[c].length
+    }
+    return plane
+  })
+}
 
 export interface CampaignRenderInput {
   keep: Range[]
@@ -377,7 +397,7 @@ export async function renderCampaignCut(
       }
     }
     const middleSec = middle.reduce((sum, m) => sum + (m.clip.duration - m.clip.first), 0)
-    const keptSec = totalDuration(keep)
+    const keptSec = keptLength(keep)
     const allSec = beforeSec + keptSec + middleSec + afterSec
 
     // The voice is measured on exactly the audio the video will have, read
@@ -603,7 +623,7 @@ export async function renderCampaignCut(
         : undefined
     const motion = planMotion(
       gentle ? { ...look.effects, cutPunch: 'off', hookPush: 'off', brandHit: 'off' } : look.effects,
-      keep.map((r) => r.end - r.start),
+      keep.map(partLength),
       seed,
       brandMoments.length,
     )
@@ -762,6 +782,10 @@ export async function renderCampaignCut(
 
     for (let index = 0; index < keep.length; index++) {
       const { start, end } = keep[index]
+      // A part set to play faster or slower in the edit screen (cuts.Part).
+      const speed = speedOf(keep[index])
+      /** Sped up: the next frame is written no sooner than this (cuts.frameSlots). */
+      let nextOut = -Infinity
       planDrift = cursor - doneSoFar
       let videoShift: number | null = null
       let videoEnd = cursor
@@ -787,7 +811,7 @@ export async function renderCampaignCut(
                   continue
                 }
                 traceRead()
-                report((doneSoFar + (sample.timestamp - start)) / total)
+                report((doneSoFar + (sample.timestamp - start) / speed) / total)
                 if (videoShift === null) {
                   videoShift = cursor - sample.timestamp
                   logoPlacer.enterRange(index, videoShift)
@@ -801,10 +825,28 @@ export async function renderCampaignCut(
                   motionTrack?.enterRange(index, videoShift)
                   kineticTrack?.enterRange(index, videoShift)
                 }
-                const timestamp = videoClock(sample.timestamp + videoShift)
-                const duration = sample.duration
-                videoEnd = timestamp + duration
+                // At its part's speed: where the frame now falls - dropped when
+                // sped up past the source's own frame rate, held over several
+                // frames when slowed down (cuts.frameSlots). At 1x, once, as it is.
+                const slots = frameSlots(
+                  start + videoShift + (sample.timestamp - start) / speed,
+                  sample.duration,
+                  speed,
+                  nextOut,
+                  speed === 1 ? Infinity : start + videoShift + (end - start) / speed,
+                )
+                if (slots.length === 0) {
+                  sample.close()
+                  lastWritten = sample.timestamp
+                  continue
+                }
+                nextOut = slots[slots.length - 1].t + sample.duration * 0.999
                 if (banded === null) banded = bandsIn((c, w, h) => sample.draw(c, 0, 0, w, h))
+                colour.noteFrame(sample)
+                for (const slot of slots) {
+                const timestamp = videoClock(slot.t)
+                const duration = slot.d
+                videoEnd = timestamp + duration
                 const framing =
                   banded !== false
                     ? { scale: 1, dx: 0 }
@@ -814,7 +856,6 @@ export async function renderCampaignCut(
                         timestamp - talkStart,
                         talkStart === 0 ? brandPlacer.times : brandPlacer.times.map((at) => at - talkStart),
                       )
-                colour.noteFrame(sample)
                 // With motion graphics up, his face moves down under the board.
                 const drop = motionTrack && graphics ? faceDropAt(graphics.board, motionTrack.timing, timestamp, height) : 0
                 if (drop > 0) fillBehindFace(ctx, width, drop)
@@ -836,7 +877,6 @@ export async function renderCampaignCut(
                   const y = Math.min(0, Math.max(height - inner.height, m.y + inner.y))
                   sample.draw(ctx, x, y + drop, inner.width, inner.height)
                 }
-                sample.close()
                 // Pictures under the headline and logo: those two always read.
                 // Ones that came up together - one word bringing up two - sit
                 // side by side instead of on top of each other.
@@ -948,6 +988,8 @@ export async function renderCampaignCut(
                   frame.close()
                 }
                 traceWritten()
+                }
+                sample.close()
                 lastWritten = sample.timestamp
               }
               // The frames ran out before the part's end, with no error: the
@@ -975,12 +1017,22 @@ export async function renderCampaignCut(
           }
         })(),
         (async () => {
+          // A part at another speed: its sound read whole, then stretched to
+          // the new length with his pitch kept (timeStretch.ts).
+          const held: Float32Array[][] = []
           for await (const sample of audioReader.range(start, end, audioFrom)) {
             const planes = planesOf(sample)
             const [first, last] = insidePart(sample.timestamp, sample.numberOfFrames, sample.sampleRate, start, end)
             sample.close()
             if (last <= first) continue
-            for (const block of join.push(planes.map((plane) => plane.subarray(first, last)))) await writeVoice(block)
+            const part = planes.map((plane) => plane.subarray(first, last))
+            if (speed !== 1) held.push(part)
+            else for (const block of join.push(part)) await writeVoice(block)
+          }
+          if (speed === 1 || held.length === 0) return
+          const stretched = stretch(joinPlanes(held), sampleRate, speed)
+          for (let at = 0; at < stretched[0].length; at += STRETCHED_BLOCK) {
+            for (const block of join.push(stretched.map((plane) => plane.subarray(at, at + STRETCHED_BLOCK)))) await writeVoice(block)
           }
         })(),
       ])
@@ -994,7 +1046,7 @@ export async function renderCampaignCut(
         cursor = Math.max(videoEnd, join.position)
         for (const block of join.padTo(cursor)) await writeVoice(block)
       }
-      doneSoFar += end - start
+      doneSoFar += (end - start) / speed
       onProgress?.(Math.min(0.99, doneSoFar / total))
       // A video in the middle, said for right here: it plays whole, and the
       // next part - and everything timed in it - starts after it.

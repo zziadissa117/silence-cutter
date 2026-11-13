@@ -192,3 +192,21 @@ describe('the timeline', () => {
     expect(['a', 'b', 'c', 'd'].map((id) => row.get(id))).toEqual([0, 1, 0, 0])
   })
 })
+
+describe("a clip's Speed (his pick with Split and Delete)", () => {
+  it('sets the tapped clip faster or slower: shorter on the timeline, kept when he is done, undone with Undo', async () => {
+    const { onDone } = await open()
+    await act(async () => (host.querySelector('.tl-clip') as HTMLElement).click())
+    await act(async () => button('Speed').click())
+    const two = [...host.querySelectorAll('.tl-speeds button')].find((b) => b.textContent === '2×') as HTMLButtonElement
+    await act(async () => two.click())
+    expect(two.getAttribute('aria-checked')).toBe('true')
+    // 10 s at 2x: 5 s on the clock, and a badge on the clip.
+    expect(host.textContent).toContain('/ 0:05.000')
+    expect(host.querySelector('.tl-speed')?.textContent).toBe('2×')
+    await act(async () => button('Done').click())
+    expect(onDone.mock.calls[0][0]).toEqual([{ start: 0, end: 10, speed: 2 }])
+    await act(async () => button('Undo').click())
+    expect(host.textContent).toContain('/ 0:10.000')
+  })
+})

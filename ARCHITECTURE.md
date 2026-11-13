@@ -832,6 +832,15 @@ engine/                        the engine on Railway (Python): engine/ its code,
   server in the talk order (`byHand.sounds`, files `snd-<song id>` / `ov-<job>-<id>`, `serverTalk`). The sound
   effects bank is the music bank's songs marked `sfx` (shared through the cutter function's `songs.ts`);
   `useMusicBank('songs' | 'effects')` keeps them out of every music picker.
+- A clip's Speed (the clip tools' Speed: 0.5x-3x): the kept part itself carries it (`cuts.Part.speed`), so it goes
+  everywhere the cut goes - the job's plan, the MakeOrder to the Cutter server. Every place that turns a raw moment
+  into a finished one is speed-aware: `cuts.outputTime/sourceAt/clipsOf/keptLength` (the timeline and timer),
+  `captions.cutTime`, `timeline.MomentPlacer.enterRange` (everything the render places), `motion/track`. Edits keep it
+  (`splitAt`, `trimPart`, `noiseCuts.putBack/cutOut`); `joinParts`/`tidyParts` never merge parts at different
+  speeds. The render (`render.ts`): each frame through `cuts.frameSlots` (sped up: dropped down to the source's rate;
+  slowed: held over several output frames; Instagram's 23-60 fps kept), the part's sound read whole and stretched
+  with its pitch kept (`timeStretch.stretch`, WSOLA), then into the joiner as usual. The editor plays a part at its
+  speed with `playbackRate` and `preservesPitch`.
 - CutsEditor and CaptionReview hold only their head row and the video at the top (`.review-top`, sticky);
   anything else there (the caption look, the headline, the picture picker) left no room on a phone.
 - The phrases themselves are not in the page: `CaptionSheet.tsx` puts them in a see-through sheet over the bottom of

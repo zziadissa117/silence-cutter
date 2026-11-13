@@ -2006,3 +2006,18 @@ main.tabbed > .drop-check-screen, .drop-check-screen { position: fixed; inset: 0
 .caption-sheet-open-act { flex: none; color: var(--accent); font-weight: 600; }
 /* Over the dark edit screen: dark, whatever the phone's setting. */
 html.editor-dark .caption-sheet { --ink: #000000; --text: #ffffff; --dim: #aeaeb2; --muted: #8e8e93; --now: #ffffff; --surface: #1c1c1e; --accent: #fe2c55; color-scheme: dark; }
+
+/* A clip's speed (the Speed tool, cuts.Part): its choices in one row over the
+   toolbar, the clip's own speed lit, and a badge on a clip that isn't 1x. */
+.tl-speeds { display: flex; gap: 4px; overflow-x: auto; scrollbar-width: none; margin: 0 -16px; padding: 8px 12px 4px; }
+.tl-speeds::-webkit-scrollbar { display: none; }
+.tl-speeds button {
+  flex: 1 1 0; min-width: 42px; min-height: 40px; padding: 0 2px; border-radius: 999px; cursor: pointer;
+  border: 1px solid rgb(255 255 255 / 0.14); background: rgb(255 255 255 / 0.08); color: #fff;
+  font: inherit; font-size: 14px; font-weight: 700; font-variant-numeric: tabular-nums; white-space: nowrap;
+}
+.tl-speeds button.on { background: #fe2c55; border-color: #fe2c55; }
+.tl-speed {
+  position: absolute; left: 4px; top: 4px; z-index: 2; padding: 1px 6px; border-radius: 6px; pointer-events: none;
+  background: rgb(0 0 0 / 0.72); color: #fff; font-size: 11px; font-weight: 800; font-variant-numeric: tabular-nums;
+}

@@ -9,7 +9,7 @@
 import { useEffect, useState } from 'react'
 import { ALL_FORMATS, BlobSource, Input } from 'mediabunny'
 
-import { totalDuration } from '../media/silenceMath'
+import { keptLength } from './cuts'
 import type { Job } from './jobs'
 
 const KEY = 'campaign.songLengths'
@@ -96,7 +96,7 @@ export function cutLength(job: Pick<Job, 'day'>): number | null {
   if (!plan) return null
   if (job.day?.noSpeech) return plan.duration
   const keep = job.day?.keep ?? plan.keep
-  return keep.length > 0 ? totalDuration(keep) : null
+  return keep.length > 0 ? keptLength(keep) : null
 }
 
 /** "0:42". */

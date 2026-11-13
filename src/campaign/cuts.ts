@@ -7,10 +7,71 @@
 // already works from - so the recording itself is never touched, and a
 // change can always be undone.
 
-import { mergeRanges, type Range } from '../media/silenceMath'
+import type { Range } from '../media/silenceMath'
 
 /** The shortest a kept part can be - shorter is a flicker, not a shot. */
 export const MIN_PART_SEC = 0.1
+
+// A clip's speed (the edit screen's Speed tool, his pick 2026-11-10 with
+// Split and Delete): a kept part can play faster or slower - its picture and
+// his voice (its pitch kept) and everything timed in it with them. Kept on
+// the part itself (`speed`), so it travels with the cut everywhere the cut
+// goes - the render here and on the Cutter server, the captions, the
+// timeline. Absent: as filmed.
+
+/** A kept part, maybe sped up or slowed down. */
+export interface Part extends Range {
+  speed?: number
+}
+
+/** The speeds a clip can be set to, as the Speed tool offers them. */
+export const SPEEDS = [0.5, 0.75, 1, 1.25, 1.5, 2, 3] as const
+const SLOWEST = 0.5
+const FASTEST = 3
+
+/** How fast part `r` plays: 1 unless set. */
+export function speedOf(r: Range): number {
+  const s = (r as Part).speed
+  return typeof s === 'number' && Number.isFinite(s) && s > 0 ? Math.min(FASTEST, Math.max(SLOWEST, s)) : 1
+}
+
+/** How long part `r` lasts in the finished video. */
+export function partLength(r: Range): number {
+  return (r.end - r.start) / speedOf(r)
+}
+
+/** How long the kept parts last in the finished video, speeds and all. */
+export function keptLength(keep: readonly Range[]): number {
+  return keep.reduce((sum, r) => sum + partLength(r), 0)
+}
+
+/** Part `i` set to play at `speed` (1: as filmed). */
+export function withSpeed(keep: readonly Range[], i: number, speed: number): Range[] {
+  return keep.map((r, k) => {
+    if (k !== i) return r
+    const { speed: _was, ...rest } = r as Part
+    return speed === 1 ? rest : { ...rest, speed }
+  })
+}
+
+/** The kept parts in order, touching or overlapping ones made one - when
+ *  they play at the same speed. Parts at different speeds stay apart, the
+ *  later one starting where the earlier one ends. */
+export function joinParts(parts: readonly Range[]): Range[] {
+  const sorted = [...parts].sort((a, b) => a.start - b.start)
+  const out: Range[] = []
+  for (const r of sorted) {
+    const last = out[out.length - 1]
+    if (last && r.start <= last.end) {
+      if (r.end <= last.end) continue
+      if (speedOf(last) === speedOf(r)) last.end = r.end
+      else out.push({ ...r, start: last.end })
+      continue
+    }
+    out.push({ ...r })
+  }
+  return out
+}
 
 /** Which kept part `t` is in, or -1 when it falls in a cut-out gap. */
 export function partAt(keep: readonly Range[], t: number): number {
@@ -22,9 +83,11 @@ export function partAt(keep: readonly Range[], t: number): number {
 export function splitAt(keep: readonly Range[], t: number): Range[] {
   const i = partAt(keep, t)
   if (i < 0) return [...keep]
-  const { start, end } = keep[i]
+  const part = keep[i]
+  const { start, end } = part
   if (t - start < MIN_PART_SEC || end - t < MIN_PART_SEC) return [...keep]
-  return [...keep.slice(0, i), { start, end: t }, { start: t, end }, ...keep.slice(i + 1)]
+  // Both halves keep the part's speed.
+  return [...keep.slice(0, i), { ...part, end: t }, { ...part, start: t }, ...keep.slice(i + 1)]
 }
 
 /** Takes out the kept part `t` is in. The last part left is never taken:
@@ -41,9 +104,13 @@ export function restoreAt(keep: readonly Range[], t: number, duration: number): 
   if (t < 0 || t >= duration || partAt(keep, t) >= 0) return [...keep]
   const before = keep.filter((r) => r.end <= t)
   const after = keep.filter((r) => r.start > t)
-  const from = before.length > 0 ? before[before.length - 1].start : 0
-  const to = after.length > 0 ? after[0].end : duration
-  return [...before.slice(0, -1), { start: from, end: to }, ...after.slice(1)]
+  const gapStart = before.length > 0 ? before[before.length - 1].end : 0
+  const gapEnd = after.length > 0 ? after[0].start : duration
+  // The gap brought back plays at the speed of the part before it.
+  const near = before[before.length - 1] ?? after[0]
+  const speed = near ? speedOf(near) : 1
+  const gap: Part = speed === 1 ? { start: gapStart, end: gapEnd } : { start: gapStart, end: gapEnd, speed }
+  return joinParts([...before, gap, ...after])
 }
 
 /** Moves one edge of part `i` to `to`, never past its neighbours, the ends
@@ -54,10 +121,10 @@ export function trimPart(keep: readonly Range[], i: number, edge: 'start' | 'end
   const next = [...keep]
   if (edge === 'start') {
     const floor = i > 0 ? keep[i - 1].end : 0
-    next[i] = { start: Math.min(Math.max(to, floor), part.end - MIN_PART_SEC), end: part.end }
+    next[i] = { ...part, start: Math.min(Math.max(to, floor), part.end - MIN_PART_SEC) }
   } else {
     const ceiling = i < keep.length - 1 ? keep[i + 1].start : duration
-    next[i] = { start: part.start, end: Math.max(Math.min(to, ceiling), part.start + MIN_PART_SEC) }
+    next[i] = { ...part, end: Math.max(Math.min(to, ceiling), part.start + MIN_PART_SEC) }
   }
   return next
 }
@@ -67,7 +134,7 @@ export function trimPart(keep: readonly Range[], i: number, edge: 'start' | 'end
  *  are one part again. Left as two, the render would treat the seam as a
  *  cut and punch in on footage that never stopped. */
 export function tidyParts(keep: readonly Range[]): Range[] {
-  return mergeRanges([...keep])
+  return joinParts(keep)
 }
 
 /** `t` moved onto the nearest of `points` within `within` seconds - the edge
@@ -92,8 +159,8 @@ export function outputTime(keep: readonly Range[], t: number): number {
   let out = 0
   for (const r of keep) {
     if (t <= r.start) return out
-    if (t < r.end) return out + (t - r.start)
-    out += r.end - r.start
+    if (t < r.end) return out + (t - r.start) / speedOf(r)
+    out += partLength(r)
   }
   return out
 }
@@ -152,8 +219,8 @@ export function markLabel(t: number, major: number): string {
 export function sourceAt(keep: readonly Range[], out: number): number {
   let at = 0
   for (const r of keep) {
-    const length = r.end - r.start
-    if (out < at + length) return r.start + Math.max(0, out - at)
+    const length = partLength(r)
+    if (out < at + length) return r.start + Math.max(0, out - at) * speedOf(r)
     at += length
   }
   const last = keep[keep.length - 1]
@@ -165,8 +232,25 @@ export function sourceAt(keep: readonly Range[], out: number): number {
 export function clipsOf(keep: readonly Range[]): { at: number; length: number }[] {
   let at = 0
   return keep.map((r) => {
-    const clip = { at, length: r.end - r.start }
+    const clip = { at, length: partLength(r) }
     at += clip.length
     return clip
   })
+}
+
+/** Where one source frame - `duration` long, landing at `at` on the finished
+ *  video - is written when its part plays at `speed`, never past `limit` (the
+ *  part's end there): once at 1x; sped up, only once at least a source frame
+ *  has passed since the last one written (`after`), so the video keeps the
+ *  source's frame rate rather than doubling it (Instagram takes at most 60);
+ *  slowed down, held over as many frames as its longer stretch needs, so it
+ *  doesn't drop below the source's rate (it takes no fewer than 23). */
+export function frameSlots(at: number, duration: number, speed: number, after: number, limit = Infinity): { t: number; d: number }[] {
+  if (speed === 1) return [{ t: at, d: duration }]
+  const length = duration / speed
+  const clip = (t: number, d: number) => Math.max(1e-4, Math.min(d, limit - t))
+  if (speed > 1) return at + 1e-6 >= after && at < limit ? [{ t: at, d: clip(at, duration) }] : []
+  const slots: { t: number; d: number }[] = []
+  for (let t = at; t < at + length - 1e-6 && t < limit; t += duration) slots.push({ t, d: clip(t, Math.min(duration, at + length - t)) })
+  return slots
 }
