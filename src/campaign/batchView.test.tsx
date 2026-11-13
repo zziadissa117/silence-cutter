@@ -719,7 +719,13 @@ describe('one batch for the account, in formats', () => {
     expect(card.textContent).toContain('3 clips of you · 3 product clips')
     await openFirstFormat()
     expect(host.querySelector('input[aria-label="Add you"]')).toBeTruthy()
-    expect(host.querySelector('input[aria-label="Add product showcases"]')).toBeTruthy()
+    expect(host.querySelector('input[aria-label="Add the product"]')).toBeTruthy()
+    // Its clips behind one row until he opens them (his report, 2026-11-13: "so squeezed in together").
+    expect(host.textContent).not.toContain('r1.mp4')
+    const toggle = host.querySelector('.clips-toggle') as HTMLButtonElement
+    expect(toggle.textContent).toContain('3 clips')
+    await act(async () => toggle.click())
+    expect(host.textContent).toContain('r1.mp4')
   })
 
   it('adds a talking head format next to it, open to fill in', async () => {
@@ -731,7 +737,7 @@ describe('one batch for the account, in formats', () => {
     await act(async () => talking.click())
     const saved = await savedBank()
     expect(saved.formats?.map((f) => f.kind)).toEqual(['reaction', 'talking'])
-    expect(host.textContent).toContain('You talking')
+    expect(host.textContent).toContain('Your hook')
     // It needs its own clips first.
     expect(host.textContent).toContain('Needs a clip of you and a product showcase')
   })
@@ -774,5 +780,24 @@ describe('one batch for the account, in formats', () => {
     })
     const saved = await savedBank()
     expect(saved.products.every((p) => p.formats?.includes('t'))).toBe(true)
+  })
+
+  it("a talking format's product steps: each its own card, name on its own line, clips closed until shown", async () => {
+    const steps = [
+      { id: 's1', name: 'Nope, do this instead', formats: ['t'], files: [{ id: 'c1', name: 'IMG_1.mp4', type: 'video/mp4', size: 1e6, seconds: 4 }] },
+      { id: 's2', name: 'Open the app', formats: ['t'], files: [], texts: [{ id: 'w', text: 'Link in bio', place: { x: 0.5, y: 0.8, scale: 1 } }] },
+    ]
+    storedBank = { ...bank, formats: [{ id: 't', kind: 'talking', name: 'Talk' }], steps, reactions: bank.reactions.map((r) => ({ ...r, formats: ['t'] })), products: [] }
+    await show({})
+    await openFirstFormat()
+    const cards = [...host.querySelectorAll('.step-card')]
+    expect(cards.map((c) => c.querySelector('.step-name')?.textContent)).toEqual(['Nope, do this instead', 'Open the app'])
+    expect(cards[0].textContent).not.toContain('IMG_1.mp4')
+    expect(cards[1].textContent).toContain('No clips yet')
+    expect(cards[1].textContent).toContain('On it: "Link in bio"')
+    await act(async () => (cards[0].querySelector('.clips-toggle') as HTMLButtonElement).click())
+    expect(cards[0].textContent).toContain('IMG_1.mp4')
+    // Its steps edited from the section's own button.
+    expect([...host.querySelectorAll('button')].some((b) => b.textContent === 'Edit steps')).toBe(true)
   })
 })

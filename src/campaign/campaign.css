@@ -1880,3 +1880,60 @@ img.mark { border-radius: 14px; }
 .drop-in-row .row-line { white-space: normal; }
 .drop-in-row.unsure { background: color-mix(in srgb, #ffd60a 10%, transparent); }
 .drop-in-row select { flex: none; max-width: 46%; font: inherit; font-size: 14px; padding: 6px 8px; border-radius: 8px; border: 1px solid var(--edge); background: var(--surface); color: var(--text); }
+
+/* An open format card, in parts with room between them (his report,
+   2026-11-13: "it's so squeezed in together. There's no place for anything"):
+   the card wider in its group, each part apart, the settings in one soft box,
+   every product step its own card with its name on a line of its own, clip
+   lists closed behind a row. */
+.batch .batch-formats .format-cards { margin-inline: -10px; }
+.batch .format-body { padding: 6px 16px 18px; gap: 16px; }
+.format-section { display: flex; flex-direction: column; gap: 10px; }
+.format-section + .format-section, .format-foot { padding-top: 16px; border-top: 1px solid var(--hairline); }
+.format-section > .group { display: flex; flex-direction: column; gap: 8px; }
+.format-section > .group > .bank-hint { margin: 0; }
+.format-section .bank-head .group-title, .format-section-head .group-title { font-size: 17px; min-width: 0; }
+.format-section-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.format-section-head .btn { flex: none; }
+.format-section-title { font-size: 13px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted); }
+.format-section > .hint.tip { margin: 0; }
+.format-box { border-radius: 16px; background: color-mix(in srgb, var(--text) 5%, transparent); padding: 2px 14px; }
+.batch .format-box > * + * { border-top: 1px solid var(--hairline); }
+.batch .format-box .setting { padding: 12px 0; border-radius: 0; background: none; }
+.format-box .caption-height { padding: 12px 0; flex-direction: row-reverse; justify-content: space-between; }
+.format-box .caption-height .row-line { display: block; overflow: visible; }
+.format-box .format-corner { display: flex; flex-direction: column; gap: 10px; padding: 12px 0; }
+.drop-box { padding: 14px; display: flex; flex-direction: column; gap: 4px; }
+.drop-box > .drop-in { padding-bottom: 6px; }
+.drop-box > .drop-in > .hint { margin: 0; }
+.drop-box > .drop-in .btn.primary { width: 100%; min-height: 46px; }
+.drop-box > .setting { padding-bottom: 0; }
+.step-cards { display: flex; flex-direction: column; gap: 10px; }
+.step-card { border-radius: 16px; background: color-mix(in srgb, var(--text) 5%, transparent); padding: 14px; display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+.step-card-head { display: flex; gap: 10px; align-items: flex-start; }
+.step-num { flex: none; width: 26px; height: 26px; border-radius: 50%; display: grid; place-items: center; font-size: 13px; font-weight: 800;
+  color: var(--sky); background: color-mix(in srgb, var(--sky) 16%, transparent); }
+.step-name { font-size: 16px; font-weight: 700; line-height: 1.3; padding-top: 2px; min-width: 0; overflow-wrap: anywhere; }
+.step-meta { padding-left: 36px; margin-top: -4px; }
+.step-actions { display: flex; flex-wrap: wrap; gap: 8px; padding-left: 36px; padding-top: 2px; }
+.step-card > .clips-toggle { margin: -4px 0 0 36px; }
+.step-card > .bank-list { margin: 0; }
+/* The words & overlays screen inside a step: the phone on top, its buttons
+   two by two under it - side by side it was squeezed into a thin column. */
+.step-card .step-texts { padding-top: 6px; }
+.step-card .step-texts-main { flex-direction: column; align-items: stretch; }
+.step-card .step-phone { width: min(66%, 240px); align-self: center; }
+.step-card .step-texts-side { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.step-card .step-texts-side > :not(.btn):not(label) { grid-column: 1 / -1; }
+.step-card .step-texts-side > .hint { text-align: center; }
+.clips-toggle { all: unset; box-sizing: border-box; display: inline-flex; align-items: center; flex-wrap: wrap; gap: 4px 10px; align-self: flex-start;
+  padding: 2px 0; font-size: 14px; color: var(--muted); cursor: pointer; }
+.clips-toggle:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 6px; }
+.clips-toggle-act { display: inline-flex; align-items: center; gap: 2px; color: var(--accent); font-weight: 600; }
+.clips-toggle-act svg { width: 16px; height: 16px; transition: transform 0.15s; }
+.clips-toggle[aria-expanded='true'] .clips-toggle-act svg { transform: rotate(180deg); }
+.format-section .bank-list { margin-top: 0; }
+.batch .format-share { max-width: 100%; min-height: 36px; padding: 0 12px; border-radius: 11px; border: 1px solid var(--hairline);
+  background: color-mix(in srgb, var(--text) 7%, transparent); color: var(--text); font: inherit; font-size: 15px; font-weight: 600; }
+.format-foot { margin-top: 2px; }
+.step-card .step-texts-side .btn { padding: 8px 10px; min-height: 44px; font-size: 14px; line-height: 1.2; }

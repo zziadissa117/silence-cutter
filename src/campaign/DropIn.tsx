@@ -337,8 +337,8 @@ export function DropIn({
       ) : null}
       {!running && rows.length === 0 ? (
         <p className="hint">
-          All your clips at once: each is cut like your talking videos (with a little more room), captioned, and put in the step whose name you say in
-          it{hooks ? ' - one that says no step is a hook' : ''}. Name each step with what you say, e.g. &ldquo;Nope, do this instead&rdquo;.
+          Pick all your clips at once: each is cut, captioned and put in the step whose name you say in it
+          {hooks ? ' - one that says no step is a hook' : ''}.
         </p>
       ) : null}
       {rows.length > 0 ? (

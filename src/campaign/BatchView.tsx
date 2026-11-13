@@ -325,6 +325,16 @@ export function BatchView({
   const [ordering, setOrdering] = useState<string | null>(null)
   // The product step whose words are being placed on its phone screen (StepTexts.tsx).
   const [wordsFor, setWordsFor] = useState<string | null>(null)
+  // The clip lists opened inside a format card: closed, a format with 45
+  // step clips was ten phone screens long (his report, 2026-11-13: "it's so
+  // squeezed in together").
+  const [shownClips, setShownClips] = useState<ReadonlySet<string>>(() => new Set())
+  const toggleClips = (key: string) =>
+    setShownClips((now) => {
+      const next = new Set(now)
+      if (!next.delete(key)) next.add(key)
+      return next
+    })
   /** The format open below its card; "+ Add a format" choosing a kind. */
   const [openFormat, setOpenFormat] = useState<string | null>(null)
   const [choosingKind, setChoosingKind] = useState(false)
@@ -1155,70 +1165,90 @@ export function BatchView({
     ? [...bank.reactions, ...bank.products, ...bank.music, ...(bank.steps ?? []).flatMap((s) => s.files)].reduce((n, f) => n + f.size, 0)
     : 0
 
-  /** One step of the product showcase: its clips, one of which - the moment
-   *  something happens in it - goes in each video. */
-  const stepList = (step: BatchStep, index: number, talking = false, green = false) => (
-    <div className="group" key={step.id}>
-      <div className="bank-head">
-        <span className="group-title">
-          {index + 1}. {step.name} <span className="bank-count">{step.files.length}</span>
+  /** How many clips and how long they last in all, for a closed list. */
+  const clipsLine = (files: BankFile[]) => {
+    const seconds = files.reduce((n, f) => n + (f.seconds ?? 0), 0)
+    return `${files.length} clip${files.length === 1 ? '' : 's'}${seconds > 0 ? ` · ${formatTime(seconds)} in all` : ''}`
+  }
+
+  /** A list's clips behind one row, shown when he taps it. */
+  const clipsToggle = (key: string, files: BankFile[]) =>
+    files.length > 0 ? (
+      <button type="button" className="clips-toggle" aria-expanded={shownClips.has(key)} onClick={() => toggleClips(key)}>
+        <span>{clipsLine(files)}</span>
+        <span className="clips-toggle-act">
+          {shownClips.has(key) ? 'Hide' : 'Show'}
+          <ChevronDown />
         </span>
-        <button type="button" className="btn small" aria-expanded={wordsFor === step.id} onClick={() => setWordsFor(wordsFor === step.id ? null : step.id)}>
-          Words & overlays
-        </button>
-        <VideoPicker className="btn small" label={`Add clips for ${step.name}`} onFiles={(files) => void add({ step: step.id }, files)}>
-          + Add
-        </VideoPicker>
+      </button>
+    ) : null
+
+  /** One step of the product showcase: its clips, one of which - the moment
+   *  something happens in it - goes in each video. Its name on a line of its
+   *  own, what is on it under, its buttons under that, its clips closed. */
+  const stepList = (step: BatchStep, index: number, talking = false) => {
+    const own = step.texts ? (talking ? withoutName(step, step.texts) : step.texts) : null
+    const words = own && own.length > 0 ? own.map((t) => `"${t.text}"`).join(', ') : null
+    const overlays = step.overlays?.length ?? 0
+    const onIt = [
+      words,
+      overlays > 0 ? `${overlays} picture${overlays === 1 ? '' : 's'} or video${overlays === 1 ? '' : 's'}` : null,
+      !talking && !step.texts && stepTitle(step.name) ? 'its name over it' : null,
+    ].filter(Boolean)
+    return (
+      <div className="step-card" key={step.id}>
+        <div className="step-card-head">
+          <span className="step-num">{index + 1}</span>
+          <span className="step-name">{step.name}</span>
+        </div>
+        {step.files.length === 0 ? <span className="hint step-meta warn-text">No clips yet</span> : clipsToggle(`step:${step.id}`, step.files)}
+        {onIt.length > 0 ? <span className="hint step-meta">On it: {onIt.join(', ')}</span> : null}
+        <div className="step-actions">
+          <button type="button" className="btn small" aria-expanded={wordsFor === step.id} onClick={() => setWordsFor(wordsFor === step.id ? null : step.id)}>
+            Words & overlays
+          </button>
+          <VideoPicker className="btn small" label={`Add clips for ${step.name}`} onFiles={(files) => void add({ step: step.id }, files)}>
+            + Add
+          </VideoPicker>
+        </div>
+        {wordsFor === step.id ? (
+          <StepTexts
+            step={step}
+            look={angle.headline}
+            talking={talking}
+            onSave={({ texts, overlays }) => {
+              const latest = bankRef.current ?? bank
+              if (!latest) return
+              keep({
+                ...latest,
+                steps: (latest.steps ?? []).map((st) => {
+                  if (st.id !== step.id) return st
+                  const { texts: _old, overlays: _was, ...rest } = st
+                  return { ...rest, ...(texts ? { texts } : {}), ...(overlays.length > 0 ? { overlays } : {}) }
+                }),
+              })
+            }}
+            onClose={() => setWordsFor(null)}
+          />
+        ) : null}
+        {step.files.length > 0 && shownClips.has(`step:${step.id}`) ? (
+          <ul className="bank-list">
+            {step.files.map((file) => (
+              <li key={file.id} className="bank-item">
+                <button type="button" className="bank-name watch" onClick={() => setWatching({ file, note: madeNote(file, false), out: () => takeOutOfStep(step.id, file) })}>
+                  {file.name}
+                </button>
+                <span className="hint">{[file.seconds ? formatTime(file.seconds) : '', mb(file.size)].filter(Boolean).join(' · ')}</span>
+                <button type="button" className="btn small icon-btn" aria-label={`Take out ${file.name}`} onClick={() => takeOutOfStep(step.id, file)}>
+                  <CloseIcon />
+                </button>
+              </li>
+            ))}
+          </ul>
+        ) : null}
       </div>
-      <p className="hint tip bank-hint">
-        {talking
-          ? 'One of these in every video, played whole with its own sound - your voice saying what to do, your captions on it - the music low under it. Edit them before: cut to length, you talking over them.'
-          : green
-            ? 'One of these behind you in every video, played whole.'
-            : `One of these in every video: the moment something happens in it, or all of it when it's short${stepTitle(step.name) ? `, with "${stepTitle(step.name)}" written over it` : ''}.`}
-        {(() => {
-          const own = step.texts ? (talking ? withoutName(step, step.texts) : step.texts) : null
-          return own && own.length > 0 ? ` Your words on it: ${own.map((t) => `"${t.text}"`).join(', ')}.` : step.texts && !talking ? ' Your words on it: none.' : ' Tap Words to put your own anywhere on it.'
-        })()}
-        {step.overlays?.length ? ` ${step.overlays.length} picture${step.overlays.length === 1 ? '' : 's'} or video${step.overlays.length === 1 ? '' : 's'} pop up on it.` : ''}
-      </p>
-      {wordsFor === step.id ? (
-        <StepTexts
-          step={step}
-          look={angle.headline}
-          talking={talking}
-          onSave={({ texts, overlays }) => {
-            const latest = bankRef.current ?? bank
-            if (!latest) return
-            keep({
-              ...latest,
-              steps: (latest.steps ?? []).map((st) => {
-                if (st.id !== step.id) return st
-                const { texts: _old, overlays: _was, ...rest } = st
-                return { ...rest, ...(texts ? { texts } : {}), ...(overlays.length > 0 ? { overlays } : {}) }
-              }),
-            })
-          }}
-          onClose={() => setWordsFor(null)}
-        />
-      ) : null}
-      {step.files.length > 0 ? (
-        <ul className="bank-list">
-          {step.files.map((file) => (
-            <li key={file.id} className="bank-item">
-              <button type="button" className="bank-name watch" onClick={() => setWatching({ file, note: madeNote(file, false), out: () => takeOutOfStep(step.id, file) })}>
-                {file.name}
-              </button>
-              <span className="hint">{[file.seconds ? formatTime(file.seconds) : '', mb(file.size)].filter(Boolean).join(' · ')}</span>
-              <button type="button" className="btn small icon-btn" aria-label={`Take out ${file.name}`} onClick={() => takeOutOfStep(step.id, file)}>
-                <CloseIcon />
-              </button>
-            </li>
-          ))}
-        </ul>
-      ) : null}
-    </div>
-  )
+    )
+  }
 
   /** One format: its card - what it is, how much it has, how many videos it
    *  can still make - and, open, everything it is made of. */
@@ -1273,137 +1303,186 @@ export function BatchView({
               <input type="text" value={f.name} maxLength={60} aria-label="Format name" onChange={(e) => changeFormat(f.id, { name: e.target.value })} />
             </label>
             <p className="hint tip">{kind.hint}</p>
-            {list(
-              'reactions',
-              f.kind === 'talking' ? 'You talking - the hook' : 'You',
-              f.kind === 'talking'
-                ? `Your hook: each plays whole with your voice, ${f.noHeadline ? 'captions' : 'the headline and captions'} of what you say over it. Then the product steps, with your voice too. Each clip is listened to once, the first time it is used.`
-                : green
-                  ? 'You, cut out of your background and put in the corner. Talking: the video lasts as long as you do.'
-                  : 'They go first, with the headline over them - slowly zooming in. No sound but the music.',
-              f.id,
-            )}
-            {f.kind === 'talking' ? <CaptionHeight value={f.captionY} onChange={(y) => changeFormat(f.id, { captionY: y })} /> : null}
-            {/* His pick, per format (2026-11-13): the clip of him can be the
-                hook by itself - no headline over it. */}
-            <div className="setting">
-              <div className="setting-text">
-                <span className="row-name">Headline on top</span>
-                <span className="row-line">{f.noHeadline ? 'Off: the clip of you is the hook, no words over it.' : 'The hook, over the clip of you.'}</span>
-              </div>
-              <input
-                type="checkbox"
-                className="switch"
-                checked={!f.noHeadline}
-                aria-label="Headline on top"
-                onChange={(e) => changeFormat(f.id, { noHeadline: e.target.checked ? undefined : true })}
-              />
+
+            {/* What he puts in, in the order a video plays it, each part apart
+                (his report, 2026-11-13: "it's so squeezed in together. There's
+                no place for anything"). */}
+            <div className="format-section">
+              {list(
+                'reactions',
+                f.kind === 'talking' ? 'Your hook' : 'You',
+                f.kind === 'talking'
+                  ? `Clips of you talking - each plays whole with your voice, ${f.noHeadline ? 'with captions' : 'the headline and captions'} over it.`
+                  : green
+                    ? 'You, cut out of your background and put in the corner. Talking: the video lasts as long as you do.'
+                    : 'They go first, with the headline over them - slowly zooming in. No sound but the music.',
+                f.id,
+              )}
             </div>
-            {green ? (
-              <div className="setting">
-                <div className="setting-text">
-                  <span className="row-name">You talk in these</span>
-                  <span className="row-line">Your voice is kept, the background&rsquo;s sound low under it.</span>
+
+            <div className="format-section">
+              <div className="format-section-title">On screen</div>
+              <div className="format-box">
+                {/* His pick, per format (2026-11-13): the clip of him can be the
+                    hook by itself - no headline over it. */}
+                <div className="setting">
+                  <div className="setting-text">
+                    <span className="row-name">Headline on top</span>
+                    <span className="row-line">{f.noHeadline ? 'Off: the clip of you is the hook, no words over it.' : 'The hook, over the clip of you.'}</span>
+                  </div>
+                  <input
+                    type="checkbox"
+                    className="switch"
+                    checked={!f.noHeadline}
+                    aria-label="Headline on top"
+                    onChange={(e) => changeFormat(f.id, { noHeadline: e.target.checked ? undefined : true })}
+                  />
                 </div>
-                <input type="checkbox" className="switch" checked={Boolean(f.voice)} aria-label="You talk in these" onChange={(e) => changeFormat(f.id, { voice: e.target.checked || undefined })} />
+                {f.kind === 'talking' ? <CaptionHeight value={f.captionY} onChange={(y) => changeFormat(f.id, { captionY: y })} /> : null}
+                {green ? (
+                  <div className="setting">
+                    <div className="setting-text">
+                      <span className="row-name">You talk in these</span>
+                      <span className="row-line">Your voice is kept, the background&rsquo;s sound low under it.</span>
+                    </div>
+                    <input type="checkbox" className="switch" checked={Boolean(f.voice)} aria-label="You talk in these" onChange={(e) => changeFormat(f.id, { voice: e.target.checked || undefined })} />
+                  </div>
+                ) : null}
+                {green ? (
+                  <div className="format-corner">
+                    <span className="row-name">Your corner</span>
+                    <div className="seg full" role="radiogroup" aria-label="Corner">
+                      {(['left', 'right'] as const).map((side) => (
+                        <button
+                          key={side}
+                          type="button"
+                          role="radio"
+                          aria-checked={corner.side === side}
+                          className={corner.side === side ? 'active' : ''}
+                          onClick={() => changeFormat(f.id, { corner: { ...corner, side } })}
+                        >
+                          Bottom {side}
+                        </button>
+                      ))}
+                    </div>
+                    <label className="slider">
+                      <span>Size</span>
+                      <input
+                        type="range"
+                        min={CORNER_SIZES.min}
+                        max={CORNER_SIZES.max}
+                        step={1}
+                        value={corner.sizePct}
+                        aria-label="How big you are in the corner"
+                        onChange={(e) => changeFormat(f.id, { corner: { ...corner, sizePct: Number(e.target.value) } })}
+                      />
+                      <output>{corner.sizePct}%</output>
+                    </label>
+                  </div>
+                ) : null}
               </div>
-            ) : null}
-            {steps.length > 0
-              ? steps.map((st, i) => stepList(st, i, f.kind === 'talking', green))
-              : list(
+            </div>
+
+            <div className="format-section">
+              {steps.length > 0 ? (
+                <div className="format-section-head">
+                  <span className="group-title">
+                    {green ? 'Behind you' : 'The product'}
+                    <span className="bank-count">{steps.length} steps</span>
+                  </span>
+                  <button type="button" className="btn small" aria-expanded={ordering === f.id} onClick={() => setOrdering(ordering === f.id ? null : f.id)}>
+                    Edit steps
+                  </button>
+                </div>
+              ) : null}
+              {/* Opened right here, under the button he tapped - it used to open
+                  at the top of the Batch tab, above everything (his report,
+                  2026-11-13: "why is it going on top?"). */}
+              {ordering === f.id && steps.length > 0 ? (
+                <StepOrder
+                  campaignName={campaign.name}
+                  steps={(bank.steps ?? []).filter((st) => st.formats?.includes(f.id))}
+                  talking={f.kind === 'talking'}
+                  onSave={saveOrderFor(f.id)}
+                  onClose={() => setOrdering(null)}
+                />
+              ) : null}
+              {steps.length > 0 ? (
+                <>
+                  <p className="hint tip">
+                    {f.kind === 'talking'
+                      ? 'Each video plays one clip of every step, in order - whole, with your voice and your captions, the music low under it.'
+                      : green
+                        ? 'Each video plays one clip of every step behind you, in order, whole.'
+                        : 'Each video plays one clip of every step, in order: the moment something happens in it, or all of it when it is short.'}
+                  </p>
+                  {/* All his clips at once, cut, captioned and put in their steps
+                      (his ask, 2026-11-13) - a talking head whose steps are set. */}
+                  {f.kind === 'talking' ? (
+                    <div className="format-box drop-box">
+                      <DropIn formatId={f.id} steps={steps} hooks={Boolean(f.dropHooks)} names={campaign.brandWords ?? []} getBank={() => bankRef.current} keep={keep} />
+                      {/* His pick per format (2026-11-13: "make it so I choose each
+                          new format"): dropped clips can be hooks too. */}
+                      <div className="setting">
+                        <div className="setting-text">
+                          <span className="row-name">Dropped clips can be hooks</span>
+                          <span className="row-line">{f.dropHooks ? "On: a clip that says no step's name becomes a hook." : 'Off: every dropped clip goes to a product step.'}</span>
+                        </div>
+                        <input
+                          type="checkbox"
+                          className="switch"
+                          checked={Boolean(f.dropHooks)}
+                          aria-label="Dropped clips can be hooks"
+                          onChange={(e) => changeFormat(f.id, { dropHooks: e.target.checked || undefined })}
+                        />
+                      </div>
+                    </div>
+                  ) : null}
+                  <div className="step-cards">{steps.map((st, i) => stepList(st, i, f.kind === 'talking'))}</div>
+                </>
+              ) : (
+                list(
                   'products',
-                  green ? 'Videos behind you' : 'Product showcases',
+                  green ? 'Behind you' : 'The product',
                   green
                     ? 'Each plays full screen with its own sound.'
                     : f.kind === 'talking'
                       ? 'Shown after your hook, whole, with its own sound. To show the steps in order ("Step 1: go to this website"), tap Product steps.'
                       : 'Shown after you.',
                   f.id,
-                )}
-            {/* All his clips at once, cut, captioned and put in their steps
-                (his ask, 2026-11-13) - a talking head whose steps are set. */}
-            {f.kind === 'talking' && steps.length > 0 ? (
-              <>
-                <DropIn formatId={f.id} steps={steps} hooks={Boolean(f.dropHooks)} names={campaign.brandWords ?? []} getBank={() => bankRef.current} keep={keep} />
-                {/* His pick per format (2026-11-13: "make it so I choose each
-                    new format"): dropped clips can be hooks too. */}
-                <div className="setting">
-                  <div className="setting-text">
-                    <span className="row-name">Dropped clips can be hooks</span>
-                    <span className="row-line">
-                      {f.dropHooks ? 'On: a clip that says no step\'s name becomes a hook.' : 'Off: every dropped clip goes to a product step.'}
-                    </span>
-                  </div>
-                  <input
-                    type="checkbox"
-                    className="switch"
-                    checked={Boolean(f.dropHooks)}
-                    aria-label="Dropped clips can be hooks"
-                    onChange={(e) => changeFormat(f.id, { dropHooks: e.target.checked || undefined })}
-                  />
+                )
+              )}
+              {steps.length === 0 || others.length > 0 ? (
+                <div className="format-actions">
+                  {steps.length === 0 ? (
+                    <button type="button" className="btn small" aria-expanded={ordering === f.id} onClick={() => setOrdering(ordering === f.id ? null : f.id)}>
+                      Product steps
+                    </button>
+                  ) : null}
+                  {others.length > 0 ? (
+                    <select className="format-share" value="" aria-label="Use the product of another format" onChange={(e) => e.target.value && shareProduct(f.id, e.target.value)}>
+                      <option value="">Same product as…</option>
+                      {others.map((o) => (
+                        <option key={o.id} value={o.id}>
+                          {o.name}
+                        </option>
+                      ))}
+                    </select>
+                  ) : null}
                 </div>
-              </>
-            ) : null}
-            <div className="format-actions">
-              <button type="button" className="btn small" aria-expanded={ordering === f.id} onClick={() => setOrdering(ordering === f.id ? null : f.id)}>
-                {steps.length > 0 ? `Product steps · ${steps.length}` : 'Product steps'}
-              </button>
-              {others.length > 0 ? (
-                <select value="" aria-label="Use the product of another format" onChange={(e) => e.target.value && shareProduct(f.id, e.target.value)}>
-                  <option value="">Same product as…</option>
-                  {others.map((o) => (
-                    <option key={o.id} value={o.id}>
-                      {o.name}
-                    </option>
-                  ))}
-                </select>
+              ) : null}
+              {ordering === f.id && steps.length === 0 ? (
+                <StepOrder
+                  campaignName={campaign.name}
+                  steps={(bank.steps ?? []).filter((st) => st.formats?.includes(f.id))}
+                  talking={f.kind === 'talking'}
+                  onSave={saveOrderFor(f.id)}
+                  onClose={() => setOrdering(null)}
+                />
               ) : null}
             </div>
-            {/* Opened right here, under the button he tapped - it used to open
-                at the top of the Batch tab, above everything (his report,
-                2026-11-13: "why is it going on top?"). */}
-            {ordering === f.id ? (
-              <StepOrder
-                campaignName={campaign.name}
-                steps={(bank.steps ?? []).filter((st) => st.formats?.includes(f.id))}
-                talking={f.kind === 'talking'}
-                onSave={saveOrderFor(f.id)}
-                onClose={() => setOrdering(null)}
-              />
-            ) : null}
-            {green ? (
-              <div className="group">
-                <div className="group-title">Your corner</div>
-                <div className="seg full" role="radiogroup" aria-label="Corner">
-                  {(['left', 'right'] as const).map((side) => (
-                    <button
-                      key={side}
-                      type="button"
-                      role="radio"
-                      aria-checked={corner.side === side}
-                      className={corner.side === side ? 'active' : ''}
-                      onClick={() => changeFormat(f.id, { corner: { ...corner, side } })}
-                    >
-                      Bottom {side}
-                    </button>
-                  ))}
-                </div>
-                <label className="slider">
-                  <span>Size</span>
-                  <input
-                    type="range"
-                    min={CORNER_SIZES.min}
-                    max={CORNER_SIZES.max}
-                    step={1}
-                    value={corner.sizePct}
-                    aria-label="How big you are in the corner"
-                    onChange={(e) => changeFormat(f.id, { corner: { ...corner, sizePct: Number(e.target.value) } })}
-                  />
-                  <output>{corner.sizePct}%</output>
-                </label>
-              </div>
-            ) : null}
-            <div className="format-actions">
+
+            <div className="format-actions format-foot">
               <button type="button" className="btn small" onClick={() => changeFormat(f.id, { paused: !f.paused || undefined })}>
                 {f.paused ? 'Start it again' : 'Pause'}
               </button>
@@ -1425,7 +1504,7 @@ export function BatchView({
       <div className="bank-head">
         <span className="group-title">
           {formatId ? null : <Mark kind={kind === 'music' ? 'music' : 'clips'} />}
-          {title} <span className="bank-count">{filesIn(kind, formatId).length}</span>
+          {title} {formatId ? null : <span className="bank-count">{filesIn(kind, formatId).length}</span>}
         </span>
         {kind === 'music' ? (
           <div className="btn small picker">
@@ -1475,7 +1554,9 @@ export function BatchView({
           </select>
         </label>
       ) : null}
-      {bank && filesIn(kind, formatId).length > 0 ? (
+      {/* Inside a format, its clips behind one row until he opens them. */}
+      {formatId ? clipsToggle(`${formatId}:${kind}`, filesIn(kind, formatId)) : null}
+      {bank && filesIn(kind, formatId).length > 0 && (!formatId || shownClips.has(`${formatId}:${kind}`)) ? (
         <ul className="bank-list">
           {filesIn(kind, formatId).map((file) => (
             <li key={file.id} className="bank-item">

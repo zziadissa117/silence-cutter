@@ -3,6 +3,25 @@
 Newest first. Every change says what it does, how to use it, and how it works
 underneath. Kept up to date with each commit.
 
+## Batch tab: an open format has room again
+- His report (2026-11-13): "when I make a talking head batch, I feel like it's so squeezed in together. There's no
+  place for anything."
+- What was wrong (seen on a phone-sized screen with a Pump Fun-like format): each step's name was squeezed into a thin
+  column beside its count and buttons, and its "+ Add" ran off the card; every clip of every step was listed, so one
+  format with 29 step clips was about ten phone screens long; the captions height text was cut off.
+- Now an open format is in parts, with space and a line between them: **Your hook** (clips of you), **On screen**
+  (Headline on top, Captions height - the phone drawing on the right, its text whole - and for green screen your
+  voice and corner, in one soft box), **The product** (Edit steps beside its title; Drop in all videos and its hooks
+  switch in their own box at the top; then each step as its own card: a number, the name on its own line, how many
+  clips and how long, what is on it, then Words & overlays and + Add). Pause and Take out this format at the bottom.
+- Clip lists are closed behind one line ("11 clips · 0:46 in all  Show"); Show opens them, with the full names.
+- Words & overlays opened inside a step: the phone picture on top and its buttons two by two under it, instead of a
+  thin column beside it.
+- The card is about half as long (3677 px -> 1622 px on the test screen with every list closed). Nothing about what
+  the batch makes changed.
+- Checked on an iPhone-sized screen here (talking head, reaction, green screen; nothing wider than the screen).
+  Tests: `batchView.test.tsx`.
+
 ## Talking heads: no step name over the clips, ever
 - His report (2026-11-13, Pump Fun batch): "when I look at words & overlays, there is still text at the top saying
   'Nope, do this instead' ... On my talking heads, I don't want a headline every single time there's a new clip ...
