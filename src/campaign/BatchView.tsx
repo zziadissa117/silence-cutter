@@ -44,6 +44,7 @@ import {
   type BatchBank,
   type BatchFormula,
   type BatchStep,
+  withoutName,
 } from './batch'
 import { StepOrder } from './StepOrder'
 import { CaptionHeight } from './CaptionHeight'
@@ -1171,17 +1172,21 @@ export function BatchView({
       </div>
       <p className="hint tip bank-hint">
         {talking
-          ? `One of these in every video, played whole with its own sound - your voice saying what to do - the music low under it${stepTitle(step.name) ? `, "${stepTitle(step.name)}" written over it` : ''}. Edit them before: cut to length, you talking over them.`
+          ? 'One of these in every video, played whole with its own sound - your voice saying what to do, your captions on it - the music low under it. Edit them before: cut to length, you talking over them.'
           : green
             ? 'One of these behind you in every video, played whole.'
             : `One of these in every video: the moment something happens in it, or all of it when it's short${stepTitle(step.name) ? `, with "${stepTitle(step.name)}" written over it` : ''}.`}
-        {step.texts ? ` Your words on it: ${step.texts.length === 0 ? 'none' : step.texts.map((t) => `"${t.text}"`).join(', ')}.` : ' Tap Words to put your own anywhere on it.'}
+        {(() => {
+          const own = step.texts ? (talking ? withoutName(step, step.texts) : step.texts) : null
+          return own && own.length > 0 ? ` Your words on it: ${own.map((t) => `"${t.text}"`).join(', ')}.` : step.texts && !talking ? ' Your words on it: none.' : ' Tap Words to put your own anywhere on it.'
+        })()}
         {step.overlays?.length ? ` ${step.overlays.length} picture${step.overlays.length === 1 ? '' : 's'} or video${step.overlays.length === 1 ? '' : 's'} pop up on it.` : ''}
       </p>
       {wordsFor === step.id ? (
         <StepTexts
           step={step}
           look={angle.headline}
+          talking={talking}
           onSave={({ texts, overlays }) => {
             const latest = bankRef.current ?? bank
             if (!latest) return

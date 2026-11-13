@@ -348,6 +348,24 @@ export function stepTexts(step: Pick<BatchStep, 'name' | 'texts'> | undefined): 
   return name ? [{ text: name }] : []
 }
 
+/** A talking head's step words: never its name (his rule, 2026-11-13: "On my
+ *  talking heads, I don't want a headline every single time there's a new
+ *  clip ... I only need the captions, and whenever I want, I can put a
+ *  picture, a video, or text myself"). The words screen used to start with
+ *  the name at the top, and saving kept it - a word that is just the step's
+ *  name is that, and goes. */
+export function withoutName<T extends { text: string }>(step: Pick<BatchStep, 'name'> | undefined, texts: readonly T[]): T[] {
+  const name = plainWords(stepTitle(step?.name))
+  return texts.filter((t) => t.text.trim() && (!name || plainWords(t.text) !== name))
+}
+
+const plainWords = (text: string) =>
+  text
+    .toLowerCase()
+    .replace(/[’']/g, '')
+    .replace(/[^\p{L}\p{N}]+/gu, ' ')
+    .trim()
+
 /** The look of every word on a batch video but its headline hook: the step
  *  names and the Claude + X amount are always outlined - he wants Snapchat
  *  only on a headline hook, on its own. */

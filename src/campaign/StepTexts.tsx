@@ -16,7 +16,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 
 import type { BankFile, BatchStep, StepOverlay, StepText } from './batch'
-import { stepTitle } from './batch'
+import { stepTitle, withoutName } from './batch'
 import { fingerprint } from './fingerprint'
 import { headlineFontReady } from './headlineFont'
 import type { Angle, BankPicture } from './look'
@@ -61,8 +61,11 @@ export interface StepLook {
   overlays: StepOverlay[]
 }
 
-/** What he starts from: his words as saved, or the step's name at the top. */
-export function startingTexts(step: Pick<BatchStep, 'name' | 'texts'>): StepText[] {
+/** What he starts from: his words as saved, or the step's name at the top -
+ *  never the name on a talking head's step, where only his captions and
+ *  what he puts there himself go (batch.withoutName). */
+export function startingTexts(step: Pick<BatchStep, 'name' | 'texts'>, talking = false): StepText[] {
+  if (talking) return withoutName(step, step.texts ?? [])
   if (step.texts) return step.texts
   const name = stepTitle(step.name)
   return name ? [{ id: newId(), text: name, place: { x: 0.5, y: 0.2, scale: 1 } }] : []
@@ -78,10 +81,13 @@ function boxOf(layout: HeadlineLayout): { x: number; y: number; w: number; h: nu
 export function StepTexts({
   step,
   look,
+  talking = false,
   onSave,
   onClose,
 }: {
   step: BatchStep
+  /** A talking head's step: no name on it, his captions instead. */
+  talking?: boolean
   /** The campaign's headline look: size, outline colour - the words take it. */
   look: Angle['headline']
   /** The step's words (undefined puts its name back at the top) and its
@@ -89,7 +95,7 @@ export function StepTexts({
   onSave: (saved: StepLook) => void
   onClose: () => void
 }) {
-  const [texts, setTexts] = useState<StepText[]>(() => startingTexts(step))
+  const [texts, setTexts] = useState<StepText[]>(() => startingTexts(step, talking))
   const [selected, setSelected] = useState<string | null>(texts[0]?.id ?? null)
   const [overlays, setOverlays] = useState<StepOverlay[]>(() => step.overlays ?? [])
   const [chosen, setChosen] = useState<string | null>(null)
@@ -516,7 +522,7 @@ export function StepTexts({
         <button type="button" className="btn" onClick={cancel}>
           Cancel
         </button>
-        {step.texts ? (
+        {step.texts && !talking ? (
           <button
             type="button"
             className="linkbtn"

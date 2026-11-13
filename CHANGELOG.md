@@ -3,6 +3,20 @@
 Newest first. Every change says what it does, how to use it, and how it works
 underneath. Kept up to date with each commit.
 
+## Talking heads: no step name over the clips, ever
+- His report (2026-11-13, Pump Fun batch): "when I look at words & overlays, there is still text at the top saying
+  'Nope, do this instead' ... On my talking heads, I don't want a headline every single time there's a new clip ...
+  I only need the captions, and whenever I want, I can put a picture, a video, or text myself."
+- Why it was there: the Words & overlays screen started every step with its name at the top, and saving (to add
+  an overlay, say) kept that name as his own words. And a talked-over step whose words weren't heard still got its
+  name written over it.
+- Now, in a talking head format: the Words & overlays screen starts empty (no "Back to its name at the top"); a
+  word saved before that is just the step's name is dropped, on that screen and in every video
+  (`batch.withoutName`); and no step's name is ever drawn over a clip - only his captions and what he puts there
+  himself. Reaction and green screen batches keep their step names as before.
+- Nothing of the Pump Fun batch had been posted yet, so no made video needs redoing.
+- Tests: `stepTexts.test.tsx`.
+
 ## Drop in all videos: done on your Cutter server
 - His ask (2026-11-13): "Why are the clips doing on phone and not server tho?" - "yes move it to the server".
 - With the Cutter server connected and up, "Drop in all videos" only sends the clips up ("Sending to your server");

@@ -43,7 +43,7 @@ import { TrialView } from './TrialView'
 import { MotionView } from './MotionView'
 import { afterMixing, daysLine, mixesOf, spreadOver } from './formats'
 import type { ViewsByAccount } from './analytics'
-import { bareName, filesOf, formatOfReaction, formatTalks, formatsOf, stepTexts, stepTitle, styleFor, stylesOf, type BankFile, type BatchBank } from './batch'
+import { bareName, filesOf, formatOfReaction, formatTalks, formatsOf, stepTexts, stepTitle, styleFor, stylesOf, withoutName, type BankFile, type BatchBank } from './batch'
 import { followFavour } from './batchFavour'
 import { playsWhole } from './stepPiece'
 import { CampaignsView } from './CampaignsView'
@@ -2124,14 +2124,26 @@ export function CampaignApp() {
           const stepped = next.montage.bank?.steps
           const known = stepped ? (batchBank ?? (await loadBatchBank(next.campaignId).catch(() => null))) : null
           const stepOf = (s: NonNullable<typeof stepped>[number]) => known?.steps?.find((k) => k.files.some((f) => f.id === s.file.id))
-          // One kind of words per clip (his rule, 2026-11-13: "a headline on top
-          // and then always a caption in every single clip - does not make
-          // sense"): a step he talks over shows his captions, not its name;
-          // a step he doesn't talk in shows its name.
-          const titles = stepped ? [null, ...stepped.map((s, k) => (stepSaid[k] ? null : stepTitle(s.name ?? stepOf(s)?.name) || null))] : undefined
+          // A talking head never has its steps' names over them (his rule,
+          // 2026-11-13: "I don't want a headline every single time there's a
+          // new clip ... I only need the captions, and whenever I want, I can
+          // put a picture, a video, or text myself") - not even when a clip's
+          // words weren't heard. Other batches: each step's name over it.
+          const titles = stepped && !keepsVoice ? [null, ...stepped.map((s) => stepTitle(s.name ?? stepOf(s)?.name) || null)] : undefined
           // A step's own words, each where he put it on the phone screen
-          // (StepTexts.tsx) - as the step is set now.
-          const ownTexts = stepped ? [null, ...stepped.map((s) => (stepOf(s)?.texts ? stepTexts(stepOf(s)) : null))] : undefined
+          // (StepTexts.tsx) - as the step is set now; on a talking head,
+          // never just the step's name (batch.withoutName).
+          const ownTexts = stepped
+            ? [
+                null,
+                ...stepped.map((s) => {
+                  const step = stepOf(s)
+                  if (!step?.texts) return null
+                  const own = keepsVoice ? withoutName(step, stepTexts(step)) : stepTexts(step)
+                  return own.length > 0 ? own : null
+                }),
+              ]
+            : undefined
           // The pictures and videos he put on each step, as the step is set
           // now; one no longer on the phone is left out, never the video.
           const ownOverlays = stepped
