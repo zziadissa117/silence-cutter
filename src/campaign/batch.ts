@@ -301,6 +301,19 @@ export interface BatchStep {
    *  (his ask, 2026-11-11). Absent: the step's name at the top, as before
    *  (stepTitle); empty: no words. */
   texts?: StepText[]
+  /** Pictures and videos over this step's clip, each where he put it on the
+   *  phone screen, popping in every time the step plays (his ask,
+   *  2026-11-13). Their files are kept with the batch's clips. */
+  overlays?: StepOverlay[]
+}
+
+/** A picture or video on a step's clip. */
+export interface StepOverlay {
+  id: string
+  file: BankFile
+  /** Its middle, as fractions of the frame, and its width as a share of the
+   *  frame's width (stepOverlays.ts). */
+  place: { x: number; y: number; width: number }
 }
 
 /** One of a step's words on its clip. */

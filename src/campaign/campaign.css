@@ -1392,6 +1392,12 @@ html.editor-dark, html.editor-dark body { background: #000; }
 .step-phone video, .step-phone canvas { position: absolute; inset: 0; width: 100%; height: 100%; }
 .step-phone video { object-fit: cover; pointer-events: none; }
 .step-phone video.whole { object-fit: contain; background: #000; }
+/* Pictures and videos he put on the step, under its words (the canvas). */
+.step-phone .step-overlay { position: absolute; inset: auto; object-fit: fill; pointer-events: none; border-radius: 2px; }
+.step-phone .step-overlay.chosen { outline: 2px dashed #0a84ff; outline-offset: 2px; }
+.step-bank-pick { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.step-bank-picture { width: 56px; height: 56px; padding: 4px; border-radius: 10px; border: 1px solid var(--edge); background: var(--surface); }
+.step-bank-picture img { width: 100%; height: 100%; object-fit: contain; }
 .step-phone-empty { position: absolute; inset: 0; display: grid; place-items: center; padding: 12px; color: #8e8e93; font-size: 13px; text-align: center; }
 .step-texts-side { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
 .step-texts-side .hint { margin: 0; }

@@ -44,6 +44,7 @@ import { makeSize, videoQuality } from './quality'
 import { cover } from './reaction'
 import { isUpright } from './framing916'
 import { bandsIn } from './blackBands'
+import { drawOverlay, readyOverlay, type OverlayPlace, type ReadyOverlay } from './stepOverlays'
 import { fitShowcase, pickPiece, readActivity } from './stepPiece'
 import { musicProblem, prepareMusic } from './sounds'
 import { report as reportProblem } from '../report'
@@ -187,6 +188,10 @@ export interface MontageRenderInput {
   /** Per clip, in order: a product step's own words, each where he put it
    *  (batch.StepText) - in place of `titles` for that clip when given. */
   stepTexts?: ({ text: string; place?: { x: number; y: number; scale: number }; style?: 'outline' | 'box' | 'snap' }[] | null)[]
+  /** Per clip, in order: the pictures and videos he put on a product step
+   *  (stepOverlays.ts), each popping in as the step comes on - under the
+   *  words. Null or absent for none. */
+  stepOverlays?: ({ file: Blob; type: string; place: OverlayPlace }[] | null)[]
   /** A Trial loop's video (trialLoop.ts): white (above 0) or black (below)
    *  this strong over every frame, under the words - a touch brighter or
    *  darker. 0 or absent: the frame as it is. */
@@ -309,7 +314,7 @@ export function liftMusic(channels: Float32Array[], gain: number, sampleRate: nu
 }
 
 export async function renderMontage(
-  { clips: files, look, headlineText, music, seed = '', formula = null, windows = [], reactionFirst = false, titles = [], stepTexts = [], voice = false, voiceAll = false, brightness = 0, keepLines = false, keepShape = false, shorterBy = 0, captions = null }: MontageRenderInput,
+  { clips: files, look, headlineText, music, seed = '', formula = null, windows = [], reactionFirst = false, titles = [], stepTexts = [], stepOverlays = [], voice = false, voiceAll = false, brightness = 0, keepLines = false, keepShape = false, shorterBy = 0, captions = null }: MontageRenderInput,
   onProgress?: (fraction: number) => void,
 ): Promise<MontageRenderResult> {
   if (files.length === 0) throw new SilenceCutError('Add at least one clip.')
@@ -325,6 +330,8 @@ export async function renderMontage(
   const output = new Output({ format: new Mp4OutputFormat({ fastStart: false }), target: sink.target })
   let finished = false
   let logos: { left: ImageBitmap | null; right: ImageBitmap | null } | null = null
+  /** The pictures and videos on each clip, ready to draw (let go at the end). */
+  const overlaysMade: ReadyOverlay[][] = []
   try {
     for (const [i, file] of files.entries()) clips.push(await openClip(file, `number ${i + 1}`))
     // The part of each clip that plays: a step's moment, found in the clip
@@ -463,6 +470,7 @@ export async function renderMontage(
      *  a wide one shown whole, or an upright one with bands made into it -
      *  undecided (null) until a frame shows enough to tell. */
     const stretches: { fill: ReturnType<typeof cover>; whole: boolean; still: boolean | null; start: number; length: number }[] = []
+    const overlays = overlaysMade
     /** What he says over each clip after the first, on the video's timeline. */
     const stepSaid: { words: CaptionWord[]; times: number[]; ranges: ReturnType<typeof captionRanges> }[] = []
     // His words over the first clip, on the video's timeline: the clip plays
@@ -512,6 +520,8 @@ export async function renderMontage(
         if (whole) ctx.fillRect(fill.x, fill.y, fill.width, fill.height)
         else ctx.fillRect(0, 0, width, height)
       }
+      // His pictures and videos on the step, under its words.
+      for (const overlay of overlays[i] ?? []) await drawOverlay(ctx, overlay, t - start, start + length - t)
       if (i === 0 && headline) drawHeadline(ctx, headline)
       for (const title of titleLayouts[i] ?? []) drawHeadline(ctx, title)
       if (i === 0 && formulaLayout && logos) drawFormula(ctx, formulaLayout, logos)
@@ -540,6 +550,14 @@ export async function renderMontage(
         const start = at
         const placed = clipPlace(clip.width, clip.height, width, height)
         stretches[i] = { fill: placed.box, whole: placed.whole, still: placed.whole ? true : null, start, length: Math.max(0.1, parts[i].end - parts[i].start) }
+        // The pictures and videos he put on it; one this browser can't read
+        // is left out, never the video.
+        const ownOverlays = stepOverlays[i]
+        if (ownOverlays?.length) {
+          const ready = await Promise.all(ownOverlays.map((o) => readyOverlay(o.file, o.type, o.place, width, height).catch(() => null)))
+          overlays[i] = ready.filter((o): o is ReadyOverlay => o !== null)
+          if (overlays[i].length < ownOverlays.length) reportProblem({ kind: 'fallback', phase: 'step overlay', message: `${ownOverlays.length - overlays[i].length} of clip ${i + 1}'s overlays couldn't be read` })
+        }
         // His words over a step he talks in, played whole: from its first
         // frame shown, onto the video's timeline.
         const own = i > 0 && !windows[i] ? captions?.steps?.[i - 1] : null
@@ -609,6 +627,8 @@ export async function renderMontage(
   } finally {
     logos?.left?.close()
     logos?.right?.close()
+    // Only the clips that have some: the others are holes in the list.
+    for (const list of overlaysMade) for (const overlay of list ?? []) await overlay.close().catch(() => {})
     for (const clip of clips) clip.input.dispose()
     if (!finished) {
       await output.cancel().catch(() => {})

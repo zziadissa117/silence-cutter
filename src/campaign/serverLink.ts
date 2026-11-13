@@ -161,6 +161,8 @@ export function bankFiles(bank: BatchBank): BankFile[] {
     ...bank.products,
     ...bank.music,
     ...(bank.steps ?? []).flatMap((s) => s.files),
+    // The pictures and videos he put on the steps.
+    ...(bank.steps ?? []).flatMap((s) => (s.overlays ?? []).map((o) => o.file)),
     ...(bank.formula?.left ? [bank.formula.left] : []),
     ...(bank.formula?.right ? [bank.formula.right] : []),
     ...(bank.emojis ?? []),

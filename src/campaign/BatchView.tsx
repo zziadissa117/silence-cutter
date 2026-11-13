@@ -1161,7 +1161,7 @@ export function BatchView({
           {index + 1}. {step.name} <span className="bank-count">{step.files.length}</span>
         </span>
         <button type="button" className="btn small" aria-expanded={wordsFor === step.id} onClick={() => setWordsFor(wordsFor === step.id ? null : step.id)}>
-          Words
+          Words & overlays
         </button>
         <VideoPicker className="btn small" label={`Add clips for ${step.name}`} onFiles={(files) => void add({ step: step.id }, files)}>
           + Add
@@ -1174,19 +1174,21 @@ export function BatchView({
             ? 'One of these behind you in every video, played whole.'
             : `One of these in every video: the moment something happens in it, or all of it when it's short${stepTitle(step.name) ? `, with "${stepTitle(step.name)}" written over it` : ''}.`}
         {step.texts ? ` Your words on it: ${step.texts.length === 0 ? 'none' : step.texts.map((t) => `"${t.text}"`).join(', ')}.` : ' Tap Words to put your own anywhere on it.'}
+        {step.overlays?.length ? ` ${step.overlays.length} picture${step.overlays.length === 1 ? '' : 's'} or video${step.overlays.length === 1 ? '' : 's'} pop up on it.` : ''}
       </p>
       {wordsFor === step.id ? (
         <StepTexts
           step={step}
           look={angle.headline}
-          onSave={(texts) => {
-            if (!bank) return
+          onSave={({ texts, overlays }) => {
+            const latest = bankRef.current ?? bank
+            if (!latest) return
             keep({
-              ...bank,
-              steps: (bank.steps ?? []).map((st) => {
+              ...latest,
+              steps: (latest.steps ?? []).map((st) => {
                 if (st.id !== step.id) return st
-                const { texts: _old, ...rest } = st
-                return texts ? { ...rest, texts } : rest
+                const { texts: _old, overlays: _was, ...rest } = st
+                return { ...rest, ...(texts ? { texts } : {}), ...(overlays.length > 0 ? { overlays } : {}) }
               }),
             })
           }}

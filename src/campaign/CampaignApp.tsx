@@ -2131,6 +2131,27 @@ export function CampaignApp() {
           // A step's own words, each where he put it on the phone screen
           // (StepTexts.tsx) - as the step is set now.
           const ownTexts = stepped ? [null, ...stepped.map((s) => (stepOf(s)?.texts ? stepTexts(stepOf(s)) : null))] : undefined
+          // The pictures and videos he put on each step, as the step is set
+          // now; one no longer on the phone is left out, never the video.
+          const ownOverlays = stepped
+            ? [
+                null,
+                ...(await Promise.all(
+                  stepped.map(async (s) => {
+                    const list = stepOf(s)?.overlays ?? []
+                    if (list.length === 0) return null
+                    const read = await Promise.all(
+                      list.map(async (o) => {
+                        const file = await loadBankFile(o.file).catch(() => null)
+                        return file ? { file, type: o.file.type || file.type, place: o.place } : null
+                      }),
+                    )
+                    const kept = read.filter((o): o is NonNullable<typeof o> => o !== null)
+                    return kept.length > 0 ? kept : null
+                  }),
+                )),
+              ]
+            : undefined
           const hook = noHook ? undefined : next.montage.bank?.formula
           const formula = hook
             ? {
@@ -2171,6 +2192,7 @@ export function CampaignApp() {
               windows: stepped && !keepsVoice ? [false, ...stepped.map((s) => !playsWhole(stepOf(s)))] : undefined,
               titles,
               stepTexts: ownTexts,
+              stepOverlays: ownOverlays,
             }),
           )
         } else if (next.reaction) {

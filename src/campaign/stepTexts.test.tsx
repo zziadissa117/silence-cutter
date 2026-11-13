@@ -4,12 +4,26 @@ import { act } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
-vi.mock('./store', () => ({ loadBankFile: vi.fn(async () => null) }))
+const kept: { id: string; size: number }[] = []
+const retired: string[][] = []
+vi.mock('./store', () => ({
+  loadBankFile: vi.fn(async () => null),
+  loadBank: vi.fn(async () => []),
+  saveBankFile: vi.fn(async (id: string, blob: Blob) => {
+    kept.push({ id, size: blob.size })
+  }),
+  retireBankFiles: vi.fn(async (ids: string[]) => {
+    retired.push(ids)
+  }),
+}))
+vi.mock('./videoBank', () => ({ useVideoBank: () => [], videoFile: vi.fn(async () => null) }))
+vi.mock('./fingerprint', () => ({ fingerprint: vi.fn(async () => 'fp') }))
 vi.mock('./headlineFont', () => ({ headlineFontReady: vi.fn(async () => {}) }))
 
 import { stepTexts, type StepText } from './batch'
 import { blankAngle } from './look'
-import { StepTexts, startingTexts } from './StepTexts'
+import { StepTexts, snapToMiddle, startingTexts, type StepLook } from './StepTexts'
+import { overlayBox } from './stepOverlays'
 
 ;(globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true
 
@@ -60,9 +74,74 @@ describe('placing words on the phone screen', () => {
     await act(async () => button('White box').click())
     await act(async () => (host.querySelector('[aria-label="Bigger"]') as HTMLButtonElement).click())
     await act(async () => button('Save').click())
-    const saved = onSave.mock.calls[0][0] as StepText[]
+    const saved = (onSave.mock.calls[0][0] as StepLook).texts!
     expect(saved.map((t) => t.text)).toEqual(['Open the app', 'Link in bio'])
     expect(saved[1]).toMatchObject({ style: 'box', place: { x: 0.5, y: 0.8 } })
     expect(saved[1].place.scale).toBeGreaterThan(1)
+  })
+})
+
+describe('pictures and videos on a step (his ask, 2026-11-13)', () => {
+  let root: Root
+  let host: HTMLDivElement
+  beforeEach(() => {
+    host = document.createElement('div')
+    document.body.append(host)
+    root = createRoot(host)
+    kept.length = 0
+    retired.length = 0
+  })
+  afterEach(() => {
+    act(() => root.unmount())
+    host.remove()
+  })
+
+  const pick = async (file: File) => {
+    const input = host.querySelector('input[aria-label="Add a picture or video from your phone"]') as HTMLInputElement
+    Object.defineProperty(input, 'files', { value: [file], configurable: true })
+    await act(async () => input.dispatchEvent(new Event('change', { bubbles: true })))
+  }
+
+  it('adds one from his phone, kept with the clips, made bigger, saved with the step', async () => {
+    const onSave = vi.fn()
+    await act(async () => root.render(<StepTexts step={{ id: 's1', name: 'Step 1', files: [] }} look={blankAngle('a', 'A').headline} onSave={onSave} onClose={() => {}} />))
+    await pick(new File(['png!'], 'logo.png', { type: 'image/png' }))
+    expect(kept).toHaveLength(1)
+    expect(host.textContent).toContain('Pops up every time this step plays')
+    await act(async () => (host.querySelector('[aria-label="Bigger"]') as HTMLButtonElement).click())
+    const button = (text: string) => [...host.querySelectorAll('button')].find((b) => b.textContent === text) as HTMLButtonElement
+    await act(async () => button('Save').click())
+    const saved = onSave.mock.calls[0][0] as StepLook
+    expect(saved.overlays).toHaveLength(1)
+    expect(saved.overlays[0]).toMatchObject({ file: { id: kept[0].id, name: 'logo.png', type: 'image/png' }, place: { x: 0.5, y: 0.42 } })
+    expect(saved.overlays[0].place.width).toBeCloseTo(0.55)
+    expect(retired).toEqual([])
+  })
+
+  it('lets go of what he added when he cancels, and of one he takes out', async () => {
+    const onSave = vi.fn()
+    const old = { id: 'o1', file: { id: 'f-old', name: 'old.mp4', type: 'video/mp4', size: 9 }, place: { x: 0.5, y: 0.3, width: 0.5 } }
+    await act(async () => root.render(<StepTexts step={{ id: 's1', name: 'Step 1', files: [], overlays: [old] }} look={blankAngle('a', 'A').headline} onSave={onSave} onClose={() => {}} />))
+    await pick(new File(['png!'], 'logo.png', { type: 'image/png' }))
+    const button = (text: string) => [...host.querySelectorAll('button')].find((b) => b.textContent === text) as HTMLButtonElement
+    await act(async () => button('Take it out').click())
+    await act(async () => button('Save').click())
+    // The old one stays; the new one, taken out, goes.
+    expect((onSave.mock.calls[0][0] as StepLook).overlays.map((o) => o.id)).toEqual(['o1'])
+    expect(retired.flat()).toEqual([kept[0].id])
+  })
+})
+
+describe('centring by the line', () => {
+  it('snaps to the middle when close, and says which way', () => {
+    expect(snapToMiddle(0.49, 0.3)).toEqual({ x: 0.5, y: 0.3, across: true, down: false })
+    expect(snapToMiddle(0.4, 0.505)).toEqual({ x: 0.4, y: 0.5, across: false, down: true })
+    expect(snapToMiddle(0.3, 0.3)).toEqual({ x: 0.3, y: 0.3, across: false, down: false })
+  })
+
+  it("an overlay's box: its width, its own shape, centred where he put it", () => {
+    expect(overlayBox({ x: 0.5, y: 0.5, width: 0.5 }, 9 / 16, 1080, 1920)).toEqual({ x: 270, y: 808, width: 540, height: 304 })
+    // A tall one never taller than the frame.
+    expect(overlayBox({ x: 0.5, y: 0.5, width: 1 }, 4, 1080, 1920).height).toBe(1920)
   })
 })

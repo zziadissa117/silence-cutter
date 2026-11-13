@@ -479,6 +479,8 @@ export async function makeMontage(
     titles?: (string | null)[]
     /** Product steps' own words where he put them (batch.StepText). */
     stepTexts?: Parameters<typeof renderMontage>[0]['stepTexts']
+    /** The pictures and videos on each product step (stepOverlays.ts). */
+    stepOverlays?: Parameters<typeof renderMontage>[0]['stepOverlays']
     /** A Trial loop's video: a touch brighter (above 0) or darker, its
      *  words kept on the viral reel's lines. */
     brightness?: number
@@ -504,6 +506,7 @@ export async function makeMontage(
       voiceAll: extra.voiceAll,
       titles: extra.titles,
       stepTexts: extra.stepTexts,
+      stepOverlays: extra.stepOverlays,
       brightness: extra.brightness,
       keepLines: extra.keepLines,
       keepShape: extra.keepShape,

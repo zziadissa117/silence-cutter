@@ -3,6 +3,21 @@
 Newest first. Every change says what it does, how to use it, and how it works
 underneath. Kept up to date with each commit.
 
+## Product steps: pictures and videos on them, and a line to centre things
+- His ask (2026-11-13): "make it so I can add an overlay too, not only text ... a video or a picture from the video
+  bank, from whatever. Make sure that, for the text, there's a little line to center it."
+- A step's "Words & overlays" button (was "Words") opens its phone screen as before, with two more buttons:
+  "+ Picture or video" (from his phone) and "+ From your banks" (the video bank and the picture bank). Each is kept
+  with the batch's clips (sent to the Cutter server with them), lands in the middle, can be dragged anywhere and made
+  bigger or smaller, or taken out.
+- In every video of that format, each pops in as the step comes on: a picture stays for the whole step, a video plays
+  muted to its end then goes. They sit under the step's words and captions (`stepOverlays.ts`, montageRender
+  `stepOverlays`).
+- Dragging words or a picture near the middle snaps it to the exact middle and shows a yellow line (across and/or up
+  and down), so he knows it is centred.
+- Checked with a real batch render in Chrome (a picture and a video on a step) and the screen in a browser.
+- Tests: `stepTexts.test.tsx`.
+
 ## Product steps open where he taps them
 - His report (2026-11-13): tapping "Product steps" in a format put the steps editor "on top of me" - it opened at
   the top of the Batch tab, above everything, far from the button.
