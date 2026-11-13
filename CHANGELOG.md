@@ -3,6 +3,18 @@
 Newest first. Every change says what it does, how to use it, and how it works
 underneath. Kept up to date with each commit.
 
+## Batches: a wide clip stays wide
+- His ask (2026-11-13): some batch clips - his reaction at the start, or a clip before or after - are horizontal;
+  "it keeps being horizontal, and that's it. It doesn't convert it to fill it in."
+- Before: every clip in a batch video was cropped to fill the upright frame - a horizontal clip lost its sides.
+  (The Fill / Fit / Off setting in Settings is for talking videos only; it never reached batches.)
+- Now, by itself, clip by clip: a wide clip (landscape, square, 3:4) is shown whole across the middle on black,
+  nothing cut off; a clip filmed on a phone held upright fills the screen as before. The headline sits on the black
+  above it. The slow push-in and the zooms happen inside the clip's band, which stays put.
+- The step words screen (where he places each step's words) shows a wide step clip whole too, as it will be made.
+- Checked with a real batch render in Chrome: a 16:9 reaction then an upright product clip.
+- Tests: `montage.test.ts`.
+
 ## Edit again: always there until the video goes out
 - His report (2026-11-13): "why in the world did you remove the edit-again feature? ... I need to have the option
   for that at all times." It wasn't taken out, but it was gone when he needed it, for two reasons:

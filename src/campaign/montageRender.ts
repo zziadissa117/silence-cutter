@@ -2,8 +2,11 @@
 // product showcase, or however many he picks - with the headline over the
 // first, and nothing heard but the music. The clips' own sound is left out.
 //
-// The frame is always upright. Each clip is written whole, filling it (its
-// edges trimmed if its shape differs), and the phone's decoder giving up
+// The frame is always upright. Each clip is written whole: an upright one
+// filling it (its edges trimmed if its shape is a little off), a wide one -
+// landscape, square, 3:4 - shown whole across the middle on black, nothing
+// cut off (his ask, 2026-11-13: "it keeps being horizontal, and that's it").
+// The phone's decoder giving up
 // partway is picked up again from the last frame, as everywhere else
 // (clipParts.ts).
 
@@ -25,7 +28,7 @@ import { createOutputSink } from '../media/outputSink'
 import { MAX_RECOVERIES } from '../media/recovery'
 import { MAX_CHANNELS, SAFE_SAMPLE_RATE, isSilenceCutSupported } from '../media/silenceCut'
 import { openClip, usualFrame, writeWhole, type Clip } from './clipParts'
-import { framingAt, planMotion, randomFrom, reactionZoom, zoomPlace } from './effects'
+import { framingAt, planMotion, randomFrom, placeFrame, reactionZoom, zoomPlace } from './effects'
 import { ONLY_HOOK_ELSE } from './batch'
 import { CAPTION_LEAD, PHRASE_HOLD_SEC, captionAt, captionRanges, drawStyledCaption, type CaptionPosition, type CaptionSize, type CaptionStyle, type CaptionWord } from './captions'
 import { drawFormula, formulaPush, layoutFormula, type FormulaLayout } from './formulaOverlay'
@@ -36,6 +39,7 @@ import { Limiter } from './voice'
 import { TIKTOK_ZONES, drawHeadline, layoutHeadline, outputSize, type HeadlineLayout, type LogoLayout } from './overlay'
 import { makeSize, videoQuality } from './quality'
 import { cover } from './reaction'
+import { isUpright } from './framing916'
 import { fitShowcase, pickPiece, readActivity } from './stepPiece'
 import { musicProblem, prepareMusic } from './sounds'
 import { report as reportProblem } from '../report'
@@ -71,6 +75,26 @@ export const FPS = 30
  *  much lower than the angle puts its headline, as a share of the height:
  *  "i want the text to be a little lower". */
 export const BATCH_LOWER = 0.04
+
+/** Where a clip goes in the upright frame, and whether it is shown whole: an
+ *  upright clip (a phone held upright) fills the frame, its edges trimmed if
+ *  its shape is a little off; a wide one keeps its shape, as wide as the
+ *  frame, in the middle. */
+export function clipPlace(clipWidth: number, clipHeight: number, width: number, height: number): { box: { x: number; y: number; width: number; height: number }; whole: boolean } {
+  if (clipWidth <= 0 || clipHeight <= 0 || isUpright(clipWidth, clipHeight)) return { box: cover(clipWidth, clipHeight, width, height), whole: false }
+  const scale = Math.min(width / clipWidth, height / clipHeight)
+  const w = clipWidth * scale
+  const h = clipHeight * scale
+  return { box: { x: (width - w) / 2, y: (height - h) / 2, width: w, height: h }, whole: true }
+}
+
+/** A clip shown whole, moved in (a push-in, a punch) inside its own band:
+ *  the band stays where it is and the picture is closer in it. */
+function zoomInside(box: { x: number; y: number; width: number; height: number }, framing: { scale: number; dx: number }): { x: number; y: number; width: number; height: number } {
+  if (framing.scale === 1 && framing.dx === 0) return box
+  const inner = placeFrame(framing, box.width, box.height)
+  return { x: box.x + inner.x, y: box.y + inner.y, width: inner.width, height: inner.height }
+}
 
 /** How many frames of a steady `fps` start before `until` seconds - the ones
  *  a clip's frame starting there takes over from. */
@@ -430,7 +454,7 @@ export async function renderMontage(
     // When the first clip's frames came, in its own time and in the video's,
     // for its first second and a half: a start that froze or lagged says so.
     const opening: { own: number; at: number }[] = []
-    const stretches: { fill: ReturnType<typeof cover>; start: number; length: number }[] = []
+    const stretches: { fill: ReturnType<typeof cover>; whole: boolean; start: number; length: number }[] = []
     // His words over the first clip, on the video's timeline: the clip plays
     // from its first frame shown (clips[0].first).
     const said = captions?.words.length ? captions.words.map((w) => ({ ...w, start: w.start - clips[0].first, end: w.end - clips[0].first })) : []
@@ -438,7 +462,7 @@ export async function renderMontage(
     const saidTimes = said.map((w) => w.start)
     const report = throttled(onProgress)
     const frameAt = async (sample: VideoSample, i: number, t: number) => {
-      const { fill, start, length } = stretches[i]
+      const { fill, whole, start, length } = stretches[i]
       report(t / total)
       ctx.fillStyle = '#000'
       ctx.fillRect(0, 0, width, height)
@@ -456,13 +480,26 @@ export async function renderMontage(
           : i === 0 && reactionFirst && pushes
             ? { ...own, scale: Math.max(own.scale, reactionZoom(t - start, length)) }
             : own
-      const spot = zoomPlace(fill, framing, width, height)
-      sample.draw(ctx, spot.x, spot.y, spot.width, spot.height)
+      if (whole) {
+        // A wide clip: its band, the picture moved inside it.
+        ctx.save()
+        ctx.beginPath()
+        ctx.rect(fill.x, fill.y, fill.width, fill.height)
+        ctx.clip()
+        const spot = zoomInside(fill, framing)
+        sample.draw(ctx, spot.x, spot.y, spot.width, spot.height)
+        ctx.restore()
+      } else {
+        const spot = zoomPlace(fill, framing, width, height)
+        sample.draw(ctx, spot.x, spot.y, spot.width, spot.height)
+      }
       if (brightness) {
         // A see-through wash rather than a canvas filter: the same on every
-        // browser the app runs in.
+        // browser the app runs in. Over the picture only, not the black
+        // around a wide clip.
         ctx.fillStyle = brightness > 0 ? `rgba(255,255,255,${Math.min(1, brightness)})` : `rgba(0,0,0,${Math.min(1, -brightness)})`
-        ctx.fillRect(0, 0, width, height)
+        if (whole) ctx.fillRect(fill.x, fill.y, fill.width, fill.height)
+        else ctx.fillRect(0, 0, width, height)
       }
       if (i === 0 && headline) drawHeadline(ctx, headline)
       for (const title of titleLayouts[i] ?? []) drawHeadline(ctx, title)
@@ -484,7 +521,8 @@ export async function renderMontage(
     try {
       for (const [i, clip] of clips.entries()) {
         const start = at
-        stretches[i] = { fill: cover(clip.width, clip.height, width, height), start, length: Math.max(0.1, parts[i].end - parts[i].start) }
+        const placed = clipPlace(clip.width, clip.height, width, height)
+        stretches[i] = { fill: placed.box, whole: placed.whole, start, length: Math.max(0.1, parts[i].end - parts[i].start) }
         at = await writeWhole(clip, at, {
           window: windows[i] ? parts[i] : undefined,
           rate: RATE,

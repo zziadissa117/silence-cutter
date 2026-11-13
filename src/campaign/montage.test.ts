@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { BATCH_LOWER, FPS, framesBy, liftMusic, lowered, montageSize, musicTrack, soloMusicGain, verticalSize } from './montageRender'
+import { BATCH_LOWER, FPS, clipPlace, framesBy, liftMusic, lowered, montageSize, musicTrack, soloMusicGain, verticalSize } from './montageRender'
 import type { HeadlineLayout } from './overlay'
 
 /** Which of the clips' frames each steady frame shows: frames given as
@@ -103,6 +103,29 @@ describe('the frame of a video with no talking', () => {
     expect(verticalSize(1080, 1920)).toEqual({ width: 1080, height: 1920 })
     expect(verticalSize(2160, 3840)).toEqual({ width: 2160, height: 3840 })
     expect(verticalSize(2160, 3840, 1080)).toEqual({ width: 1080, height: 1920 })
+  })
+})
+
+describe('a wide clip in a batch (his ask, 2026-11-13: "it keeps being horizontal, and that\'s it")', () => {
+  it('is shown whole across the middle, nothing cut off', () => {
+    const placed = clipPlace(1920, 1080, 1080, 1920)
+    expect(placed.whole).toBe(true)
+    expect(placed.box.width).toBe(1080)
+    expect(placed.box.height).toBeCloseTo(607.5, 1)
+    expect(placed.box.x).toBe(0)
+    expect(placed.box.y).toBeCloseTo((1920 - 607.5) / 2, 1)
+    // Square and 3:4 (Meta glasses) too.
+    expect(clipPlace(1080, 1080, 1080, 1920).whole).toBe(true)
+    expect(clipPlace(1440, 1920, 1080, 1920).whole).toBe(true)
+  })
+
+  it('a phone video still fills the frame, as before', () => {
+    expect(clipPlace(1080, 1920, 1080, 1920)).toEqual({ box: { x: 0, y: 0, width: 1080, height: 1920 }, whole: false })
+    // A taller phone screen recording: filled, its ends trimmed.
+    const tall = clipPlace(1170, 2532, 1080, 1920)
+    expect(tall.whole).toBe(false)
+    expect(tall.box.width).toBeCloseTo(1080, 0)
+    expect(tall.box.height).toBeGreaterThan(1920)
   })
 })
 

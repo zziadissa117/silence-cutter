@@ -14,6 +14,7 @@ import { headlineFontReady } from './headlineFont'
 import type { Angle } from './look'
 import { drawHeadline, layoutHeadline, type HeadlineLayout } from './overlay'
 import { loadBankFile } from './store'
+import { isUpright } from './framing916'
 
 /** The frame the words are laid out on: the videos' own size. */
 const W = 1080
@@ -62,6 +63,7 @@ export function StepTexts({
   const [texts, setTexts] = useState<StepText[]>(() => startingTexts(step))
   const [selected, setSelected] = useState<string | null>(texts[0]?.id ?? null)
   const [url, setUrl] = useState<string | null>(null)
+  const [whole, setWhole] = useState(false)
   const [fontReady, setFontReady] = useState(false)
   const canvas = useRef<HTMLCanvasElement>(null)
   const input = useRef<HTMLInputElement>(null)
@@ -193,7 +195,20 @@ export function StepTexts({
           onPointerUp={up}
           onPointerCancel={up}
         >
-          {url ? <video src={url} muted loop autoPlay playsInline /> : <span className="step-phone-empty">{first ? '…' : 'Add a clip to see it here'}</span>}
+          {url ? (
+            <video
+              src={url}
+              muted
+              loop
+              autoPlay
+              playsInline
+              // A wide clip is shown whole in the made video, as here.
+              className={whole ? 'whole' : undefined}
+              onLoadedMetadata={(e) => setWhole(!isUpright(e.currentTarget.videoWidth, e.currentTarget.videoHeight))}
+            />
+          ) : (
+            <span className="step-phone-empty">{first ? '…' : 'Add a clip to see it here'}</span>
+          )}
           <canvas ref={canvas} width={W} height={H} />
         </div>
         <div className="step-texts-side">
