@@ -1991,7 +1991,8 @@ export function CampaignApp() {
         const batchBank = next.batch ? await loadBatchBank(next.campaignId).catch(() => null) : null
         // Its format set to no headline: no words over him - reaching videos
         // planned before he switched it (BatchFormat.noHeadline).
-        const noHook = Boolean(next.batch?.format && batchBank && formatsOf(batchBank).find((f) => f.id === next.batch!.format)?.noHeadline)
+        const jobFormat = next.batch?.format && batchBank ? formatsOf(batchBank).find((f) => f.id === next.batch!.format) : undefined
+        const noHook = Boolean(jobFormat?.noHeadline)
         const hookText = noHook ? '' : next.headlineText
         const batchStyle = batchBank ? styleFor(next.montage?.bank?.headlineStyle, stylesOf(batchBank), next.id) : undefined
         // A Trial loop's video: the viral reel's words, in its look, at this
@@ -2179,7 +2180,16 @@ export function CampaignApp() {
               shorterBy: trialLook?.trimSec,
               keepLines: Boolean(trialLook),
               ...(said.length > 0 || stepSaid.some(Boolean)
-                ? { captions: { words: said, position: defaultCaptionPosition(), size: defaultCaptionSize(), style: defaultCaptionStyle(), steps: stepSaid } }
+                ? {
+                    captions: {
+                      words: said,
+                      // The height he dragged them to for this format, or the usual.
+                      position: jobFormat?.captionY ?? defaultCaptionPosition(),
+                      size: defaultCaptionSize(),
+                      style: defaultCaptionStyle(),
+                      steps: stepSaid,
+                    },
+                  }
                 : {}),
               // A Trial reel keeps its clip's shape: horizontal stays horizontal.
               keepShape: Boolean(trialLook),

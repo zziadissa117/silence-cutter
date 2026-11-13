@@ -751,6 +751,17 @@ describe('one batch for the account, in formats', () => {
     expect(editor.textContent).toContain('A step you talk over shows your captions instead of its name')
   })
 
+  it("a talking format's captions height: moved on its screen, kept with the format", async () => {
+    storedBank = { ...bank, formats: [{ id: 'r', kind: 'reaction', name: 'Reaction' }, { id: 't', kind: 'talking', name: 'Talk' }], products: bank.products.map((p) => ({ ...p, formats: ['r'] })), reactions: bank.reactions.map((r) => ({ ...r, formats: ['r'] })) }
+    await show({})
+    await act(async () => ([...host.querySelectorAll('.format-head')][1] as HTMLButtonElement).click())
+    const screen = host.querySelector('[aria-label="Captions height"]') as HTMLElement
+    expect(screen).toBeTruthy()
+    await act(async () => screen.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowUp', bubbles: true })))
+    const saved = await savedBank()
+    expect(saved.formats?.find((f) => f.id === 't')?.captionY).toBeCloseTo(0.64)
+  })
+
   it('uses the product of another format with one pick', async () => {
     storedBank = { ...bank, formats: [{ id: 'r', kind: 'reaction', name: 'Reaction' }, { id: 't', kind: 'talking', name: 'Talk' }], products: bank.products.map((p) => ({ ...p, formats: ['r'] })), reactions: bank.reactions.map((r) => ({ ...r, formats: ['r'] })) }
     await show({})

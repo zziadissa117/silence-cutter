@@ -461,7 +461,17 @@ export const CAPTION_POSITIONS: { id: CaptionPosition; label: string; y: number 
   { id: 'bottom', label: 'Bottom', y: 0.8 },
 ]
 
-export function captionY(position: CaptionPosition): number {
+/** A caption's place: one of the named heights, or any height he dragged it
+ *  to - its centre, as a share of the video's height (a batch format's own,
+ *  his ask 2026-11-13: "let me change it manually and not in a set space"). */
+export type CaptionSpot = CaptionPosition | number
+
+/** The most and least a dragged caption's centre can be: clear of the very
+ *  top and of TikTok's buttons at the bottom. */
+export const CAPTION_SPOT = { min: 0.12, max: 0.85 } as const
+
+export function captionY(position: CaptionSpot): number {
+  if (typeof position === 'number') return Number.isFinite(position) ? Math.min(CAPTION_SPOT.max, Math.max(CAPTION_SPOT.min, position)) : CAPTION_Y
   return CAPTION_POSITIONS.find((p) => p.id === position)?.y ?? CAPTION_Y
 }
 
@@ -535,7 +545,7 @@ export function drawCaption(
   text: string,
   since: number,
   bare = false,
-  position: CaptionPosition = 'usual',
+  position: CaptionSpot = 'usual',
   size: CaptionSize = 'normal',
 ): void {
   const word = bare ? bareWord(text) : cleanWord(text)
@@ -655,7 +665,7 @@ export function drawPhrase(
   active: number,
   since: number,
   bare = false,
-  position: CaptionPosition = 'usual',
+  position: CaptionSpot = 'usual',
   size: CaptionSize = 'normal',
 ): void {
   const texts = phrase.map((w) => (bare ? bareWord(w.text) : cleanWord(w.text)))
@@ -802,7 +812,7 @@ export function drawPlainPhrase(
   height: number,
   phrase: CaptionWord[],
   bare = false,
-  position: CaptionPosition = 'usual',
+  position: CaptionSpot = 'usual',
   size: CaptionSize = 'normal',
 ): void {
   const font = (px: number) => `${PLAIN_WEIGHT} ${px}px ${HEADLINE_FAMILY}`
@@ -853,7 +863,7 @@ export function drawStyledCaption(
   index: number,
   since: number,
   bare: boolean,
-  position: CaptionPosition,
+  position: CaptionSpot,
   size: CaptionSize,
   style: CaptionStyle,
 ): void {

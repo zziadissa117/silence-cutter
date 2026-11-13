@@ -3,6 +3,14 @@
 Newest first. Every change says what it does, how to use it, and how it works
 underneath. Kept up to date with each commit.
 
+## Talking head formats: captions at any height
+- His ask (2026-11-13): "let me change the captions' height ... at the top, at the bottom, or at the middle. Let me
+  change it manually and not in a set space" - once per format.
+- A talking head's format card has a small phone screen: drag the captions up or down (near the middle they snap to
+  it and a line shows). Every video of that format puts its captions there - the talking part and the steps he
+  talks over. "Back to the usual place" undoes it. Kept with the format, so the Cutter server's videos have it too.
+- Tests: `captionHeight.test.ts`, `batchView.test.tsx`.
+
 ## Product steps: pictures and videos on them, and a line to centre things
 - His ask (2026-11-13): "make it so I can add an overlay too, not only text ... a video or a picture from the video
   bank, from whatever. Make sure that, for the text, there's a little line to center it."

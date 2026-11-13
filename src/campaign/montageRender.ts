@@ -33,7 +33,7 @@ import { MAX_CHANNELS, SAFE_SAMPLE_RATE, isSilenceCutSupported } from '../media/
 import { openClip, usualFrame, writeWhole, type Clip } from './clipParts'
 import { framingAt, planMotion, randomFrom, reactionZoom, zoomPlace } from './effects'
 import { ONLY_HOOK_ELSE } from './batch'
-import { CAPTION_LEAD, PHRASE_HOLD_SEC, captionAt, captionRanges, drawStyledCaption, type CaptionPosition, type CaptionSize, type CaptionStyle, type CaptionWord } from './captions'
+import { CAPTION_LEAD, PHRASE_HOLD_SEC, captionAt, captionRanges, drawStyledCaption, type CaptionSize, type CaptionSpot, type CaptionStyle, type CaptionWord } from './captions'
 import { drawFormula, formulaPush, layoutFormula, type FormulaLayout } from './formulaOverlay'
 import { headlineFontReady } from './headlineFont'
 import type { VideoLook } from './look'
@@ -210,7 +210,8 @@ export interface MontageRenderInput {
    *  clip's own timeline (talkCaptions.ts), drawn as his talking videos'. */
   captions?: {
     words: CaptionWord[]
-    position: CaptionPosition
+    /** A named height, or the format's own dragged one (0 to 1). */
+    position: CaptionSpot
     size: CaptionSize
     style: CaptionStyle
     /** A talking head batch: what he says in each clip after the first (his

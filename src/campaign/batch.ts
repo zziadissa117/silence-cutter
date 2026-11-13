@@ -79,6 +79,10 @@ export interface BatchFormat {
    *  it so I can choose if I want one or not"). Absent: a headline, as
    *  always. */
   noHeadline?: boolean
+  /** A talking head: the height of its captions, dragged by him - their
+   *  centre as a share of the video's height (captions.CaptionSpot). Absent:
+   *  the usual place (his ask, 2026-11-13). */
+  captionY?: number
 }
 
 export const FORMAT_KINDS: { kind: FormatKind; label: string; hint: string }[] = [

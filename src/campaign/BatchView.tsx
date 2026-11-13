@@ -46,6 +46,7 @@ import {
   type BatchStep,
 } from './batch'
 import { StepOrder } from './StepOrder'
+import { CaptionHeight } from './CaptionHeight'
 import { StepTexts } from './StepTexts'
 import { BatchStatus } from './BatchStatus'
 import { Mark } from './Mark'
@@ -1276,6 +1277,7 @@ export function BatchView({
                   : 'They go first, with the headline over them - slowly zooming in. No sound but the music.',
               f.id,
             )}
+            {f.kind === 'talking' ? <CaptionHeight value={f.captionY} onChange={(y) => changeFormat(f.id, { captionY: y })} /> : null}
             {/* His pick, per format (2026-11-13): the clip of him can be the
                 hook by itself - no headline over it. */}
             <div className="setting">
