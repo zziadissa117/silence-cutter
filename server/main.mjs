@@ -290,7 +290,15 @@ const readAt = new Map()
 function bankFileIds(bank) {
   // The emoji pictures too (src/campaign/emojiSprites.ts): small, and every video's headline needs them.
   // And the videos copied with new songs (batch.CopySource).
-  const files = [...(bank?.reactions ?? []), ...(bank?.products ?? []), ...(bank?.music ?? []), ...(bank?.steps ?? []).flatMap((s) => s.files ?? []), ...(bank?.emojis ?? []), ...(bank?.copies ?? []).map((c) => c?.clip)]
+  // And the pictures and videos he put on the steps (batch.StepOverlay).
+  const files = [
+    ...(bank?.reactions ?? []),
+    ...(bank?.products ?? []),
+    ...(bank?.music ?? []),
+    ...(bank?.steps ?? []).flatMap((s) => [...(s.files ?? []), ...(s.overlays ?? []).map((o) => o?.file)]),
+    ...(bank?.emojis ?? []),
+    ...(bank?.copies ?? []).map((c) => c?.clip),
+  ]
   if (bank?.formula?.left) files.push(bank.formula.left)
   if (bank?.formula?.right) files.push(bank.formula.right)
   return files.map((f) => f?.id).filter(Boolean)
@@ -405,7 +413,7 @@ function toTalk(id, change) {
 }
 
 /** What the phone reads back: everything but the words heard (asked for one by one). */
-const talkSummary = (r) => ({ id: r.id, kind: r.kind, state: r.state, progress: r.progress ?? 0, error: r.error ?? null, at: r.at, ...(r.made ? { made: r.made } : {}) })
+const talkSummary = (r) => ({ id: r.id, kind: r.kind, state: r.state, progress: r.progress ?? 0, error: r.error ?? null, at: r.at, ...(r.made ? { made: r.made } : {}), ...(r.dropped ? { dropped: r.dropped } : {}) })
 
 // A record half-way when the server stopped is run again: never left "listening" for ever.
 for (const name of fs.readdirSync(dir('talk'))) {
@@ -518,6 +526,16 @@ const publicServer = http.createServer(async (req, res) => {
 
     if (req.method === 'GET' && url.pathname === '/files') return send(res, 200, { files: await filesHere() }, cors)
 
+    // A file here, back to his phone: a clip the server cut from one he
+    // dropped in, so the phone has its own copy too.
+    if (req.method === 'GET' && parts[0] === 'files' && parts.length === 2) {
+      const id = safeId(parts[1])
+      const meta = id ? await readJson(dir('files', `${id}.json`), null) : null
+      if (!meta || !fs.existsSync(dir('files', id))) return send(res, 404, { error: 'Not here.' }, cors)
+      res.writeHead(200, { ...cors, 'content-type': meta.type || 'application/octet-stream', 'content-length': fs.statSync(dir('files', id)).size, 'cache-control': 'no-store' })
+      return fs.createReadStream(dir('files', id)).pipe(res)
+    }
+
     if (req.method === 'PUT' && parts[0] === 'files' && parts.length === 3) {
       const id = safeId(parts[1])
       const n = Number(parts[2])
@@ -557,7 +575,9 @@ const publicServer = http.createServer(async (req, res) => {
       }
       if (req.method === 'PUT') {
         const { kind, order } = await jsonBody(req, 20_000_000)
-        if (!['listen', 'make'].includes(kind) || !order || order.id !== id) return send(res, 400, { error: 'Bad order.' }, cors)
+        // "drop": a short clip of his dropped into a batch format - heard and
+        // cut here, kept as a bank file (src/campaign/prepareDrop.ts).
+        if (!['listen', 'make', 'drop'].includes(kind) || !order || order.id !== id) return send(res, 400, { error: 'Bad order.' }, cors)
         // The same order again (the phone asking after a restart) changes nothing.
         const record = await toTalk(id, (now) =>
           now && now.kind === kind && now.state !== 'failed' ? undefined : { id, kind, order, state: 'waiting', progress: 0 },
@@ -608,7 +628,7 @@ const localServer = http.createServer(async (req, res) => {
       const session = await readJson(sessionFile, null)
       return send(res, session ? 200 : 404, session ? { token: session.token, name: session.name, posting: session.posting } : { error: 'Not connected.' })
     }
-    if (url.pathname.startsWith('/local/files/')) {
+    if (url.pathname.startsWith('/local/files/') && req.method !== 'PUT') {
       const id = safeId(url.pathname.slice('/local/files/'.length))
       const meta = id ? await readJson(dir('files', `${id}.json`), null) : null
       if (!meta || !fs.existsSync(dir('files', id))) return send(res, 404, { error: 'Not here.' })
@@ -617,17 +637,39 @@ const localServer = http.createServer(async (req, res) => {
       res.writeHead(200, { 'content-type': meta.type || 'application/octet-stream', 'content-length': fs.statSync(dir('files', id)).size, 'cache-control': 'no-store' })
       return fs.createReadStream(dir('files', id)).pipe(res)
     }
+    // A file the app here made (a dropped-in clip, cut): kept like one from the phone.
+    if (url.pathname.startsWith('/local/files/') && req.method === 'PUT') {
+      const id = safeId(url.pathname.slice('/local/files/'.length))
+      if (!id) return send(res, 400, { error: 'Bad file.' })
+      const whole = dir('files', id)
+      const tmp = `${whole}.${crypto.randomUUID()}.tmp`
+      await new Promise((resolve, reject) => {
+        const out = fs.createWriteStream(tmp)
+        req.pipe(out)
+        out.on('finish', resolve)
+        out.on('error', reject)
+        req.on('error', reject)
+      })
+      const size = (await fsp.stat(tmp)).size
+      if (size === 0) {
+        await fsp.rm(tmp, { force: true })
+        return send(res, 400, { error: 'Empty file.' })
+      }
+      await fsp.rename(tmp, whole)
+      await writeJson(dir('files', `${id}.json`), { id, name: url.searchParams.get('name') ?? id, type: url.searchParams.get('type') ?? '', size, from: null, at: new Date().toISOString() })
+      return send(res, 200, { ok: true, size })
+    }
     if (url.pathname === '/local/talk' && req.method === 'GET') {
       return send(res, 200, { talk: Object.values(await talkRecords()).filter((r) => r.state === 'waiting'), room: await room() })
     }
     if (url.pathname.startsWith('/local/talk/') && req.method === 'POST') {
       const id = safeId(url.pathname.slice('/local/talk/'.length))
       if (!id) return send(res, 400, { error: 'Bad video.' })
-      const { state, progress, plan, error, made, kind } = await jsonBody(req, 20_000_000)
+      const { state, progress, plan, error, made, dropped, kind } = await jsonBody(req, 20_000_000)
       // Only the order it was working on: a newer one from the phone wins.
       const record = await toTalk(id, (now) =>
         now && (!kind || now.kind === kind)
-          ? { ...now, state, progress: progress ?? now.progress, ...(plan ? { plan } : {}), ...(made ? { made } : {}), error: error ?? null }
+          ? { ...now, state, progress: progress ?? now.progress, ...(plan ? { plan } : {}), ...(made ? { made } : {}), ...(dropped ? { dropped } : {}), error: error ?? null }
           : undefined,
       )
       return send(res, 200, { ok: Boolean(record) })

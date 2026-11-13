@@ -16,7 +16,10 @@ import { queueSend } from './outbox'
 import { listen, make } from './pipeline'
 import { serverLog } from './serverMode'
 import { loadBank, loadCampaigns } from './store'
-import type { ListenOrder, MakeOrder, TalkState } from './talkOrder'
+import type { DropOrder, DropResult, ListenOrder, MakeOrder, TalkState } from './talkOrder'
+import { cutDropped } from './prepareDrop'
+import { fingerprint } from './fingerprint'
+import { filmingOf } from './filming'
 import { SilenceCutError } from '../media/errors'
 
 /** How many at once, from the memory the server may use: listening holds
@@ -32,20 +35,22 @@ export function atOnce(memoryGB: number | null | undefined): { listen: number; m
 const LOOK_EVERY_MS = 2000
 const PROGRESS_EVERY_MS = 2000
 
+type Kind = 'listen' | 'make' | 'drop'
+
 interface Record {
   id: string
-  kind: 'listen' | 'make'
-  order: ListenOrder | MakeOrder
+  kind: Kind
+  order: ListenOrder | MakeOrder | DropOrder
 }
 
-const running = new Map<string, 'listen' | 'make'>()
+const running = new Map<string, Kind>()
 
-async function tell(id: string, kind: 'listen' | 'make', fields: { state: TalkState; progress?: number; plan?: unknown; error?: string; made?: unknown }): Promise<void> {
+async function tell(id: string, kind: Kind, fields: { state: TalkState; progress?: number; plan?: unknown; error?: string; made?: unknown; dropped?: DropResult }): Promise<void> {
   await fetch(`/local/talk/${encodeURIComponent(id)}`, { method: 'POST', body: JSON.stringify({ kind, ...fields }) }).catch(() => {})
 }
 
 /** How far it is, said at most every couple of seconds. */
-function progressTo(id: string, kind: 'listen' | 'make', state: TalkState): (fraction: number) => void {
+function progressTo(id: string, kind: Kind, state: TalkState): (fraction: number) => void {
   let last = 0
   return (fraction) => {
     const now = Date.now()
@@ -169,10 +174,36 @@ async function runMake(order: MakeOrder): Promise<void> {
   await tell(order.id, 'make', { state: 'made', progress: 1, made: { headline: result.headline, seconds: result.newDurationSec } })
 }
 
+/** A clip dropped into a batch format: heard, cut with the drop-in's room,
+ *  kept here as the bank file the phone named - the batches made here read
+ *  it from this disk - and its words told back (prepareDrop.ts). */
+async function runDrop(order: DropOrder): Promise<void> {
+  await tell(order.id, 'drop', { state: 'listening', progress: 0 })
+  const file = await fileOf(order.fileId, order.outName)
+  const onProgress = progressTo(order.id, 'drop', 'listening')
+  const cut = await cutDropped(file, {
+    settings: order.settings,
+    cleanSpeech: order.cleanSpeech,
+    voice: order.voice,
+    names: order.names,
+    onPhase: (phase, p) => onProgress(phase === 'cutting' ? 0.6 + p * 0.4 : p * 0.6),
+  })
+  const saved = await fetch(`/local/files/${encodeURIComponent(order.outId)}?name=${encodeURIComponent(order.outName)}&type=video/mp4`, { method: 'PUT', body: cut.blob })
+  if (!saved.ok) throw new SilenceCutError("The cut clip couldn't be kept on the server's disk.")
+  const seconds = (await filmingOf(cut.blob).catch(() => null))?.seconds
+  const dropped: DropResult = {
+    file: { id: order.outId, name: order.outName, type: 'video/mp4', size: cut.blob.size, fp: await fingerprint(cut.blob), from: order.from, ...(seconds ? { seconds } : {}) },
+    words: cut.words,
+    text: cut.text,
+  }
+  await tell(order.id, 'drop', { state: 'made', progress: 1, dropped })
+}
+
 async function run(record: Record): Promise<void> {
   running.set(record.id, record.kind)
   try {
     if (record.kind === 'listen') await runListen(record.order as ListenOrder)
+    else if (record.kind === 'drop') await runDrop(record.order as DropOrder)
     else await runMake(record.order as MakeOrder)
   } catch (error) {
     const why = error instanceof Error ? error.message : String(error)
@@ -183,7 +214,7 @@ async function run(record: Record): Promise<void> {
   }
 }
 
-const count = (kind: 'listen' | 'make') => [...running.values()].filter((k) => k === kind).length
+const count = (kind: Kind) => [...running.values()].filter((k) => k === kind).length
 
 /** Takes waiting orders as there is room, for as long as the page is open. */
 export async function talkLoop(): Promise<void> {
@@ -195,7 +226,9 @@ export async function talkLoop(): Promise<void> {
       // Oldest first: the order he pasted them in.
       for (const record of talk) {
         if (running.has(record.id)) continue
-        const free = record.kind === 'listen' ? most.listen - count('listen') : most.make - count('make')
+        // A drop-in clip is short: heard and cut alongside the listening.
+        const free =
+          record.kind === 'listen' ? most.listen - count('listen') : record.kind === 'drop' ? Math.min(3, most.listen) - count('drop') : most.make - count('make')
         if (free <= 0) continue
         void run(record)
       }

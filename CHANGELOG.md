@@ -3,6 +3,23 @@
 Newest first. Every change says what it does, how to use it, and how it works
 underneath. Kept up to date with each commit.
 
+## Drop in all videos: done on your Cutter server
+- His ask (2026-11-13): "Why are the clips doing on phone and not server tho?" - "yes move it to the server".
+- With the Cutter server connected and up, "Drop in all videos" only sends the clips up ("Sending to your server");
+  the server listens to them and cuts them, 3 at once, with exactly the same cut as the phone (his pacing plus the
+  little more room). Each comes back into the step it says as it is ready, and the same quick check list fills in.
+- Once they are all sent he can close the app: the phone remembers what is still on the server and sorts it in the
+  next time the format's drop-in is on screen ("Your server is cutting 12 more clips").
+- The cut clips stay on the server for the batches it makes, and a copy comes down to the phone too.
+- No server, or the server not taking a clip: that clip and the rest are done on the phone, as before.
+- Underneath: talk order kind `drop` (`talkOrder.DropOrder`/`DropResult`, `serverTalk.runDrop`, shared
+  `prepareDrop.cutDropped`); server `server/main.mjs`: `PUT /talk/:id` takes `drop`, new `GET /files/:id` (his
+  login, his space only) and `PUT /local/files/:id` (the page keeping a file it made, 127.0.0.1 only); step overlay
+  files now count as used (not let go of after two days). The Cutter server rebuilds itself from this push.
+- Checked here: the server's new routes run for real (order, keeping the cut clip, reading it back byte for byte,
+  401 without his login, 404 for anything else). Not run here: the listening on the server (the speech model can't
+  be downloaded in this test setup) and the phone. Tests: `dropInView.test.tsx`.
+
 ## Drop in all videos: hooks too, his pick per format
 - His answer (2026-11-13): "Make it so I choose each new format, it's fine."
 - A talking head format has a "Dropped clips can be hooks" switch (off as before). On: a dropped clip that says no

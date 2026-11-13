@@ -1,6 +1,7 @@
 // "Drop in all videos" on a talking head format (his ask, 2026-11-13): each
 // clip cut and heard (stubbed here), put in the step it says, then one quick
-// check where a clip can be moved or left out.
+// check where a clip can be moved or left out. With his Cutter server up the
+// clips go there and are sorted in as they come back.
 
 import { act } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
@@ -13,16 +14,73 @@ const said: Record<string, string> = {
   'b.mov': 'and now open the app',
   'c.mov': 'hello there everyone',
 }
+const onPhone = vi.fn()
 vi.mock('./prepareDrop', () => ({
   prepareClip: vi.fn(async (file: File, { from }: { from?: string }) => {
+    onPhone(file.name)
     if (file.name === 'bad.mov') throw new Error('no talking heard in it')
     return { file: { id: `cut-${file.name}`, name: file.name, type: 'video/mp4', size: 1, from }, words: [], text: said[file.name] }
   }),
+  dropSettings: () => ({ settings: { preset: 'balanced' }, cleanSpeech: true, voice: true }),
+  cutName: (name: string) => name.replace(/\.[^./]+$/, '') + '.mp4',
 }))
 // A recording's fingerprint: its name, here.
 vi.mock('./fingerprint', () => ({ fingerprint: vi.fn(async (file: File) => `fp-${file.name}`) }))
 const retired: string[] = []
-vi.mock('./store', () => ({ retireBankFiles: vi.fn(async (ids: string[]) => void retired.push(...ids)) }))
+const savedFiles: string[] = []
+vi.mock('./store', () => ({
+  retireBankFiles: vi.fn(async (ids: string[]) => void retired.push(...ids)),
+  saveBankFile: vi.fn(async (id: string) => void savedFiles.push(id)),
+}))
+const remembered: string[] = []
+vi.mock('./talkCaptions', () => ({ rememberWords: (file: { id: string }) => void remembered.push(file.id) }))
+
+// His Cutter server, stubbed: what is up there, the orders, what it says.
+const server = {
+  up: false,
+  failUpload: false,
+  uploads: [] as string[],
+  orders: [] as { id: string; fileId: string; outId: string; outName: string; from: string; names: string[] }[],
+  talk: {} as Record<string, unknown>,
+  dropped: [] as string[],
+}
+vi.mock('./talkLink', () => ({
+  talkServerUp: vi.fn(async () => server.up),
+  serverLetDown: vi.fn(() => void (server.up = false)),
+  upload: vi.fn(async (fileId: string) => {
+    if (server.failUpload) throw new Error('The server did not answer.')
+    server.uploads.push(fileId)
+  }),
+  orderDrop: vi.fn(async (order: (typeof server.orders)[number]) => {
+    server.orders.push(order)
+    server.talk[order.id] = { id: order.id, kind: 'drop', state: 'waiting', progress: 0, error: null, at: '' }
+    return { ok: true }
+  }),
+  talkNow: vi.fn(async () => ({ ...server.talk })),
+  downloadFile: vi.fn(async () => new Blob(['cut'])),
+  dropTalk: vi.fn(async (id: string) => {
+    server.dropped.push(id)
+    delete server.talk[id]
+  }),
+}))
+
+/** The server done with every order: cut, its words back. */
+function serverCuts(failing: string[] = []) {
+  for (const order of server.orders) {
+    const name = order.outName.replace('.mp4', '.mov')
+    server.talk[order.id] = failing.includes(name)
+      ? { id: order.id, kind: 'drop', state: 'failed', progress: 0, error: 'no talking heard in it', at: '' }
+      : {
+          id: order.id,
+          kind: 'drop',
+          state: 'made',
+          progress: 1,
+          error: null,
+          at: '',
+          dropped: { file: { id: order.outId, name: order.outName, type: 'video/mp4', size: 3, from: order.from }, words: [], text: said[name] },
+        }
+  }
+}
 
 import { DropIn } from './DropIn'
 
@@ -42,6 +100,11 @@ beforeEach(() => {
   root = createRoot(host)
   bank = { steps, reactions: [] } as unknown as BatchBank
   retired.length = 0
+  savedFiles.length = 0
+  remembered.length = 0
+  onPhone.mockClear()
+  Object.assign(server, { up: false, failUpload: false, uploads: [], orders: [], talk: {}, dropped: [] })
+  localStorage.clear()
 })
 afterEach(() => {
   act(() => root.unmount())
@@ -64,11 +127,21 @@ const render = (hooks = false) =>
     ),
   )
 
+const settle = async () => {
+  for (let i = 0; i < 8; i++) await act(async () => await new Promise((r) => setTimeout(r, 0)))
+}
+
 const drop = async (names: string[]) => {
   const input = host.querySelector('input[aria-label="Drop in all videos"]') as HTMLInputElement
   Object.defineProperty(input, 'files', { value: names.map((n) => new File(['x'], n, { type: 'video/quicktime' })), configurable: true })
   await act(async () => input.dispatchEvent(new Event('change', { bubbles: true })))
-  for (let i = 0; i < 5; i++) await act(async () => await new Promise((r) => setTimeout(r, 0)))
+  await settle()
+}
+
+/** The phone looks again at what the server did (every 3 s). */
+const lookAgain = async () => {
+  await act(async () => await new Promise((r) => setTimeout(r, 3100)))
+  await settle()
 }
 
 describe('dropping in all his clips', () => {
@@ -127,5 +200,64 @@ describe('dropping in all his clips', () => {
     await drop(['a.mov'])
     expect(host.textContent).toContain('a.mov: already in from before')
     expect(bank.steps![0].files).toHaveLength(1)
+  })
+
+  describe('on his Cutter server', () => {
+    it('sends each clip up with its order, then sorts them in as they come back, a copy kept on the phone', async () => {
+      server.up = true
+      await render()
+      await drop(['a.mov', 'b.mov', 'c.mov', 'bad.mov'])
+      expect(onPhone).not.toHaveBeenCalled()
+      expect(server.orders).toHaveLength(4)
+      expect(server.uploads).toEqual(server.orders.map((o) => o.fileId))
+      // Raw recordings go up as t- files: let go of with their order, and HEVC made playable there.
+      expect(server.orders.every((o) => o.fileId === `t-${o.id}`)).toBe(true)
+      expect(server.orders[0]).toMatchObject({ outName: 'a.mp4', from: 'fp-a.mov', cleanSpeech: true, voice: true })
+      expect(host.textContent).toContain('Your server is cutting 4 more clips')
+      expect(bank.steps![0].files).toEqual([])
+
+      serverCuts(['bad.mov'])
+      await lookAgain()
+      const [a, b] = server.orders
+      expect(bank.steps![0].files.map((f) => f.id)).toEqual([a.outId])
+      expect(bank.steps![1].files.map((f) => f.id)).toEqual([b.outId])
+      expect(bank.steps![0].files[0]).toMatchObject({ name: 'a.mp4', from: 'fp-a.mov' })
+      expect(host.textContent).toContain('Check them · 4 clips · 1 to look at')
+      expect(host.textContent).toContain("bad.mov: couldn't use it (no talking heard in it)")
+      expect(remembered).toHaveLength(3)
+      // Copies down for the clips the batch uses (not the one with nowhere to go yet), then done with them there.
+      expect(savedFiles.sort()).toEqual([a.outId, b.outId].sort())
+      expect(server.dropped.sort()).toEqual(server.orders.map((o) => o.id).sort())
+      expect(host.textContent).not.toContain('Your server is cutting')
+      expect(localStorage.getItem('batch.dropping:t')).toBeNull()
+    })
+
+    it('carries on after the app was closed: what was still on the server is sorted in when he is back', async () => {
+      server.up = true
+      await render()
+      await drop(['a.mov'])
+      expect(localStorage.getItem('batch.dropping:t')).toContain('a.mov')
+      act(() => root.unmount())
+      serverCuts()
+      root = createRoot(host)
+      await render()
+      await settle()
+      expect(bank.steps![0].files.map((f) => f.id)).toEqual([server.orders[0].outId])
+      expect(localStorage.getItem('batch.dropping:t')).toBeNull()
+      // And a clip on its way back is not sent twice.
+      await drop(['a.mov'])
+      expect(host.textContent).toContain('a.mov: already in from before')
+      expect(server.orders).toHaveLength(1)
+    })
+
+    it('the server not taking them: the phone does that one and the rest', async () => {
+      server.up = true
+      server.failUpload = true
+      await render()
+      await drop(['a.mov', 'b.mov'])
+      expect(onPhone.mock.calls.map(([n]) => n)).toEqual(['a.mov', 'b.mov'])
+      expect(bank.steps![0].files.map((f) => f.id)).toEqual(['cut-a.mov'])
+      expect(server.orders).toEqual([])
+    })
   })
 })

@@ -629,7 +629,7 @@ turned on for new services since 2026-08-28).
 
 - Public port (`PORT`): `/health`; everything else needs the phone's Cutter token (Bearer), checked with the
   `cutter` function's `whoami`, and only that space - and the posting profile that connected first - once
-  connected (`/connect`, `/files`, `/banks/:id`, `/banks/:id/start-over|back-to-phone`, `/talk`, `/talk/:id`, `/status`). Browsers only
+  connected (`/connect`, `/files`, `/files/:id`, `/banks/:id`, `/banks/:id/start-over|back-to-phone`, `/talk`, `/talk/:id`, `/status`). Browsers only
   from `ALLOWED_ORIGIN` (the Netlify app). The token and profile are kept in `/data/session.json` on its volume:
   it makes videos while the phone is closed.
 - Local port (`APP_PORT`, 127.0.0.1 only): the built app (never its service worker) and `/local/*` for the page:
@@ -676,6 +676,20 @@ listened to (`talkOrder.toServer`, `SERVER_FROM`) and a server that answers `/ta
 - Not on the server: reactions, montages, batches, formats, joins, remakes (Edit again), and videos whose
   campaign doesn't post from this phone - and a video made there can't be edited again from Posts (its recording
   left the phone).
+
+### Dropped-in step clips on the server (`DropIn.tsx`, `talkOrder.DropOrder`, `serverTalk.runDrop`, his ask 2026-11-13)
+
+"Drop in all videos" on a talking head format, with the server up (`talkServerUp`), sends each recording up (`t-<id>`,
+so HEVC is made H.264 and it goes with its order) with a `DropOrder` (`PUT /talk/<id>`, kind `drop`: the phone's
+cut settings with the drop-in's room - `prepareDrop.dropSettings` - the brand words, the bank file id and name the
+cut clip gets, the recording's fingerprint). The server's page hears and cuts up to 3 at once alongside its listening
+(`prepareDrop.cutDropped`, the same code the phone runs), keeps the cut clip on its disk as that bank file
+(`PUT /local/files/<id>` - `from: null`, so the phone never sends it again), and tells back a `DropResult` (the bank
+file, its words on the cut's clock, the text). The phone waits with the ids in localStorage (`batch.dropping:<format>`)
+and reads `GET /talk` every 3 s while the drop-in is on screen - also after the app was closed - and sorts each into
+its step (`stepMatch`) as it comes back, keeps its words (`talkCaptions.rememberWords`), downloads a copy for itself
+(`GET /files/<id>`, kept only while the batch still has the clip) and then lets the order go (`DELETE /talk/<id>`).
+The server not taking one (an upload failing): that one and the rest are done on the phone (`prepareClip`).
 
 ## The engine (`engine/`, on Railway)
 

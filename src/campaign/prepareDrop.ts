@@ -42,18 +42,17 @@ export interface DroppedClip {
 
 export type DropPhase = 'model' | 'listening' | 'cutting'
 
-/** One clip heard, cut and kept. `names`: the campaign's brand words, so
- *  they are heard right. */
-export async function prepareClip(
-  file: File,
-  { names, onPhase, from: given }: { names: string[]; onPhase?: (phase: DropPhase, fraction: number) => void; from?: string },
-): Promise<DroppedClip> {
-  const settings = videoSettings()
-  const from = given ?? (await fingerprint(file))
+/** One clip heard and cut, nothing kept: the cut clip, his words in it on
+ *  its own clock, what he says. Run on the phone (prepareClip) or on the
+ *  Cutter server (serverTalk.ts) with the same settings. */
+export async function cutDropped(
+  file: Blob,
+  { settings, cleanSpeech, voice, names, onPhase }: { settings: SilenceSettings; cleanSpeech: boolean; voice: boolean; names: string[]; onPhase?: (phase: DropPhase, fraction: number) => void },
+): Promise<{ blob: Blob; words: CaptionWord[]; text: string }> {
   const plan = await listen(
     file,
-    withLeeway(PRESETS[settings.preset]),
-    { cleanSpeech: settings.cleanSpeech, hear: true, names, align: true },
+    settings,
+    { cleanSpeech, hear: true, names, align: true },
     { onModelDownload: (p) => onPhase?.('model', p), onTranscribeProgress: (p) => onPhase?.('listening', p) },
   )
   const heard = captionWords(plan.spoken ?? plan.words, plan.keep, { rough: !plan.aligned })
@@ -62,23 +61,35 @@ export async function prepareClip(
   const look = { ...videoLook(blankCampaign('drop-in'), blankAngle('drop-in', 'Drop-in')), effects: NO_EFFECTS }
   const made = await renderCampaignCut(
     file,
-    { keep: plan.keep, look, headlineText: '', logoMoments: [], soundMoments: [], brandMoments: [], pictureMoments: [], bankCues: [], seed: file.name, captions: [], voice: settings.voice },
+    { keep: plan.keep, look, headlineText: '', logoMoments: [], soundMoments: [], brandMoments: [], pictureMoments: [], bankCues: [], seed: 'drop-in', captions: [], voice },
     (p) => onPhase?.('cutting', p),
   )
-  const id = crypto.randomUUID()
-  await saveBankFile(id, made.blob)
-  const seconds = (await filmingOf(made.blob).catch(() => null))?.seconds
-  const kept: BankFile = {
-    id,
-    name: file.name.replace(/\.[^./]+$/, '') + '.mp4',
-    type: 'video/mp4',
-    size: made.blob.size,
-    fp: await fingerprint(made.blob),
-    from,
-    ...(seconds ? { seconds } : {}),
-  }
   // On the cut's own clock, as its captions are drawn.
   const words = heard.map((w) => ({ text: w.text, start: cutTime(w.start, plan.keep), end: cutTime(w.end, plan.keep) }))
-  rememberWords(kept, words)
-  return { file: kept, words, text: words.map((w) => w.text.trim()).join(' ') }
+  return { blob: made.blob, words, text: words.map((w) => w.text.trim()).join(' ') }
+}
+
+/** The settings a drop-in cuts with, from his own on this phone. */
+export function dropSettings(): { settings: SilenceSettings; cleanSpeech: boolean; voice: boolean } {
+  const own = videoSettings()
+  return { settings: withLeeway(PRESETS[own.preset]), cleanSpeech: own.cleanSpeech, voice: own.voice }
+}
+
+/** The name a cut clip is kept under. */
+export const cutName = (name: string) => name.replace(/\.[^./]+$/, '') + '.mp4'
+
+/** One clip heard, cut and kept on this phone. `names`: the campaign's
+ *  brand words, so they are heard right. */
+export async function prepareClip(
+  file: File,
+  { names, onPhase, from: given }: { names: string[]; onPhase?: (phase: DropPhase, fraction: number) => void; from?: string },
+): Promise<DroppedClip> {
+  const from = given ?? (await fingerprint(file))
+  const cut = await cutDropped(file, { ...dropSettings(), names, onPhase })
+  const id = crypto.randomUUID()
+  await saveBankFile(id, cut.blob)
+  const seconds = (await filmingOf(cut.blob).catch(() => null))?.seconds
+  const kept: BankFile = { id, name: cutName(file.name), type: 'video/mp4', size: cut.blob.size, fp: await fingerprint(cut.blob), from, ...(seconds ? { seconds } : {}) }
+  rememberWords(kept, cut.words)
+  return { file: kept, words: cut.words, text: cut.text }
 }

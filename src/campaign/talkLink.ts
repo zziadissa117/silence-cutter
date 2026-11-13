@@ -7,7 +7,7 @@
 
 import { currentSession } from './cloud'
 import { call, connectServer, lastServerStatus, sendFile, serverUrl } from './serverLink'
-import type { ListenOrder, MakeOrder, TalkSummary } from './talkOrder'
+import type { DropOrder, ListenOrder, MakeOrder, TalkSummary } from './talkOrder'
 import type { CampaignPlan } from './plan'
 
 /** The server can take talking videos: connected, its page answering
@@ -50,6 +50,18 @@ export async function upload(fileId: string, blob: Blob, name: string, type: str
 }
 
 export const orderListen = (order: ListenOrder) => call<{ ok: true }>('PUT', `/talk/${encodeURIComponent(order.id)}`, { kind: 'listen', order })
+export const orderDrop = (order: DropOrder) => call<{ ok: true }>('PUT', `/talk/${encodeURIComponent(order.id)}`, { kind: 'drop', order })
+
+/** A file the server has, down to this phone (a clip it cut from one he
+ *  dropped in). */
+export async function downloadFile(id: string): Promise<Blob> {
+  const base = serverUrl()
+  const session = currentSession()
+  if (!base || !session) throw new Error('No server connected.')
+  const res = await fetch(`${base}/files/${encodeURIComponent(id)}`, { headers: { authorization: `Bearer ${session.token}` } })
+  if (!res.ok) throw new Error(`The server said ${res.status}.`)
+  return res.blob()
+}
 export const orderMake = (order: MakeOrder) => call<{ ok: true }>('PUT', `/talk/${encodeURIComponent(order.id)}`, { kind: 'make', order })
 
 /** Every talking video the server has, as it is now. */

@@ -82,17 +82,44 @@ export interface MakeOrder {
   }
 }
 
+/** A short clip dropped into a batch format (his ask, 2026-11-13: "move it
+ *  to the server"): heard and cut there with the drop-in's room, kept on the
+ *  server as bank file `outId`; its words come back (prepareDrop.ts). */
+export interface DropOrder {
+  id: string
+  /** The recording, sent first (its /files). */
+  fileId: string
+  /** The cut clip's bank file id, and its name. */
+  outId: string
+  outName: string
+  /** The recording's fingerprint (BankFile.from). */
+  from: string
+  settings: SilenceSettings
+  cleanSpeech: boolean
+  voice: boolean
+  names: string[]
+}
+
+/** What a drop-in sends back: the cut clip as a bank file, his words in it. */
+export interface DropResult {
+  file: { id: string; name: string; type: string; size: number; fp?: string; from?: string; seconds?: number }
+  words: CaptionWord[]
+  text: string
+}
+
 export type TalkState = 'waiting' | 'listening' | 'listened' | 'making' | 'made' | 'failed'
 
 /** How a video is doing on the server, as the phone reads it. */
 export interface TalkSummary {
   id: string
-  kind: 'listen' | 'make'
+  kind: 'listen' | 'make' | 'drop'
   state: TalkState
   progress: number
   error: string | null
   at: string
   made?: { headline: string; seconds: number }
+  /** A drop-in, done. */
+  dropped?: DropResult
 }
 
 /** File ids on the server: [A-Za-z0-9_-], at most 80 (server/main.mjs safeId). */
