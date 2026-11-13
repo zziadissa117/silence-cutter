@@ -1966,3 +1966,43 @@ main.tabbed > .drop-check-screen, .drop-check-screen { position: fixed; inset: 0
 .drop-check-btn { min-height: 46px; }
 .drop-in-failed { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 4px; }
 .drop-box:has(> .drop-in:empty:only-child) { display: none; }
+
+/* The captions' phrases in a sheet over the screen (CaptionSheet.tsx, his ask
+   2026-11-13): half the screen or three quarters, see-through so the video
+   shows behind it, its own scroll; on the keyboard while he types. Above
+   every screen, the Batch check's layer too. */
+.caption-sheet {
+  position: fixed; left: 0; right: 0; bottom: 0; z-index: 80; height: 55svh;
+  display: flex; flex-direction: column; color: var(--text);
+  background: color-mix(in srgb, var(--ink) 68%, transparent);
+  -webkit-backdrop-filter: blur(3px) saturate(1.1); backdrop-filter: blur(3px) saturate(1.1);
+  border-radius: 22px 22px 0 0; border-top: 1px solid color-mix(in srgb, var(--text) 16%, transparent);
+  box-shadow: 0 -12px 34px rgb(0 0 0 / 0.35);
+  padding-bottom: env(safe-area-inset-bottom);
+  animation: caption-sheet-in 0.18s ease-out;
+}
+.caption-sheet.tall { height: 75svh; }
+.caption-sheet.over-keyboard { padding-bottom: 0; border-radius: 18px 18px 0 0; }
+@keyframes caption-sheet-in { from { transform: translateY(24px); opacity: 0.4; } to { transform: none; opacity: 1; } }
+.caption-sheet-grip { all: unset; display: grid; place-items: center; height: 22px; cursor: pointer; flex: none; }
+.caption-sheet-grip span { width: 40px; height: 5px; border-radius: 3px; background: color-mix(in srgb, var(--text) 40%, transparent); }
+.caption-sheet-head { flex: none; display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 0 12px 6px 16px; }
+.caption-sheet-title { display: flex; align-items: baseline; gap: 10px; min-width: 0; }
+.caption-sheet-close { flex: none; width: 40px; height: 40px; display: grid; place-items: center; border-radius: 50%; border: 0; cursor: pointer;
+  background: color-mix(in srgb, var(--text) 12%, transparent); color: var(--text); }
+.caption-sheet-close svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width: 2.4; stroke-linecap: round; stroke-linejoin: round; }
+.caption-sheet-extra { flex: none; display: flex; flex-direction: column; gap: 4px; padding: 0 16px 6px; }
+.caption-sheet-extra .recheck-btn { min-height: 38px; font-size: 15px; }
+.caption-sheet-extra .recheck .hint { margin: 0; font-size: 14px; }
+.caption-sheet-extra .only-flagged { min-height: 32px; align-self: flex-start; }
+.caption-sheet-body { flex: 1; min-height: 0; overflow-y: auto; overscroll-behavior: contain; -webkit-overflow-scrolling: touch; padding: 0 12px 16px 6px; }
+.caption-sheet .phrase { scroll-margin: 8px; border-bottom-color: color-mix(in srgb, var(--text) 10%, transparent); }
+.caption-sheet .phrase textarea { color: var(--text); background: color-mix(in srgb, var(--ink) 35%, transparent); }
+.caption-sheet .phrase.on textarea { background: color-mix(in srgb, var(--text) 13%, transparent); }
+/* Where the phrases were: one row to open or close the sheet. */
+.caption-sheet-open { all: unset; box-sizing: border-box; display: flex; align-items: center; gap: 10px; width: 100%; min-height: 52px; padding: 8px 14px;
+  border-radius: 14px; cursor: pointer; background: color-mix(in srgb, var(--text) 7%, transparent); }
+.caption-sheet-open .hint { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.caption-sheet-open-act { flex: none; color: var(--accent); font-weight: 600; }
+/* Over the dark edit screen: dark, whatever the phone's setting. */
+html.editor-dark .caption-sheet { --ink: #000000; --text: #ffffff; --dim: #aeaeb2; --muted: #8e8e93; --now: #ffffff; --surface: #1c1c1e; --accent: #fe2c55; color-scheme: dark; }

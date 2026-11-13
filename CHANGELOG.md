@@ -3,6 +3,26 @@
 Newest first. Every change says what it does, how to use it, and how it works
 underneath. Kept up to date with each commit.
 
+## Captions in a see-through sheet over the screen, everywhere
+- His ask (2026-11-13): "I don't like the sort of caption scrollable feature, with a small screen it's horrible to
+  use ... same scrollable but as a sort of overlay on screen. Take half or 75% of the screen, little opacity so we
+  see behind it, and we can scroll thru the captions, close it, open it and when its closed i got the full screen
+  for like other editing things ... do this everywhere not just in batch".
+- Every caption check (Videos, the Batch clip check, Motion graphics, Trial reels) and the timeline editor: the
+  phrases are in a sheet over the bottom of the screen, see-through so the video shows behind it, with its own
+  scroll. Its grip (the little bar on top) makes it half or three quarters of the screen; the arrow closes it. A
+  "Captions · 12 phrases · 2 to check" row opens it again, and in the timeline editor so does the toolbar's
+  Captions. While he types it sits right on the keyboard.
+- Open or closed and its size are kept: a caption check opens it to start with, the timeline editor starts with it
+  closed (the screen is his for the cuts) - after that, as he left it.
+- Claude's check of the captions and "Only show the N to check" are at the top of the sheet. Approve, the caption
+  style and size stay on the page under it.
+- Underneath: `CaptionSheet.tsx` (a portal on the page's body, `useSheetPref`, `visualViewport` for the keyboard),
+  `CaptionReview` `sheet` prop, `CutsEditor` `onCaptionsTool`, `EditScreen` keeps it open/closed. The list follows
+  the playing phrase only while the sheet is open (it replaced `captionsInView`).
+- Looked at on an iPhone-sized screen here (Batch check, timeline editor). Tests: `captionSheet.test.tsx`,
+  `editScreen.test.tsx`, `captionRecheck.test.tsx`, `motionView.test.tsx`.
+
 ## Talking head batches: every clip cut like the Cutter, checked by him one by one
 - His report (2026-11-13), point by point:
   - "remove the leeway, just cut like the cutter is already doing and make sure to use my voice because they have

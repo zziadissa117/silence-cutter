@@ -553,6 +553,7 @@ export function CutsEditor({
   onCancel,
   paintOver,
   below,
+  onCaptionsTool,
   onState,
   control,
   headActions,
@@ -609,6 +610,9 @@ export function CutsEditor({
   paintOver?: (ctx: CanvasRenderingContext2D, width: number, height: number, t: number, playing: boolean) => void
   /** Shown under the cuts' buttons: the captions, on the same page. */
   below?: ReactNode
+  /** The toolbar's Captions: opens the captions' sheet (CaptionSheet.tsx).
+   *  Absent: it scrolls down to what is below. */
+  onCaptionsTool?: () => void
   /** Every change to the cuts and pictures, as it happens. */
   onState?: (keep: Range[], overlays: ManualPicture[], newFiles: Map<string, Blob>) => void
   control?: MutableRefObject<CutsControl | null>
@@ -2015,7 +2019,7 @@ export function CutsEditor({
             {below ? (
               <ToolButton
                 label="Captions"
-                onClick={() => toView(belowRef.current)}
+                onClick={() => (onCaptionsTool ? onCaptionsTool() : toView(belowRef.current))}
                 icon={
                   <>
                     <rect x="3" y="5" width="18" height="14" rx="2" />

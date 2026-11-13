@@ -44,6 +44,7 @@ import { logoPop } from './effects'
 import { formatTime } from './jobs'
 import { findRepeats, type Repeat } from './repeats'
 import { POP_POSITIONS, POP_SIZE, drawPop, popLayout, type PopPosition } from './popVideo'
+import { CaptionSheet, useSheetPref } from './CaptionSheet'
 
 /** The bank videos said in a take, for the caption check: each with when
  *  it comes up (on the raw take) and its still, and how they all look. */
@@ -227,11 +228,6 @@ export function markChecked(key: string): void {
   }
 }
 
-/** Whether he is looking at the caption list: its top is in the upper part
- *  of the screen. Scrolled up at the video, its top is below that. */
-export function captionsInView(list: Pick<DOMRect, 'top' | 'bottom'>, screen: number): boolean {
-  return list.bottom > 0 && list.top < screen * 0.6
-}
 
 export function CaptionReview({
   name,
@@ -267,6 +263,7 @@ export function CaptionReview({
   onTimeline,
   top,
   backLabel = 'Videos',
+  sheet,
 }: {
   name: string
   /** The video itself, or null while it is being fetched from storage. */
@@ -330,6 +327,9 @@ export function CaptionReview({
   top?: ReactNode
   /** What the back button goes back to. */
   backLabel?: string
+  /** The phrases' sheet open or closed, when the page around keeps it (the
+   *  edit screen's Captions tool opens it). Absent: kept here. */
+  sheet?: { open: boolean; onOpen: (open: boolean) => void }
 }) {
   // The phrases as heard: each keeps its moment however it is retyped.
   const [heard] = useState(() => phrasesOf(initial))
@@ -350,6 +350,13 @@ export function CaptionReview({
   const [checking, setChecking] = useState(false)
   const [rechecked, setRechecked] = useState<{ changed: Set<number>; unsure?: Set<number>; cents: number; before: string[]; error?: string } | null>(null)
   const [onlyFlagged, setOnlyFlagged] = useState(false)
+  // The phrases in a sheet over the screen (CaptionSheet.tsx) - open on a
+  // caption check to start with, and as he left it after.
+  const [ownSheet, setOwnSheet] = useSheetPref('captions.sheet', true)
+  const sheetOpen = sheet ? sheet.open : ownSheet
+  const setSheet = sheet ? sheet.onOpen : setOwnSheet
+  const sheetOpenRef = useRef(sheetOpen)
+  sheetOpenRef.current = sheetOpen
   const [current, setCurrent] = useState(0)
   const [playing, setPlaying] = useState(false)
   const [typing, setTyping] = useState(false)
@@ -443,13 +450,13 @@ export function CaptionReview({
   // and while it plays the list follows along.
   const currentRef = useRef(current)
   currentRef.current = current
-  /** The list follows the phrase playing only while he is down at the
-   *  captions: up at the video (and the timeline), playing leaves the page
-   *  where it is (his ask, 2026-11-10: "I don't always want to follow the
-   *  captions"). */
+  /** The list follows the phrase playing only while its sheet is open:
+   *  closed, playing leaves everything where it is (his ask, 2026-11-10: "I
+   *  don't always want to follow the captions"). */
   const follow = (k: number) => {
     const el = list.current
-    if (!el || !captionsInView(el.getBoundingClientRect(), window.innerHeight)) return
+    // In the sheet: only while it is open (closed, the screen is his).
+    if (!el || !sheetOpenRef.current) return
     el.children[k]?.scrollIntoView({ block: 'nearest', behavior: 'smooth' })
   }
   const typingRef = useRef(typing)
@@ -722,96 +729,125 @@ export function CaptionReview({
       </div>
       )}
 
-      {onRecheck ? (
-        <div className="recheck">
-          <button type="button" className="btn wide recheck-btn" disabled={checking} onClick={() => void recheck()}>
-            {checking ? (
-              'Claude is checking…'
-            ) : (
-              <>
-                {recheckKey && wasChecked(recheckKey) ? 'Check again with Claude' : 'Check captions with Claude'} <span style={{ whiteSpace: 'nowrap', fontWeight: 400 }}>· about {centsLabel(estimateRecheckCents(texts, vocabulary))} of credits</span>
-              </>
-            )}
-          </button>
-          {rechecked ? (
-            <p className={`hint${rechecked.error ? ' warn-text' : ''}`}>
-              {rechecked.error
-                ? rechecked.error
-                : rechecked.changed.size === 0
-                  ? 'Claude found nothing to fix.'
-                  : `Claude fixed ${rechecked.changed.size} phrase${rechecked.changed.size === 1 ? '' : 's'} - they are highlighted below.`}
-              {rechecked.cents > 0 ? ` It cost ${centsLabel(rechecked.cents)}.` : ''}
-              {rechecked.changed.size > 0 ? (
-                <>
-                  {' '}
-                  <button
-                    type="button"
-                    className="linkbtn"
-                    onClick={() => {
-                      applyTexts(texts.map((t, k) => (rechecked.changed.has(k) ? rechecked.before[k] : t)))
-                      setRechecked({ ...rechecked, changed: new Set() })
-                    }}
-                  >
-                    Undo
-                  </button>
-                </>
+      {/* The phrases: in a sheet over the screen, see-through, opened and
+          closed here or with the edit screen's Captions tool (his ask,
+          2026-11-13). */}
+      <button type="button" className="caption-sheet-open" aria-expanded={sheetOpen} onClick={() => setSheet(!sheetOpen)}>
+        <span className="row-name">Captions</span>
+        <span className="hint">
+          {phrases.length} phrase{phrases.length === 1 ? '' : 's'}
+          {rechecked && rechecked.changed.size > 0 ? ` · Claude fixed ${rechecked.changed.size}` : ''}
+          {flagged.size > 0 ? ` · ${flagged.size} to check` : ''}
+        </span>
+        <span className="caption-sheet-open-act">{sheetOpen ? 'Close' : 'Open'}</span>
+      </button>
+      <CaptionSheet
+        open={sheetOpen}
+        onClose={() => setSheet(false)}
+        title={
+          <>
+            <span className="row-name">Captions</span>
+            <span className="hint">
+              {current + 1} / {phrases.length}
+              {checking ? ' · Claude is checking…' : ''}
+            </span>
+          </>
+        }
+        extra={
+          <>
+          {onRecheck ? (
+            <div className="recheck">
+              <button type="button" className="btn wide recheck-btn" disabled={checking} onClick={() => void recheck()}>
+                {checking ? (
+                  'Claude is checking…'
+                ) : (
+                  <>
+                    {recheckKey && wasChecked(recheckKey) ? 'Check again with Claude' : 'Check captions with Claude'} <span style={{ whiteSpace: 'nowrap', fontWeight: 400 }}>· about {centsLabel(estimateRecheckCents(texts, vocabulary))} of credits</span>
+                  </>
+                )}
+              </button>
+              {rechecked ? (
+                <p className={`hint${rechecked.error ? ' warn-text' : ''}`}>
+                  {rechecked.error
+                    ? rechecked.error
+                    : rechecked.changed.size === 0
+                      ? 'Claude found nothing to fix.'
+                      : `Claude fixed ${rechecked.changed.size} phrase${rechecked.changed.size === 1 ? '' : 's'} - they are highlighted below.`}
+                  {rechecked.cents > 0 ? ` It cost ${centsLabel(rechecked.cents)}.` : ''}
+                  {rechecked.changed.size > 0 ? (
+                    <>
+                      {' '}
+                      <button
+                        type="button"
+                        className="linkbtn"
+                        onClick={() => {
+                          applyTexts(texts.map((t, k) => (rechecked.changed.has(k) ? rechecked.before[k] : t)))
+                          setRechecked({ ...rechecked, changed: new Set() })
+                        }}
+                      >
+                        Undo
+                      </button>
+                    </>
+                  ) : null}
+                </p>
               ) : null}
-            </p>
+            </div>
           ) : null}
-        </div>
-      ) : null}
-      {flagged.size > 0 && flagged.size < phrases.length ? (
-        <button type="button" className="linkbtn only-flagged" onClick={() => setOnlyFlagged((v) => !v)}>
-          {onlyFlagged ? `Show all ${phrases.length} phrases` : `Only show the ${flagged.size} to check`}
-        </button>
-      ) : null}
-
-      <ol className="phrases" ref={list}>
-        {phrases.map((phrase, k) => (
-          <li
-            key={k}
-            hidden={onlyFlagged && flagged.size > 0 && !flagged.has(k)}
-            className={`phrase${k === current ? ' on' : ''}${phrase.length > 0 && !textOf(phrase) ? ' gone' : ''}${rechecked?.changed.has(k) ? ' fixed' : flagged.has(k) ? ' flag' : ''}`}
-          >
-            <button
-              type="button"
-              className="phrase-play"
-              aria-label={playing && k === current ? 'Pause' : `Play from phrase ${k + 1}`}
-              onClick={() => playFrom(k)}
-            >
-              {playing && k === current ? <PauseIcon /> : <PlayIcon />}
+          {flagged.size > 0 && flagged.size < phrases.length ? (
+            <button type="button" className="linkbtn only-flagged" onClick={() => setOnlyFlagged((v) => !v)}>
+              {onlyFlagged ? `Show all ${phrases.length} phrases` : `Only show the ${flagged.size} to check`}
             </button>
-            <textarea
-              ref={fit}
-              rows={1}
-              value={texts[k]}
-              aria-label={`Phrase ${k + 1}`}
-              placeholder="No caption here"
-              autoCapitalize="off"
-              autoCorrect="off"
-              spellCheck={false}
-              enterKeyHint={k === phrases.length - 1 ? 'done' : 'next'}
-              onFocus={() => {
-                setTyping(true)
-                if (playing) stop()
-                setCurrent(k)
-                const first = firstWordOf(k)
-                if (embedded && first >= 0) embedded.seek(words[first].start + 0.02)
-              }}
-              onBlur={() => setTyping(false)}
-              onChange={(e) => {
-                fit(e.currentTarget)
-                type(k, e.target.value.replace(/\n/g, ' '))
-              }}
-              onKeyDown={(e) => {
-                if (e.key !== 'Enter') return
-                e.preventDefault()
-                next(k)
-              }}
-            />
-          </li>
-        ))}
-      </ol>
+          ) : null}
+          </>
+        }
+      >
+        <ol className="phrases" ref={list}>
+          {phrases.map((phrase, k) => (
+            <li
+              key={k}
+              hidden={onlyFlagged && flagged.size > 0 && !flagged.has(k)}
+              className={`phrase${k === current ? ' on' : ''}${phrase.length > 0 && !textOf(phrase) ? ' gone' : ''}${rechecked?.changed.has(k) ? ' fixed' : flagged.has(k) ? ' flag' : ''}`}
+            >
+              <button
+                type="button"
+                className="phrase-play"
+                aria-label={playing && k === current ? 'Pause' : `Play from phrase ${k + 1}`}
+                onClick={() => playFrom(k)}
+              >
+                {playing && k === current ? <PauseIcon /> : <PlayIcon />}
+              </button>
+              <textarea
+                ref={fit}
+                rows={1}
+                value={texts[k]}
+                aria-label={`Phrase ${k + 1}`}
+                placeholder="No caption here"
+                autoCapitalize="off"
+                autoCorrect="off"
+                spellCheck={false}
+                enterKeyHint={k === phrases.length - 1 ? 'done' : 'next'}
+                onFocus={() => {
+                  setTyping(true)
+                  if (playing) stop()
+                  setCurrent(k)
+                  const first = firstWordOf(k)
+                  if (embedded && first >= 0) embedded.seek(words[first].start + 0.02)
+                }}
+                onBlur={() => setTyping(false)}
+                onChange={(e) => {
+                  fit(e.currentTarget)
+                  type(k, e.target.value.replace(/\n/g, ' '))
+                }}
+                onKeyDown={(e) => {
+                  if (e.key !== 'Enter') return
+                  e.preventDefault()
+                  next(k)
+                }}
+              />
+            </li>
+          ))}
+        </ol>
+      </CaptionSheet>
 
       <div className="review-look">
         {clips}

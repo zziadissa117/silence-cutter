@@ -13,6 +13,7 @@ let root: Root
 
 beforeEach(() => {
   vi.useFakeTimers()
+  localStorage.clear()
   window.scrollTo = vi.fn() as never
   host = document.createElement('div')
   document.body.appendChild(host)
@@ -64,13 +65,30 @@ describe('the edit screen', () => {
     tapClip(0)
     expect(button('Split')).toBeTruthy()
     expect(button('Delete')).toBeTruthy()
-    const phrases = [...host.querySelectorAll<HTMLTextAreaElement>('.phrases textarea')].map((t) => t.value)
+    // The captions' sheet starts closed - the screen is his for the cuts -
+    // and the toolbar's Captions opens it over the screen (his ask,
+    // 2026-11-13), on the same page: no second video.
+    expect(document.querySelector('.caption-sheet')).toBeNull()
+    act(() => (host.querySelector('.caption-sheet-open') as HTMLButtonElement).click())
+    const sheet = document.querySelector('.caption-sheet') as HTMLElement
+    expect(sheet).toBeTruthy()
+    const phrases = [...sheet.querySelectorAll<HTMLTextAreaElement>('.phrases textarea')].map((t) => t.value)
     expect(phrases).toEqual(['This app rocks.', 'Link in bio.'])
+    // Closed again: as he leaves it, next time too.
+    act(() => (sheet.querySelector('[aria-label="Close the captions"]') as HTMLButtonElement).click())
+    expect(document.querySelector('.caption-sheet')).toBeNull()
+    expect(localStorage.getItem('captions.sheetEdit')).toBe('false')
     expect(button('Approve')).toBeTruthy()
-    // No second video, and no going back and forth: the captions are on
-    // this page (the toolbar's Captions only scrolls down to them).
     expect(host.querySelector('.review-head')?.textContent).not.toContain('Captions')
     expect(button('Cuts')).toBeUndefined()
+  })
+
+  it("the toolbar's Captions opens the captions' sheet over the editor", () => {
+    show()
+    act(() => button('Timeline editor')!.click())
+    act(() => button('Captions')!.click())
+    expect(document.querySelectorAll('.caption-sheet .phrases textarea')).toHaveLength(2)
+    expect(localStorage.getItem('captions.sheetEdit')).toBe('true')
   })
 
   it('tells the captions to follow a change to the cuts once it settles', () => {

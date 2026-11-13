@@ -17,6 +17,7 @@ import type { Range } from '../media/silenceMath'
 import { CaptionReview, paintPictures, paintPopBox, usePictureStills, usePopStills, type EmbeddedVideo } from './CaptionReview'
 import { CAPTION_LEAD, captionAt, captionRanges, drawStyledCaption, type CaptionWord, PHRASE_HOLD_SEC } from './captions'
 import { CutsEditor, type CutsControl } from './CutsEditor'
+import { useSheetPref } from './CaptionSheet'
 import type { ManualPicture } from './manualPictures'
 
 /** How long the cuts are left to settle before the captions follow them:
@@ -83,6 +84,10 @@ export function EditScreen({
   // Opens on the quick check: the video and the captions to look at, one at a
   // time. The timeline and its tools only when he asks (2026-11-02).
   const [quick, setQuick] = useState(!startFull)
+  // The captions' sheet over the editor (his ask, 2026-11-13): closed to
+  // start, so the screen is his for the cuts; the toolbar's Captions opens
+  // it, and it stays as he leaves it.
+  const [sheetOpen, setSheetOpen] = useSheetPref('captions.sheetEdit', false)
   const control = useRef<CutsControl | null>(null)
 
   // The captions drawn on the video: his, as he types them.
@@ -183,6 +188,7 @@ export function EditScreen({
       headActions={null}
       typing={typing}
       quick={quick}
+      onCaptionsTool={() => setSheetOpen(true)}
       below={
         <CaptionReview
           key={`${id}:${JSON.stringify(applied)}`}
@@ -192,6 +198,7 @@ export function EditScreen({
           initial={shown}
           embedded={embedded}
           quick={quick}
+          sheet={{ open: sheetOpen, onOpen: setSheetOpen }}
           onTimeline={() => {
             setQuick(false)
             window.scrollTo({ top: 0 })

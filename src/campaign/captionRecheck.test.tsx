@@ -53,7 +53,8 @@ async function show(onRecheck: (phrases: string[]) => Promise<RecheckResult>) {
   )
 }
 
-const boxes = () => [...host.querySelectorAll('textarea')] as HTMLTextAreaElement[]
+// The phrases are in their sheet over the screen (CaptionSheet.tsx), open on a caption check.
+const boxes = () => [...document.querySelectorAll('.caption-sheet textarea')] as HTMLTextAreaElement[]
 
 describe("Claude's check of the captions", () => {
   it('runs by itself when they open, once a video', async () => {
@@ -61,12 +62,12 @@ describe("Claude's check of the captions", () => {
     await show(onRecheck)
     expect(onRecheck).toHaveBeenCalledTimes(1)
     expect(boxes().map((b) => b.value).join(' ')).toContain('Vertus')
-    expect(host.textContent).toContain('Claude fixed')
+    expect(document.body.textContent).toContain('Claude fixed')
     act(() => root.unmount())
     root = createRoot(host)
     await show(onRecheck)
     expect(onRecheck).toHaveBeenCalledTimes(1)
-    expect(host.textContent).toContain('Check again with Claude')
+    expect(document.body.textContent).toContain('Check again with Claude')
   })
 
   it('leaves a phrase he typed into while it checked', async () => {

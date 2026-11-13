@@ -273,7 +273,8 @@ describe('Motion graphics: captions he can fix, as on Videos', () => {
     const edit = [...host.querySelectorAll('button')].find((b) => b.textContent?.startsWith('Edit captions'))!
     await act(async () => edit.click())
     await settle()
-    const box = host.querySelector('textarea, input[type=text]') as HTMLTextAreaElement | HTMLInputElement
+    // The phrases are in their sheet over the screen (CaptionSheet.tsx).
+    const box = document.querySelector('.caption-sheet textarea') as HTMLTextAreaElement | HTMLInputElement
     expect(box).not.toBeNull()
     await act(async () => {
       const proto = box instanceof HTMLTextAreaElement ? HTMLTextAreaElement.prototype : HTMLInputElement.prototype
@@ -324,7 +325,7 @@ describe("Motion graphics: Claude checks the captions, as on Videos", () => {
     await act(async () => edit.click())
     await settle()
     expect(recheck).toHaveBeenCalled()
-    expect(host.textContent).toContain('Claude fixed this')
+    expect(document.querySelector('.caption-sheet')?.textContent).toContain('Claude fixed this')
   })
 })
 

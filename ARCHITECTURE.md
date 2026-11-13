@@ -820,7 +820,8 @@ engine/                        the engine on Railway (Python): engine/ its code,
   (outward brings cut footage back; a start being dragged holds the clips still - `ClipShift` - until the finger
   lets go). Bars (`Bars`) under it for the headline and each thing put on: its middle moves it, its ends change
   when it comes up and how long it stays (`onGrip`). The toolbar along the bottom (`ToolButton`) changes with what
-  is tapped: clip -> Split/Delete; a bar -> Done/Delete; nothing -> Text, Overlay, Captions, Headline, Check.
+  is tapped: clip -> Split/Delete; a bar -> Done/Delete; nothing -> Text, Overlay, Captions (opens the captions'
+  sheet), Headline, Check.
 - Sounds (the edit screen's Sound tool, `SoundPicker.tsx`): a `ManualPicture` with source `kind: 'sound'`
   (`manualPictures.SoundSource`: `from` bank - a music-bank song or sound effect by id, effect - one of
   `motion/sfx.makeSound`'s, phone - a file kept with the video like a picture of his, `ownFile`), so it is saved,
@@ -833,6 +834,12 @@ engine/                        the engine on Railway (Python): engine/ its code,
   `useMusicBank('songs' | 'effects')` keeps them out of every music picker.
 - CutsEditor and CaptionReview hold only their head row and the video at the top (`.review-top`, sticky);
   anything else there (the caption look, the headline, the picture picker) left no room on a phone.
+- The phrases themselves are not in the page: `CaptionSheet.tsx` puts them in a see-through sheet over the bottom of
+  the screen (a portal on `document.body`, above every layer, the Batch check's too), half or three quarters of it
+  (`captions.sheetTall`), closed and opened (`captions.sheet` on caption checks, open to start; `captions.sheetEdit`
+  in the edit screen, closed to start, opened by the toolbar's Captions - `CutsEditor.onCaptionsTool`), on the
+  keyboard while typing (`visualViewport`). Claude's check and the "to check" filter ride at its top; the list
+  follows the playing phrase only while it is open.
 - A change to a render function must keep preview and real frames on the same code.
 - A finished video is copied to private storage the moment it is made; do not
   rely on the list for it. That copy is let go once Postiz has the video (`outbox.copyDone`: scheduled/error with
