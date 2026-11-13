@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { MAX_ZOOM, motionBetween, shiftBetween, steadyPath, type Grey } from './stabilize'
+import { MAX_ZOOM, WORTH_STEADYING, motionBetween, predictedShake, shakeOfMoves, shiftBetween, steadyPath, type Grey } from './stabilize'
 
 /** A random texture (the same every run), smooth enough to be like a real
  * picture, looked up between its points. */
@@ -76,5 +76,34 @@ describe('steadying a shaky take', () => {
 
   it('leaves a steady take alone', () => {
     expect(steadyPath(Array.from({ length: 60 }, () => ({ x: 0.0002, y: 0, angle: 0 })), 30)).toBeNull()
+  })
+})
+
+describe('steadying only when it is worth the wait (his report, 2026-11-13: 2 minutes for nothing)', () => {
+  it("measures a take's shake in pixels a frame, as his reports give it", () => {
+    const moves = [{ x: 0, y: 0 }, { x: 3 / 1080, y: 0 }, { x: 0, y: -4 / 1920 }]
+    expect(shakeOfMoves(moves, 1080, 1920)).toBeCloseTo(3.5, 5)
+  })
+
+  it('a selfie take (1 to 2 px a frame) is under what is worth steadying', () => {
+    expect(1.2).toBeLessThan(WORTH_STEADYING * 1080)
+    // His back camera's shaky takes are over it.
+    for (const px of [6.2, 7.2, 9.7, 12.9]) expect(px).toBeGreaterThan(WORTH_STEADYING * 1080)
+  })
+
+  it('knows before redrawing that hard jitter comes out much steadier', () => {
+    const moves = Array.from({ length: 90 }, (_, i) => ({ x: i === 0 ? 0 : i % 2 ? 0.012 : -0.012, y: i === 0 ? 0 : i % 3 ? 0.005 : -0.01, angle: 0 }))
+    const plan = steadyPath(moves, 30)!
+    const before = shakeOfMoves(moves, 1080, 1920)
+    expect(predictedShake(moves, plan, 1080, 1920)).toBeLessThan(before * 0.5)
+  })
+
+  it('knows a steady walk or pan would not come out steadier - no redrawing it for nothing', () => {
+    // Moving one way, smoothly, with only a little wobble: the path is
+    // already the steady path.
+    const moves = Array.from({ length: 90 }, (_, i) => ({ x: i === 0 ? 0 : 0.006 + (i % 2 ? 0.0004 : -0.0004), y: 0, angle: 0 }))
+    const plan = steadyPath(moves, 30)
+    const before = shakeOfMoves(moves, 1080, 1920)
+    if (plan) expect(predictedShake(moves, plan, 1080, 1920)).toBeGreaterThan(before * 0.8)
   })
 })

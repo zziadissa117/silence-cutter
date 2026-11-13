@@ -16,6 +16,15 @@
 //      copied as it is.
 //
 // A take already steady (on a tripod, propped up) is left alone.
+//
+// Made quick (2026-11-13, his report: "it took me 2 whole minutes ... is it
+// even worth it?"): his 68 s selfie take sat 2 min 20 s in steadying - three
+// passes over every frame (measure, redraw, measure again) - and was thrown
+// away at the end, as 16 of his 27 takes had been. Now a take is redrawn
+// only when the measuring shows shake worth taking out and the steady path
+// would clearly take it out; the check is made on the frames as they are
+// redrawn (no third pass); Skip stops it at once. The recorder steadies only
+// the back camera's takes (Recorder.tsx).
 
 import {
   ALL_FORMATS,
@@ -39,7 +48,11 @@ import { frameRateOf } from './quality'
 
 /** The steadied take is kept only when its shake is under this share of
  *  the original's. */
-const KEEP_IF_BELOW = 0.75
+const KEEP_IF_BELOW = 0.8
+/** Less shake than this (share of the width moved, typical frame) is left
+ *  as it is: below it the measuring is mostly noise (his selfie takes, 1 to
+ *  2 px a frame at 1080), and redrawing them never came out steadier. */
+export const WORTH_STEADYING = 0.003
 /** The size frames are measured at (portrait; a landscape take turns it). */
 const SMALL_W = 144
 const SMALL_H = 256
@@ -292,6 +305,32 @@ export async function movesOf(file: Blob): Promise<{ x: number; y: number; angle
   }
 }
 
+/** How far each frame moves from the one before, on average, in pixels of
+ *  the full frame. */
+export function shakeOfMoves(moves: readonly { x: number; y: number }[], width: number, height: number): number {
+  let sum = 0
+  for (let i = 1; i < moves.length; i++) sum += Math.hypot(moves[i].x * width, moves[i].y * height)
+  return sum / Math.max(1, moves.length - 1)
+}
+
+/** The shake the steadied take would have: each frame's move plus the
+ *  change in its correction, zoomed - worked out before anything is redrawn,
+ *  so a take it wouldn't help is not made again for nothing. */
+export function predictedShake(
+  moves: readonly { x: number; y: number }[],
+  plan: { corrections: readonly Correction[]; zoom: number },
+  width: number,
+  height: number,
+): number {
+  let sum = 0
+  for (let i = 1; i < moves.length; i++) {
+    const c = plan.corrections[i] ?? plan.corrections[plan.corrections.length - 1]
+    const p = plan.corrections[i - 1] ?? c
+    sum += Math.hypot((moves[i].x + c.x - p.x) * plan.zoom * width, (moves[i].y + c.y - p.y) * plan.zoom * height)
+  }
+  return sum / Math.max(1, moves.length - 1)
+}
+
 /** What happened to a take. */
 export interface Steadied {
   file: File
@@ -304,8 +343,10 @@ export interface Steadied {
 
 const bitrate = (fps: number) => (fps > 40 ? 32_000_000 : 20_000_000)
 
-/** The take steadied, or as it was when it is steady already. */
-export async function stabilize(file: File, onProgress?: (fraction: number) => void): Promise<Steadied> {
+/** The take steadied, or as it was when it is steady already, when
+ *  steadying wouldn't help, or when `signal` stops it (Skip). */
+export async function stabilize(file: File, onProgress?: (fraction: number) => void, signal?: AbortSignal): Promise<Steadied> {
+  const skipped: Steadied = { file, changed: false, why: 'skipped' }
   const input = new Input({ source: new BlobSource(file), formats: ALL_FORMATS })
   try {
     const video = await input.getPrimaryVideoTrack()
@@ -323,13 +364,20 @@ export async function stabilize(file: File, onProgress?: (fraction: number) => v
     const moves: { x: number; y: number; angle: number }[] = []
     let last: Grey | null = null
     for await (const frame of small.canvases()) {
+      if (signal?.aborted) return skipped
       const grey = greyOf(frame.canvas)
       moves.push(last ? motionBetween(last, grey) : { x: 0, y: 0, angle: 0 })
       last = grey
       onProgress?.(Math.min(0.3, ((frame.timestamp - start) / length) * 0.3))
     }
+    const before = shakeOfMoves(moves, width, height)
+    if (before < WORTH_STEADYING * width) return { file, changed: false, why: `steady already (${before.toFixed(1)} px a frame)` }
     const plan = steadyPath(moves, fps, width / height)
     if (!plan) return { file, changed: false, why: 'steady already' }
+    const expected = predictedShake(moves, plan, width, height)
+    if (expected > before * KEEP_IF_BELOW) {
+      return { file, changed: false, why: `wouldn't be steadier (${before.toFixed(1)} -> about ${expected.toFixed(1)} px a frame)` }
+    }
 
     // 2. Redraw each frame back on the steady path, zoomed to hide the edges.
     const sink = await createOutputSink()
@@ -348,9 +396,20 @@ export async function stabilize(file: File, onProgress?: (fraction: number) => v
       if (sound) output.addAudioTrack(sound)
       await output.start()
 
+      // Each redrawn frame measured as it is made, small and grey, as the
+      // original was: the check costs no third pass over the take.
+      const check = new OffscreenCanvas(portrait ? SMALL_W : SMALL_H, portrait ? SMALL_H : SMALL_W)
+      const checkCtx = check.getContext('2d', { willReadFrequently: true })
+      let lastOut: Grey | null = null
+      let afterSum = 0
+      let afterN = 0
       let i = 0
       const pictures = async () => {
         for await (const sample of new VideoSampleSink(video).samples()) {
+          if (signal?.aborted) {
+            sample.close()
+            break
+          }
           try {
             const c = plan.corrections[Math.min(i, plan.corrections.length - 1)]
             ctx.setTransform(1, 0, 0, 1, 0, 0)
@@ -361,6 +420,16 @@ export async function stabilize(file: File, onProgress?: (fraction: number) => v
             ctx.scale(plan.zoom, plan.zoom)
             ctx.translate(-width / 2 + c.x * width, -height / 2 + c.y * height)
             sample.draw(ctx, 0, 0, width, height)
+            if (checkCtx) {
+              checkCtx.drawImage(canvas, 0, 0, check.width, check.height)
+              const grey = greyOf(check)
+              if (lastOut) {
+                const m = motionBetween(lastOut, grey)
+                afterSum += Math.hypot(m.x * width, m.y * height)
+                afterN++
+              }
+              lastOut = grey
+            }
             const out = new VideoSample(canvas, { timestamp: sample.timestamp, duration: sample.duration })
             await source.add(out)
             out.close()
@@ -368,7 +437,7 @@ export async function stabilize(file: File, onProgress?: (fraction: number) => v
             sample.close()
           }
           i++
-          onProgress?.(0.3 + Math.min(0.65, (i / Math.max(1, plan.corrections.length)) * 0.65))
+          onProgress?.(0.3 + Math.min(0.68, (i / Math.max(1, plan.corrections.length)) * 0.68))
         }
       }
       // The sound alongside the picture, so neither waits in memory for the other.
@@ -377,24 +446,25 @@ export async function stabilize(file: File, onProgress?: (fraction: number) => v
         const config = await audio.getDecoderConfig()
         let first = true
         for await (const packet of new EncodedPacketSink(audio).packets()) {
+          if (signal?.aborted) break
           await sound.add(packet, first && config ? { decoderConfig: config } : undefined)
           first = false
         }
       }
       await Promise.all([pictures(), sounds()])
+      if (signal?.aborted) return skipped
+      // Checked before it is even finished: kept only when it really is
+      // steadier - a picture that moves by itself (a screen, a passing car)
+      // can fool the measuring.
+      const after = afterN > 0 ? afterSum / afterN : null
+      if (after === null || after > before * KEEP_IF_BELOW) {
+        return { file, changed: false, why: `not steadier (${before.toFixed(1)} -> ${after?.toFixed(1) ?? '?'} px a frame)` }
+      }
       await output.finalize()
       const blob = await sink.finish()
       if (blob.size === 0) return { file, changed: false, why: 'it came out empty' }
       finished = true
       onProgress?.(1)
-      onProgress?.(0.96)
-      // Checked: kept only when it really is steadier - a picture that
-      // moves by itself (a screen, a passing car) can fool the measuring.
-      const before = moves.slice(1).reduce((n, m) => n + Math.hypot(m.x * width, m.y * height), 0) / Math.max(1, moves.length - 1)
-      const after = await shakeOf(blob)
-      if (after === null || after > before * KEEP_IF_BELOW) {
-        return { file, changed: false, why: `not steadier (${before.toFixed(1)} -> ${after?.toFixed(1) ?? '?'} px a frame)` }
-      }
       return {
         file: new File([blob], file.name, { type: 'video/mp4', lastModified: file.lastModified }),
         changed: true,

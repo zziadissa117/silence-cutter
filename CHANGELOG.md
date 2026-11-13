@@ -3,6 +3,23 @@
 Newest first. Every change says what it does, how to use it, and how it works
 underneath. Kept up to date with each commit.
 
+## Steadying: only when it helps, and no more long waits
+- His report (2026-11-13): "the stabilization ... took me 2 whole minutes ... is it even worth it?" His reports
+  showed why: his 68 s selfie take sat about 2 min 20 s in "Steadying" and was then thrown away as not steadier -
+  like 16 of his last 27 takes. Every take went through three passes over all its frames (measure, make again,
+  measure again), even when it was steady.
+- Now:
+  - Front camera takes are never steadied: talking to the camera they measured 1 to 2 px of movement a frame,
+    nothing to take out. Only the back camera's takes are (what he asked it for).
+  - A take with little shake (under 0.3% of the width a frame) is left as it is after the quick measuring.
+  - Before making it again, the Cutter works out how steady it would come out; when that isn't clearly steadier,
+    it isn't made again for nothing.
+  - The "is it really steadier" check is made on the frames as they are made - no third pass.
+  - Skip stops it at once (before, it finished the clip it was on first).
+- Checked in Chrome on test clips: a steady 10 s clip is left alone after the measuring; a shaky one comes out with
+  half the shake; Skip on a 30 s clip stops within a moment.
+- Tests: `stabilize.test.ts`.
+
 ## Motion graphics: Play before making, and cleaner graphics
 Needs deploying: run ./deploy-server.sh (Claude's motion prompt, the new compare card), then ./deploy.sh.
 - His ask (2026-11-12): "put more effort overall with motion graphics, it's obviously v1 right now and it's lazy

@@ -171,6 +171,10 @@ export function Recorder({
   const recorder = useRef<MediaRecorder | null>(null)
   const chunks = useRef<Blob[]>([])
   const takes = useRef<File[]>([])
+  /** Which camera each take was filmed with: only the back camera's are
+   *  steadied. */
+  const takeCameras = useRef<Facing[]>([])
+  const facingNow = useRef<Facing>('user')
   const [facing, setFacing] = useState<Facing>('user')
   const [problem, setProblem] = useState<string | null>(null)
   const [recording, setRecording] = useState(false)
@@ -185,7 +189,8 @@ export function Recorder({
    *  turned it off, remembered. */
   const [steady, setSteady] = useState(() => readSteady())
   const [steadying, setSteadying] = useState<{ take: number; of: number; progress: number } | null>(null)
-  const skipSteady = useRef(false)
+  /** Skip: stops the steadying at once, not after the take being done. */
+  const skipSteady = useRef<AbortController | null>(null)
   const [torch, setTorch] = useState(false)
   const [quality, setQuality] = useState<string | null>(null)
   /** Where each new clip starts, in ms of the finished recording. */
@@ -314,6 +319,7 @@ export function Recorder({
   }, [])
 
   useEffect(() => {
+    facingNow.current = facing
     void open(facing)
     // Only when he flips; open() itself never changes.
   }, [facing]) // eslint-disable-line react-hooks/exhaustive-deps
@@ -453,6 +459,7 @@ export function Recorder({
       if (e.data.size > 0) chunks.current.push(e.data)
     }
     const began = new Date()
+    const shotWith = facingNow.current
     r.onstop = () => {
       picture.stop()
       // How smoothly it went, for when a take looks laggy.
@@ -473,6 +480,7 @@ export function Recorder({
           .then((line) => report({ kind: 'check', phase: 'record file', message: line }))
           .catch(() => {})
         takes.current.push(new File([blob], takeName(began, kind, takes.current.length), { type: blob.type, lastModified: began.getTime() }))
+        takeCameras.current.push(shotWith)
         lengths.current.push(Date.now() - began.getTime())
         setTakeCount(takes.current.length)
       }
@@ -557,23 +565,31 @@ export function Recorder({
       onCancel()
       return
     }
-    // Each take steadied (stabilize.ts) - the iPhone gives a web page its
-    // camera without the Camera app's steadying (his ask, 2026-11-07).
+    // The back camera's takes steadied (stabilize.ts) - the iPhone gives a
+    // web page its camera without the Camera app's steadying (his ask,
+    // 2026-11-07: "when I ... film with the back camera"). Not the front
+    // camera's: talking to it, the picture never needed it (his selfie
+    // takes measured 1 to 2 px a frame) and a long one cost him minutes for
+    // nothing (2026-11-13).
     const files = [...takes.current]
-    if (steady) {
-      skipSteady.current = false
-      for (const [i, take] of files.entries()) {
-        if (skipSteady.current) break
-        setSteadying({ take: i + 1, of: files.length, progress: 0 })
+    const shaky = files.flatMap((_, i) => (takeCameras.current[i] === 'environment' ? [i] : []))
+    if (steady && shaky.length > 0) {
+      const skip = new AbortController()
+      skipSteady.current = skip
+      for (const [n, i] of shaky.entries()) {
+        if (skip.signal.aborted) break
+        const take = files[i]
+        setSteadying({ take: n + 1, of: shaky.length, progress: 0 })
         try {
-          const done = await stabilize(take, (progress) => setSteadying({ take: i + 1, of: files.length, progress }))
-          if (!skipSteady.current) files[i] = done.file
+          const done = await stabilize(take, (progress) => setSteadying({ take: n + 1, of: shaky.length, progress }), skip.signal)
+          if (!skip.signal.aborted) files[i] = done.file
           report({ kind: 'check', phase: 'steady', message: `${take.name}: ${done.changed ? `steadied, zoom ${done.zoom?.toFixed(2)}` : 'kept as it was'} - ${done.why ?? ''}` })
         } catch (error) {
           // As it was, rather than not at all.
           report({ kind: 'fallback', phase: 'steady', message: `${take.name}: ${error instanceof Error ? error.message : String(error)}` })
         }
       }
+      skipSteady.current = null
       setSteadying(null)
     }
     onDone(files, clipStarts(marks.current, total))
@@ -586,6 +602,7 @@ export function Recorder({
     setAskDelete(false)
     if (recording || takes.current.length === 0) return
     takes.current.pop()
+    takeCameras.current.pop()
     lengths.current.pop()
     // Its clips go with it.
     const left = lengths.current.reduce((a, b) => a + b, 0)
@@ -750,7 +767,7 @@ export function Recorder({
             <div style={{ width: `${Math.round(steadying.progress * 100)}%` }} />
           </div>
           <div className="recorder-ask-buttons">
-            <button type="button" className="btn" onClick={() => (skipSteady.current = true)}>
+            <button type="button" className="btn" onClick={() => skipSteady.current?.abort()}>
               Skip
             </button>
           </div>

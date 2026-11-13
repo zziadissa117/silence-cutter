@@ -98,7 +98,7 @@ only, no Supabase); `./deploy-server.sh` ships the `postiz` and `cutter` functio
 - Batch mixing: `batch.ts` (`pickBatch`, `combos`; hooks in shares `looks`/`looksToMix` - headline looks and Claude + X; product steps `BatchStep` set in `StepOrder.tsx` - names and order; each step's own words placed on a phone screen `StepTexts.tsx`, `BatchStep.texts`, drawn by `montageRender` `stepTexts`), made by `montageRender.ts` (reaction zoom; each step clip plays its moment, found by `stepPiece.ts` from frame sizes)
 - Wide clips -> 9:16: `framing916.ts` (Settings: Fill/Fit/Off)
 - Edit again: `store.ts` (markMade/reopenJob/expireMade, 2 h window), `PostsView.EditAgain`, `CampaignApp.editAgain/retireOld` (see ARCHITECTURE.md)
-- Recording in the Cutter (camera, flip, light, takes): `Recorder.tsx` (Videos -> Record a video); every take steadied after Done: `stabilize.ts`
+- Recording in the Cutter (camera, flip, light, takes): `Recorder.tsx` (Videos -> Record a video); the back camera's takes steadied after Done, only when it helps: `stabilize.ts`
 - Tabs: `TabBar.tsx` (Videos, Posts, Batch, Analytics, More), `MoreView.tsx` (Campaigns, Formats, Bank, Settings, Cut only - each with `BackToMore`)
 - Queue/storage: `store.ts`, `outbox.ts`; sync + login: `cloud.ts`, `SignIn.tsx`, `LoginGate.tsx`
 - Updates: a new version waits until the page lets it in (`UpdateBanner.reloadIntoUpdate`; `skipWaiting` off in vite.config.ts; the campaign page's `restartPage` and the plain page's banner both go through it). One tab works at a time: `media/workLock.ts`. A cut that stops moving: `media/stallWatch.ts` (Cut only), `CampaignApp.watched` + `stallRestart.ts` (campaign)
