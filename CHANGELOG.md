@@ -3,6 +3,12 @@
 Newest first. Every change says what it does, how to use it, and how it works
 underneath. Kept up to date with each commit.
 
+## Talking head batches: one kind of words per clip
+- His point (2026-11-13): "a headline on top and then always a caption in every single clip. Does not make sense."
+- Now, in a talking head batch: his talking clip has the headline (the hook) and his captions, as before; a product
+  step he talks over shows his captions only - its name is no longer put on top of them; a step he doesn't talk in
+  shows its name, as before. Words he placed himself on a step (the step words screen) still show.
+
 ## Wide clips untouched everywhere, black not blurred, captions on product steps
 - His answer (2026-11-13): "do it for talking video batches too. Black is good ... The video is going to be in 9:16,
   but it's going to have a horizontal, already premade thing. Just don't change anything about the video itself ...

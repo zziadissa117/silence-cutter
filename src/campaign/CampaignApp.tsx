@@ -2119,7 +2119,11 @@ export function CampaignApp() {
           const stepped = next.montage.bank?.steps
           const known = stepped ? (batchBank ?? (await loadBatchBank(next.campaignId).catch(() => null))) : null
           const stepOf = (s: NonNullable<typeof stepped>[number]) => known?.steps?.find((k) => k.files.some((f) => f.id === s.file.id))
-          const titles = stepped ? [null, ...stepped.map((s) => stepTitle(s.name ?? stepOf(s)?.name) || null)] : undefined
+          // One kind of words per clip (his rule, 2026-11-13: "a headline on top
+          // and then always a caption in every single clip - does not make
+          // sense"): a step he talks over shows his captions, not its name;
+          // a step he doesn't talk in shows its name.
+          const titles = stepped ? [null, ...stepped.map((s, k) => (stepSaid[k] ? null : stepTitle(s.name ?? stepOf(s)?.name) || null))] : undefined
           // A step's own words, each where he put it on the phone screen
           // (StepTexts.tsx) - as the step is set now.
           const ownTexts = stepped ? [null, ...stepped.map((s) => (stepOf(s)?.texts ? stepTexts(stepOf(s)) : null))] : undefined
