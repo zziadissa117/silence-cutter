@@ -3,6 +3,23 @@
 Newest first. Every change says what it does, how to use it, and how it works
 underneath. Kept up to date with each commit.
 
+## Talking head formats: drop in all your clips at once
+- His ask (2026-11-13): 45 short clips of him saying each step's phrase - "Drop in all videos ... the cutter cuts the
+  videos and cuts the awkward silences ... puts captions ... assigns them to the product steps. After those get
+  done, I verify really quickly." His picks: matched by the step's name; cut "exactly like the cutter is cutting
+  now, but with a little bit more leeway".
+- A talking head format whose product steps are set has "Drop in all videos" (under its steps). Pick them all; each
+  one in turn is listened to, cut with his own pacing plus a little more room (a pause must be 0.2 s longer to be
+  cut, 0.06 s more kept around each word), kept as a step clip with its captions' words (never listened to again),
+  and put in the step whose name he says in it ("Step 1: Nope, do this instead" -> the clips where he says "nope,
+  do this instead").
+- Then one quick list: what he says in each clip and its step, the ones it isn't sure of first (marked), a dropdown
+  to move one or "Leave out". "Looks good" finishes; each step remembers how he said it, so the next drop-in sorts
+  his wording better. A clip it couldn't use says why. "Stop after this one" stops a long drop-in.
+- Product steps only for now; sorting hooks the same way is proposed to him first.
+- Not run on a phone here: the listening can't run in this test setup. Tests: `stepMatch.test.ts`,
+  `dropInView.test.tsx`.
+
 ## Talking head formats: captions at any height
 - His ask (2026-11-13): "let me change the captions' height ... at the top, at the bottom, or at the middle. Let me
   change it manually and not in a set space" - once per format.

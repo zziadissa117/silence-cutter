@@ -309,6 +309,9 @@ export interface BatchStep {
    *  phone screen, popping in every time the step plays (his ask,
    *  2026-11-13). Their files are kept with the batch's clips. */
   overlays?: StepOverlay[]
+  /** What he said in clips he put in this step after a drop-in - so the next
+   *  ones saying it the same way go here too (stepMatch.ts). */
+  heard?: string[]
 }
 
 /** A picture or video on a step's clip. */

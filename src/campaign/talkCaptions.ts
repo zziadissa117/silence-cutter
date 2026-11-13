@@ -30,6 +30,12 @@ export function keptWords(clip: Pick<BankFile, 'id' | 'fp'>): CaptionWord[] | nu
   }
 }
 
+/** Words already heard elsewhere (a drop-in heard them while cutting the
+ *  clip), kept so the clip is never heard again. */
+export function rememberWords(clip: Pick<BankFile, 'id' | 'fp'>, words: CaptionWord[]): void {
+  keepWords(clip, words)
+}
+
 function keepWords(clip: Pick<BankFile, 'id' | 'fp'>, words: CaptionWord[]): void {
   try {
     localStorage.setItem(talkKey(clip), JSON.stringify({ v: VERSION, words }))

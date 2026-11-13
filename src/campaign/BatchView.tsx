@@ -47,6 +47,7 @@ import {
 } from './batch'
 import { StepOrder } from './StepOrder'
 import { CaptionHeight } from './CaptionHeight'
+import { DropIn } from './DropIn'
 import { StepTexts } from './StepTexts'
 import { BatchStatus } from './BatchStatus'
 import { Mark } from './Mark'
@@ -1314,6 +1315,11 @@ export function BatchView({
                       : 'Shown after you.',
                   f.id,
                 )}
+            {/* All his clips at once, cut, captioned and put in their steps
+                (his ask, 2026-11-13) - a talking head whose steps are set. */}
+            {f.kind === 'talking' && steps.length > 0 ? (
+              <DropIn steps={steps} names={campaign.brandWords ?? []} getBank={() => bankRef.current} keep={keep} />
+            ) : null}
             <div className="format-actions">
               <button type="button" className="btn small" aria-expanded={ordering === f.id} onClick={() => setOrdering(ordering === f.id ? null : f.id)}>
                 {steps.length > 0 ? `Product steps · ${steps.length}` : 'Product steps'}
