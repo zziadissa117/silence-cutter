@@ -3,6 +3,14 @@
 Newest first. Every change says what it does, how to use it, and how it works
 underneath. Kept up to date with each commit.
 
+## Drop in all videos: hooks too, his pick per format
+- His answer (2026-11-13): "Make it so I choose each new format, it's fine."
+- A talking head format has a "Dropped clips can be hooks" switch (off as before). On: a dropped clip that says no
+  step's name becomes one of the format's hooks (cut and captioned the same way); the check list has "Hook" in its
+  dropdown, and a clip that says next to nothing of any step counts as a sure hook.
+- A recording dropped in before is not kept again ("already in from before" on the check).
+- Tests: `dropInView.test.tsx`, `stepMatch.test.ts`.
+
 ## Talking head formats: drop in all your clips at once
 - His ask (2026-11-13): 45 short clips of him saying each step's phrase - "Drop in all videos ... the cutter cuts the
   videos and cuts the awkward silences ... puts captions ... assigns them to the product steps. After those get

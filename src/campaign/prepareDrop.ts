@@ -46,9 +46,10 @@ export type DropPhase = 'model' | 'listening' | 'cutting'
  *  they are heard right. */
 export async function prepareClip(
   file: File,
-  { names, onPhase }: { names: string[]; onPhase?: (phase: DropPhase, fraction: number) => void },
+  { names, onPhase, from: given }: { names: string[]; onPhase?: (phase: DropPhase, fraction: number) => void; from?: string },
 ): Promise<DroppedClip> {
   const settings = videoSettings()
+  const from = given ?? (await fingerprint(file))
   const plan = await listen(
     file,
     withLeeway(PRESETS[settings.preset]),
@@ -73,6 +74,7 @@ export async function prepareClip(
     type: 'video/mp4',
     size: made.blob.size,
     fp: await fingerprint(made.blob),
+    from,
     ...(seconds ? { seconds } : {}),
   }
   // On the cut's own clock, as its captions are drawn.

@@ -1318,7 +1318,26 @@ export function BatchView({
             {/* All his clips at once, cut, captioned and put in their steps
                 (his ask, 2026-11-13) - a talking head whose steps are set. */}
             {f.kind === 'talking' && steps.length > 0 ? (
-              <DropIn steps={steps} names={campaign.brandWords ?? []} getBank={() => bankRef.current} keep={keep} />
+              <>
+                <DropIn formatId={f.id} steps={steps} hooks={Boolean(f.dropHooks)} names={campaign.brandWords ?? []} getBank={() => bankRef.current} keep={keep} />
+                {/* His pick per format (2026-11-13: "make it so I choose each
+                    new format"): dropped clips can be hooks too. */}
+                <div className="setting">
+                  <div className="setting-text">
+                    <span className="row-name">Dropped clips can be hooks</span>
+                    <span className="row-line">
+                      {f.dropHooks ? 'On: a clip that says no step\'s name becomes a hook.' : 'Off: every dropped clip goes to a product step.'}
+                    </span>
+                  </div>
+                  <input
+                    type="checkbox"
+                    className="switch"
+                    checked={Boolean(f.dropHooks)}
+                    aria-label="Dropped clips can be hooks"
+                    onChange={(e) => changeFormat(f.id, { dropHooks: e.target.checked || undefined })}
+                  />
+                </div>
+              </>
             ) : null}
             <div className="format-actions">
               <button type="button" className="btn small" aria-expanded={ordering === f.id} onClick={() => setOrdering(ordering === f.id ? null : f.id)}>

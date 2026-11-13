@@ -14,11 +14,13 @@ const said: Record<string, string> = {
   'c.mov': 'hello there everyone',
 }
 vi.mock('./prepareDrop', () => ({
-  prepareClip: vi.fn(async (file: File) => {
+  prepareClip: vi.fn(async (file: File, { from }: { from?: string }) => {
     if (file.name === 'bad.mov') throw new Error('no talking heard in it')
-    return { file: { id: `cut-${file.name}`, name: file.name, type: 'video/mp4', size: 1 }, words: [], text: said[file.name] }
+    return { file: { id: `cut-${file.name}`, name: file.name, type: 'video/mp4', size: 1, from }, words: [], text: said[file.name] }
   }),
 }))
+// A recording's fingerprint: its name, here.
+vi.mock('./fingerprint', () => ({ fingerprint: vi.fn(async (file: File) => `fp-${file.name}`) }))
 const retired: string[] = []
 vi.mock('./store', () => ({ retireBankFiles: vi.fn(async (ids: string[]) => void retired.push(...ids)) }))
 
@@ -38,7 +40,7 @@ beforeEach(() => {
   host = document.createElement('div')
   document.body.append(host)
   root = createRoot(host)
-  bank = { steps } as BatchBank
+  bank = { steps, reactions: [] } as unknown as BatchBank
   retired.length = 0
 })
 afterEach(() => {
@@ -46,10 +48,12 @@ afterEach(() => {
   host.remove()
 })
 
-const render = () =>
+const render = (hooks = false) =>
   act(async () =>
     root.render(
       <DropIn
+        formatId="t"
+        hooks={hooks}
         steps={bank.steps!}
         names={[]}
         getBank={() => bank}
@@ -76,7 +80,7 @@ describe('dropping in all his clips', () => {
     expect(host.textContent).toContain('Check them · 4 clips · 1 to look at')
     // The one it couldn't place comes first, to pick its step.
     const first = host.querySelector('.drop-in-row') as HTMLElement
-    expect(first.textContent).toContain('Not sure which step')
+    expect(first.textContent).toContain('Not sure where it goes')
     const pick = first.querySelector('select') as HTMLSelectElement
     await act(async () => {
       pick.value = 's2'
@@ -100,5 +104,28 @@ describe('dropping in all his clips', () => {
     })
     expect(bank.steps![0].files).toEqual([])
     expect(retired).toEqual(['cut-a.mov'])
+  })
+
+  it('in a format that takes hooks, a clip that says no step is a hook; one dropped in before is not kept twice', async () => {
+    await render(true)
+    await drop(['a.mov', 'c.mov'])
+    expect(bank.steps![0].files.map((f) => f.id)).toEqual(['cut-a.mov'])
+    expect(bank.reactions.map((r) => r.id)).toEqual(['cut-c.mov'])
+    expect(bank.reactions[0]).toMatchObject({ formats: ['t'], talks: true })
+    // Clearly no step: a hook, nothing to look at.
+    expect(host.textContent).toContain('all sure')
+    // Moved from the hooks to a step.
+    const row = [...host.querySelectorAll('.drop-in-row')].find((r) => r.textContent?.includes('hello there')) as HTMLElement
+    const pick = row.querySelector('select') as HTMLSelectElement
+    await act(async () => {
+      pick.value = 's2'
+      pick.dispatchEvent(new Event('change', { bubbles: true }))
+    })
+    expect(bank.reactions).toEqual([])
+    expect(bank.steps![1].files.map((f) => f.id)).toEqual(['cut-c.mov'])
+    await act(async () => ([...host.querySelectorAll('button')].find((b) => b.textContent === 'Looks good') as HTMLButtonElement).click())
+    await drop(['a.mov'])
+    expect(host.textContent).toContain('a.mov: already in from before')
+    expect(bank.steps![0].files).toHaveLength(1)
   })
 })

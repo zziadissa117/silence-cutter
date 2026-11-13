@@ -54,6 +54,9 @@ export interface BankFile {
   /** The formats of the batch it belongs to (BatchFormat ids): a clip of him
    *  belongs to one, a product clip to one or more. */
   formats?: string[]
+  /** Cut from this recording (its fingerprint) by a drop-in, so dropping
+   *  the same recording in again doesn't keep it twice. */
+  from?: string
 }
 
 /** What one kind of video in a batch is: his silent reaction then the
@@ -83,6 +86,10 @@ export interface BatchFormat {
    *  centre as a share of the video's height (captions.CaptionSpot). Absent:
    *  the usual place (his ask, 2026-11-13). */
   captionY?: number
+  /** Drop in all videos: a clip that says no step's name is one of his hooks
+   *  (the talking part at the start) - his pick, per format (2026-11-13).
+   *  Absent: every dropped clip goes to a step. */
+  dropHooks?: boolean
 }
 
 export const FORMAT_KINDS: { kind: FormatKind; label: string; hint: string }[] = [

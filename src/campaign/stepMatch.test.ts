@@ -28,7 +28,8 @@ describe('which step a clip goes to', () => {
   it('says it is not sure when it is close or nothing fits', () => {
     expect(matchStep('nope, do it', steps)).toMatchObject({ stepId: 'a', sure: false })
     expect(matchStep('this is the best thing ever', steps).sure).toBe(false)
-    expect(matchStep('hello everybody', steps)).toEqual({ stepId: null, sure: false })
+    // Clearly none of them (a hook, where the format takes hooks).
+    expect(matchStep('hello everybody', steps)).toEqual({ stepId: null, sure: true })
   })
 
   it('learns how he says it from clips he moved there', () => {

@@ -38,9 +38,13 @@ export function saidOf(phrase: string[], said: ReadonlySet<string>): number {
 export interface StepMatch {
   /** The step it goes to; null when nothing fits. */
   stepId: string | null
-  /** Clearly that step - not shown as one to check. */
+  /** Clearly that step - not shown as one to check. With no step: clearly
+   *  none (a hook, in a format that takes hooks). */
   sure: boolean
 }
+
+/** Below this, it says next to nothing of any step: clearly none. */
+const NOTHING = 0.15
 
 /** Sure from this much of a step's words said... */
 const SURE = 0.6
@@ -59,7 +63,7 @@ export function matchStep(text: string, steps: readonly Pick<BatchStep, 'id' | '
     }))
     .sort((a, b) => b.score - a.score)
   const [best, next] = scored
-  if (!best || best.score < SOMETHING) return { stepId: null, sure: false }
+  if (!best || best.score < SOMETHING) return { stepId: null, sure: !best || best.score < NOTHING }
   return { stepId: best.id, sure: best.score >= SURE && best.score - (next?.score ?? 0) >= AHEAD }
 }
 
