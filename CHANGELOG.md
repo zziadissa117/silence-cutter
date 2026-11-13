@@ -3,6 +3,24 @@
 Newest first. Every change says what it does, how to use it, and how it works
 underneath. Kept up to date with each commit.
 
+## Wide clips untouched everywhere, black not blurred, captions on product steps
+- His answer (2026-11-13): "do it for talking video batches too. Black is good ... The video is going to be in 9:16,
+  but it's going to have a horizontal, already premade thing. Just don't change anything about the video itself ...
+  I want the black background behind me, not blurred." And: should he type a talking head's step captions as the
+  step's name?
+- Talking videos: a wide clip is now shown whole on black (Settings "Fit", now the default; it used to be over a
+  blurred copy of itself, and the default was Fill, which cropped it). A phone that had Fill saved is moved to Fit
+  once; picking Fill again in Settings still works.
+- A clip already made 9:16 with black bands in it (a wide video put in 9:16 beforehand) is told from its picture and
+  left exactly as it is - no push-in, no zoom at the cuts, which would crop it (`blackBands.ts`), in talking videos
+  and in batches. A wide clip in a batch is no longer zoomed inside its band either.
+- Talking head batches: the product steps he talks over get captions of what he says, heard once per clip like the
+  talking clip (kept for every video after) - no need to type captions as the step's name; the name stays a short
+  title at the top.
+- Checked with a real batch render in Chrome: a ready-made 9:16 clip with bands under strong zooms (unchanged), a
+  wide clip (whole), a talked-over step (its name and its captions).
+- Tests: `blackBands.test.ts`, `framing916.test.ts`.
+
 ## Batches: a wide clip stays wide
 - His ask (2026-11-13): some batch clips - his reaction at the start, or a clip before or after - are horizontal;
   "it keeps being horizontal, and that's it. It doesn't convert it to fill it in."

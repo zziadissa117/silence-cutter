@@ -5,7 +5,10 @@
 // The frame is always upright. Each clip is written whole: an upright one
 // filling it (its edges trimmed if its shape is a little off), a wide one -
 // landscape, square, 3:4 - shown whole across the middle on black, nothing
-// cut off (his ask, 2026-11-13: "it keeps being horizontal, and that's it").
+// cut off and nothing moved (his ask, 2026-11-13: "it keeps being
+// horizontal, and that's it ... just don't change anything about the video
+// itself"); an upright clip with black bands already made into it is left
+// exactly as it is too (blackBands.ts).
 // The phone's decoder giving up
 // partway is picked up again from the last frame, as everywhere else
 // (clipParts.ts).
@@ -28,7 +31,7 @@ import { createOutputSink } from '../media/outputSink'
 import { MAX_RECOVERIES } from '../media/recovery'
 import { MAX_CHANNELS, SAFE_SAMPLE_RATE, isSilenceCutSupported } from '../media/silenceCut'
 import { openClip, usualFrame, writeWhole, type Clip } from './clipParts'
-import { framingAt, planMotion, randomFrom, placeFrame, reactionZoom, zoomPlace } from './effects'
+import { framingAt, planMotion, randomFrom, reactionZoom, zoomPlace } from './effects'
 import { ONLY_HOOK_ELSE } from './batch'
 import { CAPTION_LEAD, PHRASE_HOLD_SEC, captionAt, captionRanges, drawStyledCaption, type CaptionPosition, type CaptionSize, type CaptionStyle, type CaptionWord } from './captions'
 import { drawFormula, formulaPush, layoutFormula, type FormulaLayout } from './formulaOverlay'
@@ -40,6 +43,7 @@ import { TIKTOK_ZONES, drawHeadline, layoutHeadline, outputSize, type HeadlineLa
 import { makeSize, videoQuality } from './quality'
 import { cover } from './reaction'
 import { isUpright } from './framing916'
+import { bandsIn } from './blackBands'
 import { fitShowcase, pickPiece, readActivity } from './stepPiece'
 import { musicProblem, prepareMusic } from './sounds'
 import { report as reportProblem } from '../report'
@@ -86,14 +90,6 @@ export function clipPlace(clipWidth: number, clipHeight: number, width: number, 
   const w = clipWidth * scale
   const h = clipHeight * scale
   return { box: { x: (width - w) / 2, y: (height - h) / 2, width: w, height: h }, whole: true }
-}
-
-/** A clip shown whole, moved in (a push-in, a punch) inside its own band:
- *  the band stays where it is and the picture is closer in it. */
-function zoomInside(box: { x: number; y: number; width: number; height: number }, framing: { scale: number; dx: number }): { x: number; y: number; width: number; height: number } {
-  if (framing.scale === 1 && framing.dx === 0) return box
-  const inner = placeFrame(framing, box.width, box.height)
-  return { x: box.x + inner.x, y: box.y + inner.y, width: inner.width, height: inner.height }
 }
 
 /** How many frames of a steady `fps` start before `until` seconds - the ones
@@ -207,7 +203,16 @@ export interface MontageRenderInput {
   shorterBy?: number
   /** A talking batch's captions: what he says in the first clip, on that
    *  clip's own timeline (talkCaptions.ts), drawn as his talking videos'. */
-  captions?: { words: CaptionWord[]; position: CaptionPosition; size: CaptionSize; style: CaptionStyle } | null
+  captions?: {
+    words: CaptionWord[]
+    position: CaptionPosition
+    size: CaptionSize
+    style: CaptionStyle
+    /** A talking head batch: what he says in each clip after the first (his
+     *  product steps, talked over), on each clip's own timeline - null for a
+     *  clip he doesn't talk in (his ask, 2026-11-13: captions on the steps). */
+    steps?: (CaptionWord[] | null)[]
+  } | null
 }
 
 /** The headline laid out a little smaller, step by step, until it takes no
@@ -454,7 +459,12 @@ export async function renderMontage(
     // When the first clip's frames came, in its own time and in the video's,
     // for its first second and a half: a start that froze or lagged says so.
     const opening: { own: number; at: number }[] = []
-    const stretches: { fill: ReturnType<typeof cover>; whole: boolean; start: number; length: number }[] = []
+    /** Each clip's place, and whether it is drawn exactly as it is (`still`):
+     *  a wide one shown whole, or an upright one with bands made into it -
+     *  undecided (null) until a frame shows enough to tell. */
+    const stretches: { fill: ReturnType<typeof cover>; whole: boolean; still: boolean | null; start: number; length: number }[] = []
+    /** What he says over each clip after the first, on the video's timeline. */
+    const stepSaid: { words: CaptionWord[]; times: number[]; ranges: ReturnType<typeof captionRanges> }[] = []
     // His words over the first clip, on the video's timeline: the clip plays
     // from its first frame shown (clips[0].first).
     const said = captions?.words.length ? captions.words.map((w) => ({ ...w, start: w.start - clips[0].first, end: w.end - clips[0].first })) : []
@@ -462,7 +472,12 @@ export async function renderMontage(
     const saidTimes = said.map((w) => w.start)
     const report = throttled(onProgress)
     const frameAt = async (sample: VideoSample, i: number, t: number) => {
-      const { fill, whole, start, length } = stretches[i]
+      const stretch = stretches[i]
+      const { fill, whole, start, length } = stretch
+      if (!whole && stretch.still === null) {
+        const banded = bandsIn((c, w, h) => sample.draw(c, 0, 0, w, h))
+        if (banded !== null) stretch.still = banded
+      }
       report(t / total)
       ctx.fillStyle = '#000'
       ctx.fillRect(0, 0, width, height)
@@ -480,15 +495,11 @@ export async function renderMontage(
           : i === 0 && reactionFirst && pushes
             ? { ...own, scale: Math.max(own.scale, reactionZoom(t - start, length)) }
             : own
-      if (whole) {
-        // A wide clip: its band, the picture moved inside it.
-        ctx.save()
-        ctx.beginPath()
-        ctx.rect(fill.x, fill.y, fill.width, fill.height)
-        ctx.clip()
-        const spot = zoomInside(fill, framing)
-        sample.draw(ctx, spot.x, spot.y, spot.width, spot.height)
-        ctx.restore()
+      if (whole || stretch.still !== false) {
+        // Drawn exactly as it is: a wide clip whole on black, a clip with its
+        // own bands as made - nothing zoomed (a clip still undecided: its
+        // first dark frames, not moved either).
+        sample.draw(ctx, fill.x, fill.y, fill.width, fill.height)
       } else {
         const spot = zoomPlace(fill, framing, width, height)
         sample.draw(ctx, spot.x, spot.y, spot.width, spot.height)
@@ -509,6 +520,12 @@ export async function renderMontage(
         const word = captionAt(saidTimes, said, t, captions.style === 'word' ? undefined : PHRASE_HOLD_SEC)
         if (word >= 0) drawStyledCaption(ctx, width, height, said, saidRanges, word, t + CAPTION_LEAD - saidTimes[word], false, captions.position, captions.size, captions.style)
       }
+      // And what he says over a product step, the same way.
+      const over = i > 0 && captions ? stepSaid[i] : undefined
+      if (over && captions) {
+        const word = captionAt(over.times, over.words, t, captions.style === 'word' ? undefined : PHRASE_HOLD_SEC)
+        if (word >= 0) drawStyledCaption(ctx, width, height, over.words, over.ranges, word, t + CAPTION_LEAD - over.times[word], false, captions.position, captions.size, captions.style)
+      }
       const frame = new VideoSample(canvas, { timestamp: t, duration: 1 / FPS })
       try {
         await videoSource.add(frame)
@@ -522,7 +539,14 @@ export async function renderMontage(
       for (const [i, clip] of clips.entries()) {
         const start = at
         const placed = clipPlace(clip.width, clip.height, width, height)
-        stretches[i] = { fill: placed.box, whole: placed.whole, start, length: Math.max(0.1, parts[i].end - parts[i].start) }
+        stretches[i] = { fill: placed.box, whole: placed.whole, still: placed.whole ? true : null, start, length: Math.max(0.1, parts[i].end - parts[i].start) }
+        // His words over a step he talks in, played whole: from its first
+        // frame shown, onto the video's timeline.
+        const own = i > 0 && !windows[i] ? captions?.steps?.[i - 1] : null
+        if (own?.length && captions) {
+          const words = own.map((w) => ({ ...w, start: w.start - clip.first + start, end: w.end - clip.first + start }))
+          stepSaid[i] = { words, times: words.map((w) => w.start), ranges: captionRanges(words, captions.style) }
+        }
         at = await writeWhole(clip, at, {
           window: windows[i] ? parts[i] : undefined,
           rate: RATE,

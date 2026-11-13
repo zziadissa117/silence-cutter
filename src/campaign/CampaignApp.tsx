@@ -2083,6 +2083,35 @@ export function CampaignApp() {
               report({ page: 'campaign', kind: 'fallback', phase: 'talk captions', message: error instanceof Error ? error.message : String(error) })
             }
           }
+          // A talking head's product steps, talked over: his words on each
+          // too, heard once per clip like the talking one (his ask,
+          // 2026-11-13: captions on the steps, not words typed as their name).
+          const stepClips = next.montage.bank?.steps
+          const stepSaid: (CaptionWord[] | null)[] = []
+          if (talkingClip && captionsRef.current && stepClips?.length) {
+            for (const [k, step] of stepClips.entries()) {
+              const clip = rest[k]
+              if (!clip) {
+                stepSaid.push(null)
+                continue
+              }
+              try {
+                if (!keptWords(step.file)) setPhase('listening', 0)
+                const words = await watched(
+                  talkWords(step.file, clip, {
+                    settings: next.settings,
+                    names: jobCampaign.brandWords ?? [],
+                    onModel: (p) => setPhase('model', p),
+                    onListen: (p) => setPhase('listening', p),
+                  }),
+                )
+                stepSaid.push(words.length > 0 ? drawnWords(words, bareRef.current) : null)
+              } catch (error) {
+                stepSaid.push(null)
+                report({ page: 'campaign', kind: 'fallback', phase: 'step captions', message: error instanceof Error ? error.message : String(error) })
+              }
+            }
+          }
           setPhase('cutting', 0)
           // Each step's name over its clip. Videos planned before the name was
           // kept with them take it from the campaign's steps as they are now -
@@ -2120,8 +2149,8 @@ export function CampaignApp() {
               // Sometimes a second or two shorter, so no two copies are alike.
               shorterBy: trialLook?.trimSec,
               keepLines: Boolean(trialLook),
-              ...(said.length > 0
-                ? { captions: { words: said, position: defaultCaptionPosition(), size: defaultCaptionSize(), style: defaultCaptionStyle() } }
+              ...(said.length > 0 || stepSaid.some(Boolean)
+                ? { captions: { words: said, position: defaultCaptionPosition(), size: defaultCaptionSize(), style: defaultCaptionStyle(), steps: stepSaid } }
                 : {}),
               // A Trial reel keeps its clip's shape: horizontal stays horizontal.
               keepShape: Boolean(trialLook),

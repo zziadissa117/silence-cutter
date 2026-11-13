@@ -45,21 +45,37 @@ describe('framedSize', () => {
 })
 
 describe('planFrame', () => {
-  it('fills: covers the canvas, centred, no blur', () => {
+  it('fills: covers the canvas, centred', () => {
     const p = planFrame(1920, 1080, 608, 1080, 'fill')
-    expect(p.blurred).toBe(false)
+    expect(p.whole).toBe(false)
     expect(p.main.height).toBeCloseTo(1080)
     expect(p.main.x).toBeLessThan(0)
   })
-  it('fits: whole picture inside, blurred behind', () => {
+  it('fits: whole picture inside, black around it (no blurred copy, his ask 2026-11-13)', () => {
     const p = planFrame(1920, 1080, 1080, 1920, 'fit')
-    expect(p.blurred).toBe(true)
+    expect(p.whole).toBe(true)
     expect(p.main.width).toBeCloseTo(1080)
     expect(p.main.y).toBeGreaterThan(0)
   })
   it('does not touch a 9:16 clip in any mode', () => {
     for (const mode of ['fill', 'fit', 'off'] as const) {
-      expect(planFrame(1080, 1920, 1080, 1920, mode)).toEqual({ main: { x: 0, y: 0, width: 1080, height: 1920 }, blurred: false })
+      expect(planFrame(1080, 1920, 1080, 1920, mode)).toEqual({ main: { x: 0, y: 0, width: 1080, height: 1920 }, whole: false })
     }
+  })
+})
+
+describe('the way wide clips are made, by default and after his ask (2026-11-13)', () => {
+  it('is Fit - whole, on black - unless he picks otherwise', async () => {
+    const { landscapeMode } = await import('./framing916')
+    localStorage.clear()
+    expect(landscapeMode()).toBe('fit')
+  })
+  it('moves a Fill saved before to Fit once, and keeps a Fill he picks again', async () => {
+    const { landscapeMode, setLandscapeMode } = await import('./framing916')
+    localStorage.clear()
+    localStorage.setItem('cutter-landscape-mode', 'fill')
+    expect(landscapeMode()).toBe('fit')
+    setLandscapeMode('fill')
+    expect(landscapeMode()).toBe('fill')
   })
 })

@@ -61,7 +61,8 @@ import { framingAt, logoPop, placeFrame, planMotion } from './effects'
 import { ColourCheck } from './colourCheck'
 import { VoiceJoin, cutEdges, fadeAtCuts, insidePart, nearCut, type JoinedBlock } from './cutFades'
 import { headlineFontReady } from './headlineFont'
-import { framedSize, landscapeMode, makeBlurBackdrop, planFrame } from './framing916'
+import { framedSize, landscapeMode, planFrame } from './framing916'
+import { bandsIn } from './blackBands'
 import { TOGETHER_SEC, cameUpTogether, drawHeadline, drawLogo, drawPoppedLogo, layoutHeadline, layoutLogo, sideBySide, type LogoLayout } from './overlay'
 import type { HeadlinePlace, HeadlineStyle, LogoPosition } from './look'
 import { dbToGain, mixInto, musicProblem, prepareMusic, prepareSound, type PlacedSound, type PreparedSound } from './sounds'
@@ -468,12 +469,15 @@ export async function renderCampaignCut(
     for (const m of middle) middleGains.push(await levelFor(m.clip))
 
     // A wide clip (Meta glasses) becomes 9:16; one already 9:16 is untouched.
-    const mode = forceVertical && landscapeMode() === 'off' ? 'fill' : landscapeMode()
+    const mode = forceVertical && landscapeMode() === 'off' ? 'fit' : landscapeMode()
     // 1080p at its own frame rate, at a bitrate to match (quality.ts).
     const fps = await frameRateOf(videoTrack)
     const { width, height } = makeSize((maxShort) => framedSize(displayWidth, displayHeight, mode, maxShort))
     const framePlan = planFrame(displayWidth, displayHeight, width, height, mode)
-    const backdrop = framePlan.blurred ? makeBlurBackdrop() : null
+    // An upright recording with black bands already made into it (a wide
+    // video put in 9:16) is drawn as it is - no zoom, which would crop it
+    // (his ask, 2026-11-13). Told from its first frames that show anything.
+    let banded: boolean | null = framePlan.whole ? true : null
     const canvas = new OffscreenCanvas(width, height)
     const ctx = canvas.getContext('2d')
     if (!ctx) throw new SilenceCutError("This browser couldn't prepare a canvas to draw the headline on.")
@@ -800,19 +804,24 @@ export async function renderCampaignCut(
                 const timestamp = videoClock(sample.timestamp + videoShift)
                 const duration = sample.duration
                 videoEnd = timestamp + duration
-                const framing = framingAt(
-                  motion,
-                  index,
-                  timestamp - talkStart,
-                  talkStart === 0 ? brandPlacer.times : brandPlacer.times.map((at) => at - talkStart),
-                )
+                if (banded === null) banded = bandsIn((c, w, h) => sample.draw(c, 0, 0, w, h))
+                const framing =
+                  banded !== false
+                    ? { scale: 1, dx: 0 }
+                    : framingAt(
+                        motion,
+                        index,
+                        timestamp - talkStart,
+                        talkStart === 0 ? brandPlacer.times : brandPlacer.times.map((at) => at - talkStart),
+                      )
                 colour.noteFrame(sample)
                 // With motion graphics up, his face moves down under the board.
                 const drop = motionTrack && graphics ? faceDropAt(graphics.board, motionTrack.timing, timestamp, height) : 0
                 if (drop > 0) fillBehindFace(ctx, width, drop)
-                if (backdrop) {
-                  // Fit: the whole picture over a blurred copy; no zoom here.
-                  backdrop.draw(ctx, sample, width, height, displayWidth, displayHeight)
+                if (framePlan.whole) {
+                  // Fit: the whole picture on black, as it is; no zoom here.
+                  ctx.fillStyle = '#000'
+                  ctx.fillRect(0, drop, width, height)
                   const m = framePlan.main
                   sample.draw(ctx, m.x, m.y + drop, m.width, m.height)
                 } else if (framing.scale === 1 && framing.dx === 0) {
