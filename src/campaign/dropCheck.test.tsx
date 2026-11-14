@@ -237,4 +237,47 @@ describe('looking again at where the clips of the batch are (his ask, 2026-11-14
     expect(bank.steps![1].files.find((f) => f.id === 'u')).toMatchObject({ checked: true, captions: [{ text: 'Fixed' }] })
     expect(bank.steps![1].heard).toEqual(['nope do this instead'])
   })
+
+  it('no captions (Captions unticked, or no talking in it): only the clip and where it goes; in with none, kept as he cut it', async () => {
+    // jsdom has no object URLs.
+    URL.createObjectURL = () => 'blob:clip'
+    URL.revokeObjectURL = () => {}
+    saveQueue('t', [
+      clip('mine', 's1', true, { noCaptions: true, file: { id: 'mine', name: 'mine.mov', type: 'video/quicktime', size: 1, ownCut: true } }),
+      clip('shows', null, false, { text: '', words: [] }),
+    ])
+    await render()
+    await settle()
+    // Not the caption check: the clip itself. The one with no place first.
+    expect(seen).toHaveLength(0)
+    expect(host.querySelector('video.drop-check-video')).not.toBeNull()
+    expect(host.textContent).toContain('No talking in it - pick the step it shows.')
+    expect(host.textContent).toContain('No talking in it - it goes in as it is, no captions.')
+    await click('Open the app')
+    await click('Approve & next clip')
+    expect(bank.steps![1].files.at(-1)).toMatchObject({ id: 'shows', captions: [] })
+    await settle()
+    expect(host.textContent).toContain('No captions on it - you unticked them for these clips.')
+    await click('Approve')
+    expect(bank.steps![0].files.at(-1)).toMatchObject({ id: 'mine', ownCut: true, captions: [], checked: true })
+    expect(bank.steps![0].files.at(-1)!.edited).toBeUndefined()
+  })
+
+  it('Mirror: as it was dropped in, changed with one tap - the picture flipped on the check, the clip mirrored in the batch', async () => {
+    saveQueue('t', [clip('a', 's1', true, { file: { id: 'a', name: 'a.mp4', type: 'video/mp4', size: 1, edited: true, mirror: true } }), clip('b', 's1', true)])
+    await render()
+    await settle()
+    expect(button('Mirrored').getAttribute('aria-pressed')).toBe('true')
+    expect(host.querySelector('.drop-check-screen.mirrored')).not.toBeNull()
+    await click('Approve & next clip')
+    expect(bank.steps![0].files.at(-1)).toMatchObject({ id: 'a', mirror: true })
+    await settle()
+    // The next one wasn't: mirrored here with a tap.
+    expect(host.querySelector('.drop-check-screen.mirrored')).toBeNull()
+    await click('Mirror')
+    expect(host.querySelector('.drop-check-screen.mirrored')).not.toBeNull()
+    await click('Approve')
+    expect(bank.steps![0].files.at(-1)).toMatchObject({ id: 'b', mirror: true })
+  })
 })
+

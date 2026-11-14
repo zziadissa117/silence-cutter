@@ -20,7 +20,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 
 import { VideoPicker } from '../VideoPicker'
 import type { BankFile, BatchBank, BatchStep } from './batch'
-import { addToQueue, checkedClip, clipsOfFormat, loadQueue, notEdited, QUEUE_EVENT, queueRecheck, sameRecording, suggestPlace, type ToCheck } from './dropQueue'
+import { addToQueue, checkedClip, clipsOfFormat, loadQueue, notEdited, QUEUE_EVENT, queueRecheck, sameRecording, suggestPlace, type DropChoices, type ToCheck } from './dropQueue'
 import type { AngleEffects } from './effects'
 import { fingerprint } from './fingerprint'
 import { cutName, dropSettings, prepareClip, type DropPhase } from './prepareDrop'
@@ -41,6 +41,9 @@ interface Waiting {
   /** Where he asked it to go, and the clip it takes the place of. */
   to?: string | null
   replaces?: string
+  /** Dropped in with "Captions" unticked, or "Mirror them" ticked. */
+  noCaptions?: boolean
+  mirror?: boolean
   back?: boolean
   /** Times the copy for the phone failed to come down. */
   tries?: number
@@ -82,7 +85,22 @@ interface Item {
   from: string
   /** Where he asked it to go (a step's or the hooks' + Add). */
   to?: string | null
+  /** "Cut the clips" unticked: only heard, kept as he cut it. */
+  asFilmed?: boolean
+  /** "Captions" unticked: it goes in with none. */
+  noCaptions?: boolean
+  /** "Mirror them" ticked: flipped left to right in every video. */
+  mirror?: boolean
 }
+
+/** The checklist's lines: what each does, in his words. */
+const CHOICES: { key: keyof DropChoices; name: string; on: string; off: string }[] = [
+  { key: 'cut', name: 'Cut the clips', on: 'Silences and ums out, your zooms.', off: 'Kept exactly as you cut them.' },
+  { key: 'captions', name: 'Captions', on: 'What you say, as captions.', off: 'No captions on these clips.' },
+  { key: 'music', name: 'Music', on: 'A song under the videos.', off: 'No song - your voice and the clips’ own sound.' },
+  { key: 'headline', name: 'Headline', on: 'The hook words over the start.', off: 'No words over the start.' },
+  { key: 'mirror', name: 'Mirror them', on: 'Left and right swapped - a paper you hold up reads the right way.', off: 'As you filmed them.' },
+]
 
 /** The + Add buttons of each open talking head format, edited here. */
 const dropTargets = new Map<string, (files: File[], to: string) => void>()
@@ -109,6 +127,8 @@ export function DropIn({
   brandWords,
   getBank,
   onCheck,
+  choices,
+  onChoices,
 }: {
   formatId: string
   /** This format's product steps. */
@@ -127,8 +147,15 @@ export function DropIn({
   getBank: () => BatchBank | null
   /** Opens the check of the clips waiting for it. */
   onCheck: () => void
+  /** The drop-in checklist as he last left it for this format (dropQueue.choicesOf). */
+  choices: DropChoices
+  /** His picks, kept on the format - music and the headline are its videos'. */
+  onChoices: (choices: DropChoices) => void
 }) {
   const [running, setRunning] = useState<{ at: number; of: number; name: string; phase: string } | null>(null)
+  /** Clips he just picked, waiting on the checklist - ticked as he last left it. */
+  const [picked, setPicked] = useState<File[] | null>(null)
+  const [draft, setDraft] = useState<DropChoices>(choices)
   const [failed, setFailed] = useState<{ name: string; why: string }[]>([])
   const stop = useRef(false)
   const [queue, setQueue] = useState<ToCheck[]>(() => loadQueue(formatId))
@@ -152,11 +179,21 @@ export function DropIn({
 
   /** A clip back, edited: waiting for his check, where it would go worked
    *  out (dropQueue.suggestPlace). */
-  const toCheck = (name: string, clip: DropResult, { to, replaces }: { to?: string | null; replaces?: string }) => {
+  const toCheck = (name: string, clip: DropResult, { to, replaces, noCaptions, mirror }: { to?: string | null; replaces?: string; noCaptions?: boolean; mirror?: boolean }) => {
     const bank = getBank()
     const { place, sure, hint } = suggestPlace(bank, steps, clip.text, { to, replaces, hooks })
     setQueue(
-      addToQueue(formatId, { file: clip.file, name, text: clip.text, words: clip.words, place, sure, ...(hint ? { hint } : {}), ...(replaces ? { replaces } : {}) }),
+      addToQueue(formatId, {
+        file: mirror ? { ...clip.file, mirror: true } : clip.file,
+        name,
+        text: clip.text,
+        words: clip.words,
+        place,
+        sure,
+        ...(hint ? { hint } : {}),
+        ...(replaces ? { replaces } : {}),
+        ...(noCaptions ? { noCaptions: true } : {}),
+      }),
     )
   }
 
@@ -180,8 +217,29 @@ export function DropIn({
           fileId = talkFileId('t', id)
           await upload(fileId, item.blob, item.name, item.blob.type || 'video/quicktime', (p) => say(`Sending to your server ${Math.round(p * 100)}%`))
         } else if (!fileId) throw new Error('not on this phone')
-        await orderDrop({ id, fileId, outId: crypto.randomUUID(), outName: cutName(item.name), from: item.from, ...how, names })
-        setWaiting([...waitingRef.current, { id, name: item.name, from: item.from, ...(item.to !== undefined ? { to: item.to } : {}), ...(item.replaces ? { replaces: item.replaces.id } : {}) }])
+        await orderDrop({
+          id,
+          fileId,
+          outId: crypto.randomUUID(),
+          outName: cutName(item.name),
+          inName: item.name,
+          from: item.from,
+          ...how,
+          names,
+          ...(item.asFilmed ? { asFilmed: true } : {}),
+        })
+        setWaiting([
+          ...waitingRef.current,
+          {
+            id,
+            name: item.name,
+            from: item.from,
+            ...(item.to !== undefined ? { to: item.to } : {}),
+            ...(item.replaces ? { replaces: item.replaces.id } : {}),
+            ...(item.noCaptions ? { noCaptions: true } : {}),
+            ...(item.mirror ? { mirror: true } : {}),
+          },
+        ])
       } catch {
         serverLetDown()
         return onPhone(items.slice(i))
@@ -204,9 +262,10 @@ export function DropIn({
           names,
           cut: how,
           from: item.from,
+          asFilmed: item.asFilmed,
           onPhase: (phase, p) => setRunning({ at: i + 1, of: items.length, name: item.name, phase: `${PHASE[phase]}${p > 0 && p < 1 ? ` ${Math.round(p * 100)}%` : ''}` }),
         })
-        toCheck(item.name, clip, { to: item.to, replaces: item.replaces?.id })
+        toCheck(item.name, clip, { to: item.to, replaces: item.replaces?.id, noCaptions: item.noCaptions, mirror: item.mirror })
       } catch (error) {
         fail(item.name, error)
       }
@@ -222,10 +281,12 @@ export function DropIn({
     return onPhone(items)
   }
 
-  /** Recordings he picked: each edited, in place of the same one in the
-   *  batch when it is there already. */
-  const run = async (files: File[], to?: string) => {
+  /** Recordings he picked: each edited as the checklist says - for a step's
+   *  + Add, as he last left it - in place of the same one in the batch when
+   *  it is there already. */
+  const run = async (files: File[], to?: string, how: DropChoices = choices) => {
     setFailed([])
+    const asked = { ...(how.cut ? {} : { asFilmed: true }), ...(how.captions ? {} : { noCaptions: true }), ...(how.mirror ? { mirror: true } : {}) }
     const items: Item[] = []
     for (const file of files) {
       const from = await fingerprint(file)
@@ -235,7 +296,7 @@ export function DropIn({
       }
       const bank = getBank()
       const same = bank ? sameRecording(bank, formatId, from) : null
-      items.push({ blob: file, name: file.name, from, ...(to !== undefined ? { to } : {}), ...(same ? { replaces: same } : {}) })
+      items.push({ blob: file, name: file.name, from, ...asked, ...(to !== undefined ? { to } : {}), ...(same ? { replaces: same } : {}) })
     }
     await go(items)
   }
@@ -249,7 +310,8 @@ export function DropIn({
       const blob = await loadBankFile(file).catch(() => null)
       const from = file.from ?? file.fp ?? (blob ? await fingerprint(blob) : file.id)
       if (onItsWay(from)) continue
-      items.push({ blob, replaces: file, name: file.name, from })
+      // Flipped as it was.
+      items.push({ blob, replaces: file, name: file.name, from, ...(choices.captions ? {} : { noCaptions: true }), ...(file.mirror ? { mirror: true } : {}) })
     }
     await go(items)
   }
@@ -312,7 +374,7 @@ export function DropIn({
           fail(w.name, 'the server lost it - drop it in again')
           next = next.filter((x) => x.id !== w.id)
         } else if (rec.state === 'made' && rec.dropped) {
-          toCheck(w.name, rec.dropped, { to: w.to, replaces: w.replaces })
+          toCheck(w.name, rec.dropped, { to: w.to, replaces: w.replaces, noCaptions: w.noCaptions, mirror: w.mirror })
           next = next.map((x) => (x.id === w.id ? { ...x, back: true } : x))
           copies.push([{ ...w, back: true }, rec.dropped.file.id])
         } else if (rec.state === 'failed') {
@@ -378,8 +440,29 @@ export function DropIn({
             Stop after this one
           </button>
         </div>
+      ) : picked ? (
+        <DropChecklist
+          count={picked.length}
+          value={draft}
+          onChange={setDraft}
+          onStart={() => {
+            const files = picked
+            setPicked(null)
+            onChoices(draft)
+            void run(files, undefined, draft)
+          }}
+          onCancel={() => setPicked(null)}
+        />
       ) : canDrop ? (
-        <VideoPicker className={`btn small${queue.length > 0 ? '' : ' primary'}`} label="Drop in all videos" onFiles={(files) => files.length > 0 && void run(files)}>
+        <VideoPicker
+          className={`btn small${queue.length > 0 ? '' : ' primary'}`}
+          label="Drop in all videos"
+          onFiles={(files) => {
+            if (files.length === 0) return
+            setDraft(choices)
+            setPicked(files)
+          }}
+        >
           Drop in all videos
         </VideoPicker>
       ) : null}
@@ -390,10 +473,10 @@ export function DropIn({
         </p>
       ) : null}
       {queue.length > 0 && !running ? <p className="hint">Each one: where it goes and its captions. It is in your videos once you approve it.</p> : null}
-      {!running && queue.length === 0 && cutting === 0 && canDrop ? (
+      {!running && !picked && queue.length === 0 && cutting === 0 && canDrop ? (
         <p className="hint">
-          Pick all your clips at once: each is cut like your talking videos, zoomed, captioned and put in the step whose name you say in it
-          {hooks ? ' - one that says no step is a hook' : ''}. Then you check every one.
+          Pick all your clips at once, then tick what the Cutter does with them - cut, captions, music, headline. Each goes in the step whose name
+          you say in it{hooks ? ' - one that says no step is a hook' : ''}; one where you don't talk, you place yourself. Then you check every one.
         </p>
       ) : null}
       {unchecked.length > 0 && !running ? (
@@ -435,3 +518,46 @@ export function DropIn({
     </div>
   )
 }
+
+/** What the Cutter does with the clips he just dropped in: four switches,
+ *  ticked as he last left them, and Start. */
+function DropChecklist({
+  count,
+  value,
+  onChange,
+  onStart,
+  onCancel,
+}: {
+  count: number
+  value: DropChoices
+  onChange: (value: DropChoices) => void
+  onStart: () => void
+  onCancel: () => void
+}) {
+  return (
+    <div className="drop-choices" role="group" aria-label="What the Cutter does with these clips">
+      <span className="row-name">
+        {count} clip{count === 1 ? '' : 's'} - what should the Cutter do?
+      </span>
+      {CHOICES.map((c) => (
+        <label key={c.key} className="toggle drop-choice">
+          <input type="checkbox" checked={value[c.key]} aria-label={c.name} onChange={(e) => onChange({ ...value, [c.key]: e.target.checked })} />
+          <span className="setting-text">
+            <span className="row-name">{c.name}</span>
+            <span className="row-line">{value[c.key] ? c.on : c.off}</span>
+          </span>
+        </label>
+      ))}
+      <span className="hint">Music and the headline are for every video of this format. You can still mirror or un-mirror each clip on its check.</span>
+      <div className="actions-row">
+        <button type="button" className="btn small primary" onClick={onStart}>
+          Start
+        </button>
+        <button type="button" className="btn small" onClick={onCancel}>
+          Cancel
+        </button>
+      </div>
+    </div>
+  )
+}
+

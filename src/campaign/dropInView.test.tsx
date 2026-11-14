@@ -17,10 +17,12 @@ const said: Record<string, string> = {
   'raw.mov': 'open the app now',
 }
 const onPhone = vi.fn()
+const asFilmedHere: boolean[] = []
 const settings = { settings: { preset: 'balanced' }, cleanSpeech: true, voice: true, voices: { profiles: [{ id: 'v1' }], chosen: 'v1' } }
 vi.mock('./prepareDrop', () => ({
-  prepareClip: vi.fn(async (_blob: Blob, { name, from }: { name: string; from?: string }) => {
+  prepareClip: vi.fn(async (_blob: Blob, { name, from, asFilmed }: { name: string; from?: string; asFilmed?: boolean }) => {
     onPhone(name)
+    asFilmedHere.push(Boolean(asFilmed))
     if (name === 'bad.mov') throw new Error('no talking heard in it')
     return { file: { id: `cut-${name}`, name, type: 'video/mp4', size: 1, from, edited: true }, words: [{ text: 'hi', start: 0, end: 0.3 }], text: said[name] }
   }),
@@ -41,7 +43,7 @@ const server = {
   up: false,
   failUpload: false,
   uploads: [] as string[],
-  orders: [] as { id: string; fileId: string; outId: string; outName: string; from: string; names: string[]; voices?: unknown; effects?: unknown }[],
+  orders: [] as { id: string; fileId: string; outId: string; outName: string; inName?: string; from: string; names: string[]; voices?: unknown; effects?: unknown; asFilmed?: boolean }[],
   talk: {} as Record<string, unknown>,
   dropped: [] as string[],
 }
@@ -84,6 +86,7 @@ function serverCuts(failing: string[] = []) {
 }
 
 import { DropIn, dropInto } from './DropIn'
+import type { DropChoices } from './dropQueue'
 
 ;(globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true
 
@@ -97,7 +100,11 @@ let root: Root
 let host: HTMLDivElement
 let bank: BatchBank
 const onCheck = vi.fn()
+const onChoices = vi.fn()
+const ALL_ON: DropChoices = { cut: true, captions: true, music: true, headline: true, mirror: false }
 beforeEach(() => {
+  asFilmedHere.length = 0
+  onChoices.mockClear()
   host = document.createElement('div')
   document.body.append(host)
   root = createRoot(host)
@@ -113,7 +120,7 @@ afterEach(() => {
   host.remove()
 })
 
-const render = (hooks = false) =>
+const render = (hooks = false, choices: DropChoices = ALL_ON) =>
   act(async () =>
     root.render(
       <DropIn
@@ -127,6 +134,8 @@ const render = (hooks = false) =>
         brandWords={['Pump Fun']}
         getBank={() => bank}
         onCheck={onCheck}
+        choices={choices}
+        onChoices={onChoices}
       />,
     ),
   )
@@ -136,10 +145,14 @@ const settle = async () => {
 }
 
 const files = (names: string[]) => names.map((n) => new File(['x'], n, { type: 'video/quicktime' }))
-const drop = async (names: string[]) => {
+const button = (text: string) => [...host.querySelectorAll('button')].find((b) => b.textContent === text) as HTMLButtonElement
+/** His clips picked, the checklist set (`untick`: the switches he taps), Start. */
+const drop = async (names: string[], untick: string[] = []) => {
   const input = host.querySelector('input[aria-label="Drop in all videos"]') as HTMLInputElement
   Object.defineProperty(input, 'files', { value: files(names), configurable: true })
   await act(async () => input.dispatchEvent(new Event('change', { bubbles: true })))
+  for (const name of untick) await act(async () => (host.querySelector(`input[aria-label="${name}"]`) as HTMLInputElement).click())
+  await act(async () => button('Start').click())
   await settle()
 }
 
@@ -219,6 +232,52 @@ describe('his clips, edited and waiting for his check', () => {
     expect(host.textContent).not.toContain('may be in the wrong step')
   })
 
+  it('the checklist (his ask, 2026-11-14): ticked as he last left it; Cut and Captions off - kept as he cut them, no captions; his picks kept', async () => {
+    await render(false, { cut: true, captions: true, music: false, headline: true, mirror: false })
+    const input = host.querySelector('input[aria-label="Drop in all videos"]') as HTMLInputElement
+    Object.defineProperty(input, 'files', { value: files(['a.mov', 'b.mov']), configurable: true })
+    await act(async () => input.dispatchEvent(new Event('change', { bubbles: true })))
+    // Nothing edited before he says Start.
+    expect(onPhone).not.toHaveBeenCalled()
+    expect(host.textContent).toContain('2 clips - what should the Cutter do?')
+    const ticked = (name: string) => (host.querySelector(`input[aria-label="${name}"]`) as HTMLInputElement).checked
+    expect(['Cut the clips', 'Captions', 'Music', 'Headline', 'Mirror them'].map(ticked)).toEqual([true, true, false, true, false])
+    await act(async () => (host.querySelector('input[aria-label="Cut the clips"]') as HTMLInputElement).click())
+    await act(async () => (host.querySelector('input[aria-label="Captions"]') as HTMLInputElement).click())
+    await act(async () => (host.querySelector('input[aria-label="Mirror them"]') as HTMLInputElement).click())
+    expect(host.textContent).toContain('Kept exactly as you cut them.')
+    expect(host.textContent).toContain('a paper you hold up reads the right way')
+    await act(async () => button('Start').click())
+    await settle()
+    expect(onChoices).toHaveBeenCalledWith({ cut: false, captions: false, music: false, headline: true, mirror: true })
+    expect(asFilmedHere).toEqual([true, true])
+    expect(loadQueue('t').map((q) => [q.file.id, q.place, q.noCaptions, q.file.mirror])).toEqual([
+      ['cut-a.mov', 's1', true, true],
+      ['cut-b.mov', 's2', true, true],
+    ])
+  })
+
+  it('Cancel: nothing edited', async () => {
+    await render()
+    const input = host.querySelector('input[aria-label="Drop in all videos"]') as HTMLInputElement
+    Object.defineProperty(input, 'files', { value: files(['a.mov']), configurable: true })
+    await act(async () => input.dispatchEvent(new Event('change', { bubbles: true })))
+    await act(async () => button('Cancel').click())
+    await settle()
+    expect(onPhone).not.toHaveBeenCalled()
+    expect(host.querySelector('input[aria-label="Drop in all videos"]')).not.toBeNull()
+  })
+
+  it("a step's + Add goes as he last left the checklist, without asking", async () => {
+    await render(false, { cut: false, captions: true, music: true, headline: true, mirror: true })
+    expect(dropInto('t', files(['c.mov']), 's2')).toBe(true)
+    await settle()
+    expect(asFilmedHere).toEqual([true])
+    expect(loadQueue('t')[0].noCaptions).toBeUndefined()
+    expect(loadQueue('t')[0].file.mirror).toBe(true)
+    expect(onChoices).not.toHaveBeenCalled()
+  })
+
   it('every clip checked: he can still look at where every one is again', async () => {
     bank.steps![0].files = [{ id: 'a', name: 'a.mp4', type: 'video/mp4', size: 1, edited: true, checked: true }]
     await render()
@@ -265,6 +324,17 @@ describe('his clips, edited and waiting for his check', () => {
       await settle()
       expect(queued().map((q) => q.id)).toEqual([server.orders[0].outId])
       expect(localStorage.getItem('batch.dropping:t')).toBeNull()
+    })
+
+    it('Cut the clips and Captions off: the server only hears them and keeps them as he gave them; no captions on the check', async () => {
+      server.up = true
+      await render()
+      // "untick" Mirror them: it was off, so this ticks it.
+      await drop(['a.mov'], ['Cut the clips', 'Captions', 'Mirror them'])
+      expect(server.orders[0]).toMatchObject({ asFilmed: true, inName: 'a.mov', outName: 'a.mp4' })
+      serverCuts()
+      await lookAgain()
+      expect(loadQueue('t').map((q) => [q.file.id, q.place, q.noCaptions, q.file.mirror])).toEqual([[server.orders[0].outId, 's1', true, true]])
     })
 
     it('the server not taking them: the phone does that one and the rest', async () => {

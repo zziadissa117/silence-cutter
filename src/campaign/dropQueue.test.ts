@@ -7,6 +7,8 @@ import type { BatchBank } from './batch'
 import {
   addToQueue,
   checkedClip,
+  choicesOf,
+  withChoices,
   checkOrder,
   clipsOfFormat,
   fileIn,
@@ -154,3 +156,24 @@ describe('where every clip of the batch is, looked at again (his ask, 2026-11-14
     expect(fileIn(b, 'nope')).toBeNull()
   })
 })
+
+describe('the drop-in checklist (his ask, 2026-11-14)', () => {
+  it('all on at first; his picks kept on the format and ticked the same way next time', () => {
+    expect(choicesOf({})).toEqual({ cut: true, captions: true, music: true, headline: true, mirror: false })
+    const picks = { cut: false, captions: true, music: false, headline: true, mirror: true }
+    expect(withChoices(picks)).toEqual({ dropCut: false, dropCaptions: undefined, noMusic: true, noHeadline: undefined, dropMirror: true })
+    expect(choicesOf(withChoices(picks))).toEqual(picks)
+    expect(withChoices(choicesOf({}))).toEqual({ dropCut: undefined, dropCaptions: undefined, noMusic: undefined, noHeadline: undefined, dropMirror: undefined })
+  })
+
+  it('a clip with no talking (a step he only shows) is never one of his hooks: he picks its step', () => {
+    expect(suggestPlace(bank(), bank().steps!, '', { hooks: true })).toEqual({ place: null, sure: false })
+    expect(suggestPlace(bank(), bank().steps!, 'hello there', { hooks: true }).place).toBe(HOOK)
+  })
+
+  it('a clip he cut himself, or with no talking in it, is never offered for editing', () => {
+    const steps = [{ files: [{ id: 'mine', name: 'mine.mov', type: 'video/quicktime', size: 1, ownCut: true }, { id: 'raw', name: 'raw.mov', type: 'video/quicktime', size: 1 }] }]
+    expect(notEdited(steps, []).map((f) => f.id)).toEqual(['raw'])
+  })
+})
+

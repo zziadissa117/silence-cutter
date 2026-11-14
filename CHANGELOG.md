@@ -3,6 +3,36 @@
 Newest first. Every change says what it does, how to use it, and how it works
 underneath. Kept up to date with each commit.
 
+## Batch: drop in - you choose what the Cutter does (and Mirror)
+- His asks (2026-11-14): "sometimes ... I don't need to talk. I just have to do something visually ... cut the videos
+  myself, but I still want ... the music in the background, and the captions ... after you drop in all videos, it
+  asks, 'What do you want to edit?' ... captions, music, and headlines, and the video being cut", and "Make an
+  option to mirror all ... a paper on screen ... They have to be able to read it ... I hope that does not bring down
+  the quality."
+- Drop in all videos now asks first, five switches ticked as he last left them for that format, then Start:
+  - Cut the clips - silences and ums out, his zooms. Off: each clip is kept exactly as he cut it - only listened to
+    (for its captions and to find its step), never trimmed where it meets the next clip, never offered under "Edit
+    the clips added as filmed".
+  - Captions - off: the clips go in with none, and their check is just the clip and where it goes.
+  - Music - a song under the format's videos, or none (his voice and the clips' own sound). Also on the format card.
+  - Headline - the hook words over the start, or none (the same switch as "Headline on top").
+  - Mirror them - left and right swapped, so a paper he holds up reads the right way. Each clip's check has a
+    Mirror button too, to flip or unflip that one. No quality lost: nothing is made again - the clip is flipped
+    as the final video is drawn, which is made once anyway. Checked in a real render: the clip's left and right
+    swapped, captions and words over it not flipped.
+  - Music and the headline are the whole video's, so they are the format's; cut, captions and mirror go with the
+    clips dropped in. A step's + Add goes as he last left the checklist, without asking.
+- A clip with no talking in it (a step he only shows) no longer fails with "no talking heard in it": it goes in as
+  filmed with no captions, never as a hook, and he picks its step on its check ("No talking in it - pick the step
+  it shows").
+- Works the same on his Cutter server (the order says "as filmed"; the server keeps the recording itself).
+- Underneath: `dropQueue.DropChoices`/`choicesOf`/`withChoices` (format `dropCut`, `dropCaptions`, `dropMirror`,
+  `noMusic`, `noHeadline`); `prepareDrop.cutDropped` `asFilmed` + silent clips kept (`cut` in its answer,
+  `videoType`); `BankFile.ownCut`, `BankFile.mirror`; `talkOrder.DropOrder.asFilmed/inName`, `serverTalk.runDrop`;
+  `ToCheck.noCaptions`; `DropCheck` clip-only check (`ClipPlayer`) and Mirror; montageRender `asGiven` (no join
+  trim) and `mirrored` (flipped as drawn); `formatBank` no songs with `noMusic`; BatchView Music switch. Tests:
+  `prepareDrop.test.ts`, `dropInView.test.tsx`, `dropCheck.test.tsx`, `dropQueue.test.ts`, `batchFormats.test.ts`.
+
 ## Batch: as many product steps as he wants
 - His report (2026-11-14): "Why are there only 10 steps max?"
 - Set order's "+ Add step" stopped at 10. Nothing else ever limited steps - the mixing, the video and the Cutter server

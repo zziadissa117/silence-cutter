@@ -240,6 +240,14 @@ export interface MontageRenderInput {
    *  viewer can stay engaged"); the last clip keeps a breath after his last
    *  word (voiceSpan.ts). */
   joinTight?: SilenceSettings
+  /** With `joinTight`: the clips he cut himself (BankFile.ownCut), each
+   *  played exactly as he gave it - a step he shows after his last word is
+   *  never cut off at the join. */
+  asGiven?: boolean[]
+  /** The clips shown flipped left to right (BankFile.mirror): flipped as each
+   *  frame is drawn - no extra encode, no quality lost. Words and pictures
+   *  over them are not flipped. */
+  mirrored?: boolean[]
   /** A talking batch's captions: what he says in the first clip, on that
    *  clip's own timeline (talkCaptions.ts), drawn as his talking videos'. */
   captions?: {
@@ -369,7 +377,7 @@ export function liftMusic(channels: Float32Array[], gain: number, sampleRate: nu
 }
 
 export async function renderMontage(
-  { clips: files, look, headlineText, music, seed = '', formula = null, windows = [], reactionFirst = false, titles = [], stepTexts = [], stepOverlays = [], voice = false, voiceAll = false, brightness = 0, keepLines = false, keepShape = false, shorterBy = 0, rawFirst = false, joinTight, captions = null }: MontageRenderInput,
+  { clips: files, look, headlineText, music, seed = '', formula = null, windows = [], reactionFirst = false, titles = [], stepTexts = [], stepOverlays = [], voice = false, voiceAll = false, brightness = 0, keepLines = false, keepShape = false, shorterBy = 0, rawFirst = false, joinTight, asGiven = [], mirrored = [], captions = null }: MontageRenderInput,
   onProgress?: (fraction: number) => void,
 ): Promise<MontageRenderResult> {
   if (files.length === 0) throw new SilenceCutError('Add at least one clip.')
@@ -409,7 +417,7 @@ export async function renderMontage(
     const trimmed: boolean[] = []
     if (joinTight) {
       for (const [i, clip] of clips.entries()) {
-        if (windows[i]) continue
+        if (windows[i] || asGiven[i]) continue
         const voice = await voiceSpan(clip, joinTight).catch(() => null)
         if (!voice) continue
         const part = parts[i]
@@ -591,6 +599,13 @@ export async function renderMontage(
           : i === 0 && reactionFirst && pushes
             ? { ...own, scale: Math.max(own.scale, reactionZoom(t - start, length)) }
             : own
+      // Mirrored: left and right swapped for this clip's picture only.
+      const flip = Boolean(mirrored[i])
+      if (flip) {
+        ctx.save()
+        ctx.translate(width, 0)
+        ctx.scale(-1, 1)
+      }
       if (raw || whole || stretch.still !== false) {
         // Drawn exactly as it is: a wide clip whole on black, a clip with its
         // own bands as made - nothing zoomed (a clip still undecided: its
@@ -600,6 +615,7 @@ export async function renderMontage(
         const spot = zoomPlace(fill, framing, width, height)
         sample.draw(ctx, spot.x, spot.y, spot.width, spot.height)
       }
+      if (flip) ctx.restore()
       if (brightness) {
         // A see-through wash rather than a canvas filter: the same on every
         // browser the app runs in. Over the picture only, not the black

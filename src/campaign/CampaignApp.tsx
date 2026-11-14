@@ -2075,7 +2075,9 @@ export function CampaignApp() {
           )
         } else if (next.montage) {
           const rest = await montageClips(next)
-          const track = await montageMusic(next)
+          // A talking head with Music off: no song - videos planned before he
+          // switched it too (BatchFormat.noMusic).
+          const track = jobFormat?.kind === 'talking' && jobFormat.noMusic ? null : await montageMusic(next)
           // A talking head batch: what he says, heard once per clip
           // (talkCaptions.ts), drawn over it - unless captions are off.
           let said: CaptionWord[] = []
@@ -2113,6 +2115,8 @@ export function CampaignApp() {
           // too, heard once per clip like the talking one (his ask,
           // 2026-11-13: captions on the steps, not words typed as their name).
           const stepClips = next.montage.bank?.steps
+          /** A step's clip as it is in the batch now. */
+          const stepFileNow = (file: BankFile) => batchBank?.steps?.flatMap((st) => st.files).find((f) => f.id === file.id) ?? file
           const stepSaid: (CaptionWord[] | null)[] = []
           if (talkingClip && captionsRef.current && stepClips?.length) {
             for (const [k, step] of stepClips.entries()) {
@@ -2218,6 +2222,10 @@ export function CampaignApp() {
               // each from just before his first word to just after his last,
               // with his talking videos' pause settings (voiceSpan.ts).
               joinTight: keepsVoice && jobFormat?.kind === 'talking' && stepped?.length ? next.settings : undefined,
+              // The clips he cut himself play exactly as he gave them; the
+              // ones he mirrored are flipped - each as it is in the batch now.
+              asGiven: [Boolean(talkingClip?.ownCut), ...(stepped ?? []).map((s) => Boolean(stepFileNow(s.file).ownCut))],
+              mirrored: [Boolean(talkingClip?.mirror), ...(stepped ?? []).map((s) => Boolean(stepFileNow(s.file).mirror))],
               ...(said.length > 0 || stepSaid.some(Boolean)
                 ? {
                     captions: {

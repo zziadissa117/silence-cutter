@@ -62,6 +62,12 @@ export interface BankFile {
    *  (prepareDrop.ts) - a clip he dropped in or added to a talking head's
    *  steps or hooks (his ask, 2026-11-13). Absent: as he filmed it. */
   edited?: boolean
+  /** Kept exactly as he gave it, on purpose: he cut it himself (the drop-in
+   *  checklist's "Cut the clips" off - his ask, 2026-11-14: "sometimes I'm
+   *  going to cut the videos myself"), or nothing in it was talking, so there
+   *  was nothing to cut by (a step he only shows). Never offered for editing,
+   *  never trimmed where it meets the next clip. */
+  ownCut?: boolean
   /** Its captions as he checked them (DropCheck.tsx), on the clip's own
    *  clock - every video of it draws these, here or on the Cutter server. */
   captions?: CaptionWord[]
@@ -69,6 +75,10 @@ export interface BankFile {
    *  and captions approved. Absent on a clip from before his check (unless
    *  it has `captions`, which only his check gives). */
   checked?: boolean
+  /** Shown flipped left to right in every video - a paper he holds up reads
+   *  the right way (his ask, 2026-11-14: "Make an option to mirror all").
+   *  Flipped as the video is drawn, so it costs no quality. */
+  mirror?: boolean
 }
 
 /** What one kind of video in a batch is: his silent reaction then the
@@ -94,6 +104,17 @@ export interface BatchFormat {
    *  it so I can choose if I want one or not"). Absent: a headline, as
    *  always. */
   noHeadline?: boolean
+  /** A talking head with no song under it - his voice and the clips' own
+   *  sound only (the drop-in checklist, his ask 2026-11-14: "we choose
+   *  what's being edited or not"). Absent: a song from the music bank. */
+  noMusic?: boolean
+  /** What the drop-in checklist was last left at for this format, ticked
+   *  again next time: false when he unticked "Cut the clips" (he cuts them
+   *  himself) or "Captions". Absent: on. */
+  dropCut?: false
+  dropCaptions?: false
+  /** "Mirror them" ticked the last time. */
+  dropMirror?: true
   /** A talking head: the height of its captions, dragged by him - their
    *  centre as a share of the video's height (captions.CaptionSpot). Absent:
    *  the usual place (his ask, 2026-11-13). */
@@ -768,6 +789,8 @@ export function formatBank(bank: BatchBank, format: BatchFormat): BatchBank {
     // No headline: no words over him at all - not the headlines, not
     // Claude + X - and the videos mixed from his clips, products and songs.
     ...(format.noHeadline ? { headlines: [], looks: undefined, hook: undefined, headlineStyles: undefined, headlineStyle: undefined, formula: undefined } : {}),
+    // No music: no song picked for its videos.
+    ...(format.noMusic && format.kind === 'talking' ? { music: [] } : {}),
     voice: undefined,
     formats: [],
   }

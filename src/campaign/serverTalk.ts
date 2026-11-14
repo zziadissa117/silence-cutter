@@ -17,7 +17,7 @@ import { listen, make } from './pipeline'
 import { serverLog } from './serverMode'
 import { loadBank, loadCampaigns } from './store'
 import type { DropOrder, DropResult, ListenOrder, MakeOrder, TalkState } from './talkOrder'
-import { cutDropped } from './prepareDrop'
+import { cutDropped, videoType } from './prepareDrop'
 import { fingerprint } from './fingerprint'
 import { filmingOf } from './filming'
 import { SilenceCutError } from '../media/errors'
@@ -180,7 +180,7 @@ async function runMake(order: MakeOrder): Promise<void> {
  *  it from this disk - and its words told back (prepareDrop.ts). */
 async function runDrop(order: DropOrder): Promise<void> {
   await tell(order.id, 'drop', { state: 'listening', progress: 0 })
-  const file = await fileOf(order.fileId, order.outName)
+  const file = await fileOf(order.fileId, order.inName ?? order.outName)
   const onProgress = progressTo(order.id, 'drop', 'listening')
   const cut = await cutDropped(file, {
     settings: order.settings,
@@ -191,13 +191,27 @@ async function runDrop(order: DropOrder): Promise<void> {
     brandWords: order.brandWords,
     seed: order.from,
     names: order.names,
+    asFilmed: Boolean(order.asFilmed),
     onPhase: (phase, p) => onProgress(phase === 'cutting' ? 0.6 + p * 0.4 : p * 0.6),
   })
-  const saved = await fetch(`/local/files/${encodeURIComponent(order.outId)}?name=${encodeURIComponent(order.outName)}&type=video/mp4`, { method: 'PUT', body: cut.blob })
+  // Cut: an MP4. Kept as he gave it (he cut it himself, or no talking in
+  // it): the recording itself, under its own name and type.
+  const name = cut.cut ? order.outName : (order.inName ?? order.outName)
+  const type = cut.cut ? 'video/mp4' : videoType(name, file.type)
+  const saved = await fetch(`/local/files/${encodeURIComponent(order.outId)}?name=${encodeURIComponent(name)}&type=${encodeURIComponent(type)}`, { method: 'PUT', body: cut.blob })
   if (!saved.ok) throw new SilenceCutError("The cut clip couldn't be kept on the server's disk.")
   const seconds = (await filmingOf(cut.blob).catch(() => null))?.seconds
   const dropped: DropResult = {
-    file: { id: order.outId, name: order.outName, type: 'video/mp4', size: cut.blob.size, fp: await fingerprint(cut.blob), from: order.from, edited: true, ...(seconds ? { seconds } : {}) },
+    file: {
+      id: order.outId,
+      name,
+      type,
+      size: cut.blob.size,
+      fp: await fingerprint(cut.blob),
+      from: order.from,
+      ...(cut.cut ? { edited: true } : { ownCut: true }),
+      ...(seconds ? { seconds } : {}),
+    },
     words: cut.words,
     text: cut.text,
   }

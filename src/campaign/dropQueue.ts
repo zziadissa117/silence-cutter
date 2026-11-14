@@ -17,7 +17,7 @@
 // sound like another step - or every clip again. Those stay where they are in
 // the batch until he moves them.
 
-import type { BankFile, BatchBank, BatchStep } from './batch'
+import type { BankFile, BatchBank, BatchFormat, BatchStep } from './batch'
 import type { CaptionWord } from './captions'
 import { matchStep } from './stepMatch'
 
@@ -47,6 +47,9 @@ export interface ToCheck {
   hint?: string
   /** What he says in it was never heard: heard on the check. */
   unheard?: boolean
+  /** Dropped in with "Captions" unticked: it goes in with none, and its
+   *  check is only where it goes. */
+  noCaptions?: boolean
 }
 
 const KEY = 'batch.toCheck:'
@@ -119,7 +122,9 @@ export function suggestPlace(
     return hint ? { place: was, sure: false, hint } : { place: was, sure: true }
   }
   const match = matchStep(text, steps)
-  const place = match.stepId ?? (hooks ? HOOK : null)
+  // A clip with no talking (a step he only shows) is never one of his
+  // hooks: he picks its step on the check.
+  const place = match.stepId ?? (hooks && text.trim() ? HOOK : null)
   return { place, sure: match.sure && place !== null }
 }
 
@@ -235,5 +240,41 @@ function stepClip(file: BankFile): BankFile {
 /** The clips of a talking head format still as he filmed them: its steps'
  *  and the hooks given (none when he keeps them raw). */
 export function notEdited(steps: readonly Pick<BatchStep, 'files'>[], hooks: readonly BankFile[]): BankFile[] {
-  return [...steps.flatMap((s) => s.files), ...hooks].filter((f) => !f.edited)
+  // One he cut himself, or with no talking in it, stays as it is.
+  return [...steps.flatMap((s) => s.files), ...hooks].filter((f) => !f.edited && !f.ownCut)
 }
+
+/** The drop-in checklist (his ask, 2026-11-14: "after you drop in all
+ *  videos, it asks, 'What do you want to edit?' ... captions, music, and
+ *  headlines, and the video being cut ... Because sometimes I'm going to cut
+ *  the videos myself"). Cut and captions go with the clips dropped in; music
+ *  and the headline are the whole video's, so they are the format's. */
+export interface DropChoices {
+  /** Silences and "um"s cut, his zooms - off: kept as he cut them. */
+  cut: boolean
+  /** What he says, as captions. */
+  captions: boolean
+  /** A song under the format's videos. */
+  music: boolean
+  /** The headline over the start of its videos. */
+  headline: boolean
+  /** The clips flipped left to right - a paper he holds up reads right. */
+  mirror: boolean
+}
+
+/** The checklist as he last left it for this format: all on at first. */
+export function choicesOf(format: Pick<BatchFormat, 'dropCut' | 'dropCaptions' | 'noMusic' | 'noHeadline' | 'dropMirror'>): DropChoices {
+  return { cut: format.dropCut !== false, captions: format.dropCaptions !== false, music: !format.noMusic, headline: !format.noHeadline, mirror: Boolean(format.dropMirror) }
+}
+
+/** His picks, kept on the format: ticked the same way next time. */
+export function withChoices(choices: DropChoices): Pick<BatchFormat, 'dropCut' | 'dropCaptions' | 'noMusic' | 'noHeadline' | 'dropMirror'> {
+  return {
+    dropCut: choices.cut ? undefined : false,
+    dropCaptions: choices.captions ? undefined : false,
+    noMusic: choices.music ? undefined : true,
+    noHeadline: choices.headline ? undefined : true,
+    dropMirror: choices.mirror ? true : undefined,
+  }
+}
+

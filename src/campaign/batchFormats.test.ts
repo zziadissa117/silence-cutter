@@ -156,3 +156,15 @@ describe("a batch video's captions look (his report, 2026-11-14: one word at a t
     expect(batchCaptionLook(undefined, null, here)).toEqual(here)
   })
 })
+
+describe('a talking head with Music off (the drop-in checklist, his ask 2026-11-14)', () => {
+  it('its videos get no song; other formats keep theirs', () => {
+    const song = { id: 'm1', name: 'song.mp3', type: 'audio/mpeg', size: 1 }
+    const bank = { campaignId: 'c', angleId: 'a', reactions: [], products: [], headlines: ['Hi'], music: [song], perDay: 1, days: 1, used: {}, made: [] } as unknown as BatchBank
+    const talk = { id: 't', kind: 'talking', name: 'Talk', noMusic: true } as BatchFormat
+    expect(formatBank(bank, talk).music).toEqual([])
+    expect(formatBank(bank, { ...talk, noMusic: undefined }).music).toEqual([song])
+    expect(formatBank(bank, { ...talk, kind: 'reaction' }).music).toEqual([song])
+  })
+})
+

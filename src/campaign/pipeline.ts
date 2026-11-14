@@ -498,6 +498,8 @@ export async function makeMontage(
     /** A talking head: each clip from just before his first word to just
      *  after his last (montageRender, voiceSpan.ts). */
     joinTight?: Parameters<typeof renderMontage>[0]['joinTight']
+    asGiven?: boolean[]
+    mirrored?: boolean[]
     /** A talking batch's captions (talkCaptions.ts). */
     captions?: Parameters<typeof renderMontage>[0]['captions']
   } = {},
@@ -523,6 +525,8 @@ export async function makeMontage(
       shorterBy: extra.shorterBy,
       rawFirst: extra.rawFirst,
       joinTight: extra.joinTight,
+      asGiven: extra.asGiven,
+      mirrored: extra.mirrored,
       captions: extra.captions ?? null,
     },
     onRenderProgress,

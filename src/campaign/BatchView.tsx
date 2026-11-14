@@ -60,6 +60,7 @@ import { CaptionHeight } from './CaptionHeight'
 import { CAPTION_STYLES, defaultCaptionSize, defaultCaptionStyle } from './captions'
 import { DropCheck } from './DropCheck'
 import { DropIn, HOOK, dropInto } from './DropIn'
+import { choicesOf, withChoices } from './dropQueue'
 import { defaultEffects, effectsFor } from './defaultEffects'
 import { StepTexts } from './StepTexts'
 import { BatchStatus } from './BatchStatus'
@@ -1439,6 +1440,23 @@ export function BatchView({
                     onChange={(e) => changeFormat(f.id, { noHeadline: e.target.checked ? undefined : true })}
                   />
                 </div>
+                {/* A song under a talking head's videos, or none (the drop-in
+                    checklist sets it too - his ask, 2026-11-14). */}
+                {f.kind === 'talking' ? (
+                  <div className="setting">
+                    <div className="setting-text">
+                      <span className="row-name">Music</span>
+                      <span className="row-line">{f.noMusic ? 'Off: your voice and the clips’ own sound only.' : 'A song from the music bank under your voice.'}</span>
+                    </div>
+                    <input
+                      type="checkbox"
+                      className="switch"
+                      checked={!f.noMusic}
+                      aria-label="Music"
+                      onChange={(e) => changeFormat(f.id, { noMusic: e.target.checked ? undefined : true })}
+                    />
+                  </div>
+                ) : null}
                 {f.kind === 'talking' ? <CaptionHeight value={f.captionY} onChange={(y) => changeFormat(f.id, { captionY: y })} /> : null}
                 {/* The captions' look for every video of it - full phrases
                     unless he picks another (his ask, 2026-11-14); the same
@@ -1542,6 +1560,8 @@ export function BatchView({
                     brandWords={campaign.brandWords ?? []}
                     getBank={() => bankRef.current}
                     onCheck={() => setChecking(f.id)}
+                    choices={choicesOf(f)}
+                    onChoices={(picked) => changeFormat(f.id, withChoices(picked))}
                   />
                   {/* His pick per format (2026-11-13: "make it so I choose each
                       new format"): dropped clips can be hooks too. */}

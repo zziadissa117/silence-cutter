@@ -107,11 +107,17 @@ export interface DropOrder {
    *  brand's words they fire on - "exactly like the cutter". */
   effects?: AngleEffects
   brandWords?: string[]
+  /** "Cut the clips" unticked on the drop-in checklist: only heard, kept as
+   *  he gave it (prepareDrop.cutDropped). */
+  asFilmed?: boolean
+  /** The recording's own name, for a clip kept as he gave it. */
+  inName?: string
 }
 
-/** What a drop-in sends back: the cut clip as a bank file, his words in it. */
+/** What a drop-in sends back: the clip as a bank file - cut (`edited`), or as
+ *  he gave it (`ownCut`) - and his words in it. */
 export interface DropResult {
-  file: { id: string; name: string; type: string; size: number; fp?: string; from?: string; seconds?: number; edited?: boolean }
+  file: { id: string; name: string; type: string; size: number; fp?: string; from?: string; seconds?: number; edited?: boolean; ownCut?: boolean }
   words: CaptionWord[]
   text: string
 }

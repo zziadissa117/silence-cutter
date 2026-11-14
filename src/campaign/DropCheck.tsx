@@ -17,7 +17,7 @@
 // is, the step its words sound like pointed out when that is another one;
 // Approve keeps it there or moves it, Take out takes it out of the batch.
 
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 
 import { batchCaptionLook, type BankFile, type BatchBank, type BatchFormat, type BatchStep } from './batch'
 import { CaptionReview } from './CaptionReview'
@@ -95,6 +95,8 @@ export function DropCheck({
    *  couldn't be - it is checked without touching its captions). */
   const [heard, setHeard] = useState<CaptionWord[] | 'failed' | null>(null)
   const [hint, setHint] = useState<string | null>(item?.hint ?? null)
+  /** Flipped left to right (BankFile.mirror) - set by the drop-in checklist, changed here. */
+  const [mirror, setMirror] = useState(Boolean(item?.file.mirror))
 
   // The ones out of the batch by now are out of the check for good.
   useEffect(() => {
@@ -112,6 +114,7 @@ export function DropCheck({
     setPickFirst(false)
     setHeard(null)
     setHint(item.hint ?? null)
+    setMirror(Boolean(item.file.mirror))
     document.querySelector('.drop-check-screen')?.scrollTo?.({ top: 0 })
     void (async () => {
       let blob: Blob | null = await loadBankFile(item.file).catch(() => null)
@@ -180,7 +183,8 @@ export function DropCheck({
     }
     // Its captions left as they were when it couldn't be heard.
     const captions = heard === 'failed' ? {} : { captions: words }
-    const clip = { ...now, ...(item.recheck ? {} : { edited: true }), ...captions, checked: true }
+    // Flipped or not, as he left it here.
+    const clip = { ...now, ...(item.recheck || now.ownCut ? {} : { edited: true }), ...captions, mirror: mirror || undefined, checked: true }
     let after = placed(bank, format.id, clip, place, item.replaces)
     // Its step learns how he says it, for the next drop-in.
     if (place !== HOOK && text) {
@@ -204,6 +208,10 @@ export function DropCheck({
         {(!item.sure || hint) && place === item.place && place !== null ? (
           <span className="drop-check-unsure">{hint ? 'Maybe the wrong step' : 'Not sure - check it'}</span>
         ) : null}
+        {/* Left and right swapped - a paper he holds up reads the right way. */}
+        <button type="button" className={`linkbtn drop-check-mirror${mirror ? ' active' : ''}`} aria-pressed={mirror} onClick={() => setMirror(!mirror)}>
+          {mirror ? 'Mirrored' : 'Mirror'}
+        </button>
         <button type="button" className={`linkbtn drop-check-out${place === OUT ? ' active' : ''}`} aria-pressed={place === OUT} onClick={() => setPlace(place === OUT ? item.place : OUT)}>
           {place === OUT ? 'Keep it' : item.recheck ? 'Take out' : 'Leave out'}
         </button>
@@ -218,7 +226,9 @@ export function DropCheck({
               : 'Left out of the batch.'
             : pickFirst
               ? 'Pick where it goes, then Approve.'
-              : 'No step fits what it says - pick where it goes.'}
+              : text.trim()
+                ? 'No step fits what it says - pick where it goes.'
+                : 'No talking in it - pick the step it shows.'}
         </span>
       ) : null}
       {listening ? <span className="hint">Listening to what you say in it…</span> : null}
@@ -257,6 +267,30 @@ export function DropCheck({
     </div>
   )
 
+  const approveLabel = place === OUT ? (item.recheck ? 'Take it out' : 'Leave it out') : queue.length > 1 ? 'Approve & next clip' : 'Approve'
+  const screen = `drop-check-screen${mirror ? ' mirrored' : ''}`
+  // No captions to look at - he unticked Captions for these clips, or
+  // nothing in it is talking (a step he only shows): the clip, where it
+  // goes, Approve. It goes in with none.
+  if (!listening && (item.noCaptions || said.length === 0)) {
+    return (
+      <div className={screen}>
+        <section className="screen review">
+          <button type="button" className="back" onClick={onClose}>
+            <ChevronLeft /> Batch
+          </button>
+          {where}
+          <ClipPlayer file={file} missing={missing} name={item.name} />
+          <p className="hint">{item.noCaptions ? 'No captions on it - you unticked them for these clips.' : 'No talking in it - it goes in as it is, no captions.'}</p>
+          <div className="actions-row">
+            <button type="button" className="btn primary" onClick={() => approve([])}>
+              {approveLabel}
+            </button>
+          </div>
+        </section>
+      </div>
+    )
+  }
   // Over the whole screen, tab bar and all, like the Cutter's own check.
   if (listening) {
     return (
@@ -271,7 +305,7 @@ export function DropCheck({
     )
   }
   return (
-    <div className="drop-check-screen">
+    <div className={screen}>
     <CaptionReview
       key={item.file.id}
       name={item.name}
@@ -280,7 +314,7 @@ export function DropCheck({
       initial={said}
       top={where}
       backLabel="Batch"
-      approveLabel={place === OUT ? (item.recheck ? 'Take it out' : 'Leave it out') : queue.length > 1 ? 'Approve & next clip' : 'Approve'}
+      approveLabel={approveLabel}
       bare={bareCaptions()}
       position={format.captionY ?? defaultCaptionPosition()}
       size={look.size}
@@ -311,3 +345,13 @@ export function DropCheck({
     </div>
   )
 }
+
+/** The clip itself, playing, for a check with no captions to look at. */
+function ClipPlayer({ file, missing, name }: { file: Blob | null; missing: boolean; name: string }) {
+  const url = useMemo(() => (file ? URL.createObjectURL(file) : null), [file])
+  useEffect(() => () => void (url && URL.revokeObjectURL(url)), [url])
+  if (missing) return <p className="hint warn-text">{name} is no longer on this phone or your server.</p>
+  if (!url) return <p className="hint">Getting the clip…</p>
+  return <video className="drop-check-video" src={url} controls playsInline loop aria-label={name} />
+}
+

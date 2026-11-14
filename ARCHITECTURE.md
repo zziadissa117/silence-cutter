@@ -803,6 +803,21 @@ the phone never sends it again), and tells back a `DropResult`. The phone waits 
 puts each into the check, downloads a copy (`GET /files/<id>`) and then lets the order go (`DELETE /talk/<id>`). The
 server not taking one (an upload failing): that one and the rest are done on the phone (`prepareClip`).
 
+The drop-in checklist (his asks 2026-11-14): "Drop in all videos" first shows `DropIn.DropChecklist` - Cut the clips,
+Captions, Music, Headline, Mirror them - ticked from the format (`dropQueue.choicesOf`: `dropCut`, `dropCaptions`,
+`noMusic`, `noHeadline`, `dropMirror`); Start saves his picks on the format (`withChoices`) and runs; a step's + Add
+uses them without asking. Cut off: `cutDropped(..., asFilmed)` only listens (`keepWhole`/`quietIsFine`, words on the
+clip's own clock) and gives the recording back (`cut: false`); the kept clip is `ownCut` (its own name and type,
+`videoType`; on the server `DropOrder.asFilmed`/`inName`). A clip with no talking - the cut path's listening finding
+none, or refusing it as quiet - is kept the same way with no words rather than failing; `suggestPlace` never makes
+one a hook. Captions off: `ToCheck.noCaptions`; `DropCheck` shows such a clip, or any with no words, as the clip
+(`ClipPlayer`), where it goes and Approve - in with `captions: []`. Mirror: `BankFile.mirror`, set from the
+checklist on the queued clip and changed on its check (the preview's `<video>` flipped by CSS, the caption canvas
+not). In the batch video (`CampaignApp`, as each clip is in the bank now): `asGiven` - an `ownCut` clip is never
+trimmed at the joins (`joinTight` skips it); `mirrored` - drawn through `ctx.scale(-1, 1)` in `montageRender`'s
+`frameAt`, so it is flipped in the one encode the video gets anyway. Music off: `formatBank` gives a talking format
+no songs and the render drops the track for videos planned before (`jobFormat.noMusic`).
+
 ## The engine (`engine/`, on Railway)
 
 ```
