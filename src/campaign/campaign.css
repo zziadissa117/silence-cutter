@@ -2115,8 +2115,18 @@ html.editor-dark .caption-sheet { --ink: #000000; --text: #ffffff; --dim: #aeaeb
 
 /* A batch's days of the week (his ask, 2026-11-14: "make it so we can choose
    the days too"): seven buttons in a row, the picked ones lit. */
-.week-days { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 6px; margin: 6px 0 2px; }
-.week-days button { min-height: 42px; padding: 0; border-radius: 12px; border: 1px solid var(--hairline);
-  background: color-mix(in srgb, var(--text) 6%, transparent); color: var(--text); font: inherit; font-size: 13px; font-weight: 600; cursor: pointer; }
-.week-days button.active { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 24%, transparent); }
+.week-field .label + .week-days, .week-field .week-days + .label { margin-top: 2px; }
+.week-days { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 6px; margin: 4px 0 10px; }
+.week-days button { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px; min-height: 58px; padding: 6px 0;
+  border-radius: 14px; border: 1.5px solid var(--hairline); background: color-mix(in srgb, var(--text) 5%, transparent); color: var(--muted);
+  font: inherit; font-size: 13px; font-weight: 650; cursor: pointer; -webkit-tap-highlight-color: transparent; touch-action: manipulation; }
+.week-days button.active { border-color: var(--accent); background: var(--accent); color: #fff; }
+.week-day-mark { display: flex; align-items: center; justify-content: center; width: 18px; height: 18px; border-radius: 50%;
+  border: 1.5px solid color-mix(in srgb, var(--muted) 60%, transparent); }
+.week-days button.active .week-day-mark { border-color: transparent; background: rgba(255, 255, 255, 0.25); }
+.week-summary { display: flex; flex-direction: column; gap: 2px; margin: 10px 0 2px; padding: 12px 14px; border-radius: 14px;
+  background: color-mix(in srgb, var(--accent) 12%, transparent); }
+.week-summary .row-name { font-size: 17px; }
+.week-summary .hint { margin: 0; color: var(--text); }
+.week-summary.warn { background: color-mix(in srgb, var(--warn) 16%, transparent); }
 .status-days li.off .day-count { color: var(--muted); font-weight: 500; }

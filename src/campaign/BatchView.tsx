@@ -47,11 +47,13 @@ import {
   withoutName,
   batchCaptionLook,
   describeWeek,
-  weekDays,
+  FIRST_WEEK,
+  weekCount,
   weekOn,
+  weekPlan,
   WEEK_ORDER,
   WEEKDAY_NAMES,
-  type BatchWeek,
+  WEEKDAY_WORDS,
 } from './batch'
 import { StepOrder } from './StepOrder'
 import { CaptionHeight } from './CaptionHeight'
@@ -92,7 +94,7 @@ import {
 import { fingerprint, skippedNotice } from './fingerprint'
 import { formatTime, labelOf, type Job } from './jobs'
 import type { Angle, Campaign } from './look'
-import { ChevronDown, CloseIcon, MinusIcon, PlusIcon } from './icons'
+import { CheckMark, ChevronDown, CloseIcon, MinusIcon, PlusIcon } from './icons'
 import { MAX_TRACK_MB } from './music'
 import { copySong, useMusicBank } from './musicBank'
 import {
@@ -252,9 +254,6 @@ function writeList(key: string, list: string[]): void {
 }
 
 const mb = (bytes: number) => `${Math.max(1, Math.round(bytes / 1e6))} MB`
-
-/** Videos a week when he first picks days of the week. */
-const WEEK_START = 3
 
 /** The most "more each day" there is: from 1 a day to the most a day
  *  (MOST_A_DAY) in two days. */
@@ -500,11 +499,12 @@ export function BatchView({
   const perDay = bank ? perDayOn(bank, today) : 1
   const week = bank ? weekOn(bank) : null
   // What he set: a number a day, or a number a week.
-  const planned = week ? week.count : perDay
+  const plan = week ? weekPlan(week) : null
+  const planned = week ? weekCount(week) : perDay
   const growth = week ? 0 : (bank?.growth ?? 0)
-  const rate = week ? `${week.count} a week` : `${perDay} ${growth > 0 ? `today, +${growth} a day` : 'a day'}`
-  // The week's days and how many each, in words.
-  const weekPlan = week ? describeWeek(week) : { text: '', none: [] as string[] }
+  const rate = week ? `${planned} a week` : `${perDay} ${growth > 0 ? `today, +${growth} a day` : 'a day'}`
+  // The week in words: "3 videos a week", "One on Monday, Wednesday and Friday."
+  const weekWords = week ? describeWeek(week) : null
   const running = Boolean(bank?.running)
   const takenOn = takenBy(posts, jobs, campaign.id)
   const times = batchTimesOn(place, campaign.id, today, perDay)
@@ -1175,25 +1175,25 @@ export function BatchView({
   // Copies of a video are made with the batch stopped too (Stop stops them).
   const copiesDue = bank ? copiesToMake(bank) : 0
   const dueNow = ((running && missing.length === 0) || copiesDue > 0) && !onServer && over.length === 0 && due.length > 0 && saving === null && !topping
-  /** A number a week on the days he picks, or back to a number a day - the
-   *  week kept for when he comes back to it. */
+  /** Some days of the week, or back to every day - the days kept for when he
+   *  comes back to them. */
   const setWeekly = (on: boolean) => {
     if (!bank) return
-    const now = bank.week ?? { count: WEEK_START }
-    const { off: _off, ...kept } = now
-    keep({ ...bank, week: on ? kept : { ...kept, off: true } })
+    const now = bank.week ? weekPlan(bank.week) : FIRST_WEEK
+    // A week with no day or none on them starts as the first one again.
+    const start = now.days.length > 0 && now.each > 0 ? now : FIRST_WEEK
+    keep({ ...bank, week: on ? { days: start.days, each: start.each } : { days: now.days, each: now.each, off: true } })
   }
-  const setWeek = (patch: Partial<BatchWeek>) => {
+  const setWeek = (patch: { days?: number[]; each?: number }) => {
     if (!bank?.week) return
-    const next = { ...bank.week, ...patch }
-    keep({ ...bank, week: { ...next, count: Math.max(0, Math.min(MOST_A_DAY * weekDays(next).length, Math.round(next.count))) } })
+    const now = weekPlan(bank.week)
+    keep({ ...bank, week: { days: patch.days ?? now.days, each: Math.max(0, Math.min(MOST_A_DAY, Math.round(patch.each ?? now.each))) } })
   }
-  /** A day picked or not; none picked: spread over the week by itself. */
+  /** A day on or off: the days lit are exactly the days it posts on. */
   const toggleDay = (d: number) => {
     if (!bank?.week) return
-    const days = bank.week.days ?? []
-    const next = days.includes(d) ? days.filter((x) => x !== d) : [...days, d]
-    setWeek({ days: next.length > 0 ? next : undefined })
+    const days = weekPlan(bank.week).days
+    setWeek({ days: days.includes(d) ? days.filter((x) => x !== d) : [...days, d] })
   }
 
   const setPerDay = (n: number) => {
@@ -2199,42 +2199,45 @@ export function BatchView({
                   Every day
                 </button>
                 <button type="button" role="radio" aria-checked={Boolean(week)} className={week ? 'active' : ''} onClick={() => setWeekly(true)}>
-                  Days of the week
+                  Some days
                 </button>
               </div>
             </div>
-            {week ? (
-              <div className="field">
-                <span className="label">Videos a week</span>
-                <div className="stepper">
-                  <button type="button" className="btn small icon-btn" aria-label="Fewer a week" disabled={week.count <= 0} onClick={() => setWeek({ count: week.count - 1 })}>
-                    <MinusIcon />
-                  </button>
-                  <span className="stepper-value" aria-label="Videos a week">
-                    {week.count}
-                  </span>
-                  <button
-                    type="button"
-                    className="btn small icon-btn"
-                    aria-label="More a week"
-                    disabled={week.count >= MOST_A_DAY * weekDays(week).length}
-                    onClick={() => setWeek({ count: week.count + 1 })}
-                  >
-                    <PlusIcon />
-                  </button>
-                </div>
-                <div className="week-days" role="group" aria-label="The days they go out">
+            {week && plan && weekWords ? (
+              <div className="field week-field">
+                {/* The days lit are exactly the days it posts on (his report,
+                    2026-11-14: "pretty confusing to use"). */}
+                <span className="label">Days it posts on</span>
+                <div className="week-days" role="group" aria-label="Days it posts on">
                   {WEEK_ORDER.map((d) => {
-                    const on = Boolean(week.days?.includes(d))
+                    const on = plan.days.includes(d)
                     return (
-                      <button key={d} type="button" aria-pressed={on} className={on ? 'active' : ''} onClick={() => toggleDay(d)}>
-                        {WEEKDAY_NAMES[d]}
+                      <button key={d} type="button" aria-pressed={on} aria-label={WEEKDAY_WORDS[d]} className={on ? 'active' : ''} onClick={() => toggleDay(d)}>
+                        <span>{WEEKDAY_NAMES[d]}</span>
+                        <span className="week-day-mark" aria-hidden>
+                          {on ? <CheckMark /> : null}
+                        </span>
                       </button>
                     )
                   })}
                 </div>
-                <span className={`hint${weekPlan.none.length > 0 ? ' warn-text' : ''}`}>{weekPlan.text}</span>
-                <span className="hint tip">The other days nothing goes out from this batch - your own videos post as usual.</span>
+                <span className="label">Videos on each of those days</span>
+                <div className="stepper">
+                  <button type="button" className="btn small icon-btn" aria-label="Fewer on each day" disabled={plan.each <= 0} onClick={() => setWeek({ each: plan.each - 1 })}>
+                    <MinusIcon />
+                  </button>
+                  <span className="stepper-value" aria-label="Videos on each of those days">
+                    {plan.each}
+                  </span>
+                  <button type="button" className="btn small icon-btn" aria-label="More on each day" disabled={plan.each >= MOST_A_DAY} onClick={() => setWeek({ each: plan.each + 1 })}>
+                    <PlusIcon />
+                  </button>
+                </div>
+                <div className={`week-summary${planned === 0 ? ' warn' : ''}`} aria-live="polite">
+                  <span className="row-name">{weekWords.title}</span>
+                  <span className="hint">{weekWords.line}</span>
+                </div>
+                <span className="hint tip">On the other days nothing from this batch goes out - your own videos post as usual.</span>
               </div>
             ) : (
               <>

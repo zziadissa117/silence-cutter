@@ -197,6 +197,13 @@ export const PlusIcon = () => (
   </Icon>
 )
 
+/** A tick: a day the batch posts on. */
+export const CheckMark = () => (
+  <Icon size={14}>
+    <path d="M5 12.5l4.5 4.5L19 7.5" />
+  </Icon>
+)
+
 export const ArrowUpIcon = () => (
   <Icon size={18}>
     <path d="M12 18.5v-13M6.5 11l5.5-5.5 5.5 5.5" />

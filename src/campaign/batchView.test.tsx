@@ -144,26 +144,32 @@ describe('the Start button', () => {
     expect(host.querySelector('.batch-variations')?.textContent).toBe('27 variations3 reactions × 3 product showcases × 3 headlinesNone made yet - 9 days at 3 a day.')
   })
 
-  it('posts a number a week on the days he picks, nothing on the others (his ask, 2026-11-14)', async () => {
+  it('posts on the days he lights, the same number on each, nothing on the others (his asks, 2026-11-14)', async () => {
     await show({})
     const radio = (name: string) => [...host.querySelectorAll('[role="radio"]')].find((b) => b.textContent === name) as HTMLButtonElement
-    await act(async () => radio('Days of the week').click())
+    const day = (name: string) => host.querySelector(`.week-days button[aria-label="${name}"]`) as HTMLButtonElement
+    await act(async () => radio('Some days').click())
     let saved = await savedBank()
-    expect(saved.week).toEqual({ count: 3 })
-    expect(host.textContent).toContain('Spread over the week by itself: Mon, Wed and Fri - 1 each.')
+    // Monday, Wednesday and Friday lit to start with - exactly what it posts on.
+    expect(saved.week).toEqual({ days: [1, 3, 5], each: 1 })
+    expect([...host.querySelectorAll('.week-days button[aria-pressed="true"]')].map((b) => b.getAttribute('aria-label'))).toEqual(['Monday', 'Wednesday', 'Friday'])
+    expect(host.querySelector('.week-summary')?.textContent).toBe('3 videos a weekOne on Monday, Wednesday and Friday.')
     expect(makeButton().textContent).toBe('Start · 3 a week')
-    const day = (name: string) => [...host.querySelectorAll('.week-days button')].find((b) => b.textContent === name) as HTMLButtonElement
-    for (const name of ['Mon', 'Wed', 'Thu']) await act(async () => day(name).click())
+    // Friday off, Thursday on: a day tapped is added or taken away, nothing else moves.
+    await act(async () => day('Friday').click())
+    await act(async () => day('Thursday').click())
     saved = await savedBank()
-    expect(saved.week).toEqual({ count: 3, days: [1, 3, 4] })
-    expect(host.textContent).toContain('Mon, Wed and Thu - 1 each.')
-    await act(async () => (host.querySelector('[aria-label="More a week"]') as HTMLButtonElement).click())
-    expect(host.textContent).toContain('Mon 2 · Wed 1 · Thu 1.')
-    // Back to a number a day, the week kept for next time.
+    expect(saved.week).toEqual({ days: [1, 3, 4], each: 1 })
+    expect(host.querySelector('.week-summary')?.textContent).toBe('3 videos a weekOne on Monday, Wednesday and Thursday.')
+    await act(async () => (host.querySelector('[aria-label="More on each day"]') as HTMLButtonElement).click())
+    expect(host.querySelector('.week-summary')?.textContent).toBe('6 videos a week2 on Monday, Wednesday and Thursday.')
+    // Back to every day, the days kept for next time.
     await act(async () => radio('Every day').click())
     saved = await savedBank()
-    expect(saved.week).toEqual({ count: 4, days: [1, 3, 4], off: true })
+    expect(saved.week).toEqual({ days: [1, 3, 4], each: 2, off: true })
     expect(makeButton().textContent).toBe('Start · 3 a day')
+    await act(async () => radio('Some days').click())
+    expect((await savedBank()).week).toEqual({ days: [1, 3, 4], each: 2 })
   })
 
   it('stops when he says', async () => {

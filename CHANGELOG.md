@@ -3,6 +3,22 @@
 Newest first. Every change says what it does, how to use it, and how it works
 underneath. Kept up to date with each commit.
 
+## Batch: some days of the week, made clear
+- His report (2026-11-14): "make the accessibility for the days of the week posting better because right now it's
+  pretty confusing to use", and his friend: "button dont work".
+- What was confusing: the days it picked by itself weren't lit; tapping one day dropped the three it had picked
+  ("Tue 3"); and a number a week shared over the days gave "Tue 2 · Sat 1". Every button did work (tapped in a
+  phone-size browser) - it only looked like they didn't. His friend's phone had last reported on a build from
+  before the weekly days (01:51, 0957d86): it needs the app closed and opened again after a deploy.
+- Now: How often - Every day / Some days. "Days it posts on": seven big buttons, the lit ones (with a tick) are
+  exactly the days it posts; a tap turns one day on or off and nothing else moves. "Videos on each of those
+  days": a number. Under them in a box: "3 videos a week - One on Monday, Wednesday and Thursday." It starts on
+  Monday, Wednesday and Friday, one each. Each day button says its whole name to VoiceOver and whether it is on.
+- A week saved the earlier way (a number a week) reads as the days it gave and the nearest number on each.
+- Underneath: `BatchWeek` is `days` + `each` (`count` only read for old ones - `weekPlan`), `weekCount`, `weekShare`,
+  `describeWeek` (title + line), `FIRST_WEEK`; BatchView `setWeekly/setWeek/toggleDay`, `icons.CheckMark`.
+  Tests: `batchWeek.test.ts`, `batchView.test.tsx`.
+
 ## Batch: a number a week, on the days he picks
 - His ask (2026-11-14): "I don't want them to be posted every single day ... every Monday, Wednesday, and Thursday.
   Make it so I can choose when those posts are posted ... make it so you can post X times per week and not per day.

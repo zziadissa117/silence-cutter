@@ -1326,20 +1326,29 @@ export function addDays(date: string, days: number): string {
   return new Date(Date.UTC(y, m - 1, d + days)).toISOString().slice(0, 10)
 }
 
-/** A batch's videos a week (BatchBank.week). */
+/** A batch's videos a week (BatchBank.week): the days it posts on, and how
+ *  many on each of them (his report, 2026-11-14: a number a week shared over
+ *  the days was "pretty confusing to use" - the days lit are now exactly the
+ *  days it posts, the same number on each). */
 export interface BatchWeek {
-  /** Videos a week. */
-  count: number
-  /** The days they go out on, 0 Sunday to 6 Saturday. None: spread evenly
-   *  over the week by itself. */
+  /** The days it posts on, 0 Sunday to 6 Saturday. */
   days?: number[]
+  /** Videos on each of those days. */
+  each?: number
+  /** Saved before `each` (a number a week shared over the days): read as the
+   *  days it gave and the nearest number on each. */
+  count?: number
   /** Back to a number a day for now; the week kept for next time. */
   off?: boolean
 }
 
-/** The week from Monday, as the day chips show it. */
+/** The week from Monday, as the day buttons show it. */
 export const WEEK_ORDER = [1, 2, 3, 4, 5, 6, 0] as const
 export const WEEKDAY_NAMES = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'] as const
+export const WEEKDAY_WORDS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'] as const
+
+/** The days a new week starts with: Monday, Wednesday and Friday. */
+export const FIRST_WEEK: Required<Pick<BatchWeek, 'days' | 'each'>> = { days: [1, 3, 5], each: 1 }
 
 /** The day of the week of "2026-11-16": 0 Sunday to 6 Saturday. */
 export function weekdayOf(date: string): number {
@@ -1352,41 +1361,49 @@ export function weekOn(bank: Pick<BatchBank, 'week'>): BatchWeek | null {
   return bank.week && !bank.week.off ? bank.week : null
 }
 
-/** The days a week's videos go out on, Monday first: the ones he picked, or -
- *  none picked - `count` days spread evenly from Monday (3: Mon, Wed, Fri). */
-export function weekDays(week: Pick<BatchWeek, 'count' | 'days'>): number[] {
-  if (week.days?.length) return WEEK_ORDER.filter((d) => week.days!.includes(d))
-  const n = Math.min(7, Math.max(1, Math.round(week.count)))
-  return Array.from({ length: n }, (_, k) => WEEK_ORDER[Math.floor((k * 7) / n)])
+/** A week as its days (Monday first) and the number on each. One saved as a
+ *  number a week reads as the days that number gave - his picks, or spread
+ *  evenly from Monday - and the nearest whole number on each. */
+export function weekPlan(week: BatchWeek): { days: number[]; each: number } {
+  if (week.each !== undefined) {
+    return { days: WEEK_ORDER.filter((d) => week.days?.includes(d)), each: Math.max(0, Math.round(week.each)) }
+  }
+  const count = Math.max(0, Math.round(week.count ?? 0))
+  const n = Math.min(7, Math.max(1, count))
+  const days = week.days?.length ? WEEK_ORDER.filter((d) => week.days!.includes(d)) : Array.from({ length: n }, (_, k) => WEEK_ORDER[Math.floor((k * 7) / n)])
+  return { days, each: count === 0 ? 0 : Math.max(1, Math.round(count / days.length)) }
 }
 
-/** A week's plan in words for the Batch tab: "Mon, Wed and Thu - 1 each",
- *  "Mon 2 · Wed 2 · Thu 1", and the picked days it leaves without one. */
-export function describeWeek(week: Pick<BatchWeek, 'count' | 'days'>): { text: string; none: string[] } {
-  if (week.count <= 0) return { text: 'Paused: nothing more goes out until you raise it.', none: [] }
-  const days = weekDays(week)
-  const each = days.map((d) => ({ name: WEEKDAY_NAMES[d] as string, n: weekShare(week, d) }))
-  const on = each.filter((e) => e.n > 0)
-  const none = each.filter((e) => e.n === 0).map((e) => e.name)
-  const list = (names: string[]) => (names.length <= 1 ? names.join('') : `${names.slice(0, -1).join(', ')} and ${names[names.length - 1]}`)
-  const plan =
-    on.length === 1
-      ? `${on[0].name} - ${on[0].n}`
-      : on.every((e) => e.n === on[0].n)
-        ? `${list(on.map((e) => e.name))} - ${on[0].n} each`
-        : on.map((e) => `${e.name} ${e.n}`).join(' · ')
-  const picked = Boolean(week.days?.length)
-  const short = none.length > 0 ? ` ${list(none)} get${none.length === 1 ? 's' : ''} none - ${days.length} a week gives each one.` : ''
-  return { text: `${picked ? '' : 'Spread over the week by itself: '}${plan}.${short}${picked ? '' : ' Tap days to pick them.'}`, none }
+/** The days it posts on, Monday first. */
+export function weekDays(week: BatchWeek): number[] {
+  return weekPlan(week).days
 }
 
-/** How many of a week's videos go out on a day of the week: the count shared
- *  over its days, the first days taking one more when it doesn't divide. */
-export function weekShare(week: Pick<BatchWeek, 'count' | 'days'>, weekday: number): number {
-  const days = weekDays(week)
-  const at = days.indexOf(weekday)
-  if (at < 0 || week.count <= 0) return 0
-  return Math.floor(week.count / days.length) + (at < week.count % days.length ? 1 : 0)
+/** Videos a week. */
+export function weekCount(week: BatchWeek): number {
+  const { days, each } = weekPlan(week)
+  return days.length * each
+}
+
+/** How many go out on a day of the week. */
+export function weekShare(week: BatchWeek, weekday: number): number {
+  const { days, each } = weekPlan(week)
+  return days.includes(weekday) ? each : 0
+}
+
+/** A week in words for the Batch tab: "3 videos a week - Monday, Wednesday
+ *  and Thursday", or what is missing. */
+export function describeWeek(week: BatchWeek): { title: string; line: string } {
+  const { days, each } = weekPlan(week)
+  if (days.length === 0) return { title: 'No day picked', line: 'Tap the days it should post on.' }
+  if (each === 0) return { title: 'Paused', line: 'Nothing more goes out until you raise it.' }
+  const names = days.map((d) => WEEKDAY_WORDS[d] as string)
+  const list = names.length === 1 ? names[0] : names.length === 7 ? 'every day' : `${names.slice(0, -1).join(', ')} and ${names[names.length - 1]}`
+  const total = days.length * each
+  return {
+    title: `${total} video${total === 1 ? '' : 's'} a week`,
+    line: `${each === 1 ? 'One' : each} on ${names.length === 7 ? 'each day' : list}.`,
+  }
 }
 
 /** Today on this phone, as "2026-09-30". */

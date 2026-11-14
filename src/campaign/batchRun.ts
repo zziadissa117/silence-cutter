@@ -43,6 +43,7 @@ import {
   weekdayOf,
   weekOn,
   weekShare,
+  weekCount,
   type BankFile,
   type BatchBank,
   type BatchFormat,
@@ -147,7 +148,7 @@ export function daysToMake(bank: Pick<BatchBank, 'perDay' | 'growth' | 'growthFr
   while (still > 0) {
     const n = perDayOn(bank, addDays(today, days))
     // A day of the week it doesn't post on is passed by.
-    if (n <= 0 && week && week.count > 0 && days <= 3650) {
+    if (n <= 0 && week && weekCount(week) > 0 && days <= 3650) {
       days++
       continue
     }
