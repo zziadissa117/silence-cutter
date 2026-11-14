@@ -137,9 +137,33 @@ describe('the Start button', () => {
     await show({})
     expect(makeButton().textContent).toBe('Start · 3 a day')
     expect(host.textContent).toContain(`Makes the next ${AHEAD_DAYS} days now, then keeps going on its own`)
-    expect(host.textContent).not.toContain('Days')
+    // No number of days to pick (the old Days field).
+    expect(host.querySelector('[aria-label="Days"]')).toBeNull()
+    expect(host.textContent).not.toContain('Days ahead')
     // 3 reactions x 3 products x 3 headlines, at 3 a day.
     expect(host.querySelector('.batch-variations')?.textContent).toBe('27 variations3 reactions × 3 product showcases × 3 headlinesNone made yet - 9 days at 3 a day.')
+  })
+
+  it('posts a number a week on the days he picks, nothing on the others (his ask, 2026-11-14)', async () => {
+    await show({})
+    const radio = (name: string) => [...host.querySelectorAll('[role="radio"]')].find((b) => b.textContent === name) as HTMLButtonElement
+    await act(async () => radio('Days of the week').click())
+    let saved = await savedBank()
+    expect(saved.week).toEqual({ count: 3 })
+    expect(host.textContent).toContain('Spread over the week by itself: Mon, Wed and Fri - 1 each.')
+    expect(makeButton().textContent).toBe('Start · 3 a week')
+    const day = (name: string) => [...host.querySelectorAll('.week-days button')].find((b) => b.textContent === name) as HTMLButtonElement
+    for (const name of ['Mon', 'Wed', 'Thu']) await act(async () => day(name).click())
+    saved = await savedBank()
+    expect(saved.week).toEqual({ count: 3, days: [1, 3, 4] })
+    expect(host.textContent).toContain('Mon, Wed and Thu - 1 each.')
+    await act(async () => (host.querySelector('[aria-label="More a week"]') as HTMLButtonElement).click())
+    expect(host.textContent).toContain('Mon 2 · Wed 1 · Thu 1.')
+    // Back to a number a day, the week kept for next time.
+    await act(async () => radio('Every day').click())
+    saved = await savedBank()
+    expect(saved.week).toEqual({ count: 4, days: [1, 3, 4], off: true })
+    expect(makeButton().textContent).toBe('Start · 3 a day')
   })
 
   it('stops when he says', async () => {

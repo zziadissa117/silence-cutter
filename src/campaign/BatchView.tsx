@@ -46,6 +46,12 @@ import {
   type BatchStep,
   withoutName,
   batchCaptionLook,
+  describeWeek,
+  weekDays,
+  weekOn,
+  WEEK_ORDER,
+  WEEKDAY_NAMES,
+  type BatchWeek,
 } from './batch'
 import { StepOrder } from './StepOrder'
 import { CaptionHeight } from './CaptionHeight'
@@ -246,6 +252,9 @@ function writeList(key: string, list: string[]): void {
 }
 
 const mb = (bytes: number) => `${Math.max(1, Math.round(bytes / 1e6))} MB`
+
+/** Videos a week when he first picks days of the week. */
+const WEEK_START = 3
 
 /** The most "more each day" there is: from 1 a day to the most a day
  *  (MOST_A_DAY) in two days. */
@@ -489,7 +498,13 @@ export function BatchView({
   const today = todayHere()
   // Today's number: his, or - while it grows each day - where it has got to.
   const perDay = bank ? perDayOn(bank, today) : 1
-  const growth = bank?.growth ?? 0
+  const week = bank ? weekOn(bank) : null
+  // What he set: a number a day, or a number a week.
+  const planned = week ? week.count : perDay
+  const growth = week ? 0 : (bank?.growth ?? 0)
+  const rate = week ? `${week.count} a week` : `${perDay} ${growth > 0 ? `today, +${growth} a day` : 'a day'}`
+  // The week's days and how many each, in words.
+  const weekPlan = week ? describeWeek(week) : { text: '', none: [] as string[] }
   const running = Boolean(bank?.running)
   const takenOn = takenBy(posts, jobs, campaign.id)
   const times = batchTimesOn(place, campaign.id, today, perDay)
@@ -1160,6 +1175,27 @@ export function BatchView({
   // Copies of a video are made with the batch stopped too (Stop stops them).
   const copiesDue = bank ? copiesToMake(bank) : 0
   const dueNow = ((running && missing.length === 0) || copiesDue > 0) && !onServer && over.length === 0 && due.length > 0 && saving === null && !topping
+  /** A number a week on the days he picks, or back to a number a day - the
+   *  week kept for when he comes back to it. */
+  const setWeekly = (on: boolean) => {
+    if (!bank) return
+    const now = bank.week ?? { count: WEEK_START }
+    const { off: _off, ...kept } = now
+    keep({ ...bank, week: on ? kept : { ...kept, off: true } })
+  }
+  const setWeek = (patch: Partial<BatchWeek>) => {
+    if (!bank?.week) return
+    const next = { ...bank.week, ...patch }
+    keep({ ...bank, week: { ...next, count: Math.max(0, Math.min(MOST_A_DAY * weekDays(next).length, Math.round(next.count))) } })
+  }
+  /** A day picked or not; none picked: spread over the week by itself. */
+  const toggleDay = (d: number) => {
+    if (!bank?.week) return
+    const days = bank.week.days ?? []
+    const next = days.includes(d) ? days.filter((x) => x !== d) : [...days, d]
+    setWeek({ days: next.length > 0 ? next : undefined })
+  }
+
   const setPerDay = (n: number) => {
     if (bank && Number.isFinite(n)) keep(withPerDay(bank, Math.min(MOST_A_DAY, Math.max(0, Math.round(n))), today))
   }
@@ -1731,12 +1767,12 @@ export function BatchView({
         : engineBusy
           ? 'The engine is making the next days'
           : running
-            ? perDay === 0
-              ? 'Paused · 0 a day'
-              : `Running${onServer ? ' on the server' : ''} · ${perDay} ${growth > 0 ? `today, +${growth} a day` : 'a day'}`
-            : `Start · ${perDay} ${growth > 0 ? `today, +${growth} a day` : 'a day'}`
+            ? planned === 0
+              ? `Paused · 0 a ${week ? 'week' : 'day'}`
+              : `Running${onServer ? ' on the server' : ''} · ${rate}`
+            : `Start · ${rate}`
   // How long the footage lasts at this many a day.
-  const daysLeft = Number.isFinite(left) && perDay > 0 ? daysToMake(bank!, left, today) : Infinity
+  const daysLeft = Number.isFinite(left) && planned > 0 ? daysToMake(bank!, left, today) : Infinity
   // While it grows: how it goes from here, and the first day the window is too small for it.
   const growthLine = bank && growth > 0 && perDay > 0 ? growthSummary(bank, today, (date, n) => batchTimesOn(place, campaign.id, date, n).length) : null
 
@@ -1760,7 +1796,8 @@ export function BatchView({
   const days = bank ? statusDays(bank, posts, where === 'phone' ? { jobs } : {}) : []
   const status = batchState({
     running,
-    perDay,
+    perDay: planned,
+    per: week ? 'week' : 'day',
     where,
     problem: statusProblem,
     making: makingNow !== null || waitingNow > 0 || engineBusy || (where === 'phone' && topping),
@@ -1923,7 +1960,7 @@ export function BatchView({
                 ) : null}
               </div>
               <p className="hint tip">
-                Every kind of video this account posts, in this one batch. They take turns in your {perDay > 0 ? `${perDay} a day` : 'videos'}, each from its own
+                Every kind of video this account posts, in this one batch. They take turns in your {planned > 0 ? rate : 'videos'}, each from its own
                 clips - evenly at first, then more of the ones whose videos get more views. The headlines and music below are for all of them.
               </p>
               <ul className="format-cards">
@@ -2152,109 +2189,160 @@ export function BatchView({
               <Mark kind="posting" />
               Posting
             </div>
+            {/* A number a day, or a number a week on the days he picks (his ask,
+                2026-11-14: "make it so you can post X times per week and not per
+                day. Also, make it so we can choose the days too"). */}
             <div className="field">
-              <span className="label">Videos a day</span>
-              <div className="stepper">
-                <button
-                  type="button"
-                  className="btn small icon-btn"
-                  aria-label="Fewer a day"
-                  disabled={perDay <= 0}
-                  onClick={() => setPerDay(perDay - 1)}
-                >
-                  <MinusIcon />
+              <span className="label">How often</span>
+              <div className="seg full" role="radiogroup" aria-label="How often">
+                <button type="button" role="radio" aria-checked={!week} className={week ? '' : 'active'} onClick={() => setWeekly(false)}>
+                  Every day
                 </button>
-                <input
-                  type="number"
-                  inputMode="numeric"
-                  className="stepper-value"
-                  aria-label="Videos a day"
-                  min={0}
-                  value={perDayDraft ?? String(perDay)}
-                  onFocus={(e) => e.target.select()}
-                  onChange={(e) => setPerDayDraft(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter') e.currentTarget.blur()
-                  }}
-                  onBlur={() => {
-                    // Applied once he has finished typing: applied on every
-                    // keystroke, the "3" of "30" trimmed the week's posts
-                    // (stopped in Postiz, remade) before the "0" arrived.
-                    if (perDayDraft !== null && perDayDraft.trim() !== '') setPerDay(Number(perDayDraft))
-                    setPerDayDraft(null)
-                  }}
-                />
-                <button
-                  type="button"
-                  className="btn small icon-btn"
-                  aria-label="More a day"
-                  disabled={perDay >= MOST_A_DAY}
-                  onClick={() => setPerDay(perDay + 1)}
-                >
-                  <PlusIcon />
+                <button type="button" role="radio" aria-checked={Boolean(week)} className={week ? 'active' : ''} onClick={() => setWeekly(true)}>
+                  Days of the week
                 </button>
               </div>
-              {perDay >= MOST_A_DAY ? (
-                <span className="hint">{MOST_A_DAY} a day is the most: Instagram takes at most 50 posts an account in any 24 hours, and refuses the rest.</span>
-              ) : null}
-              {perDay === 0 ? (
-                <span className="hint">Paused: nothing more goes out until you raise it. Your clips and what's left to make are kept.</span>
-              ) : (
-                <span className={`hint${times.length < perDay ? ' warn-text' : ''}`}>
-                  {times.length < perDay
-                    ? `The day only fits ${times.length} more today. `
-                    : ''}
-                  {random
-                    ? `Spread over the whole day, different times each day - today ${times.map(timeLabel).join(', ')}.`
-                    : times.length > place.times.length
-                      ? `At your times and more spread over the rest of the day - today ${times.map(timeLabel).join(', ')}.`
-                      : `At ${times.map(timeLabel).join(', ')}.`}
-                </span>
-              )}
-              {running ? <span className="hint tip">Change it any time - the days ahead follow at once, up or down.</span> : null}
             </div>
-            <div className="field">
-              <span className="label">More each day</span>
-              <div className="stepper">
-                <button type="button" className="btn small icon-btn" aria-label="Less more each day" disabled={growth <= 0} onClick={() => setGrowth(growth - 1)}>
-                  <MinusIcon />
-                </button>
-                <input
-                  type="number"
-                  inputMode="numeric"
-                  className="stepper-value"
-                  aria-label="More each day"
-                  min={0}
-                  max={MAX_GROWTH}
-                  value={growthDraft ?? String(growth)}
-                  disabled={perDay === 0}
-                  onFocus={(e) => e.target.select()}
-                  onChange={(e) => setGrowthDraft(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter') e.currentTarget.blur()
-                  }}
-                  onBlur={() => {
-                    // Like Videos a day: applied once he has finished typing.
-                    if (growthDraft !== null && growthDraft.trim() !== '') setGrowth(Number(growthDraft))
-                    setGrowthDraft(null)
-                  }}
-                />
-                <button
-                  type="button"
-                  className="btn small icon-btn"
-                  aria-label="More each day"
-                  disabled={growth >= MAX_GROWTH || perDay === 0}
-                  onClick={() => setGrowth(growth + 1)}
-                >
-                  <PlusIcon />
-                </button>
+            {week ? (
+              <div className="field">
+                <span className="label">Videos a week</span>
+                <div className="stepper">
+                  <button type="button" className="btn small icon-btn" aria-label="Fewer a week" disabled={week.count <= 0} onClick={() => setWeek({ count: week.count - 1 })}>
+                    <MinusIcon />
+                  </button>
+                  <span className="stepper-value" aria-label="Videos a week">
+                    {week.count}
+                  </span>
+                  <button
+                    type="button"
+                    className="btn small icon-btn"
+                    aria-label="More a week"
+                    disabled={week.count >= MOST_A_DAY * weekDays(week).length}
+                    onClick={() => setWeek({ count: week.count + 1 })}
+                  >
+                    <PlusIcon />
+                  </button>
+                </div>
+                <div className="week-days" role="group" aria-label="The days they go out">
+                  {WEEK_ORDER.map((d) => {
+                    const on = Boolean(week.days?.includes(d))
+                    return (
+                      <button key={d} type="button" aria-pressed={on} className={on ? 'active' : ''} onClick={() => toggleDay(d)}>
+                        {WEEKDAY_NAMES[d]}
+                      </button>
+                    )
+                  })}
+                </div>
+                <span className={`hint${weekPlan.none.length > 0 ? ' warn-text' : ''}`}>{weekPlan.text}</span>
+                <span className="hint tip">The other days nothing goes out from this batch - your own videos post as usual.</span>
               </div>
-              {growthLine ? (
-                <span className={`hint${growthLine.tight ? ' warn-text' : ''}`}>{growthLine.text}</span>
-              ) : (
-                <span className="hint tip">0: the same number every day. +1: one more video each day than the day before.</span>
-              )}
-            </div>
+            ) : (
+              <>
+            <div className="field">
+                <span className="label">Videos a day</span>
+                <div className="stepper">
+                  <button
+                    type="button"
+                    className="btn small icon-btn"
+                    aria-label="Fewer a day"
+                    disabled={perDay <= 0}
+                    onClick={() => setPerDay(perDay - 1)}
+                  >
+                    <MinusIcon />
+                  </button>
+                  <input
+                    type="number"
+                    inputMode="numeric"
+                    className="stepper-value"
+                    aria-label="Videos a day"
+                    min={0}
+                    value={perDayDraft ?? String(perDay)}
+                    onFocus={(e) => e.target.select()}
+                    onChange={(e) => setPerDayDraft(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') e.currentTarget.blur()
+                    }}
+                    onBlur={() => {
+                      // Applied once he has finished typing: applied on every
+                      // keystroke, the "3" of "30" trimmed the week's posts
+                      // (stopped in Postiz, remade) before the "0" arrived.
+                      if (perDayDraft !== null && perDayDraft.trim() !== '') setPerDay(Number(perDayDraft))
+                      setPerDayDraft(null)
+                    }}
+                  />
+                  <button
+                    type="button"
+                    className="btn small icon-btn"
+                    aria-label="More a day"
+                    disabled={perDay >= MOST_A_DAY}
+                    onClick={() => setPerDay(perDay + 1)}
+                  >
+                    <PlusIcon />
+                  </button>
+                </div>
+                {perDay >= MOST_A_DAY ? (
+                  <span className="hint">{MOST_A_DAY} a day is the most: Instagram takes at most 50 posts an account in any 24 hours, and refuses the rest.</span>
+                ) : null}
+                {perDay === 0 ? (
+                  <span className="hint">Paused: nothing more goes out until you raise it. Your clips and what's left to make are kept.</span>
+                ) : (
+                  <span className={`hint${times.length < perDay ? ' warn-text' : ''}`}>
+                    {times.length < perDay
+                      ? `The day only fits ${times.length} more today. `
+                      : ''}
+                    {random
+                      ? `Spread over the whole day, different times each day - today ${times.map(timeLabel).join(', ')}.`
+                      : times.length > place.times.length
+                        ? `At your times and more spread over the rest of the day - today ${times.map(timeLabel).join(', ')}.`
+                        : `At ${times.map(timeLabel).join(', ')}.`}
+                  </span>
+                )}
+                {running ? <span className="hint tip">Change it any time - the days ahead follow at once, up or down.</span> : null}
+              </div>
+              <div className="field">
+                <span className="label">More each day</span>
+                <div className="stepper">
+                  <button type="button" className="btn small icon-btn" aria-label="Less more each day" disabled={growth <= 0} onClick={() => setGrowth(growth - 1)}>
+                    <MinusIcon />
+                  </button>
+                  <input
+                    type="number"
+                    inputMode="numeric"
+                    className="stepper-value"
+                    aria-label="More each day"
+                    min={0}
+                    max={MAX_GROWTH}
+                    value={growthDraft ?? String(growth)}
+                    disabled={perDay === 0}
+                    onFocus={(e) => e.target.select()}
+                    onChange={(e) => setGrowthDraft(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') e.currentTarget.blur()
+                    }}
+                    onBlur={() => {
+                      // Like Videos a day: applied once he has finished typing.
+                      if (growthDraft !== null && growthDraft.trim() !== '') setGrowth(Number(growthDraft))
+                      setGrowthDraft(null)
+                    }}
+                  />
+                  <button
+                    type="button"
+                    className="btn small icon-btn"
+                    aria-label="More each day"
+                    disabled={growth >= MAX_GROWTH || perDay === 0}
+                    onClick={() => setGrowth(growth + 1)}
+                  >
+                    <PlusIcon />
+                  </button>
+                </div>
+                {growthLine ? (
+                  <span className={`hint${growthLine.tight ? ' warn-text' : ''}`}>{growthLine.text}</span>
+                ) : (
+                  <span className="hint tip">0: the same number every day. +1: one more video each day than the day before.</span>
+                )}
+              </div>
+              </>
+            )}
           </div>
 
           {problem ? <p className="error">{problem}</p> : null}
@@ -2402,10 +2490,10 @@ export function BatchView({
               </div>
               <div className="hint">{variationParts(bank).join(' × ')}</div>
               {Number.isFinite(left) ? (
-                <div className={`hint batch-left${perDay > 0 && daysLeft <= AHEAD_DAYS ? ' warn-text' : ''}`}>
+                <div className={`hint batch-left${planned > 0 && daysLeft <= AHEAD_DAYS ? ' warn-text' : ''}`}>
                   {left === different ? 'None made yet' : `${left.toLocaleString('en-US')} still to make`}
-                  {perDay > 0 ? ` - ${daysLeft} day${daysLeft === 1 ? '' : 's'} at ${perDay} a day${growth > 0 ? `, +${growth} each day` : ''}.` : '.'}
-                  {perDay > 0 && daysLeft <= AHEAD_DAYS ? ' After them, film new reactions and product showcases.' : ''}
+                  {planned > 0 ? ` - ${daysLeft} day${daysLeft === 1 ? '' : 's'} at ${rate}${growth > 0 ? `, +${growth} each day` : ''}.` : '.'}
+                  {planned > 0 && daysLeft <= AHEAD_DAYS ? ' After them, film new reactions and product showcases.' : ''}
                 </div>
               ) : null}
             </div>

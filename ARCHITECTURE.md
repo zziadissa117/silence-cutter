@@ -692,6 +692,15 @@ listened to (`talkOrder.toServer`, `SERVER_FROM`) and a server that answers `/ta
   campaign doesn't post from this phone - and a video made there can't be edited again from Posts (its recording
   left the phone).
 
+### A number a week on his days (his ask 2026-11-14)
+
+`BatchBank.week` = `{ count, days?, off? }` (days 0 Sunday to 6 Saturday; none: `weekDays` spreads `count` evenly from
+Monday; `off`: back to `perDay` a day, the week kept). `batchRun.perDayOn` returns a date's `weekShare` (the count over
+its days, the first ones taking the remainder; 0 on the others), so `runSlots`, `topUp`, `overfull`/`trimDown`,
+`statusDays` and the times of day all follow without knowing about weeks; `daysToMake` passes the days off; growth is
+not used meanwhile. BatchView "How often" (Every day / Days of the week, `setWeekly`, `setWeek`, `toggleDay`,
+`describeWeek`), BatchStatus marks a 0 day "Off", `batchState` says "0 a week".
+
 ### Each clip once (his ask 2026-11-14: brands that don't want clips repurposed)
 
 `BatchFormat.reactionsOnce` / `productsOnce` and `BatchStep.once` (all absent by default; checkboxes on the format

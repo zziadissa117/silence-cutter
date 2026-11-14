@@ -2112,3 +2112,11 @@ html.editor-dark .caption-sheet { --ink: #000000; --text: #ffffff; --dim: #aeaeb
   background: var(--accent) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M5 12.5l4.5 4.5L19 7.5' fill='none' stroke='white' stroke-width='3' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E") center / 15px no-repeat; }
 .toggle.once-check .label { display: block; font-size: 15px; font-weight: 600; text-transform: none; letter-spacing: 0; color: var(--text); }
 .toggle.once-check .hint { display: block; margin-top: 2px; font-size: 13px; }
+
+/* A batch's days of the week (his ask, 2026-11-14: "make it so we can choose
+   the days too"): seven buttons in a row, the picked ones lit. */
+.week-days { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 6px; margin: 6px 0 2px; }
+.week-days button { min-height: 42px; padding: 0; border-radius: 12px; border: 1px solid var(--hairline);
+  background: color-mix(in srgb, var(--text) 6%, transparent); color: var(--text); font: inherit; font-size: 13px; font-weight: 600; cursor: pointer; }
+.week-days button.active { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 24%, transparent); }
+.status-days li.off .day-count { color: var(--muted); font-weight: 500; }

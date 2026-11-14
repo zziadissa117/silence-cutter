@@ -3,6 +3,21 @@
 Newest first. Every change says what it does, how to use it, and how it works
 underneath. Kept up to date with each commit.
 
+## Batch: a number a week, on the days he picks
+- His ask (2026-11-14): "I don't want them to be posted every single day ... every Monday, Wednesday, and Thursday.
+  Make it so I can choose when those posts are posted ... make it so you can post X times per week and not per day.
+  Also, make it so we can choose the days too."
+- Batch tab, Posting: "How often" - Every day (Videos a day and More each day, as before) or Days of the week:
+  Videos a week, and seven day buttons. Picked days share the week's videos out ("Mon, Wed and Thu - 1 each", "Mon
+  2 · Wed 2 · Thu 1"); none picked, they are spread evenly by themselves (3 a week: Mon, Wed, Fri). The other days
+  this batch posts nothing - his own videos go out as usual. Going back to Every day keeps the week for next time.
+- The batch makes and posts only on those days, each at times spread over the day as before; videos already on a
+  day it no longer posts on come out, as when Videos a day is lowered. The status card shows those days as "Off";
+  the Start button and the footage line say "3 a week"; Analytics doesn't suggest more a day for it.
+- Underneath: `BatchBank.week` (`count`, `days` 0-6, `off`), `batch.weekDays/weekShare/weekdayOf/weekOn/describeWeek`;
+  `batchRun.perDayOn` gives each date its share (so making, topping up, trimming and the status follow), `daysToMake`
+  passes the days off; BatchView "How often". Tests: `batchWeek.test.ts`, `batchView.test.tsx`.
+
 ## Talking heads: talking from the first moment, and the joins tight on edited clips too
 - His ask (2026-11-14): "when I start the video, you're not cutting the silence at the very start ... We need the
   very, very start to be cut, just a little bit, to make sure that, between all cuts, it doesn't sound like I'm

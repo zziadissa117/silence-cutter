@@ -40,6 +40,9 @@ import {
   recastPicks,
   recipeOf,
   stylesOf,
+  weekdayOf,
+  weekOn,
+  weekShare,
   type BankFile,
   type BatchBank,
   type BatchFormat,
@@ -113,9 +116,12 @@ export const MOST_A_DAY = 48
 /** How many videos a day the batch makes on `date`: his number, or - while it
  *  grows - his number for `growthFrom` and `growth` more on each day after,
  *  up to MOST_A_DAY. */
-export function perDayOn(bank: Pick<BatchBank, 'perDay' | 'growth' | 'growthFrom' | 'most'>, date: string): number {
+export function perDayOn(bank: Pick<BatchBank, 'perDay' | 'growth' | 'growthFrom' | 'most' | 'week'>, date: string): number {
   // A Trial loop's accounts' daily trial limit, as Instagram showed it.
   const most = Math.min(MOST_A_DAY, bank.most && bank.most > 0 ? bank.most : MOST_A_DAY)
+  // A number a week: its share on this day of the week, nothing on the others.
+  const week = weekOn(bank)
+  if (week) return Math.min(most, weekShare(week, weekdayOf(date)))
   // 0 is paused, growing or not.
   if (!bank.growth || !bank.growthFrom || bank.perDay === 0) return Math.min(most, bank.perDay)
   return Math.min(most, Math.max(0, bank.perDay + bank.growth * Math.max(0, daysFrom(bank.growthFrom, date))))
@@ -134,11 +140,17 @@ export function withGrowth<T extends Pick<BatchBank, 'perDay' | 'growth' | 'grow
 }
 
 /** How many days `left` videos last from `today` at the batch's numbers. */
-export function daysToMake(bank: Pick<BatchBank, 'perDay' | 'growth' | 'growthFrom'>, left: number, today: string): number {
+export function daysToMake(bank: Pick<BatchBank, 'perDay' | 'growth' | 'growthFrom' | 'week'>, left: number, today: string): number {
   let still = left
   let days = 0
+  const week = weekOn(bank)
   while (still > 0) {
     const n = perDayOn(bank, addDays(today, days))
+    // A day of the week it doesn't post on is passed by.
+    if (n <= 0 && week && week.count > 0 && days <= 3650) {
+      days++
+      continue
+    }
     if (n <= 0 || days > 3650) return Infinity
     still -= n
     days++

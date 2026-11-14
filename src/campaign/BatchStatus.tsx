@@ -95,12 +95,14 @@ export function BatchStatus({
         {days.map((d) => {
           const { name, num } = dayName(d.date)
           const of = Math.max(d.target, d.planned, 1)
+          const off = d.target === 0 && d.ready === 0 && d.planned === 0
           return (
-            <li key={d.date} className={d.target > 0 && d.ready >= d.target ? 'full' : ''}>
+            <li key={d.date} className={off ? 'off' : d.target > 0 && d.ready >= d.target ? 'full' : ''}>
               <span className="day-name">{name}</span>
               <span className="day-num">{num}</span>
               <span className="day-count">
-                {d.ready}
+                {/* A day it doesn't post on (a number a week on his days). */}
+                {off ? 'Off' : d.ready}
                 {d.target > 0 ? <span className="day-of">/{d.target}</span> : null}
               </span>
               <span className="day-bar" aria-label={`${d.ready} of ${d.target} ready, ${d.out} gone out`}>

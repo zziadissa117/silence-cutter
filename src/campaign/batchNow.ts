@@ -81,7 +81,9 @@ export interface BatchState {
 /** The one headline the card leads with. */
 export function batchState(input: {
   running: boolean
+  /** His number: a day, or a week (`per`). */
   perDay: number
+  per?: 'day' | 'week'
   where: 'phone' | 'server' | 'engine'
   /** Something wrong, said in his words (the server out of reach or out of room, a top-up that failed). */
   problem: string | null
@@ -131,7 +133,7 @@ export function batchState(input: {
           : 'Their days stay short until you tap Start over below - it makes them again.',
     }
   }
-  if (running && input.perDay === 0) return { tone: 'idle', title: 'Paused', line: 'At 0 a day nothing more is made until you raise it.' }
+  if (running && input.perDay === 0) return { tone: 'idle', title: 'Paused', line: `At 0 a ${input.per ?? 'day'} nothing more is made until you raise it.` }
   if (running) {
     const short = days.reduce((n, d) => n + Math.max(0, d.target - d.planned), 0)
     if (short === 0) {

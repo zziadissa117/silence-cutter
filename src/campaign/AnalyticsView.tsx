@@ -62,7 +62,8 @@ export function useCampaignRows(campaigns: readonly Campaign[] | null, profile: 
         if (!bank || !(bank.running || bank.madeThrough)) return []
         const stats = campaignViews(accountIds, views)
         // A batch growing each day already gets more: nothing to suggest.
-        const suggestion = bank.growth
+        // Nor one posting a number a week on his days.
+        const suggestion = bank.growth || (bank.week && !bank.week.off)
           ? null
           : suggestRate({ perDay: bank.perDay, running: Boolean(bank.running), stats, target: bank.viewTarget, answeredAt: answeredAt(campaign.id) })
         return [{ campaign, accountIds, stats, bank, suggestion }]

@@ -138,6 +138,11 @@ export interface BatchBank {
   emojis?: EmojiSprite[]
   music: BankFile[]
   perDay: number
+  /** A number a week instead of `perDay` a day, on the days he picks (his
+   *  ask, 2026-11-14: "make it so you can post X times per week and not per
+   *  day. Also, make it so we can choose the days too"). `off`: kept for when
+   *  he goes back to it, `perDay` a day meanwhile (batchRun.perDayOn). */
+  week?: BatchWeek
   /** More videos each day than the day before ("start with 4 and add +1 per
    *  day every single day"): `perDay` on `growthFrom`, this many more on each
    *  day after it, with no most a day (batchRun.perDayOn). None or 0: the
@@ -1319,6 +1324,69 @@ export function spreadPick(times: string[], count: number, seed?: string): strin
 export function addDays(date: string, days: number): string {
   const [y, m, d] = date.split('-').map(Number)
   return new Date(Date.UTC(y, m - 1, d + days)).toISOString().slice(0, 10)
+}
+
+/** A batch's videos a week (BatchBank.week). */
+export interface BatchWeek {
+  /** Videos a week. */
+  count: number
+  /** The days they go out on, 0 Sunday to 6 Saturday. None: spread evenly
+   *  over the week by itself. */
+  days?: number[]
+  /** Back to a number a day for now; the week kept for next time. */
+  off?: boolean
+}
+
+/** The week from Monday, as the day chips show it. */
+export const WEEK_ORDER = [1, 2, 3, 4, 5, 6, 0] as const
+export const WEEKDAY_NAMES = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'] as const
+
+/** The day of the week of "2026-11-16": 0 Sunday to 6 Saturday. */
+export function weekdayOf(date: string): number {
+  const [y, m, d] = date.split('-').map(Number)
+  return new Date(Date.UTC(y, m - 1, d)).getUTCDay()
+}
+
+/** A batch's week when it is on. */
+export function weekOn(bank: Pick<BatchBank, 'week'>): BatchWeek | null {
+  return bank.week && !bank.week.off ? bank.week : null
+}
+
+/** The days a week's videos go out on, Monday first: the ones he picked, or -
+ *  none picked - `count` days spread evenly from Monday (3: Mon, Wed, Fri). */
+export function weekDays(week: Pick<BatchWeek, 'count' | 'days'>): number[] {
+  if (week.days?.length) return WEEK_ORDER.filter((d) => week.days!.includes(d))
+  const n = Math.min(7, Math.max(1, Math.round(week.count)))
+  return Array.from({ length: n }, (_, k) => WEEK_ORDER[Math.floor((k * 7) / n)])
+}
+
+/** A week's plan in words for the Batch tab: "Mon, Wed and Thu - 1 each",
+ *  "Mon 2 · Wed 2 · Thu 1", and the picked days it leaves without one. */
+export function describeWeek(week: Pick<BatchWeek, 'count' | 'days'>): { text: string; none: string[] } {
+  if (week.count <= 0) return { text: 'Paused: nothing more goes out until you raise it.', none: [] }
+  const days = weekDays(week)
+  const each = days.map((d) => ({ name: WEEKDAY_NAMES[d] as string, n: weekShare(week, d) }))
+  const on = each.filter((e) => e.n > 0)
+  const none = each.filter((e) => e.n === 0).map((e) => e.name)
+  const list = (names: string[]) => (names.length <= 1 ? names.join('') : `${names.slice(0, -1).join(', ')} and ${names[names.length - 1]}`)
+  const plan =
+    on.length === 1
+      ? `${on[0].name} - ${on[0].n}`
+      : on.every((e) => e.n === on[0].n)
+        ? `${list(on.map((e) => e.name))} - ${on[0].n} each`
+        : on.map((e) => `${e.name} ${e.n}`).join(' · ')
+  const picked = Boolean(week.days?.length)
+  const short = none.length > 0 ? ` ${list(none)} get${none.length === 1 ? 's' : ''} none - ${days.length} a week gives each one.` : ''
+  return { text: `${picked ? '' : 'Spread over the week by itself: '}${plan}.${short}${picked ? '' : ' Tap days to pick them.'}`, none }
+}
+
+/** How many of a week's videos go out on a day of the week: the count shared
+ *  over its days, the first days taking one more when it doesn't divide. */
+export function weekShare(week: Pick<BatchWeek, 'count' | 'days'>, weekday: number): number {
+  const days = weekDays(week)
+  const at = days.indexOf(weekday)
+  if (at < 0 || week.count <= 0) return 0
+  return Math.floor(week.count / days.length) + (at < week.count % days.length ? 1 : 0)
 }
 
 /** Today on this phone, as "2026-09-30". */
