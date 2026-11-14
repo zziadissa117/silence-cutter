@@ -19,7 +19,7 @@
 
 import { useEffect, useState } from 'react'
 
-import type { BankFile, BatchBank, BatchFormat, BatchStep } from './batch'
+import { batchCaptionLook, type BankFile, type BatchBank, type BatchFormat, type BatchStep } from './batch'
 import { CaptionReview } from './CaptionReview'
 import { defaultCaptionPosition, defaultCaptionSize, defaultCaptionStyle, type CaptionWord } from './captions'
 import { checkOrder, fileIn, HOOK, loadQueue, placed, placeOf, saveQueue, soundsElsewhere, type ToCheck } from './dropQueue'
@@ -191,6 +191,8 @@ export function DropCheck({
     next()
   }
 
+  // Full phrases unless he picked another look for this format.
+  const look = batchCaptionLook(format, null, { style: defaultCaptionStyle(), size: defaultCaptionSize() })
   const total = done + queue.length
   // Kept short: it stays on screen with the video while he reads the captions.
   const where = (
@@ -281,9 +283,9 @@ export function DropCheck({
       approveLabel={place === OUT ? (item.recheck ? 'Take it out' : 'Leave it out') : queue.length > 1 ? 'Approve & next clip' : 'Approve'}
       bare={bareCaptions()}
       position={format.captionY ?? defaultCaptionPosition()}
-      size={format.captionSize ?? defaultCaptionSize()}
+      size={look.size}
       onSize={(size) => onFormat({ captionSize: size })}
-      captionStyle={format.captionStyle ?? defaultCaptionStyle()}
+      captionStyle={look.style}
       onCaptionStyle={(style) => onFormat({ captionStyle: style })}
       vocabulary={campaign.brandWords}
       onRecheck={

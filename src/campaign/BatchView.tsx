@@ -45,9 +45,11 @@ import {
   type BatchFormula,
   type BatchStep,
   withoutName,
+  batchCaptionLook,
 } from './batch'
 import { StepOrder } from './StepOrder'
 import { CaptionHeight } from './CaptionHeight'
+import { CAPTION_STYLES, defaultCaptionSize, defaultCaptionStyle } from './captions'
 import { DropCheck } from './DropCheck'
 import { DropIn, HOOK, dropInto } from './DropIn'
 import { defaultEffects, effectsFor } from './defaultEffects'
@@ -1340,7 +1342,7 @@ export function BatchView({
                       <span className="row-name">Use edits in hooks</span>
                       <span className="row-line">
                         {f.rawHooks
-                          ? 'Off: your hooks play as you filmed them.'
+                          ? 'Off: your hook plays exactly as you filmed it - no captions, music, headline or zoom. The music starts with the first product step.'
                           : 'On: your hooks are cut, zoomed and captioned like your talking videos - you check each one.'}
                       </span>
                     </div>
@@ -1364,7 +1366,13 @@ export function BatchView({
                 <div className="setting">
                   <div className="setting-text">
                     <span className="row-name">Headline on top</span>
-                    <span className="row-line">{f.noHeadline ? 'Off: the clip of you is the hook, no words over it.' : 'The hook, over the clip of you.'}</span>
+                    <span className="row-line">
+                      {f.noHeadline
+                        ? 'Off: the clip of you is the hook, no words over it.'
+                        : f.kind === 'talking' && f.rawHooks
+                          ? 'Over your first product step - your hook plays as you filmed it.'
+                          : 'The hook, over the clip of you.'}
+                    </span>
                   </div>
                   <input
                     type="checkbox"
@@ -1375,6 +1383,24 @@ export function BatchView({
                   />
                 </div>
                 {f.kind === 'talking' ? <CaptionHeight value={f.captionY} onChange={(y) => changeFormat(f.id, { captionY: y })} /> : null}
+                {/* The captions' look for every video of it - full phrases
+                    unless he picks another (his ask, 2026-11-14); the same
+                    pick as on its clip check. */}
+                {f.kind === 'talking' ? (
+                  <div className="format-corner">
+                    <span className="row-name">Captions</span>
+                    <div className="seg full" role="radiogroup" aria-label="Captions look">
+                      {CAPTION_STYLES.map((st) => {
+                        const on = batchCaptionLook(f, null, { style: defaultCaptionStyle(), size: defaultCaptionSize() }).style === st.id
+                        return (
+                          <button key={st.id} type="button" role="radio" aria-checked={on} className={on ? 'active' : ''} onClick={() => changeFormat(f.id, { captionStyle: st.id })}>
+                            {st.label}
+                          </button>
+                        )
+                      })}
+                    </div>
+                  </div>
+                ) : null}
                 {green ? (
                   <div className="setting">
                     <div className="setting-text">

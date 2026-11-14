@@ -242,6 +242,11 @@ export interface BatchBank {
   /** The songs each of them has had so far (music ids), by its id: the
    *  making's, like `made`. */
   copiesMade?: Record<string, string[]>
+  /** His Cutter's captions look on the phone that sent the batch (its
+   *  defaultCaptionStyle/Size), put on as it goes to the Cutter server
+   *  (serverLink): that computer has none of its own, and fell back to one
+   *  word at a time (his report, 2026-11-14). Never saved on the phone. */
+  cutterCaptions?: { style: CaptionStyle; size: CaptionSize }
   /** How much of the day each format gets, by id (1 when absent): set by
    *  how its videos do (Analytics). */
   formatShares?: Record<string, number>
@@ -743,6 +748,23 @@ export function formatBank(bank: BatchBank, format: BatchFormat): BatchBank {
     ...(format.noHeadline ? { headlines: [], looks: undefined, hook: undefined, headlineStyles: undefined, headlineStyle: undefined, formula: undefined } : {}),
     voice: undefined,
     formats: [],
+  }
+}
+
+/** A batch video's captions look: what he picked for its format (on its clip
+ *  check, or its card); else, for a talking head, full phrases (his ask,
+ *  2026-11-14: "Why is it putting one-word captions? I want full-phrase
+ *  captions"); else his Cutter's - the phone's, which went with the batch to
+ *  the server (`cutterCaptions`), or this phone's own (`here`). */
+export function batchCaptionLook(
+  format: Pick<BatchFormat, 'kind' | 'captionStyle' | 'captionSize'> | undefined,
+  bank: Pick<BatchBank, 'cutterCaptions'> | null,
+  here: { style: CaptionStyle; size: CaptionSize },
+): { style: CaptionStyle; size: CaptionSize } {
+  const cutter = bank?.cutterCaptions ?? here
+  return {
+    style: format?.captionStyle ?? (format?.kind === 'talking' ? 'phrase' : cutter.style),
+    size: format?.captionSize ?? cutter.size,
   }
 }
 

@@ -11,6 +11,7 @@
 
 import { fromPhone, PROGRESS_FIELDS, type BankFile, type BatchBank } from './batch'
 import { handOver, oneAtATime } from './batchRun'
+import { defaultCaptionSize, defaultCaptionStyle } from './captions'
 import { currentSession } from './cloud'
 import { drawEmoji, drawsAppleEmoji, emojiSpritesFor } from './emojiSprites'
 import type { Job } from './jobs'
@@ -398,7 +399,9 @@ async function linkBank(
     await saveBatchBank(fromPhone(there, fresh))
     tell(campaignId, true)
   }
-  const latest = (await loadBatchBank(campaignId)) ?? here
+  // His Cutter's captions look goes with it: the server has none of its own
+  // (batch.batchCaptionLook).
+  const latest: BatchBank = { ...((await loadBatchBank(campaignId)) ?? here), cutterCaptions: { style: defaultCaptionStyle(), size: defaultCaptionSize() } }
   const sent = sentBanks()[campaignId]
   const key = settingsKey(latest)
   // Not seen there a minute after it went (a new server, its disk lost): again.

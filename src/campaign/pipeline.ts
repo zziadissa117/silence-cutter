@@ -492,6 +492,9 @@ export async function makeMontage(
     keepShape?: boolean
     /** A Trial loop's video: seconds off its end (trialLoop.TrialLook.trimSec). */
     shorterBy?: number
+    /** A talking head's hook kept as filmed: nothing over it, no music
+     *  under it (montageRender). */
+    rawFirst?: boolean
     /** A talking batch's captions (talkCaptions.ts). */
     captions?: Parameters<typeof renderMontage>[0]['captions']
   } = {},
@@ -515,6 +518,7 @@ export async function makeMontage(
       keepLines: extra.keepLines,
       keepShape: extra.keepShape,
       shorterBy: extra.shorterBy,
+      rawFirst: extra.rawFirst,
       captions: extra.captions ?? null,
     },
     onRenderProgress,

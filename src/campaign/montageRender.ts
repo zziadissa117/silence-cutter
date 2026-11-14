@@ -206,6 +206,14 @@ export interface MontageRenderInput {
    *  an 8 s reel sometimes 7 or 6, so Instagram doesn't take every copy for
    *  the same video (his ask, 2026-11-11). Never more than a quarter of it. */
   shorterBy?: number
+  /** A talking head whose hooks are kept as filmed ("Use edits in hooks"
+   *  off - BatchFormat.rawHooks): the first clip plays exactly as he filmed
+   *  it, his own sound and nothing else - no captions, headline, zoom or
+   *  music (his ask, 2026-11-14: "When 'Use edits in hook' is off, then the
+   *  raw clip should play. That's it ... once the first product step starts,
+   *  then the music can start"). The music and the headline start with the
+   *  second clip; with no second clip there are none. */
+  rawFirst?: boolean
   /** A talking batch's captions: what he says in the first clip, on that
    *  clip's own timeline (talkCaptions.ts), drawn as his talking videos'. */
   captions?: {
@@ -309,13 +317,33 @@ export function musicTrack(
   }
 }
 
+/** The music from `from()` seconds into the video on, silent before it (a
+ *  hook kept as filmed): the song starts, faded in, where the first product
+ *  step does. `from` is read as the sound is written, so it can be set once
+ *  that step's real start is known. */
+export function musicFrom(bed: Pick<MusicBed, 'mixInto'>, from: () => number, rate: number): Pick<MusicBed, 'mixInto'> {
+  return {
+    mixInto(planes, firstFrame) {
+      const start = Math.round(from() * rate)
+      const length = planes[0]?.length ?? 0
+      if (firstFrame + length <= start) return
+      if (firstFrame >= start) return bed.mixInto(planes, firstFrame - start)
+      const skip = start - firstFrame
+      bed.mixInto(
+        planes.map((p) => p.subarray(skip)),
+        0,
+      )
+    },
+  }
+}
+
 export function liftMusic(channels: Float32Array[], gain: number, sampleRate: number): void {
   for (const c of channels) for (let i = 0; i < c.length; i++) c[i] *= gain
   new Limiter(sampleRate, channels.length).process(channels)
 }
 
 export async function renderMontage(
-  { clips: files, look, headlineText, music, seed = '', formula = null, windows = [], reactionFirst = false, titles = [], stepTexts = [], stepOverlays = [], voice = false, voiceAll = false, brightness = 0, keepLines = false, keepShape = false, shorterBy = 0, captions = null }: MontageRenderInput,
+  { clips: files, look, headlineText, music, seed = '', formula = null, windows = [], reactionFirst = false, titles = [], stepTexts = [], stepOverlays = [], voice = false, voiceAll = false, brightness = 0, keepLines = false, keepShape = false, shorterBy = 0, rawFirst = false, captions = null }: MontageRenderInput,
   onProgress?: (fraction: number) => void,
 ): Promise<MontageRenderResult> {
   if (files.length === 0) throw new SilenceCutError('Add at least one clip.')
@@ -356,20 +384,25 @@ export async function renderMontage(
     const stepped = parts.flatMap((_, i) => (windows[i] ? [i] : []))
     fitShowcase(stepped.map((i) => parts[i])).forEach((piece, k) => (parts[stepped[k]] = piece))
     const total = parts.reduce((sum, p) => sum + (p.end - p.start), 0)
+    // A hook kept as filmed: the music starts with the first product step -
+    // where it is planned to, then where it really does (stepStart).
+    const hookOnly = rawFirst && clips.length < 2
+    let stepStart = rawFirst ? parts[0].end - parts[0].start : 0
+    const musicLength = total - stepStart
 
     let bed: MusicBed | null = null
     let musicFailed: string | undefined
-    if (music) {
+    if (music && !hookOnly) {
       try {
         // Only as much of the song as the video uses is decoded (sounds.ts).
-        const { channels } = await prepareMusic(music.audio, music.name, total, RATE)
+        const { channels } = await prepareMusic(music.audio, music.name, musicLength, RATE)
         const loudness = trackLoudness(channels, RATE)
         if (voice) {
           // Under his voice, as in a talking video, dipping while he talks -
           // quieter than in a talking video of his: he says what to do, and
           // every word has to be heard (his ask, 2026-11-08).
           const gain = musicGain(loudness, VOICE_LUFS, 'low')
-          if (gain > 0) bed = new MusicBed(channels, RATE, Math.round(total * RATE), gain, VOICE_LUFS)
+          if (gain > 0) bed = new MusicBed(channels, RATE, Math.round(musicLength * RATE), gain, VOICE_LUFS)
           else musicFailed = 'the track is silent'
         } else {
           const gain = soloMusicGain(loudness)
@@ -378,7 +411,7 @@ export async function renderMontage(
             // Nothing else is heard, so nothing ever dips it. A Trial reel's
             // sound is the viral reel's own, for this clip: it never starts
             // over (Ilyan's copies looped, 2026-11-06).
-            bed = new MusicBed(channels, RATE, Math.round(total * RATE), 1, Infinity, !keepLines)
+            bed = new MusicBed(channels, RATE, Math.round(musicLength * RATE), 1, Infinity, !keepLines)
           }
           else musicFailed = 'the track is silent'
         }
@@ -449,7 +482,10 @@ export async function renderMontage(
     // sound written a little behind the picture so his voice is always in
     // before the music is laid under it.
     const voicePlanes = voice ? Array.from({ length: CHANNELS }, () => new Float32Array(Math.ceil((total + 2) * RATE))) : null
-    const soundTo = musicTrack(bed, (sample) => audioSource.add(sample), voicePlanes)
+    const soundTo = musicTrack(bed && rawFirst ? musicFrom(bed, () => stepStart, RATE) : bed, (sample) => audioSource.add(sample), voicePlanes)
+    /** The clip the headline (or the formula) is over: the hook, or with the
+     *  hook kept as filmed the first product step. */
+    const headlineOn = rawFirst ? 1 : 0
     const behind = voicePlanes ? VOICE_LEAD : 0
     /** How loud his voice got, for the report when a talking clip gave no sound. */
     let voicePeak = 0
@@ -490,6 +526,8 @@ export async function renderMontage(
       report(t / total)
       ctx.fillStyle = '#000'
       ctx.fillRect(0, 0, width, height)
+      // The hook kept as filmed: its picture exactly as it is, nothing over it.
+      const raw = rawFirst && i === 0
       // Under the formula, the reaction pushes in slowly for its whole
       // length instead of the usual opening push.
       // A batch's reaction always pushes in slowly too, or the angle's
@@ -504,7 +542,7 @@ export async function renderMontage(
           : i === 0 && reactionFirst && pushes
             ? { ...own, scale: Math.max(own.scale, reactionZoom(t - start, length)) }
             : own
-      if (whole || stretch.still !== false) {
+      if (raw || whole || stretch.still !== false) {
         // Drawn exactly as it is: a wide clip whole on black, a clip with its
         // own bands as made - nothing zoomed (a clip still undecided: its
         // first dark frames, not moved either).
@@ -522,12 +560,12 @@ export async function renderMontage(
         else ctx.fillRect(0, 0, width, height)
       }
       // His pictures and videos on the step, under its words.
-      for (const overlay of overlays[i] ?? []) await drawOverlay(ctx, overlay, t - start, start + length - t)
-      if (i === 0 && headline) drawHeadline(ctx, headline)
-      for (const title of titleLayouts[i] ?? []) drawHeadline(ctx, title)
-      if (i === 0 && formulaLayout && logos) drawFormula(ctx, formulaLayout, logos)
+      if (!raw) for (const overlay of overlays[i] ?? []) await drawOverlay(ctx, overlay, t - start, start + length - t)
+      if (i === headlineOn && headline) drawHeadline(ctx, headline)
+      if (!raw) for (const title of titleLayouts[i] ?? []) drawHeadline(ctx, title)
+      if (i === headlineOn && formulaLayout && logos) drawFormula(ctx, formulaLayout, logos)
       // What he says, on top of everything, while his clip plays.
-      if (i === 0 && captions && said.length > 0) {
+      if (i === 0 && !raw && captions && said.length > 0) {
         const word = captionAt(saidTimes, said, t, captions.style === 'word' ? undefined : PHRASE_HOLD_SEC)
         if (word >= 0) drawStyledCaption(ctx, width, height, said, saidRanges, word, t + CAPTION_LEAD - saidTimes[word], false, captions.position, captions.size, captions.style)
       }
@@ -549,6 +587,9 @@ export async function renderMontage(
     try {
       for (const [i, clip] of clips.entries()) {
         const start = at
+        // The first product step after a hook kept as filmed: the music
+        // starts here, where it really does.
+        if (rawFirst && i === 1) stepStart = start
         const placed = clipPlace(clip.width, clip.height, width, height)
         stretches[i] = { fill: placed.box, whole: placed.whole, still: placed.whole ? true : null, start, length: Math.max(0.1, parts[i].end - parts[i].start) }
         // The pictures and videos he put on it; one this browser can't read

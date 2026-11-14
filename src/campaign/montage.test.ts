@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { BATCH_LOWER, FPS, clipPlace, framesBy, liftMusic, lowered, montageSize, musicTrack, soloMusicGain, verticalSize } from './montageRender'
+import { BATCH_LOWER, FPS, clipPlace, framesBy, liftMusic, lowered, montageSize, musicFrom, musicTrack, soloMusicGain, verticalSize } from './montageRender'
 import type { HeadlineLayout } from './overlay'
 
 /** Which of the clips' frames each steady frame shows: frames given as
@@ -187,5 +187,30 @@ describe("a Trial reel's frame", () => {
     expect(montageSize(1080, 1920, true, 1080)).toEqual({ width: 1080, height: 1920 })
     // Any other batch video: 9:16 as always.
     expect(montageSize(1920, 1080, false, 1080)).toEqual({ width: 1080, height: 1920 })
+  })
+})
+
+describe('a talking head whose hook is kept as filmed (his ask, 2026-11-14)', () => {
+  it('has no music under the hook: the song starts, from its beginning, where the first product step does', async () => {
+    const rate = 48000
+    // A "song" that is its own position plus one, so silence and a jump show.
+    const song = { mixInto: (planes: Float32Array[], first: number) => planes.forEach((p) => p.forEach((_, i) => (p[i] += first + i + 1))) }
+    let stepAt = 1
+    const bed = musicFrom(song, () => stepAt, rate)
+    const written: number[] = []
+    const soundTo = musicTrack(bed, async (sample) => {
+      const plane = new Float32Array(sample.numberOfFrames)
+      sample.copyTo(plane, { planeIndex: 0, format: 'f32-planar' })
+      written.push(...plane)
+    })
+    await soundTo(0.5)
+    // Where the step really starts is known once it does.
+    stepAt = 1.25
+    await soundTo(2)
+    const start = Math.round(1.25 * rate)
+    expect(written.slice(0, start).every((v) => v === 0)).toBe(true)
+    // Past the clamp at 1: the song's first sample, then its second (clamped to 1 when written).
+    expect(written[start]).toBe(1)
+    expect(written[start - 1]).toBe(0)
   })
 })

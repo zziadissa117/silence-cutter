@@ -43,7 +43,7 @@ import { TrialView } from './TrialView'
 import { MotionView } from './MotionView'
 import { afterMixing, daysLine, mixesOf, spreadOver } from './formats'
 import type { ViewsByAccount } from './analytics'
-import { bareName, filesOf, formatOfReaction, formatTalks, formatsOf, stepTexts, stepTitle, styleFor, stylesOf, withoutName, type BankFile, type BatchBank } from './batch'
+import { bareName, batchCaptionLook, filesOf, formatOfReaction, formatTalks, formatsOf, stepTexts, stepTitle, styleFor, stylesOf, withoutName, type BankFile, type BatchBank } from './batch'
 import { followFavour } from './batchFavour'
 import { playsWhole } from './stepPiece'
 import { CampaignsView } from './CampaignsView'
@@ -2009,6 +2009,10 @@ export function CampaignApp() {
         // video's place (trialLoop.ts).
         const trialLook = next.montage?.bank?.trial
         const jobAngle = trialLook ? trialAngle(ownAngle, trialLook) : withHeadlineStyle(ownAngle, next.day?.headlineStyle ?? batchStyle)
+        // A talking head with "Use edits in hooks" off: its hook plays as he
+        // filmed it - nothing over it, no music under it; the music and the
+        // headline start with the first product step (his ask, 2026-11-14).
+        const rawHook = Boolean(next.montage?.bank) && !trialLook && jobFormat?.kind === 'talking' && Boolean(jobFormat.rawHooks)
         // The kept copy of the video stays until it is made, so a failure
         // can always be tried again - even after a restart. What is made is
         // 1080p, well under the size of a 4K original.
@@ -2084,7 +2088,8 @@ export function CampaignApp() {
             next.montage.bank && keepsVoice && !trialLook
               ? (batchBank?.reactions.find((r) => r.id === next.montage!.bank!.reaction.id) ?? next.montage.bank.reaction)
               : null
-          if (talkingClip && captionsRef.current) {
+          // A hook kept as filmed has no captions: not even heard.
+          if (talkingClip && captionsRef.current && !rawHook) {
             try {
               if (!keptWords(talkingClip)) setPhase('listening', 0)
               said = drawnWords(
@@ -2207,6 +2212,7 @@ export function CampaignApp() {
               // Sometimes a second or two shorter, so no two copies are alike.
               shorterBy: trialLook?.trimSec,
               keepLines: Boolean(trialLook),
+              rawFirst: rawHook,
               ...(said.length > 0 || stepSaid.some(Boolean)
                 ? {
                     captions: {
@@ -2214,8 +2220,9 @@ export function CampaignApp() {
                       // The height he dragged them to for this format, or the usual;
                       // the look he picked on its caption check (DropCheck.tsx).
                       position: jobFormat?.captionY ?? defaultCaptionPosition(),
-                      size: jobFormat?.captionSize ?? defaultCaptionSize(),
-                      style: jobFormat?.captionStyle ?? defaultCaptionStyle(),
+                      // Full phrases on a talking head unless he picked another
+                      // look; on the Cutter server, his phone's (batchCaptionLook).
+                      ...batchCaptionLook(jobFormat, batchBank, { style: defaultCaptionStyle(), size: defaultCaptionSize() }),
                       steps: stepSaid,
                     },
                   }

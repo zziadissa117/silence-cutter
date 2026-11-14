@@ -3,6 +3,31 @@
 Newest first. Every change says what it does, how to use it, and how it works
 underneath. Kept up to date with each commit.
 
+## Talking heads: the hook as filmed when "Use edits in hooks" is off, and full-phrase captions
+- His report (2026-11-14): "when 'Use edits in hooks' is off, why are there still captions in the hook? Why is there
+  still music in the hook? ... the raw clip should play. That's it ... once the first product step starts, then the
+  music can start. Then there could be maybe some headlines, and then there could be some captions" and "Why is it
+  putting one-word captions? I want full-phrase captions."
+- "Use edits in hooks" off: the hook plays exactly as he filmed it, with his own sound - no captions, no headline,
+  no zoom, no music. The music starts (faded in) with the first product step, the headline (when "Headline on top"
+  is on) is over the first product step, and the steps have their captions as before. The format card says so.
+  With the switch on, nothing changed.
+- Captions on a talking head are full phrases unless he picks another look. Why they were one word: the videos are
+  made on his Cutter server, which has no caption settings of its own and fell back to one word at a time. Now the
+  format's look is used everywhere, a talking head's is "Phrase" unless he picks One word or Highlight - on the
+  format card ("Captions", under the caption height) or on a clip's check - and the size is his Cutter's, sent from
+  the phone with the batch.
+- The 6 Pump Fun videos waiting in To approve were made before this: Reject them and the batch makes new ones in
+  their place.
+- Checked in a real render here (Chrome for Testing): with the hook raw, no music under the hook (880 Hz test song
+  at 0.000 for the hook's 3 s), the song fading in from the first step; the hook's frame as filmed (no headline,
+  no caption, not zoomed); the headline and the whole phrase "go to pump fun and tap create" over the first step.
+  With edits on: music, headline, caption and zoom on the hook, as before.
+- Underneath: `montageRender` `rawFirst` (`musicFrom`, `headlineOn`, `stepStart`), `pipeline.makeMontage`,
+  `CampaignApp` (`rawHook`, the hook not heard), `batch.batchCaptionLook`, `BatchBank.cutterCaptions` (serverLink),
+  the format card's Captions row (BatchView), DropCheck's look. Tests: `montage.test.ts`, `batchFormats.test.ts`,
+  `batchView.test.tsx`.
+
 ## Batch: see where every clip is, and catch the ones in the wrong step
 - His ask (2026-11-14): "let's say there was a video that was in the wrong product step. How do I know? If you want
   to make an option to recheck if everything is in the right place".

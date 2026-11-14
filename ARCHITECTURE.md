@@ -692,6 +692,20 @@ listened to (`talkOrder.toServer`, `SERVER_FROM`) and a server that answers `/ta
   campaign doesn't post from this phone - and a video made there can't be edited again from Posts (its recording
   left the phone).
 
+### A talking head's hook kept as filmed, and its captions' look (his report 2026-11-14)
+
+"Use edits in hooks" off (`BatchFormat.rawHooks`): `CampaignApp` passes `rawFirst` to `makeMontage` and never hears
+the hook's words. In `montageRender` the first clip is drawn exactly as it is (no reaction push-in, no `planMotion`
+punches, no captions, overlays or titles); the headline (or formula) is drawn over clip 1, the first product step,
+instead (`headlineOn`); the music is decoded for the video's length after the hook and starts there, faded in
+(`musicFrom` wraps the `MusicBed`, reading `stepStart` - planned from `parts[0]`, set to the step's real start when its
+clip begins). A video of the hook alone has no music and no headline. With edits on, nothing changed.
+
+Captions' look on a batch video: `batch.batchCaptionLook(format, bank, here)` - the format's own pick (the clip check or
+the format card's Captions row), else full phrases on a talking head, else his Cutter's. The Cutter server has no
+caption settings of its own (it fell back to one word): `serverLink` puts the phone's `defaultCaptionStyle/Size` on the
+bank it sends as `BatchBank.cutterCaptions` (part of `settingsKey`, never saved on the phone).
+
 ### A talking head's clips: edited, then checked one by one (`DropIn.tsx`, `dropQueue.ts`, `DropCheck.tsx`, his asks 2026-11-13)
 
 Every clip of a talking head format the Cutter edits - "Drop in all videos", a step's + Add (`dropInto`), his hooks'
