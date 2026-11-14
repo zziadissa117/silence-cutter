@@ -569,6 +569,14 @@ the finished video's clock, `outputTime`). Things up together get their own time
 
 Only campaigns with a batch bank (running or made before) are shown - his CPM campaigns.
 
+On top (`Overview.tsx`): the last 30 days, every account together. The `views` action also sends `month` -
+30 days in the profile's time zone, each with the views of the videos that went out that day (their
+`cutter_posts.views`, read a day, three days and a week after), how many went out and how many didn't
+(`postiz/month.ts` `monthDays`, read by `lastMonth` a page of 1000 rows at a time). The phone keeps it
+(`posting.lastMonth`, localStorage `cutter.month`) and adds it up day by day (`monthOf`) into a line that
+only climbs (`Climb`); scheduled and to-approve come from Posts' own list. Without `month` (an older
+server) it shows the week from Posts' list (`weekOf`), which only reaches back about 3 days.
+
 Per video (`postViews.ts`): the tick also reads one posted video's views a tick, per account
 (`GET /analytics/post/:postId`), a day, three days and a week after it went out, into
 `cutter_posts.views` (by account name) and `views_at`; the planner's `cutter-posted` returns them for its

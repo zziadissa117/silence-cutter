@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 
 import { dayOf, hueOf } from './HomeTop'
-import { weekOf } from './Overview'
+import { monthOf, weekOf } from './Overview'
 
 const NOW = new Date('2026-11-11T15:00:00').getTime()
 const at = (hoursFromNow: number) => new Date(NOW + hoursFromNow * 3600e3).toISOString()
@@ -48,5 +48,23 @@ describe('Analytics: the week', () => {
 
   it('has no rate before anything went out or failed', () => {
     expect(weekOf([], NOW).rate).toBeNull()
+  })
+})
+
+describe('the last 30 days at the top of Analytics (his ask, 2026-11-14: "keep stacking up")', () => {
+  it('adds the views up day after day, counts the videos and what is still to go', () => {
+    const days = [
+      { date: '2026-11-12', views: 1000, posted: 2, failed: 0 },
+      { date: '2026-11-13', views: 0, posted: 1, failed: 1 },
+      { date: '2026-11-14', views: 2500, posted: 3, failed: 0 },
+    ]
+    const m = monthOf(days, [{ status: 'scheduled' }, { status: 'approved' }, { status: 'waiting' }, { status: 'posted' }])
+    expect(m.views).toBe(3500)
+    // It only climbs.
+    expect(m.total).toEqual([1000, 1000, 3500])
+    expect(m.best?.date).toBe('2026-11-14')
+    expect(m.counts).toEqual({ posted: 6, scheduled: 2, waiting: 1, failed: 1 })
+    expect(m.rate).toBe(86)
+    expect(monthOf([], []).rate).toBeNull()
   })
 })

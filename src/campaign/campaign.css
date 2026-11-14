@@ -2130,3 +2130,12 @@ html.editor-dark .caption-sheet { --ink: #000000; --text: #ffffff; --dim: #aeaeb
 .week-summary .hint { margin: 0; color: var(--text); }
 .week-summary.warn { background: color-mix(in srgb, var(--warn) 16%, transparent); }
 .status-days li.off .day-count { color: var(--muted); font-weight: 500; }
+
+/* The top of Analytics: the last 30 days' views adding up (his ask,
+   2026-11-14: "keep stacking up") - a line that only climbs, filled under. */
+.month-line { margin-top: -2px; }
+.month-climb { position: relative; height: 110px; margin-top: 10px; }
+.month-climb svg { display: block; width: 100%; height: 96px; overflow: visible; }
+.month-dot { position: absolute; width: 10px; height: 10px; margin: -5px 0 0 -5px; border-radius: 50%; background: var(--accent);
+  box-shadow: 0 0 0 4px color-mix(in srgb, var(--accent) 25%, transparent); }
+.month-ends { display: flex; justify-content: space-between; margin-top: 4px; font-size: 12px; font-weight: 600; color: var(--muted); }

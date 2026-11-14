@@ -18,7 +18,7 @@ import {
   type Suggestion,
   type ViewsByAccount,
 } from './analytics'
-import { todayHere, type BatchBank } from './batch'
+import { todayHere, weekCount, weekOn, type BatchBank } from './batch'
 import { perDayOn, withPerDay } from './batchRun'
 import type { Campaign } from './look'
 import { placeFor, type Insights, type Profile } from './posting'
@@ -155,7 +155,13 @@ export function AnalyticsView({
           <div className="analytics-head">
             <span className="group-title">{campaign.name}</span>
             <span className="hint">
-              {bank.running ? (bank.perDay === 0 ? 'Paused' : `${perDayOn(bank, todayHere())} a day${bank.growth ? `, +${bank.growth} each day` : ''}`) : 'Stopped'}
+              {bank.running
+                ? weekOn(bank)
+                  ? `${weekCount(weekOn(bank)!)} a week`
+                  : bank.perDay === 0
+                    ? 'Paused'
+                    : `${perDayOn(bank, todayHere())} a day${bank.growth ? `, +${bank.growth} each day` : ''}`
+                : 'Stopped'}
             </span>
           </div>
           <div className="analytics-big">

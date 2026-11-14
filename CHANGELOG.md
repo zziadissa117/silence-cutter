@@ -3,6 +3,24 @@
 Newest first. Every change says what it does, how to use it, and how it works
 underneath. Kept up to date with each commit.
 
+## Analytics: the last 30 days, adding up
+- His ask (2026-11-14): "change the analytics section for the views for the last month, last 30 days, and keep
+  stacking up".
+- The top of Analytics now shows the views of the last 30 days, all his accounts together, as one big number with
+  a line under it that climbs day after day as the views add up - from 30 days ago on the left to today on the
+  right. Above the line: what came in today and the best day of the month. Under it: the videos that went out in
+  those 30 days, how many are scheduled or waiting for his OK, how many didn't go out, and the share that went out.
+- Views come in a day, three days and a week after each video (the server reads each video then), so the last
+  few days keep growing after the fact.
+- Before, the card said "Last 7 days" but only had the posts list's last 3 days to count from. The month now
+  comes from the server, read straight from every video sent in those 30 days (in pages of 1000: his login sent
+  1111). The batch rows also say "3 a week" for a batch on days of the week.
+- Underneath: server `postiz/month.ts` (`monthDays`: each day in his time zone - views, posted, failed) and
+  `lastMonth` in `postiz/index.ts`, sent with the `views` action as `month`; phone `posting.lastMonth()` (kept
+  for offline as `cutter.month`), `Overview.monthOf` and the `Climb` line. A server from before this shows the
+  old week card. Tests: `month.test.ts`, `homeCounts.test.ts`.
+- Needs deploying: run ./deploy-server.sh
+
 ## Batch: some days of the week, made clear
 - His report (2026-11-14): "make the accessibility for the days of the week posting better because right now it's
   pretty confusing to use", and his friend: "button dont work".

@@ -48,7 +48,7 @@
 //                  each tick) once its posts are out of Postiz - the result lands in settings.ended
 //   backup         { profile, bufferKey?, removeKeys?, active? } -> profile   Buffer as a backup for Postiz
 //                  (buffer.ts): a key pasted, the keys taken out, or "Postiz is down" switched on or off
-//   views          { profile }                  -> { accounts: { [accountId]: AccountViews } }  how each account's
+//   views          { profile }                  -> { accounts: { [accountId]: AccountViews }, month: MonthDay[] }  how each account's
 //                  videos are doing (views.ts), read from Postiz one account per tick, about once a day each
 //   insights       { profile }                  -> { campaigns, bestHours }   what works in each batch campaign's
 //                  videos (hookInsights.ts) and when they do best (bestHours.ts)
@@ -142,6 +142,7 @@ import { cleanLimits, firstDayWithRoom, heldNote, releasable, split, usedOn, typ
 import { PENDING_STATUSES, channelReport, endPlan, isPending, splitStop, type EndPost, type Integration, type PendingPost } from './channels.ts'
 import { VIEWS_WINDOW_DAYS, dueAt, fillPerVideo, notRead, parseCache, readViews, remember, type ViewsCache } from './views.ts'
 import { POST_VIEW_AGES_H, POST_VIEW_MAX_DAYS, accountNameFor, postViewCount, postViewsDue } from './postViews.ts'
+import { MONTH_DAYS, monthDays, type MonthDay, type MonthRow } from './month.ts'
 import {
   BUFFER_QUEUE,
   channelAccount,
@@ -4596,7 +4597,32 @@ async function views(profile: Profile): Promise<Response> {
     }
   }
   if (filled) await saveViews(profile.id, cache)
-  return reply({ accounts: cache.accounts })
+  return reply({ accounts: cache.accounts, month: await lastMonth(profile, now).catch(() => null) })
+}
+
+/** The last 30 days for the top of Analytics (month.ts): this login's videos
+ *  by the day they went out, their views and how many didn't go. */
+async function lastMonth(profile: Profile, now: number): Promise<MonthDay[]> {
+  // Read a page at a time: the database hands back at most 1000 rows a
+  // request, and his login sends more than that in a month (1111 on 2026-11-14).
+  const PAGE = 1000
+  const rows: MonthRow[] = []
+  for (let from = 0; from < 20 * PAGE; from += PAGE) {
+    const { data, error } = await db
+      .from('cutter_posts')
+      .select('post_at, status, views')
+      .eq('profile_id', profile.id)
+      .in('status', ['posted', 'failed', 'error'])
+      .gte('post_at', new Date(now - (MONTH_DAYS + 1) * 24 * 60 * MINUTE).toISOString())
+      .lte('post_at', new Date(now).toISOString())
+      .order('post_at', { ascending: true })
+      .order('id', { ascending: true })
+      .range(from, from + PAGE - 1)
+    if (error) throw error
+    rows.push(...((data ?? []) as MonthRow[]))
+    if ((data ?? []).length < PAGE) break
+  }
+  return monthDays(rows, now, profile.timezone || 'UTC')
 }
 
 /** Asks Postiz how the posts that were due went: posted (with links), or

@@ -608,14 +608,40 @@ export function lastViews(): ViewsByAccount {
 }
 
 export const listViews = shared(async (): Promise<ViewsByAccount> => {
-  const { accounts } = await call<{ accounts: ViewsByAccount }>('views', { profile: profileId() })
+  const { accounts, month } = await call<{ accounts: ViewsByAccount; month?: MonthDay[] | null }>('views', { profile: profileId() })
   try {
     localStorage.setItem(VIEWS_KEY, JSON.stringify(accounts ?? {}))
+    // A server from before it sent the month leaves the last copy as it was.
+    if (Array.isArray(month)) localStorage.setItem(MONTH_KEY, JSON.stringify(month))
   } catch {
     // Just won't be there offline.
   }
   return accounts ?? {}
 }, 60_000)
+
+/** One of the last 30 days as the server counts it (postiz/month.ts): the
+ *  views of the videos that went out that day, how many went out and how
+ *  many didn't. */
+export interface MonthDay {
+  date: string
+  views: number
+  posted: number
+  failed: number
+}
+
+const MONTH_KEY = 'cutter.month'
+
+/** The last 30 days as last read (listViews), oldest first; null before the
+ *  server ever sent them. */
+export function lastMonth(): MonthDay[] | null {
+  try {
+    const raw = localStorage.getItem(MONTH_KEY)
+    const days = raw ? (JSON.parse(raw) as MonthDay[]) : null
+    return Array.isArray(days) && days.length > 0 ? days : null
+  } catch {
+    return null
+  }
+}
 
 const INSIGHTS_KEY = 'cutter.insights'
 
