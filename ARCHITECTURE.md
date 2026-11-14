@@ -804,10 +804,13 @@ puts each into the check, downloads a copy (`GET /files/<id>`) and then lets the
 server not taking one (an upload failing): that one and the rest are done on the phone (`prepareClip`).
 
 The drop-in checklist (his asks 2026-11-14): "Drop in all videos" first shows `DropIn.DropChecklist` - Cut the clips,
-Captions, Music, Headline, Mirror them - ticked from the format (`dropQueue.choicesOf`: `dropCut`, `dropCaptions`,
+Zoom, Captions, Music, Headline, Mirror them - ticked from the format (`dropQueue.choicesOf`: `dropCut`, `dropZoom`, `dropCaptions`,
 `noMusic`, `noHeadline`, `dropMirror`); Start saves his picks on the format (`withChoices`) and runs; a step's + Add
-uses them without asking. Cut off: `cutDropped(..., asFilmed)` only listens (`keepWhole`/`quietIsFine`, words on the
-clip's own clock) and gives the recording back (`cut: false`); the kept clip is `ownCut` (its own name and type,
+uses them without asking. Zoom off sends `NO_EFFECTS` as the order's effects. Cut off: `cutDropped(..., asFilmed)`
+only listens (`keepWhole`/`quietIsFine`, words on the clip's own clock) and gives the recording back (`cut: false`) -
+or, with zooms (`hasZooms`), renders it whole through `renderCampaignCut` with `phrasePieces` as its keep: pieces
+split mid-pause, end to end, so the motion plan changes framing between phrases while `cutFades.cutEdges` sees no cut
+and the sound runs straight on (`remade: true`, an MP4); the kept clip is `ownCut` (its own name and type,
 `videoType`; on the server `DropOrder.asFilmed`/`inName`). A clip with no talking - the cut path's listening finding
 none, or refusing it as quiet - is kept the same way with no words rather than failing; `suggestPlace` never makes
 one a hook. Captions off: `ToCheck.noCaptions`; `DropCheck` shows such a clip, or any with no words, as the clip

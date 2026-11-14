@@ -194,10 +194,10 @@ async function runDrop(order: DropOrder): Promise<void> {
     asFilmed: Boolean(order.asFilmed),
     onPhase: (phase, p) => onProgress(phase === 'cutting' ? 0.6 + p * 0.4 : p * 0.6),
   })
-  // Cut: an MP4. Kept as he gave it (he cut it himself, or no talking in
-  // it): the recording itself, under its own name and type.
-  const name = cut.cut ? order.outName : (order.inName ?? order.outName)
-  const type = cut.cut ? 'video/mp4' : videoType(name, file.type)
+  // Cut or zoomed: an MP4 made here. Kept as he gave it (he cut it himself,
+  // or no talking in it, no zooms): the recording itself, its own name and type.
+  const name = cut.remade ? order.outName : (order.inName ?? order.outName)
+  const type = cut.remade ? 'video/mp4' : videoType(name, file.type)
   const saved = await fetch(`/local/files/${encodeURIComponent(order.outId)}?name=${encodeURIComponent(name)}&type=${encodeURIComponent(type)}`, { method: 'PUT', body: cut.blob })
   if (!saved.ok) throw new SilenceCutError("The cut clip couldn't be kept on the server's disk.")
   const seconds = (await filmingOf(cut.blob).catch(() => null))?.seconds

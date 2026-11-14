@@ -3,6 +3,24 @@
 Newest first. Every change says what it does, how to use it, and how it works
 underneath. Kept up to date with each commit.
 
+## Batch drop-in checklist: Zoom
+- His ask (2026-11-14): "add the option to have a zoom, because sometimes we want to keep the raw clip at the hook,
+  but sometimes we also want editing, meaning zooming in on the clips ... how the cutter zooms in and out ... or
+  there's a little zoom at the start".
+- The checklist has a sixth switch, Zoom, apart from Cut the clips:
+  - Cut + Zoom: as before - silences out, the campaign's zooms.
+  - Cut, no Zoom: silences out, the shot stays still.
+  - Zoom, no Cut (he cut it himself): nothing taken out, but the Cutter's zooms on it - the push-in at the start,
+    the shot moving in and out between his phrases (split in the middle of each pause of a quarter second or more,
+    the pieces end to end, so nothing is lost and the sound runs straight on), the punch on the brand.
+  - Neither: kept exactly as he gave it.
+- Checked in a real render: an uncut 4 s clip with Zoom stayed 4 s, punched in at the pause, and its sound stayed
+  level through the join.
+- A campaign with its zooms off says so on the switch ("nothing to add").
+- Underneath: `DropChoices.zoom` (format `dropZoom`), `prepareDrop.hasZooms`, `phrasePieces`, `cutDropped` (`remade`:
+  an MP4 made here); DropIn sends `NO_EFFECTS` when Zoom is off. Tests: `prepareDrop.test.ts`, `dropInView.test.tsx`,
+  `dropQueue.test.ts`.
+
 ## Batch: drop in - you choose what the Cutter does (and Mirror)
 - His asks (2026-11-14): "sometimes ... I don't need to talk. I just have to do something visually ... cut the videos
   myself, but I still want ... the music in the background, and the captions ... after you drop in all videos, it

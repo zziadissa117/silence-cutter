@@ -16,10 +16,10 @@ vi.mock('./pipeline', () => ({
     return { keep: quiet && !options.keepWhole ? [] : [{ start: 1, end: 3 }], words: quiet ? [] : heard, duration: 4, aligned: true }
   }),
 }))
-const rendered: unknown[] = []
+const rendered: { keep: { start: number; end: number }[] }[] = []
 vi.mock('./render', () => ({
-  renderCampaignCut: vi.fn(async () => {
-    rendered.push(1)
+  renderCampaignCut: vi.fn(async (_file: Blob, input: { keep: { start: number; end: number }[] }) => {
+    rendered.push({ keep: input.keep })
     return { blob: new Blob(['cut'], { type: 'video/mp4' }) }
   }),
 }))
@@ -30,9 +30,11 @@ vi.mock('./captions', () => ({
   cutTime: (t: number, keep: { start: number }[]) => t - keep[0].start,
 }))
 
-import { cutDropped, videoType } from './prepareDrop'
+import { NO_EFFECTS } from './effects'
+import { cutDropped, phrasePieces, videoType } from './prepareDrop'
 
-const how = { settings: { thresholdDb: -40, minSilenceSec: 0.3 }, cleanSpeech: true, voice: true, names: [] } as unknown as Parameters<typeof cutDropped>[1]
+const ZOOMS = { cutPunch: 'subtle', hookPush: 'subtle', brandHit: 'off', logoPop: false } as const
+const how = { settings: { thresholdDb: -40, minSilenceSec: 0.3 }, cleanSpeech: true, voice: true, names: [], effects: NO_EFFECTS } as unknown as Parameters<typeof cutDropped>[1]
 const recording = new Blob(['raw'], { type: 'video/quicktime' })
 
 beforeEach(() => {
@@ -57,7 +59,7 @@ describe('a dropped clip', () => {
 
   it('"Cut the clips" off: only heard - the recording itself, its words on its own clock, nothing cut', async () => {
     const out = await cutDropped(recording, { ...how, asFilmed: true })
-    expect(out).toMatchObject({ blob: recording, cut: false, text: 'open the app' })
+    expect(out).toMatchObject({ blob: recording, cut: false, remade: false, text: 'open the app' })
     expect(out.words[0].start).toBeCloseTo(1.2)
     expect(rendered).toHaveLength(0)
     expect(listened).toEqual([{ keepWhole: true, quietIsFine: true }])
@@ -75,4 +77,35 @@ describe('a dropped clip', () => {
     expect(videoType('a.mp4', 'application/octet-stream')).toBe('video/mp4')
     expect(videoType('a.mov', 'video/quicktime')).toBe('video/quicktime')
   })
+
+  it('Zoom on a clip he cut himself: made again whole, split at his pauses so the shot can move between phrases - nothing taken out', async () => {
+    heard = [
+      { text: 'open', start: 0.2, end: 0.5 },
+      { text: 'the', start: 0.55, end: 0.7 },
+      { text: 'app', start: 0.75, end: 1.0 },
+      // A pause, then the next phrase.
+      { text: 'tap', start: 1.6, end: 1.9 },
+      { text: 'create', start: 1.95, end: 2.4 },
+    ]
+    const out = await cutDropped(recording, { ...how, effects: ZOOMS, asFilmed: true })
+    expect(out).toMatchObject({ cut: false, remade: true, text: 'open the app tap create' })
+    expect(rendered[0].keep).toEqual([
+      { start: 0, end: 1.3 },
+      { start: 1.3, end: 4 },
+    ])
+    // The words stay on the recording's own clock.
+    expect(out.words[3].start).toBeCloseTo(1.6)
+  })
+
+  it('the pieces touch end to end and cover the whole clip; no pause, one piece', () => {
+    expect(phrasePieces([], 3)).toEqual([{ start: 0, end: 3 }])
+    expect(phrasePieces([{ start: 0, end: 1 }, { start: 1.1, end: 2 }], 3)).toEqual([{ start: 0, end: 3 }])
+    const pieces = phrasePieces([{ start: 0, end: 1 }, { start: 2, end: 2.5 }, { start: 3, end: 3.4 }], 4)
+    expect(pieces).toEqual([
+      { start: 0, end: 1.5 },
+      { start: 1.5, end: 2.75 },
+      { start: 2.75, end: 4 },
+    ])
+  })
 })
+

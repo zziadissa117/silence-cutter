@@ -18,15 +18,18 @@ const said: Record<string, string> = {
 }
 const onPhone = vi.fn()
 const asFilmedHere: boolean[] = []
+const zoomsHere: boolean[] = []
 const settings = { settings: { preset: 'balanced' }, cleanSpeech: true, voice: true, voices: { profiles: [{ id: 'v1' }], chosen: 'v1' } }
 vi.mock('./prepareDrop', () => ({
-  prepareClip: vi.fn(async (_blob: Blob, { name, from, asFilmed }: { name: string; from?: string; asFilmed?: boolean }) => {
+  prepareClip: vi.fn(async (_blob: Blob, { name, from, asFilmed, cut }: { name: string; from?: string; asFilmed?: boolean; cut: { effects?: { cutPunch: string } } }) => {
     onPhone(name)
     asFilmedHere.push(Boolean(asFilmed))
+    zoomsHere.push(cut.effects?.cutPunch !== 'off')
     if (name === 'bad.mov') throw new Error('no talking heard in it')
     return { file: { id: `cut-${name}`, name, type: 'video/mp4', size: 1, from, edited: true }, words: [{ text: 'hi', start: 0, end: 0.3 }], text: said[name] }
   }),
   dropSettings: (zoom: object) => ({ ...settings, ...zoom }),
+  hasZooms: (e: { cutPunch: string; hookPush: string; brandHit: string }) => e.cutPunch !== 'off' || e.hookPush !== 'off' || e.brandHit !== 'off',
   cutName: (name: string) => name.replace(/\.[^./]+$/, '') + '.mp4',
 }))
 // A recording's fingerprint: its name, here.
@@ -101,9 +104,10 @@ let host: HTMLDivElement
 let bank: BatchBank
 const onCheck = vi.fn()
 const onChoices = vi.fn()
-const ALL_ON: DropChoices = { cut: true, captions: true, music: true, headline: true, mirror: false }
+const ALL_ON: DropChoices = { cut: true, zoom: true, captions: true, music: true, headline: true, mirror: false }
 beforeEach(() => {
   asFilmedHere.length = 0
+  zoomsHere.length = 0
   onChoices.mockClear()
   host = document.createElement('div')
   document.body.append(host)
@@ -233,7 +237,7 @@ describe('his clips, edited and waiting for his check', () => {
   })
 
   it('the checklist (his ask, 2026-11-14): ticked as he last left it; Cut and Captions off - kept as he cut them, no captions; his picks kept', async () => {
-    await render(false, { cut: true, captions: true, music: false, headline: true, mirror: false })
+    await render(false, { cut: true, zoom: true, captions: true, music: false, headline: true, mirror: false })
     const input = host.querySelector('input[aria-label="Drop in all videos"]') as HTMLInputElement
     Object.defineProperty(input, 'files', { value: files(['a.mov', 'b.mov']), configurable: true })
     await act(async () => input.dispatchEvent(new Event('change', { bubbles: true })))
@@ -241,7 +245,7 @@ describe('his clips, edited and waiting for his check', () => {
     expect(onPhone).not.toHaveBeenCalled()
     expect(host.textContent).toContain('2 clips - what should the Cutter do?')
     const ticked = (name: string) => (host.querySelector(`input[aria-label="${name}"]`) as HTMLInputElement).checked
-    expect(['Cut the clips', 'Captions', 'Music', 'Headline', 'Mirror them'].map(ticked)).toEqual([true, true, false, true, false])
+    expect(['Cut the clips', 'Zoom', 'Captions', 'Music', 'Headline', 'Mirror them'].map(ticked)).toEqual([true, true, true, false, true, false])
     await act(async () => (host.querySelector('input[aria-label="Cut the clips"]') as HTMLInputElement).click())
     await act(async () => (host.querySelector('input[aria-label="Captions"]') as HTMLInputElement).click())
     await act(async () => (host.querySelector('input[aria-label="Mirror them"]') as HTMLInputElement).click())
@@ -249,12 +253,20 @@ describe('his clips, edited and waiting for his check', () => {
     expect(host.textContent).toContain('a paper you hold up reads the right way')
     await act(async () => button('Start').click())
     await settle()
-    expect(onChoices).toHaveBeenCalledWith({ cut: false, captions: false, music: false, headline: true, mirror: true })
+    expect(onChoices).toHaveBeenCalledWith({ cut: false, zoom: true, captions: false, music: false, headline: true, mirror: true })
     expect(asFilmedHere).toEqual([true, true])
     expect(loadQueue('t').map((q) => [q.file.id, q.place, q.noCaptions, q.file.mirror])).toEqual([
       ['cut-a.mov', 's1', true, true],
       ['cut-b.mov', 's2', true, true],
     ])
+  })
+
+  it('Zoom off: no zooms, cut or not; on: the campaign’s zooms - even on clips he cut himself', async () => {
+    await render()
+    await drop(['a.mov'], ['Zoom'])
+    await drop(['b.mov'], ['Cut the clips'])
+    expect(asFilmedHere).toEqual([false, true])
+    expect(zoomsHere).toEqual([false, true])
   })
 
   it('Cancel: nothing edited', async () => {
@@ -269,7 +281,7 @@ describe('his clips, edited and waiting for his check', () => {
   })
 
   it("a step's + Add goes as he last left the checklist, without asking", async () => {
-    await render(false, { cut: false, captions: true, music: true, headline: true, mirror: true })
+    await render(false, { cut: false, zoom: true, captions: true, music: true, headline: true, mirror: true })
     expect(dropInto('t', files(['c.mov']), 's2')).toBe(true)
     await settle()
     expect(asFilmedHere).toEqual([true])
@@ -332,6 +344,8 @@ describe('his clips, edited and waiting for his check', () => {
       // "untick" Mirror them: it was off, so this ticks it.
       await drop(['a.mov'], ['Cut the clips', 'Captions', 'Mirror them'])
       expect(server.orders[0]).toMatchObject({ asFilmed: true, inName: 'a.mov', outName: 'a.mp4' })
+      // Zoom still on: the campaign's zooms go with it.
+      expect(server.orders[0]).toMatchObject({ effects })
       serverCuts()
       await lookAgain()
       expect(loadQueue('t').map((q) => [q.file.id, q.place, q.noCaptions, q.file.mirror])).toEqual([[server.orders[0].outId, 's1', true, true]])

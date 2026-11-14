@@ -250,8 +250,12 @@ export function notEdited(steps: readonly Pick<BatchStep, 'files'>[], hooks: rea
  *  the videos myself"). Cut and captions go with the clips dropped in; music
  *  and the headline are the whole video's, so they are the format's. */
 export interface DropChoices {
-  /** Silences and "um"s cut, his zooms - off: kept as he cut them. */
+  /** Silences and "um"s cut - off: kept as he cut them. */
   cut: boolean
+  /** The Cutter's zooms - in and out between his phrases, the push-in at
+   *  the start, the punch on the brand - cut or not (his ask, 2026-11-14:
+   *  "sometimes we also want editing, meaning zooming in on the clips"). */
+  zoom: boolean
   /** What he says, as captions. */
   captions: boolean
   /** A song under the format's videos. */
@@ -263,14 +267,24 @@ export interface DropChoices {
 }
 
 /** The checklist as he last left it for this format: all on at first. */
-export function choicesOf(format: Pick<BatchFormat, 'dropCut' | 'dropCaptions' | 'noMusic' | 'noHeadline' | 'dropMirror'>): DropChoices {
-  return { cut: format.dropCut !== false, captions: format.dropCaptions !== false, music: !format.noMusic, headline: !format.noHeadline, mirror: Boolean(format.dropMirror) }
+type Picks = 'dropCut' | 'dropZoom' | 'dropCaptions' | 'noMusic' | 'noHeadline' | 'dropMirror'
+
+export function choicesOf(format: Pick<BatchFormat, Picks>): DropChoices {
+  return {
+    cut: format.dropCut !== false,
+    zoom: format.dropZoom !== false,
+    captions: format.dropCaptions !== false,
+    music: !format.noMusic,
+    headline: !format.noHeadline,
+    mirror: Boolean(format.dropMirror),
+  }
 }
 
 /** His picks, kept on the format: ticked the same way next time. */
-export function withChoices(choices: DropChoices): Pick<BatchFormat, 'dropCut' | 'dropCaptions' | 'noMusic' | 'noHeadline' | 'dropMirror'> {
+export function withChoices(choices: DropChoices): Pick<BatchFormat, Picks> {
   return {
     dropCut: choices.cut ? undefined : false,
+    dropZoom: choices.zoom ? undefined : false,
     dropCaptions: choices.captions ? undefined : false,
     noMusic: choices.music ? undefined : true,
     noHeadline: choices.headline ? undefined : true,

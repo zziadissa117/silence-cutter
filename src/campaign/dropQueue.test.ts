@@ -159,11 +159,11 @@ describe('where every clip of the batch is, looked at again (his ask, 2026-11-14
 
 describe('the drop-in checklist (his ask, 2026-11-14)', () => {
   it('all on at first; his picks kept on the format and ticked the same way next time', () => {
-    expect(choicesOf({})).toEqual({ cut: true, captions: true, music: true, headline: true, mirror: false })
-    const picks = { cut: false, captions: true, music: false, headline: true, mirror: true }
-    expect(withChoices(picks)).toEqual({ dropCut: false, dropCaptions: undefined, noMusic: true, noHeadline: undefined, dropMirror: true })
+    expect(choicesOf({})).toEqual({ cut: true, zoom: true, captions: true, music: true, headline: true, mirror: false })
+    const picks = { cut: false, zoom: false, captions: true, music: false, headline: true, mirror: true }
+    expect(withChoices(picks)).toEqual({ dropCut: false, dropZoom: false, dropCaptions: undefined, noMusic: true, noHeadline: undefined, dropMirror: true })
     expect(choicesOf(withChoices(picks))).toEqual(picks)
-    expect(withChoices(choicesOf({}))).toEqual({ dropCut: undefined, dropCaptions: undefined, noMusic: undefined, noHeadline: undefined, dropMirror: undefined })
+    expect(withChoices(choicesOf({}))).toEqual({ dropCut: undefined, dropZoom: undefined, dropCaptions: undefined, noMusic: undefined, noHeadline: undefined, dropMirror: undefined })
   })
 
   it('a clip with no talking (a step he only shows) is never one of his hooks: he picks its step', () => {

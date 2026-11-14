@@ -23,7 +23,8 @@ import type { BankFile, BatchBank, BatchStep } from './batch'
 import { addToQueue, checkedClip, clipsOfFormat, loadQueue, notEdited, QUEUE_EVENT, queueRecheck, sameRecording, suggestPlace, type DropChoices, type ToCheck } from './dropQueue'
 import type { AngleEffects } from './effects'
 import { fingerprint } from './fingerprint'
-import { cutName, dropSettings, prepareClip, type DropPhase } from './prepareDrop'
+import { NO_EFFECTS } from './effects'
+import { cutName, dropSettings, hasZooms, prepareClip, type DropPhase } from './prepareDrop'
 import { loadBankFile, saveBankFile } from './store'
 import { keptWords } from './talkCaptions'
 import { downloadFile, dropTalk, orderDrop, serverLetDown, talkNow, talkServerUp, upload } from './talkLink'
@@ -87,6 +88,8 @@ interface Item {
   to?: string | null
   /** "Cut the clips" unticked: only heard, kept as he cut it. */
   asFilmed?: boolean
+  /** "Zoom" unticked: none of the Cutter's zooms. */
+  noZoom?: boolean
   /** "Captions" unticked: it goes in with none. */
   noCaptions?: boolean
   /** "Mirror them" ticked: flipped left to right in every video. */
@@ -95,7 +98,8 @@ interface Item {
 
 /** The checklist's lines: what each does, in his words. */
 const CHOICES: { key: keyof DropChoices; name: string; on: string; off: string }[] = [
-  { key: 'cut', name: 'Cut the clips', on: 'Silences and ums out, your zooms.', off: 'Kept exactly as you cut them.' },
+  { key: 'cut', name: 'Cut the clips', on: 'Silences and ums out.', off: 'Kept exactly as you cut them.' },
+  { key: 'zoom', name: 'Zoom', on: 'In and out between your phrases, a push-in at the start.', off: 'No zooms - the shot stays still.' },
   { key: 'captions', name: 'Captions', on: 'What you say, as captions.', off: 'No captions on these clips.' },
   { key: 'music', name: 'Music', on: 'A song under the videos.', off: 'No song - your voice and the clips’ own sound.' },
   { key: 'headline', name: 'Headline', on: 'The hook words over the start.', off: 'No words over the start.' },
@@ -225,6 +229,7 @@ export function DropIn({
           inName: item.name,
           from: item.from,
           ...how,
+          ...(item.noZoom ? { effects: NO_EFFECTS } : {}),
           names,
           ...(item.asFilmed ? { asFilmed: true } : {}),
         })
@@ -260,7 +265,7 @@ export function DropIn({
         const clip = await prepareClip(blob, {
           name: item.name,
           names,
-          cut: how,
+          cut: item.noZoom ? { ...how, effects: NO_EFFECTS } : how,
           from: item.from,
           asFilmed: item.asFilmed,
           onPhase: (phase, p) => setRunning({ at: i + 1, of: items.length, name: item.name, phase: `${PHASE[phase]}${p > 0 && p < 1 ? ` ${Math.round(p * 100)}%` : ''}` }),
@@ -286,7 +291,12 @@ export function DropIn({
    *  it is there already. */
   const run = async (files: File[], to?: string, how: DropChoices = choices) => {
     setFailed([])
-    const asked = { ...(how.cut ? {} : { asFilmed: true }), ...(how.captions ? {} : { noCaptions: true }), ...(how.mirror ? { mirror: true } : {}) }
+    const asked = {
+      ...(how.cut ? {} : { asFilmed: true }),
+      ...(how.zoom ? {} : { noZoom: true }),
+      ...(how.captions ? {} : { noCaptions: true }),
+      ...(how.mirror ? { mirror: true } : {}),
+    }
     const items: Item[] = []
     for (const file of files) {
       const from = await fingerprint(file)
@@ -311,7 +321,15 @@ export function DropIn({
       const from = file.from ?? file.fp ?? (blob ? await fingerprint(blob) : file.id)
       if (onItsWay(from)) continue
       // Flipped as it was.
-      items.push({ blob, replaces: file, name: file.name, from, ...(choices.captions ? {} : { noCaptions: true }), ...(file.mirror ? { mirror: true } : {}) })
+      items.push({
+        blob,
+        replaces: file,
+        name: file.name,
+        from,
+        ...(choices.zoom ? {} : { noZoom: true }),
+        ...(choices.captions ? {} : { noCaptions: true }),
+        ...(file.mirror ? { mirror: true } : {}),
+      })
     }
     await go(items)
   }
@@ -443,6 +461,7 @@ export function DropIn({
       ) : picked ? (
         <DropChecklist
           count={picked.length}
+          zooms={hasZooms(effects)}
           value={draft}
           onChange={setDraft}
           onStart={() => {
@@ -523,12 +542,15 @@ export function DropIn({
  *  ticked as he last left them, and Start. */
 function DropChecklist({
   count,
+  zooms,
   value,
   onChange,
   onStart,
   onCancel,
 }: {
   count: number
+  /** The campaign has zooms on: off, "Zoom" has nothing to add. */
+  zooms: boolean
   value: DropChoices
   onChange: (value: DropChoices) => void
   onStart: () => void
@@ -544,7 +566,7 @@ function DropChecklist({
           <input type="checkbox" checked={value[c.key]} aria-label={c.name} onChange={(e) => onChange({ ...value, [c.key]: e.target.checked })} />
           <span className="setting-text">
             <span className="row-name">{c.name}</span>
-            <span className="row-line">{value[c.key] ? c.on : c.off}</span>
+            <span className="row-line">{c.key === 'zoom' && value.zoom && !zooms ? "This campaign's zooms are off - nothing to add." : value[c.key] ? c.on : c.off}</span>
           </span>
         </label>
       ))}

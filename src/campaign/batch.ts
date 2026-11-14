@@ -113,6 +113,8 @@ export interface BatchFormat {
    *  himself) or "Captions". Absent: on. */
   dropCut?: false
   dropCaptions?: false
+  /** "Zoom" unticked the last time: the clips without the Cutter's zooms. */
+  dropZoom?: false
   /** "Mirror them" ticked the last time. */
   dropMirror?: true
   /** A talking head: the height of its captions, dragged by him - their
