@@ -110,6 +110,14 @@ export interface BatchFormat {
    *  (the talking part at the start) - his pick, per format (2026-11-13).
    *  Absent: every dropped clip goes to a step. */
   dropHooks?: boolean
+  /** Each clip of him (its reactions or hooks) in one video only, never
+   *  repurposed - a brand's rule (his ask, 2026-11-14: "they don't want me
+   *  to repurpose my reaction videos"). As many different videos as the
+   *  clips allow. Absent: every combination, as always. */
+  reactionsOnce?: boolean
+  /** Each of its product clips (or videos behind him) in one video only.
+   *  With product steps, each step says it for itself (BatchStep.once). */
+  productsOnce?: boolean
 }
 
 export const FORMAT_KINDS: { kind: FormatKind; label: string; hint: string }[] = [
@@ -247,6 +255,10 @@ export interface BatchBank {
    *  (serverLink): that computer has none of its own, and fell back to one
    *  word at a time (his report, 2026-11-14). Never saved on the phone. */
   cutterCaptions?: { style: CaptionStyle; size: CaptionSize }
+  /** One format's bank (formatBank): its reactions, or its products, each
+   *  in one video only (BatchFormat.reactionsOnce / productsOnce). */
+  reactionsOnce?: boolean
+  productsOnce?: boolean
   /** How much of the day each format gets, by id (1 when absent): set by
    *  how its videos do (Analytics). */
   formatShares?: Record<string, number>
@@ -344,6 +356,9 @@ export interface BatchStep {
   /** What he said in clips he put in this step after a drop-in - so the next
    *  ones saying it the same way go here too (stepMatch.ts). */
   heard?: string[]
+  /** Each of this step's clips in one video only (his ask, 2026-11-14).
+   *  Absent: its clips go round every combination, as always. */
+  once?: boolean
 }
 
 /** A picture or video on a step's clip. */
@@ -743,6 +758,8 @@ export function formatBank(bank: BatchBank, format: BatchFormat): BatchBank {
     products: bank.products.filter(mine),
     steps: steps && steps.length > 0 ? steps : undefined,
     ...(format.corner ? { corner: format.corner } : {}),
+    ...(format.reactionsOnce ? { reactionsOnce: true } : {}),
+    ...(format.productsOnce ? { productsOnce: true } : {}),
     // No headline: no words over him at all - not the headlines, not
     // Claude + X - and the videos mixed from his clips, products and songs.
     ...(format.noHeadline ? { headlines: [], looks: undefined, hook: undefined, headlineStyles: undefined, headlineStyle: undefined, formula: undefined } : {}),
@@ -880,7 +897,8 @@ const REMEMBERED = 5_000
 
 /** What a bank's videos are mixed from: the reactions, the product - one
  *  list, or one per step - the hooks and the tracks (none: one empty). */
-type MixBank = Pick<BatchBank, 'reactions' | 'products' | 'headlines' | 'music' | 'layout' | 'steps' | 'formula' | 'useBest' | 'favour'> & LookFields
+type MixBank = Pick<BatchBank, 'reactions' | 'products' | 'headlines' | 'music' | 'layout' | 'steps' | 'formula' | 'useBest' | 'favour' | 'reactionsOnce' | 'productsOnce'> &
+  LookFields
 
 /** A file's name as the server's numbers have it: without its ending. */
 export const bareName = (name: string) => name.replace(/\.[^./]+$/, '').trim()
@@ -976,6 +994,54 @@ function liveKeys({ reactions, products, hooks, tracks }: ReturnType<typeof dime
 const totalOf = ({ reactions, products, hooks, tracks }: ReturnType<typeof dimensions>) =>
   reactions.length * products.reduce((n, l) => n * l.length, 1) * hooks.length * tracks.length
 
+/** Which lists give each clip to one video only (his ask, 2026-11-14: a
+ *  brand that doesn't want its reactions or product clips repurposed): the
+ *  reactions, and each product list - the products, or each step. */
+function onceLists(bank: MixBank): { reactions: boolean; products: boolean[]; any: boolean } {
+  const reactions = Boolean(bank.reactionsOnce)
+  const products = usesSteps(bank) ? bank.steps!.map((step) => Boolean(step.once)) : [Boolean(bank.productsOnce)]
+  return { reactions, products, any: reactions || products.some(Boolean) }
+}
+
+/** The clips already in a video, read off the made combinations (comboKey:
+ *  the reaction, then the product clips joined) - so a video taken out again
+ *  (Start over, unmake) gives its clips back. */
+function inVideos(made: Iterable<string>, mine: readonly string[]): { reactions: Set<string>; products: Set<string>[] } {
+  const reactions = new Set<string>()
+  const products: Set<string>[] = []
+  // Only this bank's own videos (one format's: they start with its reactions).
+  const own = new Set(mine)
+  for (const key of made) {
+    const [r, p = ''] = key.split('|')
+    if (!own.has(r)) continue
+    reactions.add(r)
+    p.split('+').forEach((id, k) => (products[k] ??= new Set()).add(id))
+  }
+  return { reactions, products }
+}
+
+/** What a video can still be made of: each once-only list without its clips
+ *  already in a video. */
+function stillFree(
+  { reactions, products }: Pick<ReturnType<typeof dimensions>, 'reactions' | 'products'>,
+  once: ReturnType<typeof onceLists>,
+  taken: ReturnType<typeof inVideos>,
+): { reactions: string[]; products: string[][] } {
+  return {
+    reactions: once.reactions ? reactions.filter((r) => !taken.reactions.has(r)) : reactions,
+    products: products.map((list, k) => (once.products[k] ? list.filter((id) => !taken.products[k]?.has(id)) : list)),
+  }
+}
+
+/** With once-only lists: each video takes a clip of each that no other video
+ *  has, so there are as many different videos as the shortest holds - `all`
+ *  of them, `left` still free. */
+function onceCount(dims: ReturnType<typeof dimensions>, once: ReturnType<typeof onceLists>, free: ReturnType<typeof stillFree>): { all: number; left: number } {
+  const sizes = [...(once.reactions ? [dims.reactions.length] : []), ...dims.products.flatMap((l, k) => (once.products[k] ? [l.length] : []))]
+  const lefts = [...(once.reactions ? [free.reactions.length] : []), ...free.products.flatMap((l, k) => (once.products[k] ? [l.length] : []))]
+  return { all: Math.min(...sizes), left: Math.min(...lefts) }
+}
+
 /** Every choice of one item from each list, in order. */
 function* everyChoice(lists: readonly (readonly string[])[]): Generator<string[]> {
   if (lists.some((l) => l.length === 0)) return
@@ -1019,6 +1085,10 @@ export function pickBatch(
     const live = liveKeys(dims)
     for (const key of made) if (!live.has(key)) made.delete(key)
   }
+  // Once-only lists: a clip already in a video is never taken again, and
+  // once one of them is used up no more videos are made.
+  const once = onceLists(bank)
+  const taken = inVideos(made, reactions)
   // The best ones (Use the best hooks) count each use as a share of one, so
   // they come round more often.
   const boosts = boostsOf(bank, hooks)
@@ -1040,7 +1110,10 @@ export function pickBatch(
   }
 
   for (let i = 0; i < count; i++) {
-    if (listed && made.size >= total) {
+    const free = once.any ? stillFree(dims, once, taken) : { reactions, products }
+    if (once.any) {
+      if (free.reactions.length === 0 || free.products.some((l) => l.length === 0)) break
+    } else if (listed && made.size >= total) {
       made.clear()
       countRound()
     }
@@ -1051,9 +1124,9 @@ export function pickBatch(
       // The least-used unmade combinations of each look.
       const byLook = new Map<BatchLook | null, { score: number; list: Choice[] }>()
       const consider = (avoidLast: boolean) => {
-        for (const r of reactions) {
-          if (avoidLast && reactions.length > 1 && r === lastReaction) continue
-          for (const p of everyChoice(products)) {
+        for (const r of free.reactions) {
+          if (avoidLast && free.reactions.length > 1 && r === lastReaction) continue
+          for (const p of everyChoice(free.products)) {
             const productScore = p.reduce((n, id) => n + usedOf(id), 0)
             for (const h of hooks)
               for (const m of tracks) {
@@ -1085,8 +1158,8 @@ export function pickBatch(
       const draw = (): Choice => {
         const hKey = least(lookHooks.map((h) => h.key))
         return {
-          r: least(reactions, lastReaction),
-          p: products.map((list) => least(list)),
+          r: least(free.reactions, lastReaction),
+          p: free.products.map((list) => least(list)),
           h: lookHooks.find((h) => h.key === hKey)!,
           m: tracks[0] === null ? null : least(tracks as string[]),
         }
@@ -1097,8 +1170,11 @@ export function pickBatch(
       for (let tries = 0; tries < 20 && made.has(comboKey(choice.r, choice.p, choice.h.key, choice.m, choice.h.look)); tries++) choice = draw()
       best = [choice]
     }
+    if (best.length === 0) break
     const choice = best[Math.min(best.length - 1, Math.floor(rand() * best.length))]
     const { look, amount } = choice.h
+    if (once.reactions) taken.reactions.add(choice.r)
+    choice.p.forEach((id, k) => once.products[k] && (taken.products[k] ??= new Set()).add(id))
     for (const key of [choice.r, ...choice.p, choice.h.key, choice.m, look && lookKey(look)]) if (key) used[key] = (used[key] ?? 0) + 1
     made.add(comboKey(choice.r, choice.p, choice.h.key, choice.m, look))
     if (look) inRound.set(look, (inRound.get(look) ?? 0) + 1)
@@ -1123,6 +1199,15 @@ export function combos(bank: MixBank & Pick<BatchBank, 'made'>): { total: number
   const dims = dimensions(bank)
   const total = totalOf(dims)
   if (total === 0) return { total: 0, left: 0 }
+  const once = onceLists(bank)
+  if (once.any) {
+    // Every combination of free clips is unmade: as many as the shortest
+    // once-only list still holds.
+    const live = total <= MAX_COMBOS ? liveKeys(dims) : null
+    const made = (bank.made ?? []).filter((key) => !live || live.has(key))
+    const count = onceCount(dims, once, stillFree(dims, once, inVideos(made, dims.reactions)))
+    return { total: Math.min(total, count.all), left: Math.min(total, count.left) }
+  }
   if (total > MAX_COMBOS) return { total: Infinity, left: Infinity }
   const live = liveKeys(dims)
   const made = (bank.made ?? []).filter((key) => live.has(key)).length

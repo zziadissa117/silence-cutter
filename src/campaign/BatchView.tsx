@@ -1209,6 +1209,27 @@ export function BatchView({
         </div>
         {step.files.length === 0 ? <span className="hint step-meta warn-text">No clips yet</span> : clipsToggle(`step:${step.id}`, step.files)}
         {onIt.length > 0 ? <span className="hint step-meta">On it: {onIt.join(', ')}</span> : null}
+        {/* Each of this step's clips in one video only (his ask, 2026-11-14). */}
+        <label className="toggle once-check">
+          <input
+            type="checkbox"
+            checked={Boolean(step.once)}
+            aria-label={`Use each clip of ${step.name} once`}
+            onChange={(e) => {
+              const latest = bankRef.current ?? bank
+              if (!latest) return
+              keep({ ...latest, steps: (latest.steps ?? []).map((st) => (st.id === step.id ? { ...st, once: e.target.checked || undefined } : st)) })
+            }}
+          />
+          <span>
+            <span className="label">Use each clip once</span>
+            {step.once ? (
+              <span className="hint">
+                {step.files.length} clip{step.files.length === 1 ? '' : 's'}: {step.files.length} different video{step.files.length === 1 ? '' : 's'} at most.
+              </span>
+            ) : null}
+          </span>
+        </label>
         <div className="step-actions">
           <button type="button" className="btn small" aria-expanded={wordsFor === step.id} onClick={() => setWordsFor(wordsFor === step.id ? null : step.id)}>
             Words & overlays
@@ -1575,6 +1596,39 @@ export function BatchView({
   /** The files of a list: one format's only, when `formatId` is given. */
   const filesIn = (kind: Kind, formatId?: string): BankFile[] =>
     !bank ? [] : formatId && kind !== 'music' ? bank[kind].filter((f) => f.formats?.includes(formatId)) : bank[kind]
+  /** "Use each one once" under a format's clips of him or its products (his
+   *  ask, 2026-11-14: a brand that doesn't want them repurposed): off unless
+   *  he ticks it; then each goes in one video, and the format makes as many
+   *  different videos as they allow. */
+  const onceBox = (formatId: string, kind: 'reactions' | 'products') => {
+    const format = formatList.find((x) => x.id === formatId)
+    if (!format) return null
+    const field = kind === 'reactions' ? 'reactionsOnce' : 'productsOnce'
+    const on = Boolean(format[field])
+    const count = filesIn(kind, formatId).length
+    const [what, whats] =
+      kind === 'reactions'
+        ? format.kind === 'talking'
+          ? ['hook', 'hooks']
+          : ['clip of you', 'clips of you']
+        : format.kind === 'greenscreen'
+          ? ['video behind you', 'videos behind you']
+          : ['product clip', 'product clips']
+    return (
+      <label className="toggle once-check">
+        <input type="checkbox" checked={on} aria-label={`Use each ${what} once`} onChange={(e) => changeFormat(formatId, { [field]: e.target.checked || undefined })} />
+        <span>
+          <span className="label">Use each {what} once</span>
+          {on ? (
+            <span className="hint">
+              Each goes in one video only - {count} {count === 1 ? what : whats}, {count} different video{count === 1 ? '' : 's'} at most.
+            </span>
+          ) : null}
+        </span>
+      </label>
+    )
+  }
+
   const list = (kind: Kind, title: string, hint: string, formatId?: string, onAdd?: (files: File[]) => void) => (
     <div className="group">
       <div className="bank-head">
@@ -1609,6 +1663,7 @@ export function BatchView({
         )}
       </div>
       <p className="hint tip bank-hint">{hint}</p>
+      {formatId && (kind === 'reactions' || kind === 'products') ? onceBox(formatId, kind) : null}
       {kind === 'music' && bank && songs.length > 0 ? (
         <label className="field">
           <span className="label">From the music bank</span>

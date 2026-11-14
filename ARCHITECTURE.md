@@ -692,6 +692,17 @@ listened to (`talkOrder.toServer`, `SERVER_FROM`) and a server that answers `/ta
   campaign doesn't post from this phone - and a video made there can't be edited again from Posts (its recording
   left the phone).
 
+### Each clip once (his ask 2026-11-14: brands that don't want clips repurposed)
+
+`BatchFormat.reactionsOnce` / `productsOnce` and `BatchStep.once` (all absent by default; checkboxes on the format
+card - BatchView `onceBox`, the step card). `formatBank` carries the format's two onto its bank. In `batch.ts`
+(`onceLists`) a ticked list's clip already in one of that bank's videos - read off its made combination keys
+(`inVideos`: `reaction|p1+p2|…`, only keys starting with its own reactions) - is left out of the choices
+(`stillFree`); `pickBatch` stops when a ticked list has nothing free, and `combos` counts `min` of the ticked lists
+(`onceCount`), so `leftToMake`/`planFormats` take only that many slots and the usual ending (`spend`, the batch
+stopping) follows when they are used. `unmake` (Start over) gives the clips back; a rejected (disliked) video's
+mix stays made, so its clips stay used.
+
 ### A talking head's hook kept as filmed, and its captions' look (his report 2026-11-14)
 
 "Use edits in hooks" off (`BatchFormat.rawHooks`): `CampaignApp` passes `rawFirst` to `makeMontage` and never hears

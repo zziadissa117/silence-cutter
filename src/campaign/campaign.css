@@ -2102,3 +2102,13 @@ html.editor-dark .caption-sheet { --ink: #000000; --text: #ffffff; --dim: #aeaeb
   position: absolute; left: 4px; top: 4px; z-index: 2; padding: 1px 6px; border-radius: 6px; pointer-events: none;
   background: rgb(0 0 0 / 0.72); color: #fff; font-size: 11px; font-weight: 800; font-variant-numeric: tabular-nums;
 }
+
+/* "Use each … once" (his ask, 2026-11-14: "a little checkbox under the
+   reaction"): a small square box on the left, not the settings' switch. */
+.toggle.once-check { flex-direction: row; justify-content: flex-start; align-items: flex-start; gap: 10px; margin: 6px 0 2px; }
+.toggle.once-check > input[type='checkbox'] { width: 22px; height: 22px; margin-top: 1px; border-radius: 6px; background: transparent;
+  border: 2px solid var(--muted); box-shadow: none; transition: background-color 150ms, border-color 150ms; }
+.toggle.once-check > input[type='checkbox']:checked { border-color: var(--accent);
+  background: var(--accent) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M5 12.5l4.5 4.5L19 7.5' fill='none' stroke='white' stroke-width='3' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E") center / 15px no-repeat; }
+.toggle.once-check .label { display: block; font-size: 15px; font-weight: 600; text-transform: none; letter-spacing: 0; color: var(--text); }
+.toggle.once-check .hint { display: block; margin-top: 2px; font-size: 13px; }

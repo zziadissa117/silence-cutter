@@ -768,6 +768,40 @@ describe('one batch for the account, in formats', () => {
     expect(saved.formats?.find((f) => f.id === 't')?.captionY).toBeCloseTo(0.64)
   })
 
+  it('each clip of you, each product clip and each step clip can be used once - off until he ticks it (his ask, 2026-11-14)', async () => {
+    storedBank = {
+      ...bank,
+      formats: [{ id: 'r', kind: 'reaction', name: 'Reaction' }],
+      products: bank.products.map((p) => ({ ...p, formats: ['r'] })),
+      reactions: bank.reactions.map((r) => ({ ...r, formats: ['r'] })),
+    }
+    await show({})
+    await openFirstFormat()
+    const box = (label: string) => host.querySelector(`input[aria-label="${label}"]`) as HTMLInputElement
+    expect(box('Use each clip of you once').checked).toBe(false)
+    expect(box('Use each product clip once').checked).toBe(false)
+    await act(async () => box('Use each clip of you once').click())
+    let saved = await savedBank()
+    expect(saved.formats?.[0].reactionsOnce).toBe(true)
+    // The card counts it: 3 clips of him, 3 different videos.
+    expect(host.textContent).toContain('3 different videos left')
+    expect(host.textContent).toContain('Each goes in one video only - 3 clips of you, 3 different videos at most.')
+    await act(async () => box('Use each product clip once').click())
+    saved = await savedBank()
+    expect(saved.formats?.[0].productsOnce).toBe(true)
+  })
+
+  it("a product step's clips can be used once", async () => {
+    const steps = [{ id: 's1', name: 'Open the app', formats: ['t'], files: [{ id: 'c1', name: 'IMG_1.mp4', type: 'video/mp4', size: 1e6 }] }]
+    storedBank = { ...bank, formats: [{ id: 't', kind: 'talking', name: 'Talk' }], steps, reactions: bank.reactions.map((r) => ({ ...r, formats: ['t'] })), products: [] }
+    await show({})
+    await openFirstFormat()
+    const box = host.querySelector('input[aria-label="Use each clip of Open the app once"]') as HTMLInputElement
+    expect(box.checked).toBe(false)
+    await act(async () => box.click())
+    expect((await savedBank()).steps?.[0].once).toBe(true)
+  })
+
   it('uses the product of another format with one pick', async () => {
     storedBank = { ...bank, formats: [{ id: 'r', kind: 'reaction', name: 'Reaction' }, { id: 't', kind: 'talking', name: 'Talk' }], products: bank.products.map((p) => ({ ...p, formats: ['r'] })), reactions: bank.reactions.map((r) => ({ ...r, formats: ['r'] })) }
     await show({})

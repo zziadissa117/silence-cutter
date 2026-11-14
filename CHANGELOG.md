@@ -3,6 +3,24 @@
 Newest first. Every change says what it does, how to use it, and how it works
 underneath. Kept up to date with each commit.
 
+## Batch: use each clip once (reactions, products, each product step)
+- His ask (2026-11-14): "for one of my brands ... they don't want me to repurpose my reaction videos. Sometimes they
+  don't want me to repurpose my product videos ... make an option for every single reaction video to be used just
+  once ... the same thing for the product ... under each product step, a little checkbox ... If I have 2 videos,
+  there are only going to be 2 different variations".
+- On each format: a small checkbox under its clips of him ("Use each clip of you once", "Use each hook once" on a
+  talking head) and under its products ("Use each product clip once", "Use each video behind you once" on a green
+  screen). With product steps, each step card has its own "Use each clip once". All off unless he ticks them.
+- Ticked, each of those clips goes in one video only; headlines, songs and the other lists still go round. The
+  format makes as many different videos as its shortest ticked list holds (2 reactions ticked: 2 videos), the card
+  says how many are left, and when they are used up the batch stops by itself the way it does when every
+  combination has been made. A video taken out with Start over gives its clips back; one he Rejects keeps them used.
+- Underneath: `BatchFormat.reactionsOnce/productsOnce`, `BatchStep.once`, passed to a format's bank by `formatBank`;
+  `batch.pickBatch` never takes a ticked list's clip already in one of that format's videos (read off the made
+  combinations - `inVideos`, `stillFree`) and `combos` counts the shortest ticked list (`onceCount`);
+  `variationParts` says "(each once)"; BatchView `onceBox` and the step card's box. Tests: `batchOnce.test.ts`,
+  `batchView.test.tsx`.
+
 ## Talking heads: the next clip starts right after the last word
 - His report (2026-11-14, on the videos remade with the change below): "still there's too much separation between
   all clips ... too long before the second one plays ... it better to start next clip after last word".

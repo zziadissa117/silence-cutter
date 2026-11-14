@@ -299,11 +299,13 @@ export function variationParts(bank: BatchBank): string[] {
           .join(' + ')})`,
       ]
     : [...(headlines.length > 0 ? [n(headlines.length, 'headline')] : []), ...(styles > 1 ? [n(styles, 'headline look')] : [])]
+  // A list whose clips each go in one video only says so.
+  const once = (on: boolean | undefined) => (on ? ' (each once)' : '')
   return [
-    n(bank.reactions.length, 'reaction'),
+    n(bank.reactions.length, 'reaction') + once(bank.reactionsOnce),
     ...(usesSteps(bank)
-      ? bank.steps!.map((step) => `${n(step.files.length, 'clip')} for ${step.name}`)
-      : [n(bank.products.length, green ? 'background video' : 'product showcase')]),
+      ? bank.steps!.map((step) => `${n(step.files.length, 'clip')} for ${step.name}${once(step.once)}`)
+      : [n(bank.products.length, green ? 'background video' : 'product showcase') + once(bank.productsOnce)]),
     ...(!green && bank.music.length > 1 ? [n(bank.music.length, 'song')] : []),
     ...hooks,
   ]
