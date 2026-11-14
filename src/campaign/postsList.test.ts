@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 
 import type { ServerPost } from './posting'
-import { byDay, campaignsIn, foldBatches, foldCampaigns, localDay, postsOrder } from './postsList'
+import { byDay, campaignsIn, foldBatches, foldCampaigns, localDay, missedAccounts, postsOrder } from './postsList'
 
 const post = (id: string, campaignId: string, batch?: string) =>
   ({ id, campaignId, campaignName: campaignId.toUpperCase(), batch: batch ? { id: batch, date: '2026-10-11', time: '10:00', size: 3 } : null }) as unknown as ServerPost
@@ -58,22 +58,52 @@ describe('byDay', () => {
 describe('the Posts screen order (postsOrder)', () => {
   const NOW = Date.parse('2026-11-11T15:00:00Z')
   const at = (h: number) => new Date(NOW + h * 3_600_000).toISOString()
-  const p = (id: string, status: string, h: number | null, error?: string) =>
-    ({ id, status, postAt: h === null ? null : at(h), createdAt: at(-1), ...(error ? { error } : {}) }) as never as Parameters<typeof postsOrder>[0][number] & { id: string }
+  const p = (id: string, status: string, h: number | null, error?: string, retryH?: number) =>
+    ({ id, status, postAt: h === null ? null : at(h), createdAt: at(-1), retryAt: retryH === undefined ? null : at(retryH), ...(error ? { error } : {}) }) as never as Parameters<
+      typeof postsOrder
+    >[0][number] & { id: string }
+  const ids = (list: unknown[]) => list.map((x) => (x as { id: string }).id)
 
-  it('lists what is still to go by its time, the next first, whatever its state', () => {
-    const { next } = postsOrder([p('later', 'scheduled', 5), p('approve', 'waiting', 2), p('soon', 'approved', 1), p('none', 'waiting', null)], NOW)
-    expect(next.map((x) => (x as { id: string }).id)).toEqual(['soon', 'approve', 'later', 'none'])
+  it('puts everything waiting for him first, the soonest first, apart from the rest (his ask, 2026-11-13)', () => {
+    const { toApprove, next } = postsOrder([p('later', 'scheduled', 5), p('approve', 'waiting', 2), p('soon', 'approved', 1), p('none', 'waiting', null), p('first', 'waiting', 0.5)], NOW)
+    expect(ids(toApprove)).toEqual(['first', 'approve', 'none'])
+    expect(ids(next)).toEqual(['soon', 'later'])
   })
 
   it('keeps only the last few hours of what went out, newest first', () => {
     const { justPosted } = postsOrder([p('a', 'posted', -1), p('b', 'posted', -2.5), p('old', 'posted', -6)], NOW)
-    expect(justPosted.map((x) => (x as { id: string }).id)).toEqual(['a', 'b'])
+    expect(ids(justPosted)).toEqual(['a', 'b'])
   })
 
-  it("keeps what didn't go out for a day, apart, to post again", () => {
+  it("lists one that didn't go out and goes again by itself at that time, with the rest still to go", () => {
+    const { next, missed } = postsOrder([p('later', 'scheduled', 3), p('again', 'error', -2, "Postiz couldn't publish it to @kari.", 1.5), p('soon', 'scheduled', 1)], NOW)
+    expect(ids(next)).toEqual(['soon', 'again', 'later'])
+    expect(missed).toHaveLength(0)
+  })
+
+  it("keeps what didn't go out and won't go again for a day, apart, to post again", () => {
     const { missed, justPosted } = postsOrder([p('err', 'error', -5), p('half', 'posted', -2, 'Not posted to Jake (Instagram).'), p('gone', 'failed', -30)], NOW)
-    expect(missed.map((x) => (x as { id: string }).id)).toEqual(['half', 'err'])
+    expect(ids(missed)).toEqual(['half', 'err'])
     expect(justPosted).toHaveLength(0)
+  })
+
+  it('counts one he posted himself as out', () => {
+    const { missed, justPosted } = postsOrder([p('mine', 'posted', -1, 'You posted it yourself to @kari.')], NOW)
+    expect(missed).toHaveLength(0)
+    expect(ids(justPosted)).toEqual(['mine'])
+  })
+})
+
+describe('missedAccounts', () => {
+  const accounts = [
+    { name: 'Kari', platform: 'tiktok-business', profile: 'kari.ugc' },
+    { name: 'Kari YT', platform: 'youtube' },
+  ]
+  it('finds the accounts its note names, by username or name', () => {
+    expect(missedAccounts({ accounts, status: 'error', error: "Postiz couldn't publish it to @kari.ugc. Posting again Fri 3 PM." }).map((a) => a.platform)).toEqual(['tiktok-business'])
+    expect(missedAccounts({ accounts, status: 'posted', error: 'Not posted to Kari YT.' }).map((a) => a.platform)).toEqual(['youtube'])
+  })
+  it('takes them all when the note names none', () => {
+    expect(missedAccounts({ accounts, status: 'failed', error: 'The video could not be put into Postiz.' })).toHaveLength(2)
   })
 })

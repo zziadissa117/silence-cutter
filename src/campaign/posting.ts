@@ -748,7 +748,7 @@ export const listInsights = shared(async (): Promise<Insights> => {
   return insights
 }, 60_000)
 
-export type PostAction = 'edit' | 'approve' | 'ready' | 'reject' | 'unschedule' | 'retry' | 'retry-accounts'
+export type PostAction = 'edit' | 'approve' | 'ready' | 'reject' | 'unschedule' | 'retry' | 'retry-accounts' | 'self' | 'later'
 
 export async function postAction(
   action: PostAction,

@@ -62,9 +62,10 @@ export function localDay(iso: string): string {
  *  day's posts by time. Ones with no time yet come last. */
 export function byDay(posts: readonly ServerPost[]): { date: string | null; posts: ServerPost[] }[] {
   const days = new Map<string | null, ServerPost[]>()
-  const sorted = [...posts].sort((a, b) => (a.postAt ?? '\uffff').localeCompare(b.postAt ?? '\uffff'))
+  const sorted = [...posts].sort(byTime)
   for (const post of sorted) {
-    const date = post.postAt ? localDay(post.postAt) : null
+    const at = goesAt(post)
+    const date = at ? localDay(at) : null
     days.set(date, [...(days.get(date) ?? []), post])
   }
   return [...days.entries()].map(([date, list]) => ({ date, posts: list }))
@@ -114,22 +115,61 @@ export function missedPost(p: Pick<ServerPost, 'status' | 'error'>): boolean {
   return p.status === 'failed' || p.status === 'error' || (p.status === 'posted' && Boolean(p.error?.startsWith('Not posted to')))
 }
 
-/** The Posts screen, in the order he reads it (his ask, 2026-11-11: "It
- *  needs to be ordered: what's the next thing that's going to post? At the
- *  bottom, things that have been posted"): everything still to go out -
- *  to approve, approved, scheduled - in one list by its time, the next
- *  first; what didn't go out in the last day, to post again; and what went
- *  out in the last few hours, newest first. Older posts are on Analytics. */
-export function postsOrder<P extends Pick<ServerPost, 'status' | 'postAt' | 'createdAt' | 'error'>>(
+/** A post that didn't go out and that the server posts again by itself at
+ *  `retryAt` (postiz missedFields): it goes out again, so it is listed with
+ *  the rest still to go, at that time. */
+export function goingAgain(p: Pick<ServerPost, 'status' | 'error' | 'retryAt'>, now = Date.now()): boolean {
+  return missedPost(p) && p.status !== 'failed' && Boolean(p.retryAt) && Date.parse(p.retryAt!) > now - 30 * 60_000
+}
+
+/** When a post still to go goes: its time, or for one going again, then. */
+export function goesAt(p: Pick<ServerPost, 'status' | 'error' | 'retryAt' | 'postAt'>): string | null {
+  return goingAgain(p, 0) ? p.retryAt : p.postAt
+}
+
+const byTime = <P extends Pick<ServerPost, 'status' | 'error' | 'retryAt' | 'postAt'>>(a: P, b: P) =>
+  (goesAt(a) ?? '\uffff').localeCompare(goesAt(b) ?? '\uffff')
+
+/** The Posts screen, in the order he reads it (his ask, 2026-11-13: "The
+ *  videos that have to be at the top are the videos that are up for
+ *  approval ... I cannot be scrolling and looking for videos for approval.
+ *  ... Then we're going to have the ones that are today, the ones for
+ *  Saturday and Sunday"):
+ *  - toApprove: everything waiting for him, the soonest first, always on top;
+ *  - next: what is set to go out - approved, scheduled, and what didn't go
+ *    out and goes again by itself - by its time, for the day blocks;
+ *  - justPosted: what went out in the last few hours, newest first;
+ *  - missed: what didn't go out in the last day and won't go again by itself
+ *    - at the bottom: he is told of each one by a notification, not by a
+ *    banner over the screen (his ask, 2026-11-13). Older posts are on Analytics. */
+export function postsOrder<P extends Pick<ServerPost, 'status' | 'postAt' | 'createdAt' | 'error' | 'retryAt'>>(
   posts: readonly P[],
   now = Date.now(),
-): { next: P[]; missed: P[]; justPosted: P[] } {
+): { toApprove: P[]; next: P[]; missed: P[]; justPosted: P[] } {
+  const toApprove = posts.filter((p) => p.status === 'waiting').sort(byTime)
   const next = posts
-    .filter((p) => p.status === 'waiting' || p.status === 'approved' || p.status === 'scheduled')
-    .sort((a, b) => (a.postAt ?? '￿').localeCompare(b.postAt ?? '￿'))
-  const missed = posts.filter((p) => missedPost(p) && now - timeOf(p) < MISSED_MS).sort((a, b) => timeOf(b) - timeOf(a))
+    .filter((p) => p.status === 'approved' || p.status === 'scheduled' || goingAgain(p, now))
+    .sort(byTime)
+  const missed = posts
+    .filter((p) => missedPost(p) && !goingAgain(p, now) && now - timeOf(p) < MISSED_MS)
+    .sort((a, b) => timeOf(b) - timeOf(a))
   const justPosted = posts
     .filter((p) => p.status === 'posted' && !missedPost(p) && p.postAt && now - Date.parse(p.postAt) < JUST_POSTED_MS)
     .sort((a, b) => timeOf(b) - timeOf(a))
-  return { next, missed, justPosted }
+  return { toApprove, next, missed, justPosted }
+}
+
+/** The accounts a missed post didn't reach: the ones its note names, by
+ *  username or name - all of them when the note names none. */
+export function missedAccounts<A extends { name: string; profile?: string; platform: string }>(
+  post: { accounts: A[]; error: string | null; status: string },
+): A[] {
+  if (post.status === 'failed') return post.accounts
+  const note = (post.error ?? '').replace(/ (Posting again|Still not posted)\b.*$/s, '')
+  const handle = (a: A) => (a.profile ?? '').trim().replace(/^@+/, '')
+  // The server names an account by its @username when it has one, else by its
+  // name - a whole item of the list, so "Kari" isn't found in "Kari YT".
+  const item = (text: string) => new RegExp(`(^|[ ,])${text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}(?=,|\\.|\\s\\(|$)`).test(note)
+  const named = post.accounts.filter((a) => (handle(a) && item(`@${handle(a)}`)) || (Boolean(a.name.trim()) && item(a.name.trim())))
+  return named.length > 0 ? named : post.accounts
 }

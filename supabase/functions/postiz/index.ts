@@ -37,6 +37,7 @@
 //   posts          { profile }                  -> { posts }
 //   edit / approve / ready { profile, id, caption?, title?, at? } -> { post }   ready: approved, held until he taps Post (approve)
 //   reject / unschedule / retry { profile, id } -> { post }
+//   self / later   { profile, id } -> { post }   a post that didn't go out: he posts it himself (the Cutter stops), or the Cutter posts it at the next free time
 //   recaption      { profile, campaignId, posting, ids?, mode? } -> { rewriting, tooSoon }  missing hashtags added (mode 'hashtags', the default) or captions rewritten ('rewrite'), in the background;
 //   stop-campaign  { profile, campaignId }   -> { stopped, unposting }  every post of one campaign not out yet, rejected at once;
 //                  the ones Postiz holds are taken out of it in the background (and on each tick)
@@ -93,7 +94,7 @@ import { RECHECK_SCHEMA, RECHECK_SYSTEM, acceptFix, cleanContext, cleanUnsure, c
 import { byteRange } from './range.ts'
 import { SUMMARY_HOUR, summaryText, type DayPost } from './summary.ts'
 import { GONE_MS, serverTrouble, troubleNote, type ServerPing } from './serverWatch.ts'
-import { accountName, baseNote, clearOfTaken, failedRefs, goodHoursEnd, missingAccounts, notPostedNote, reconnectedAs, youtubeRetryTime, youtubeTime } from './failed.ts'
+import { AUTO_AGAIN, accountName, againAt, baseNote, clearOfTaken, failedRefs, goodHoursEnd, missingAccounts, namesIn, notPostedNote, reconnectedAs, youtubeRetryTime, youtubeTime } from './failed.ts'
 import { carryOver, cleanCaptions, cleanRepost, repostDueAt, textFor, variationNote, type AccountText } from './repost.ts'
 import { FAKE_CLAUDE, FakeError, fakeCaption, fakePostiz, isFakePostiz } from './fake.ts'
 import { withCover } from './cover.ts'
@@ -3180,7 +3181,12 @@ async function failed(post: Post, error: unknown): Promise<void> {
     return
   }
   await update(post.id, { status: 'failed', error: problem.message, attempts, retry_at: null, slot: null, post_at: null, spread: null })
-  await notify(post.profile_id, { title: `${post.campaign_name}: a post failed`, body: problem.message, tag: `failed-${post.id}` })
+  await notify(post.profile_id, {
+    title: `${post.campaign_name}: a post failed`,
+    body: `${problem.message} Tap to post it yourself, or let the Cutter try again.`,
+    tag: `failed-${post.id}`,
+    url: missedLink(post),
+  })
 }
 
 // --- What he does on the Posts screen -----------------------------------------
@@ -3265,7 +3271,9 @@ async function listPosts(profile: Profile): Promise<Response> {
  *  start a playing video over. */
 async function watchLink(post: Post): Promise<string | null> {
   if (post.media?.path) return post.media.path
-  if (post.parts === 0 || !['writing', 'waiting', 'approved', 'scheduled'].includes(post.status)) return null
+  // Also one that didn't go out, or that he posts himself: he saves it from here.
+  const his = missed(post) || Boolean(post.error?.startsWith(SELF_NOTE))
+  if (post.parts === 0 || (!his && !['writing', 'waiting', 'approved', 'scheduled'].includes(post.status))) return null
   const window = 6 * 60 * MINUTE
   return videoUrl(post, (Math.floor(Date.now() / window) + 2) * window)
 }
@@ -3283,6 +3291,15 @@ async function deleteScheduled(key: string, post: Post): Promise<void> {
       if (n === 0 || !(error instanceof Problem) || error.status !== 400) throw error
     }
   }
+}
+
+/** What a post he posted himself says (the phone reads it too). */
+const SELF_NOTE = 'You posted it yourself'
+
+/** A post that didn't go out, or not to every account - as the phone's
+ *  postsList.missedPost. */
+function missed(post: Pick<Post, 'status' | 'error'>): boolean {
+  return post.status === 'failed' || post.status === 'error' || (post.status === 'posted' && Boolean(post.error?.startsWith('Not posted to')))
 }
 
 async function act(profile: Profile, action: string, body: Record<string, unknown>): Promise<Response> {
@@ -3364,6 +3381,39 @@ async function act(profile: Profile, action: string, body: Record<string, unknow
         if (!(error instanceof Problem) || !error.later) throw error
         return reply({ post: postView(await postAgainSoon(post, error)) })
       }
+    case 'self': {
+      // He posts it himself (his ask, 2026-11-13: "Sometimes I would want to
+      // post it myself on YouTube"): the Cutter stops posting it again, and
+      // it counts as out. The video stays where the phone can save it.
+      if (!missed(post)) return reply({ post: postView(post) })
+      const names = [...namesIn(baseNote(post.error ?? ''))]
+      return reply({
+        post: postView(
+          await update(post.id, {
+            status: 'posted',
+            post_at: post.post_at ?? new Date().toISOString(),
+            retry_at: null,
+            error: `${SELF_NOTE}${names.length > 0 ? ` to ${names.join(', ')}` : ''}.`,
+          }),
+        ),
+      })
+    }
+    case 'later': {
+      // The Cutter posts it: at the next free time, unless it already will.
+      if (!missed(post)) return reply({ post: postView(post) })
+      if (post.status === 'failed') {
+        const moved = await update(post.id, { status: 'writing', error: null, attempts: 0, retry_at: null })
+        await advance(moved.id)
+        return reply({ post: postView(await ownPost(profile, post.id)) })
+      }
+      if (post.retry_at && Date.parse(post.retry_at) > Date.now()) return reply({ post: postView(post) })
+      if (viaBufferOnly(post)) throw new Problem('It went through Buffer - post it again from Buffer, or post it yourself.')
+      const names = namesIn(baseNote(post.error ?? ''))
+      const errored = post.accounts.filter((a) => names.has(accountName(a.name, a.platform, post.accounts)) || names.has(userName(a)))
+      const at = await nextTryAt(post, errored.length > 0 ? errored : post.accounts)
+      const time = new Intl.DateTimeFormat('en-US', { timeZone: profile.timezone || 'UTC', weekday: 'short', hour: 'numeric', minute: '2-digit' }).format(new Date(at))
+      return reply({ post: postView(await update(post.id, { retry_at: new Date(at).toISOString(), attempts: 0, error: `${baseNote(post.error ?? '')} Posting again ${time}.` })) })
+    }
     case 'retry': {
       if (post.status !== 'failed' && !(post.status === 'writing' || post.status === 'approved')) return reply({ post: postView(post) })
       const moved = await update(post.id, { status: post.status === 'approved' ? 'approved' : 'writing', error: null, attempts: 0, retry_at: null })
@@ -3550,19 +3600,82 @@ async function retryMissing(now: number): Promise<void> {
       }
       const message = error instanceof Error ? error.message : String(error)
       const saved = await update(post.id, { retry_at: null, error: `${baseNote(post.error ?? '')} Still not posted: ${message}` })
-      await notify(post.profile_id, { title: `${post.campaign_name}: still not posted`, body: saved.error ?? '', tag: `error-${post.id}` })
+      await notifyMissed(post.profile_id, saved, `${post.campaign_name}: still not posted`)
     }
   }
 }
 
 /** What a post that missed accounts says, and when it is posted to them
- *  again by itself: a YouTube account once, in YouTube's next good hours -
- *  the usual reason is its daily limit (youtubeRetryTime). */
-function missedFields(post: Post, note: string, errored: PostAccount[], tz: string): Partial<Post> {
-  if (post.attempts >= 1 || !errored.some((a) => a.platform === 'youtube')) return { error: note }
-  const at = youtubeRetryTime(Date.parse(post.post_at ?? new Date().toISOString()), Date.now())
+ *  again by itself: at the next free time (his ask, 2026-11-13: "whenever I
+ *  have the notification, automatically set it to where it's going to post
+ *  it again by the next available time frame") - YouTube's next good hours
+ *  when only YouTube missed (its daily limit is the usual reason), or the
+ *  campaign's next free time (againAt). AUTO_AGAIN times, then it is his. A
+ *  trial reel is not posted again: Instagram turns those down by its own
+ *  daily limit, which the Trial loop learns. */
+async function missedFields(post: Post, note: string, errored: PostAccount[], tz: string): Promise<Partial<Post>> {
+  if (post.attempts >= AUTO_AGAIN || post.batch?.trial || errored.length === 0 || viaBufferOnly(post)) return { error: note, retry_at: null }
+  const at = await nextTryAt(post, errored)
   const time = new Intl.DateTimeFormat('en-US', { timeZone: tz, weekday: 'short', hour: 'numeric', minute: '2-digit' }).format(new Date(at))
-  return { error: `${note} Posting again ${time}, when YouTube has room again.`, retry_at: new Date(at).toISOString() }
+  return { error: `${note} Posting again ${time}.`, retry_at: new Date(at).toISOString() }
+}
+
+/** The next free time for a post that didn't go out (againAt): the
+ *  campaign's next time no other video of it holds. */
+async function nextTryAt(post: Post, errored: PostAccount[], now = Date.now()): Promise<number> {
+  let campaignNext: number | null = null
+  try {
+    const { data: row } = await db.from('cutter_profiles').select('settings, timezone').eq('id', post.profile_id).single()
+    const profile = row as Pick<Profile, 'settings' | 'timezone'> | null
+    if (profile) {
+      const { data: rows } = await db
+        .from('cutter_posts')
+        .select('slot')
+        .eq('profile_id', post.profile_id)
+        .eq('campaign_id', post.campaign_id)
+        .not('slot', 'is', null)
+        .not('status', 'in', '(rejected,failed)')
+        .neq('id', post.id)
+      const choice = nextSlot({
+        times: timesFor(profile.settings.campaigns?.[post.campaign_id], post.campaign_id),
+        taken: new Set(((rows ?? []) as { slot: string }[]).map((r) => r.slot)),
+        now: new Date(now),
+        tz: profile.timezone || 'UTC',
+        leadMinutes: 15,
+        days: 2,
+      })
+      campaignNext = choice ? choice.at.getTime() : null
+    }
+  } catch (error) {
+    console.error('next free time failed', post.id, error instanceof Error ? error.message : String(error))
+  }
+  return againAt({ platforms: errored.map((a) => a.platform), postAt: Date.parse(post.post_at ?? new Date(now).toISOString()), now, campaignNext })
+}
+
+/** Where a notification about one post opens it: the Posts screen, on that
+ *  post, with his two ways - post it himself now, or let the Cutter post it
+ *  (the phone's MissedSheet). */
+function missedLink(post: Pick<Post, 'id'>): string {
+  return `/campaign.html#posts/missed/${post.id}`
+}
+
+/** Every post that doesn't go out is told to him, one notification each
+ *  (his ask, 2026-11-13: "Make sure you always send me a notification when
+ *  something does not go out"), saying when the Cutter posts it again - or
+ *  that it is his now - and opening it. */
+async function notifyMissed(profileId: string, saved: Post, title?: string): Promise<void> {
+  const names = [...namesIn(baseNote(saved.error ?? ''))]
+  const where = names.length > 0 ? ` on ${names.join(', ')}` : ''
+  const again = saved.retry_at && Date.parse(saved.retry_at) > Date.now()
+  const at = again ? (saved.error ?? '').match(/Posting again ([^.]+)\./)?.[1] : null
+  await notify(profileId, {
+    title: title ?? `${saved.campaign_name} didn't go out${where}`,
+    body: at
+      ? `The Cutter posts it again ${at}. Tap to post it yourself instead.`
+      : `${baseNote(saved.error ?? '').slice(0, 140)} Tap to save the video and post it yourself, or let the Cutter post it.`,
+    tag: `error-${saved.id}`,
+    url: missedLink(saved),
+  })
 }
 
 /** Accounts he reconnected in Postiz under a new id: the new one in every
@@ -4533,11 +4646,11 @@ async function checkPosted(now: number): Promise<void> {
           const names = [...new Set(lost.map((a) => (a.profile ? userName(a) : accountName(a.name, a.platform, post.accounts))))].join(', ')
           const saved = await update(post.id, {
             status: 'error',
-            error: `Not posted to ${names}. Postiz no longer has it - Post again sends it now.`,
             checked_at: new Date().toISOString(),
             checks: post.checks + 1,
+            ...(await missedFields(post, `Not posted to ${names}. Postiz no longer has it.`, lost, tz)),
           })
-          await notify(profileId, { title: `${post.campaign_name}: not posted`, body: saved.error ?? '', tag: `error-${post.id}` })
+          await notifyMissed(profileId, saved)
           continue
         }
         const errored = mine.filter((p) => p.state === 'ERROR')
@@ -4555,23 +4668,21 @@ async function checkPosted(now: number): Promise<void> {
           fields.error = trialNote
         } else if (errored.length > 0 && !published) {
           fields.status = 'error'
-          Object.assign(fields, missedFields(post, `Postiz couldn't publish it to ${notPostedNote(errored, post.accounts).replace(/^Not posted to |\.$/g, '')}. Open Postiz to see why.`, missed, tz))
+          Object.assign(fields, await missedFields(post, `Postiz couldn't publish it to ${notPostedNote(errored, post.accounts).replace(/^Not posted to |\.$/g, '')}. Open Postiz to see why.`, missed, tz))
         } else if (published) {
           fields.status = 'posted'
           if (!post.repost_of) {
             const due = repostDueAt(Date.now(), post.rules.repost)
             if (due !== null && !post.reposted_at) fields.repost_at = new Date(due).toISOString()
           }
-          if (errored.length > 0) Object.assign(fields, missedFields(post, notPostedNote(errored, post.accounts), missed, tz))
+          if (errored.length > 0) Object.assign(fields, await missedFields(post, notPostedNote(errored, post.accounts), missed, tz))
         }
         const saved = await update(post.id, fields)
         // A copy kept for a Buffer backup is no longer needed.
         if (saved.status !== 'scheduled') await removeParts(saved).catch(() => {})
         // Every video that misses an account is money lost: he hears of each
         // one (2026-10-29: "I'm not always going to know").
-        if (errored.length > 0 && saved.status !== 'scheduled' && !trialNote) {
-          await notify(profileId, { title: `${post.campaign_name}: ${saved.status === 'error' ? 'not posted' : 'missed an account'}`, body: saved.error ?? '', tag: `error-${post.id}` })
-        }
+        if (errored.length > 0 && saved.status !== 'scheduled' && !trialNote) await notifyMissed(profileId, saved)
       }
     } catch (error) {
       console.error('check failed', profileId, error instanceof Error ? error.message : String(error))
@@ -4599,7 +4710,7 @@ async function giveUpUnconfirmed(now: number): Promise<void> {
       checked_at: new Date(now).toISOString(),
     })
     await removeParts(saved).catch(() => {})
-    await notify(post.profile_id, { title: `${post.campaign_name}: not posted?`, body: saved.error ?? '', tag: `error-${post.id}` })
+    await notifyMissed(post.profile_id, saved, `${post.campaign_name}: not posted?`)
   }
 }
 
@@ -4659,7 +4770,7 @@ async function checkBuffer(now: number): Promise<void> {
       const saved = await update(post.id, fields)
       if (saved.status !== 'scheduled') await removeParts(saved).catch(() => {})
       if (saved.status === 'error' || (saved.status === 'posted' && saved.error && !post.error)) {
-        await notify(post.profile_id, { title: `${post.campaign_name}: ${saved.status === 'error' ? 'not posted' : 'missed an account'}`, body: saved.error ?? '', tag: `error-${post.id}` })
+        await notifyMissed(post.profile_id, saved)
       }
     } catch (error) {
       console.error('buffer check failed', post.id, error instanceof Error ? error.message : String(error))
@@ -4924,6 +5035,8 @@ Deno.serve(async (req) => {
       case 'unschedule':
       case 'retry':
       case 'retry-accounts':
+      case 'self':
+      case 'later':
         return await act(profile, action, body)
       case 'stop-campaign':
         return await stopCampaign(profile, body)

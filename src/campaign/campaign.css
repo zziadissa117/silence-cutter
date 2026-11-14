@@ -1669,6 +1669,71 @@ main.tabbed > * { position: relative; z-index: 1; }
 .posts .post-line { padding-left: 0; }
 .see-more { align-self: center; padding: 8px 14px; }
 
+/* Posts, by group (his ask, 2026-11-13: "make the separation more clear"):
+   To approve on top in its own lit card, then one card per day with a big
+   heading - the day's name, its date, how many - then Just posted, and what
+   didn't go out at the bottom. Each group stands apart with space between. */
+.post-group { margin: 0 0 18px; }
+.post-group > .posts-list { margin-top: 0; }
+.group-head {
+  display: flex; align-items: center; gap: 10px; width: 100%; min-height: 48px; padding: 8px 4px;
+  background: none; border: 0; color: var(--text); font: inherit; text-align: left;
+}
+button.group-head { cursor: pointer; }
+.group-name { font-size: 22px; font-weight: 800; letter-spacing: -0.02em; }
+.group-date { font-size: 15px; font-weight: 600; color: var(--muted); }
+.group-count {
+  margin-left: auto; min-width: 28px; padding: 3px 10px; border-radius: 999px; text-align: center;
+  font-size: 14px; font-weight: 750; font-variant-numeric: tabular-nums;
+  color: var(--text); background: color-mix(in srgb, var(--text) 9%, transparent);
+}
+.group-head .btn { flex: none; }
+.group-chevron { display: inline-flex; color: var(--muted); transition: transform 150ms; }
+.group-chevron svg { width: 18px; height: 18px; }
+.post-group.open .group-chevron { transform: rotate(180deg); }
+.post-group .group-head .state-chip { font-size: 11.5px; }
+/* A folded day: one tappable bar. */
+.day-block:not(.open) > .group-head {
+  padding: 10px 16px; border-radius: 16px; background: var(--surface); border: 1px solid var(--hairline);
+}
+.day-block:not(.open) .group-name { font-size: 18px; }
+.post-group.day-block { gap: 0; }
+.group-head.day-title { position: static; z-index: auto; background: none; text-transform: none; letter-spacing: normal; font-size: inherit; color: var(--text); }
+/* To approve: the one group that needs him - lit with the accent. */
+.post-group.to-approve {
+  padding: 4px 12px 12px; border-radius: 24px;
+  background: color-mix(in srgb, var(--accent) 9%, var(--ink));
+  border: 1px solid color-mix(in srgb, var(--accent) 45%, transparent);
+}
+.to-approve .group-name { color: var(--accent); }
+.to-approve .group-count { color: var(--on-accent); background: var(--accent); }
+.to-approve > .hint.tip { margin: 0 4px 8px; }
+.post-group.done .group-name, .post-group.missed .group-name { font-size: 18px; color: var(--dim); }
+.post-group.missed .group-count { color: var(--bad); background: color-mix(in srgb, var(--bad) 15%, transparent); }
+.post-group.missed:not(.open) > .group-head { padding: 10px 16px; border-radius: 16px; border: 1px solid color-mix(in srgb, var(--bad) 30%, transparent); }
+/* The platforms as their marks, not usernames. */
+.post-line.icons { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.pmarks { display: inline-flex; align-items: center; gap: 6px; }
+.pmark-slot { position: relative; display: inline-flex; }
+.pmark-slot.held { opacity: 0.35; }
+.pmark { display: block; border-radius: 6px; }
+.pmark-count {
+  position: absolute; right: -6px; top: -6px; min-width: 15px; height: 15px; padding: 0 3px; border-radius: 999px;
+  font-size: 10px; font-weight: 800; line-height: 15px; text-align: center; color: var(--ink); background: var(--text);
+}
+.post-held { font-size: 13px; color: var(--warn); }
+.post-accounts { font-size: 14px; color: var(--dim); }
+/* A post that didn't go out: his two ways. */
+.missed-choice { display: flex; flex-direction: column; gap: 8px; }
+.missed-ask { margin: 0; font-size: 15px; font-weight: 600; }
+.missed-sheet {
+  display: flex; flex-direction: column; gap: 10px; margin: 0 0 18px; padding: 14px 16px 16px; border-radius: 24px;
+  background: color-mix(in srgb, var(--bad) 8%, var(--surface)); border: 1px solid color-mix(in srgb, var(--bad) 45%, transparent);
+}
+.missed-sheet-head { display: flex; align-items: center; gap: 10px; }
+.missed-sheet-title { flex: 1; min-width: 0; font-size: 20px; font-weight: 800; letter-spacing: -0.02em; }
+.missed-sheet .post-video { width: 140px; }
+
 /* --- More: coloured icon tiles, a lighter list ------------------------- */
 .more-icon {
   width: 40px; height: 40px; border-radius: 12px; color: #fff;
