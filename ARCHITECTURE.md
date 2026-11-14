@@ -723,11 +723,13 @@ A clip the Cutter edits keeps `HEAD_LEEWAY_SEC` before the first word and `TAIL_
 back to back left ~0.35 s of nothing (twice a cut's pause), and a clip as filmed kept all its wait. `CampaignApp`
 passes the job's pause settings as `joinTight` for a talking head with steps; `montageRender` finds each clip's voice
 (`voiceSpan.voiceSpan`: `decodeAudio` levels, `findSilentRanges`, a click at an edge left out; measured once per clip
-in the page) and plays every clip after the first from `voice.start - JOIN_LEAD_SEC` (0.03) and every clip to
+in the page; edge quiet counts from `EDGE_QUIET_SEC` 0.06 s, not the preset's minimum pause, which hid an edited
+clip's 0.15/0.2 s leeway) and plays the first clip from `voice.start - OPEN_LEAD_SEC` (0.05 - he talks from the first
+moment), every clip after it from `voice.start - JOIN_LEAD_SEC` (0.03) and every clip to
 `voice.end + JOIN_TAIL_SEC` (0.04) - his ask: the next clip right after the last word - the last to
-`voice.end + TAIL_LEEWAY_SEC`; the voice is faded out and in over `JOIN_FADE_SEC` (6 ms) at each join. The hook's start is
-never moved. A trimmed clip goes to `writeWhole` as a `window` (picture and sound); its step's captions are placed
-from the part's start. A clip whose sound can't be read, or with no voice found, plays as it is.
+`voice.end + TAIL_LEEWAY_SEC`; the voice is faded out and in over `JOIN_FADE_SEC` (6 ms) at each join and faded in
+at the video's start when it was trimmed. A trimmed clip goes to `writeWhole` as a `window` (picture and sound);
+its captions (the hook's and each step's) are placed from the part's start. A clip whose sound can't be read, or with no voice found, plays as it is.
 
 ### A talking head's clips: edited, then checked one by one (`DropIn.tsx`, `dropQueue.ts`, `DropCheck.tsx`, his asks 2026-11-13)
 

@@ -3,6 +3,21 @@
 Newest first. Every change says what it does, how to use it, and how it works
 underneath. Kept up to date with each commit.
 
+## Talking heads: talking from the first moment, and the joins tight on edited clips too
+- His ask (2026-11-14): "when I start the video, you're not cutting the silence at the very start ... We need the
+  very, very start to be cut, just a little bit, to make sure that, between all cuts, it doesn't sound like I'm
+  stopping talking. I need to talk the whole time".
+- The video now starts 0.05 s before his first word (it kept the hook's start as filmed), faded in over 6 ms.
+- A real bug under the earlier join fixes: his voice's start and end were found with his pause setting's minimum
+  pause (0.35 s on Balanced). A clip the Cutter edited keeps only 0.15 s before his first word and 0.2 s after his
+  last - under that - so on edited clips nothing was found and every join kept about 0.35 s of quiet; only clips
+  with a second of quiet at their ends (the tests') were tightened. The edges now count any quiet from 0.06 s.
+- Checked in a real render with clips shaped like his edited ones (0.15 s before, 0.2 s after) and a hook with
+  0.3 s before his first word: before - first word at 0.33 s, joins 0.40 s and 0.35 s; now - first word at 0.08 s,
+  joins about 0.1 s.
+- Underneath: `voiceSpan` (`EDGE_QUIET_SEC`), montageRender `OPEN_LEAD_SEC` (the first clip trimmed too, its
+  captions from where it starts, faded in). Tests: `voiceSpan.test.ts`.
+
 ## Batch: use each clip once (reactions, products, each product step)
 - His ask (2026-11-14): "for one of my brands ... they don't want me to repurpose my reaction videos. Sometimes they
   don't want me to repurpose my product videos ... make an option for every single reaction video to be used just

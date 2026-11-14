@@ -27,6 +27,24 @@ describe("his voice's span in a clip", () => {
     expect(span.end).toBeLessThan(4.1)
   })
 
+  it("finds the short breath a clip the Cutter edited keeps before and after his words (his report, 2026-11-14)", () => {
+    // 0.15 s before his first word, 0.2 s after his last - under his pause
+    // setting's minimum, and found all the same.
+    for (const preset of [PRESETS.natural, PRESETS.balanced, PRESETS.tight]) {
+      const span = voiceSpanOf(levels([0.16, -62], [1.4, -18], [0.2, -61]), preset)!
+      expect(span.start).toBeGreaterThan(0.1)
+      expect(span.start).toBeLessThanOrEqual(0.16)
+      expect(span.end).toBeGreaterThanOrEqual(1.54)
+      expect(span.end).toBeLessThan(1.62)
+    }
+  })
+
+  it('a short pause between his words is not where his voice ends', () => {
+    const span = voiceSpanOf(levels([0.3, -62], [0.8, -18], [0.15, -60], [0.6, -19], [0.4, -62]), PRESETS.balanced)!
+    expect(span.start).toBeLessThanOrEqual(0.3)
+    expect(span.end).toBeGreaterThanOrEqual(1.8)
+  })
+
   it('a click at the very start is not his first word', () => {
     const span = voiceSpanOf(levels([0.04, -15], [0.8, -62], [1, -18], [0.6, -62]), PRESETS.balanced)!
     expect(span.start).toBeGreaterThan(0.8)

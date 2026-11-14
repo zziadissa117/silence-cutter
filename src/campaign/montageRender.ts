@@ -163,6 +163,10 @@ function loweredFormula(layout: FormulaLayout | null, height: number): FormulaLa
  *  (silenceMath.findSilentRanges), so his voice follows straight on. */
 const JOIN_TAIL_SEC = 0.04
 const JOIN_LEAD_SEC = 0.03
+/** The very start of the video: this little before his first word (his ask,
+ *  2026-11-14: "We need the very, very start to be cut, just a little bit")
+ *  - he is talking from the first moment, his first sound whole. */
+const OPEN_LEAD_SEC = 0.05
 /** Each join's sound faded out and in over this long, so the cut between two
  *  takes' room sound never clicks. */
 const JOIN_FADE_SEC = 0.006
@@ -231,9 +235,10 @@ export interface MontageRenderInput {
    *  voice in each clip. Every clip after the first starts right on his first
    *  word, and every clip ends right after his last - the next one follows
    *  straight on (his asks, 2026-11-14: "in between clips, there's too much
-   *  separation" and "start next clip after last word"). The video's very
-   *  start is left as it is; the last clip keeps a breath after his last word
-   *  (voiceSpan.ts). */
+   *  separation" and "start next clip after last word"), and the video itself
+   *  starts just before his first word ("I need to talk the whole time so the
+   *  viewer can stay engaged"); the last clip keeps a breath after his last
+   *  word (voiceSpan.ts). */
   joinTight?: SilenceSettings
   /** A talking batch's captions: what he says in the first clip, on that
    *  clip's own timeline (talkCaptions.ts), drawn as his talking videos'. */
@@ -402,13 +407,14 @@ export async function renderMontage(
     // his last (voiceSpan.ts) - the next one follows straight on. Its sound
     // can't be read: the clip as it is.
     const trimmed: boolean[] = []
-    if (joinTight && clips.length > 1) {
+    if (joinTight) {
       for (const [i, clip] of clips.entries()) {
         if (windows[i]) continue
         const voice = await voiceSpan(clip, joinTight).catch(() => null)
         if (!voice) continue
         const part = parts[i]
-        const from = i === 0 ? part.start : Math.max(part.start, voice.start - JOIN_LEAD_SEC)
+        // The video opens just before his first word; every join is tight.
+        const from = Math.max(part.start, voice.start - (i === 0 ? OPEN_LEAD_SEC : JOIN_LEAD_SEC))
         const to = Math.min(part.end, voice.end + (i === clips.length - 1 ? TAIL_LEEWAY_SEC : JOIN_TAIL_SEC))
         if (to - from < 0.2 || (from - part.start < 0.02 && part.end - to < 0.02)) continue
         parts[i] = { start: from, end: to }
@@ -550,7 +556,12 @@ export async function renderMontage(
     const stepSaid: { words: CaptionWord[]; times: number[]; ranges: ReturnType<typeof captionRanges> }[] = []
     // His words over the first clip, on the video's timeline: the clip plays
     // from its first frame shown (clips[0].first).
-    const said = captions?.words.length ? captions.words.map((w) => ({ ...w, start: w.start - clips[0].first, end: w.end - clips[0].first })) : []
+    // From where the first clip starts playing (its first frame, or just
+    // before his first word).
+    const opensAt = parts[0]?.start ?? clips[0].first
+    const said = captions?.words.length
+      ? captions.words.filter((w) => w.end > opensAt).map((w) => ({ ...w, start: Math.max(0, w.start - opensAt), end: w.end - opensAt }))
+      : []
     const saidRanges = captions ? captionRanges(said, captions.style) : []
     const saidTimes = said.map((w) => w.start)
     const report = throttled(onProgress)
@@ -630,7 +641,8 @@ export async function renderMontage(
         if (rawFirst && i === 1) stepStart = start
         // A tight join: the sound before it faded out, the next clip's faded
         // in as it comes (onSound), so the cut never clicks.
-        const joinAt = joinTight && voicePlanes && i > 0 ? Math.round(start * RATE) : null
+        // The video's own start, when its quiet was cut: faded in too.
+        const joinAt = joinTight && voicePlanes && (i > 0 || trimmed[0]) ? Math.round(start * RATE) : null
         const fade = Math.round(JOIN_FADE_SEC * RATE)
         if (joinAt !== null && voicePlanes) {
           for (const plane of voicePlanes) for (let k = Math.max(0, joinAt - fade); k < Math.min(joinAt, plane.length); k++) plane[k] *= (joinAt - k) / fade

@@ -18,13 +18,20 @@ import type { Clip } from './clipParts'
 /** Shorter than this, it is not his voice: nothing is trimmed. */
 const LEAST_VOICE_SEC = 0.2
 
+/** The least quiet at a clip's edge that counts. His pause setting's own
+ *  minimum (0.2-0.5 s) is for pauses inside his talking: a clip the Cutter
+ *  edited keeps only 0.15 s before his first word and 0.2 s after his last
+ *  (silenceMath HEAD/TAIL_LEEWAY_SEC) - under it, so those were never found
+ *  and every join kept them (his report, 2026-11-14). */
+const EDGE_QUIET_SEC = 0.06
+
 /** From the start of his first sound to the end of his last, on the clip's
  *  own timeline - a click at either edge (shorter than a word) left out.
  *  Null when no voice is found: the clip is left as it is. */
 export function voiceSpanOf(levels: readonly Level[], settings: SilenceSettings): Range | null {
   const extent = audioExtent([...levels])
   if (!extent) return null
-  const silences = findSilentRanges([...levels], settings)
+  const silences = findSilentRanges([...levels], { ...settings, minSilenceSec: Math.min(settings.minSilenceSec, EDGE_QUIET_SEC) })
   // The sound between the pauses.
   const sounds: Range[] = []
   let cursor = extent.start
@@ -48,7 +55,7 @@ const MOST_KEPT = 500
 export async function voiceSpan(clip: Clip, settings: SilenceSettings): Promise<Range | null> {
   if (!clip.audio) return null
   const file = clip.file
-  const key = file ? `${file instanceof File ? file.name : ''}:${file.size}:${settings.thresholdDb}:${settings.minSilenceSec}` : null
+  const key = file ? `${file instanceof File ? file.name : ''}:${file.size}:${settings.thresholdDb}:${EDGE_QUIET_SEC}` : null
   if (key && measured.has(key)) return measured.get(key) ?? null
   const { levels } = await decodeAudio(clip.audio, false, clip.duration)
   const span = voiceSpanOf(levels, settings)
