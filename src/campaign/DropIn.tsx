@@ -16,15 +16,16 @@
 // the phone too. What is still on the server is remembered, so he can close
 // the app. With no server, the phone does it all.
 
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 
 import { VideoPicker } from '../VideoPicker'
 import type { BankFile, BatchBank, BatchStep } from './batch'
-import { addToQueue, loadQueue, notEdited, placeOf, QUEUE_EVENT, sameRecording, suggestPlace, type ToCheck } from './dropQueue'
+import { addToQueue, checkedClip, clipsOfFormat, loadQueue, notEdited, QUEUE_EVENT, queueRecheck, sameRecording, suggestPlace, type ToCheck } from './dropQueue'
 import type { AngleEffects } from './effects'
 import { fingerprint } from './fingerprint'
 import { cutName, dropSettings, prepareClip, type DropPhase } from './prepareDrop'
 import { loadBankFile, saveBankFile } from './store'
+import { keptWords } from './talkCaptions'
 import { downloadFile, dropTalk, orderDrop, serverLetDown, talkNow, talkServerUp, upload } from './talkLink'
 import { talkFileId, type DropResult } from './talkOrder'
 
@@ -153,8 +154,10 @@ export function DropIn({
    *  out (dropQueue.suggestPlace). */
   const toCheck = (name: string, clip: DropResult, { to, replaces }: { to?: string | null; replaces?: string }) => {
     const bank = getBank()
-    const { place, sure } = suggestPlace(bank, steps, clip.text, { to, replaces, hooks })
-    setQueue(addToQueue(formatId, { file: clip.file, name, text: clip.text, words: clip.words, place, sure, ...(replaces ? { replaces } : {}) }))
+    const { place, sure, hint } = suggestPlace(bank, steps, clip.text, { to, replaces, hooks })
+    setQueue(
+      addToQueue(formatId, { file: clip.file, name, text: clip.text, words: clip.words, place, sure, ...(hint ? { hint } : {}), ...(replaces ? { replaces } : {}) }),
+    )
   }
 
   /** Already on its way or waiting for his check: not edited twice. */
@@ -237,16 +240,16 @@ export function DropIn({
     await go(items)
   }
 
-  /** Clips already in the batch as he filmed them, edited now. */
+  /** Clips already in the batch as he filmed them, edited now - each back
+   *  where it is, unless its words say another step (dropQueue.suggestPlace). */
   const editOld = async (files: BankFile[]) => {
     setFailed([])
-    const bank = getBank()
     const items: Item[] = []
     for (const file of files) {
       const blob = await loadBankFile(file).catch(() => null)
       const from = file.from ?? file.fp ?? (blob ? await fingerprint(blob) : file.id)
       if (onItsWay(from)) continue
-      items.push({ blob, replaces: file, name: file.name, from, to: bank ? placeOf(bank, file.id) : null })
+      items.push({ blob, replaces: file, name: file.name, from })
     }
     await go(items)
   }
@@ -337,6 +340,24 @@ export function DropIn({
   const asFilmed = notEdited(steps, rawHooks ? [] : hookFiles)
   const canDrop = steps.length > 0 || hooks
 
+  // Where every clip is (his ask, 2026-11-14: "let's say there was a video
+  // that was in the wrong product step. How do I know?"): the ones he hasn't
+  // looked at yet, those whose words sound like another step first - his
+  // hooks too when dropped clips can be hooks.
+  const looked = JSON.stringify([
+    steps.map((st) => [st.id, st.name, st.heard, st.files.map((f) => [f.id, checkedClip(f)])]),
+    hooks ? hookFiles.map((f) => [f.id, checkedClip(f)]) : 0,
+  ])
+  // Worked out again only when a clip, a step or what it heard changes.
+  const clips = useMemo(() => clipsOfFormat(steps, hooks ? hookFiles : [], keptWords), [looked]) // eslint-disable-line react-hooks/exhaustive-deps
+  const queued = new Set(queue.map((q) => q.file.id))
+  const unchecked = clips.filter((c) => !checkedClip(c.file) && !queued.has(c.file.id))
+  const elsewhere = unchecked.filter((c) => c.elsewhere).length
+  const recheck = (list: typeof clips) => {
+    setQueue(queueRecheck(formatId, list))
+    onCheck()
+  }
+
   return (
     <div className="drop-in">
       {queue.length > 0 ? (
@@ -374,6 +395,28 @@ export function DropIn({
           Pick all your clips at once: each is cut like your talking videos, zoomed, captioned and put in the step whose name you say in it
           {hooks ? ' - one that says no step is a hook' : ''}. Then you check every one.
         </p>
+      ) : null}
+      {unchecked.length > 0 && !running ? (
+        <div className={`drop-in-recheck${elsewhere > 0 ? ' warn' : ''}`}>
+          <span className="row-name">
+            {elsewhere > 0
+              ? `${elsewhere} clip${elsewhere === 1 ? '' : 's'} may be in the wrong step`
+              : `${unchecked.length} clip${unchecked.length === 1 ? '' : 's'} you haven't checked`}
+          </span>
+          <span className="row-line">
+            {elsewhere > 0
+              ? `What you say in ${elsewhere === 1 ? 'it' : 'them'} sounds like another step.${unchecked.length > elsewhere ? ` ${unchecked.length} you haven't checked in all.` : ''}`
+              : 'Added before the one-by-one check: see where each one is.'}
+          </span>
+          <button type="button" className="btn small primary" onClick={() => recheck(unchecked)}>
+            Check {unchecked.length === 1 ? 'it' : `the ${unchecked.length}`}
+          </button>
+        </div>
+      ) : null}
+      {clips.length > 0 && unchecked.length === 0 && queue.length === 0 && !running ? (
+        <button type="button" className="linkbtn drop-in-again" onClick={() => recheck(clips)}>
+          Check where every clip is again
+        </button>
       ) : null}
       {asFilmed.length > 0 && !running ? (
         <button type="button" className="btn small" onClick={() => void editOld(asFilmed)}>

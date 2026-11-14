@@ -3,6 +3,27 @@
 Newest first. Every change says what it does, how to use it, and how it works
 underneath. Kept up to date with each commit.
 
+## Batch: see where every clip is, and catch the ones in the wrong step
+- His ask (2026-11-14): "let's say there was a video that was in the wrong product step. How do I know? If you want
+  to make an option to recheck if everything is in the right place".
+- On a talking head format's card, under The product: "2 clips may be in the wrong step" (orange) when what he says
+  in a clip sounds like another step's name than the one it is in, or "12 clips you haven't checked" for the ones
+  put in before the one-by-one check. "Check the 12" goes through them on the same check as dropped clips - the
+  wrong-step ones first - each where it is now, marked "Maybe the wrong step" with "Sounds like 3. Tap create coin ·
+  Move it" (one tap), any other step to tap, its captions to fix. Approve keeps it there (or where he moved it),
+  Take out takes it out of the batch. Once every clip is checked: "Check where every clip is again".
+- A clip never heard (never made into a video yet) is heard on the check; the next one is heard while he looks at
+  the current one, so he doesn't wait on each.
+- "Edit the N clips added as filmed" puts each one back where it was, now marked when its new words say another
+  step.
+- What it can't see: a clip it heard wrong *and* matched wrong the same way looks fine to it - only looking finds
+  that one, which is what "Check the N" is for (once, for the clips from before).
+- Also fixed: a clip with no words heard showed no place to pick on the check (and no video) - it shows both now.
+- Underneath: `dropQueue.clipsOfFormat` / `soundsElsewhere` / `queueRecheck` / `checkedClip` / `fileIn`, `ToCheck`
+  `recheck` / `hint` / `unheard`, `BankFile.checked`; `DropCheck` approves a recheck in place (`placed` keeps its
+  spot, a hook moved to a step loses its hook marks); `DropIn` the line and buttons. Tests: `dropQueue.test.ts`,
+  `dropCheck.test.tsx`, `dropInView.test.tsx`.
+
 ## Edit screen: a clip's Speed
 - His pick (2026-11-10, with Split and Delete for the TikTok-like editor) and his go (2026-11-13: "Do editor p3").
 - Tap a clip, then Speed: 0.5×, 0.75×, 1×, 1.25×, 1.5×, 2× or 3×. The clip gets shorter or longer on the timeline

@@ -65,6 +65,10 @@ export interface BankFile {
   /** Its captions as he checked them (DropCheck.tsx), on the clip's own
    *  clock - every video of it draws these, here or on the Cutter server. */
   captions?: CaptionWord[]
+  /** He has looked at where it is in the batch (DropCheck.tsx) - its place
+   *  and captions approved. Absent on a clip from before his check (unless
+   *  it has `captions`, which only his check gives). */
+  checked?: boolean
 }
 
 /** What one kind of video in a batch is: his silent reaction then the

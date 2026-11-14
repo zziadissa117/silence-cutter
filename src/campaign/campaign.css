@@ -1966,6 +1966,22 @@ main.tabbed > .drop-check-screen, .drop-check-screen { position: fixed; inset: 0
 .drop-check-btn { min-height: 46px; }
 .drop-in-failed { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 4px; }
 .drop-box:has(> .drop-in:empty:only-child) { display: none; }
+/* Where every clip is (his ask, 2026-11-14): the clips he hasn't checked, the
+   ones that may be in the wrong step marked; the step a clip sounds like on
+   its check, one tap to move it there. */
+.drop-in-recheck { display: flex; flex-direction: column; align-items: flex-start; gap: 6px; padding: 12px 14px; border-radius: 14px;
+  background: color-mix(in srgb, var(--text) 6%, transparent); }
+.drop-in-recheck.warn { background: color-mix(in srgb, var(--warn) 16%, transparent); }
+.drop-in-recheck.warn .row-name { color: var(--warn); }
+.drop-in-recheck .row-name { font-size: 15px; }
+.drop-in-recheck .row-line { display: block; overflow: visible; }
+.drop-in-again { align-self: flex-start; min-height: 36px; font-size: 14px; }
+.drop-check-hint { display: flex; align-items: center; gap: 6px; min-height: 40px; padding: 0 12px; border-radius: 12px; border: 1px dashed var(--warn);
+  background: color-mix(in srgb, var(--warn) 12%, transparent); color: var(--text); font: inherit; font-size: 14px; text-align: left; cursor: pointer; }
+.drop-check-hint .step-num { flex: none; width: 20px; height: 20px; font-size: 11px; }
+.drop-check-hint > span:first-child { flex: none; white-space: nowrap; font-size: 13px; color: var(--muted); }
+.drop-check-hint b { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.drop-check-move { flex: none; margin-left: auto; color: var(--warn); font-weight: 700; }
 
 /* The captions' phrases in a sheet over the screen (CaptionSheet.tsx, his ask
    2026-11-13): half the screen or three quarters, see-through so the video

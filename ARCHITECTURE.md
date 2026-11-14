@@ -692,6 +692,21 @@ the format - `BatchFormat.captionStyle/captionSize`) with where it goes in its `
 words he approved - `talkCaptions.keptWords` prefers them, so the server's videos draw them too), retires the clip it
 replaces, and the step learns his wording. The same recording again replaces its earlier clip (`sameRecording`).
 
+Where every clip already in the batch is (his ask 2026-11-14): `dropQueue.clipsOfFormat` lists the format's step clips
+(and its hooks when `dropHooks` is on) with what is known of their words (`talkCaptions.keptWords`) and
+`soundsElsewhere` - the step its words match (`stepMatch.matchStep`) when that is not where it is (a hook only on a
+sure match). A clip he hasn't checked has neither `BankFile.checked` nor `captions` (`checkedClip`). DropIn shows
+"N clips may be in the wrong step" / "N clips you haven't checked" with "Check the N" (`queueRecheck` puts
+`recheck` items in the same queue: `place` where it is, `sure` false and `hint` when it sounds like another step,
+`unheard` when its words were never heard), and "Check where every clip is again" once all are checked. In
+`DropCheck` a recheck item stays where it is unless moved ("Sounds like N · Move it" sets the hinted step), keeps its
+`edited` as it was, gets `checked: true` and its captions; Take out takes it out of the batch (`placed(..., null)`) and
+retires its file; one no longer in the batch is dropped from the queue. An unheard one is heard on the check
+(`talkWords`, once - `hear`), the next one in the background while he looks at the current one. `placed` keeps a
+clip approved where it is in its spot, and strips a hook's `formats`/`talks` when one moves to a step. "Edit the N
+clips added as filmed" sends each back where it is (`replaces` only), marked with a hint when its new words say
+another step.
+
 With his Cutter server up (`talkServerUp`), each recording goes up (`t-<id>`, so HEVC is made H.264 and it goes with its
 order; a clip of the batch already there is cut from the server's copy) with a `DropOrder` (`PUT /talk/<id>`, kind
 `drop`: settings, voices, effects, brand words, the bank file id and name the cut clip gets, the recording's

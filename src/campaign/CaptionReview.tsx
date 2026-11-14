@@ -604,6 +604,14 @@ export function CaptionReview({
             <ChevronLeft /> {backLabel}
           </button>
         )}
+        {top}
+        {/* Still to be seen when it has words over it - where it goes, on a
+            batch's check (DropCheck.tsx). */}
+        {top && url ? (
+          <div className="review-frame">
+            <video src={url} playsInline controls preload="auto" />
+          </div>
+        ) : null}
         <p className="lede">No words were heard in this video, so there are no captions to check.</p>
         {clips}
         <button type="button" className="btn primary wide" onClick={() => onApprove(words)}>

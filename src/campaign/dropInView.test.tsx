@@ -197,6 +197,37 @@ describe('his clips, edited and waiting for his check', () => {
     expect(queued()).toEqual([{ id: 'cut-raw.mov', place: 's2', sure: true, replaces: 'raw-1' }])
   })
 
+  it("counts the clips he hasn't checked - the ones that sound like another step first - and sends them to the check (his ask, 2026-11-14)", async () => {
+    bank.steps![1].files = [
+      { id: 'w', name: 'w.mp4', type: 'video/mp4', size: 1, fp: 'fp-w', edited: true },
+      { id: 'ok', name: 'ok.mp4', type: 'video/mp4', size: 1, fp: 'fp-ok', edited: true },
+      { id: 'seen', name: 'seen.mp4', type: 'video/mp4', size: 1, edited: true, captions: [] },
+    ]
+    const said = ['nope', 'do', 'this', 'instead'].map((text, i) => ({ text, start: i, end: i + 0.4 }))
+    localStorage.setItem('batch.talkWords:fp-w', JSON.stringify({ v: 1, words: said }))
+    await render()
+    expect(host.textContent).toContain('1 clip may be in the wrong step')
+    expect(host.textContent).toContain("2 you haven't checked in all")
+    const check = [...host.querySelectorAll('button')].find((b) => b.textContent === 'Check the 2') as HTMLButtonElement
+    await act(async () => check.click())
+    expect(onCheck).toHaveBeenCalled()
+    expect(loadQueue('t').map((q) => [q.file.id, q.place, q.sure, q.hint ?? null, q.recheck])).toEqual([
+      ['w', 's2', false, 's1', true],
+      ['ok', 's2', true, null, true],
+    ])
+    expect(host.textContent).toContain('Check 2 clips')
+    expect(host.textContent).not.toContain('may be in the wrong step')
+  })
+
+  it('every clip checked: he can still look at where every one is again', async () => {
+    bank.steps![0].files = [{ id: 'a', name: 'a.mp4', type: 'video/mp4', size: 1, edited: true, checked: true }]
+    await render()
+    expect(host.textContent).not.toContain("haven't checked")
+    const again = [...host.querySelectorAll('button')].find((b) => b.textContent === 'Check where every clip is again') as HTMLButtonElement
+    await act(async () => again.click())
+    expect(loadQueue('t').map((q) => [q.file.id, q.place, q.recheck])).toEqual([['a', 's1', true]])
+  })
+
   describe('on his Cutter server', () => {
     it('sends each clip up with its order - his voices and the zooms with it - then each waits for his check, a copy kept on the phone', async () => {
       server.up = true

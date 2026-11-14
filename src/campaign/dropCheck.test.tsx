@@ -19,8 +19,12 @@ vi.mock('./store', () => ({
 }))
 vi.mock('./talkLink', () => ({ downloadFile: vi.fn(async () => new Blob(['clip'])) }))
 vi.mock('./posting', () => ({ postingHere: () => ({}), recheckCaptions: vi.fn() }))
+vi.mock('./prepareDrop', () => ({ dropSettings: () => ({ settings: {} }) }))
+// A clip never heard is heard on the check.
+const heardNow = vi.fn(async () => ['nope', 'do', 'this', 'instead'].map((text, i) => ({ text, start: i, end: i + 0.4 })))
+vi.mock('./talkCaptions', () => ({ talkWords: () => heardNow() }))
 // The caption check itself: what it is handed, and Approve with a fixed phrase.
-const seen: { name: string; recheckKey?: string; captionStyle?: string; hasRecheck: boolean }[] = []
+const seen: { name: string; recheckKey?: string; captionStyle?: string; hasRecheck: boolean; initial: string }[] = []
 vi.mock('./CaptionReview', () => ({
   CaptionReview: (p: {
     name: string
@@ -34,7 +38,7 @@ vi.mock('./CaptionReview', () => ({
     onApprove: (w: CaptionWord[]) => void
     onSkip: (w: CaptionWord[]) => void
   }) => {
-    seen.push({ name: p.name, recheckKey: p.recheckKey, captionStyle: p.captionStyle, hasRecheck: Boolean(p.onRecheck) })
+    seen.push({ name: p.name, recheckKey: p.recheckKey, captionStyle: p.captionStyle, hasRecheck: Boolean(p.onRecheck), initial: p.initial.map((w) => w.text).join(' ') })
     return (
       <section>
         {p.top}
@@ -112,6 +116,10 @@ const render = () =>
   )
 const button = (text: string) => [...host.querySelectorAll('button')].find((b) => b.textContent?.includes(text)) as HTMLButtonElement
 const click = (text: string) => act(async () => button(text).click())
+const lit = () => host.querySelector('.drop-check-steps [aria-checked="true"]')?.textContent
+const settle = async () => {
+  for (let i = 0; i < 6; i++) await act(async () => await new Promise((r) => setTimeout(r, 0)))
+}
 
 describe('checking every clip, one by one', () => {
   it('points out each clip and where it goes - the unsure ones first - and puts it in the batch only when he approves', async () => {
@@ -121,7 +129,6 @@ describe('checking every clip, one by one', () => {
     expect(host.querySelector('.review-name')?.textContent).toBe('b.mov')
     expect(host.textContent).toContain('Clip 1 of 2')
     expect(host.textContent).toContain('Not sure - check it')
-    const lit = () => host.querySelector('.drop-check-steps [aria-checked="true"]')?.textContent
     expect(lit()).toBe('1Nope, do this instead')
     // He moves it to step 2 and approves: there, with his captions.
     await click('Open the app')
@@ -174,5 +181,60 @@ describe('checking every clip, one by one', () => {
     await render()
     await click('Approve')
     expect(bank.reactions).toEqual([expect.objectContaining({ id: 'h', formats: ['t'], talks: true, edited: true })])
+  })
+})
+
+describe('looking again at where the clips of the batch are (his ask, 2026-11-14)', () => {
+  const inBatch = (id: string) => ({ id, name: `${id}.mp4`, type: 'video/mp4', size: 1, fp: `fp-${id}` })
+  const again = (id: string, place: string, extra: Partial<ToCheck> = {}): ToCheck => ({ ...clip(id, place, true), file: inBatch(id), recheck: true, ...extra })
+
+  it('points out the step its words sound like; one tap moves it there, the clip otherwise as it was', async () => {
+    bank.steps![1].files.push(inBatch('w'))
+    saveQueue('t', [again('w', 's2', { sure: false, hint: 's1' })])
+    await render()
+    expect(host.textContent).toContain('Maybe the wrong step')
+    expect(lit()).toBe('2Open the app')
+    expect(host.querySelector('.drop-check-hint')?.textContent).toContain('Sounds like1Nope, do this instead')
+    await click('Move it')
+    expect(lit()).toBe('1Nope, do this instead')
+    expect(host.querySelector('.drop-check-hint')).toBeNull()
+    await click('Approve')
+    expect(bank.steps![0].files).toEqual([{ ...inBatch('w'), captions: [{ text: 'Fixed', start: 0, end: 0.5 }], checked: true }])
+    expect(bank.steps![1].files.map((f) => f.id)).toEqual(['old'])
+    expect(bank.steps![0].heard).toEqual(['words of w'])
+    expect(retired).toEqual([])
+  })
+
+  it('approved where it is, it stays there, checked; Take out takes it out of the batch', async () => {
+    bank.steps![1].files.push(inBatch('x'))
+    saveQueue('t', [again('old', 's2'), again('x', 's2')])
+    await render()
+    expect(host.textContent).not.toContain('Maybe the wrong step')
+    await click('Approve & next clip')
+    expect(bank.steps![1].files.map((f) => f.id)).toEqual(['old', 'x'])
+    expect(bank.steps![1].files[0]).toMatchObject({ id: 'old', checked: true, captions: [{ text: 'Fixed' }] })
+    expect(bank.steps![1].files[0].edited).toBeUndefined()
+    await click('Take out')
+    expect(host.textContent).toContain('Taken out of the batch.')
+    await click('Take it out')
+    expect(bank.steps![1].files.map((f) => f.id)).toEqual(['old'])
+    expect(retired).toEqual([['x']])
+  })
+
+  it('one out of the batch by now is not shown; one never heard is heard first, then checked like the others', async () => {
+    bank.steps![1].files.push(inBatch('u'))
+    saveQueue('t', [again('gone', 's1'), again('u', 's2', { unheard: true, words: [], text: '' })])
+    heardNow.mockClear()
+    await render()
+    await settle()
+    expect(loadQueue('t').map((q) => q.file.id)).toEqual(['u'])
+    expect(heardNow).toHaveBeenCalledTimes(1)
+    expect(host.textContent).toContain('Clip 1 of 1')
+    expect(seen.at(-1)).toMatchObject({ name: 'u.mov', initial: 'nope do this instead' })
+    // What it says now sounds like another step.
+    expect(host.textContent).toContain('Sounds like')
+    await click('Approve')
+    expect(bank.steps![1].files.find((f) => f.id === 'u')).toMatchObject({ checked: true, captions: [{ text: 'Fixed' }] })
+    expect(bank.steps![1].heard).toEqual(['nope do this instead'])
   })
 })
