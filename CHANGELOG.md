@@ -3,6 +3,29 @@
 Newest first. Every change says what it does, how to use it, and how it works
 underneath. Kept up to date with each commit.
 
+## Campaign tracker: the week, every campaign, a box a day
+- His ask (2026-11-14): "I can't remember, every single day, which brands posted, which did not post, and which ones
+  I need to post on ... The goal for this is to be like a dashboard where we can see, on top, the days ... On the
+  left, it's the first letters or name of the campaigns ... Inside the box is a number ... how many posts are
+  supposed to go out that day ... yellow for when the posts are scheduled. When they're posted ... blue".
+- On the Videos tab, under Record and Add videos: "This week", Monday to Sunday, today lit. Each campaign on a line -
+  its badge (logo, or letter on its own colour) and its whole name on up to two lines, so Cantina and Coverd, or the
+  three Godaddy ones, never look alike. In each box, how many posts go out that day: yellow while set to go, blue once
+  posted, purple waiting for his OK, red didn't go out, pale yellow what a running batch will still make (it makes
+  its videos only 3 days ahead - the rest of the week isn't empty, the batch has it). A day with some of each is
+  split, posted at the bottom. An empty box on a day to come: nothing set to go out - make one. A tap on a box says it
+  in words under the grid. "All" under the lines: every campaign's posts each day. Arrows go to the week before and
+  after. Read again every 5 minutes and when he comes back to the app.
+- Which campaigns: any with a post that week; one that went quiet (posts the week before, none this week) stays on
+  for a week, dimmed under the others - unless he ended it, or the last he did was reject its videos (stopped).
+  Old campaigns he no longer posts for don't show.
+- Underneath: server action `week` { weeks } (`postiz/tracker.ts` `trackerWeek`, `mondayOf`; his time zone; read a
+  page of 1000 rows at a time, `allPages` - also used by the 30-day Analytics now); phone `posting.loadWeek` /
+  `lastWeek` (kept as `cutter.week`), `trackerLines.ts` (a running batch's days to come, no more than it has videos
+  left, `boxParts`, `boxWords`), `WeekTracker.tsx`. Tests: `tracker.test.ts`, `trackerLines.test.ts`,
+  `weekTrackerView.test.tsx`.
+- Needs deploying: run ./deploy-server.sh
+
 ## Analytics: the last 30 days, adding up
 - His ask (2026-11-14): "change the analytics section for the views for the last month, last 30 days, and keep
   stacking up".

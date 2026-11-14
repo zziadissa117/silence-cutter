@@ -50,6 +50,8 @@
 //                  (buffer.ts): a key pasted, the keys taken out, or "Postiz is down" switched on or off
 //   views          { profile }                  -> { accounts: { [accountId]: AccountViews }, month: MonthDay[] }  how each account's
 //                  videos are doing (views.ts), read from Postiz one account per tick, about once a day each
+//   week           { profile, weeks? }          -> { days, today, campaigns }   the campaign tracker: a week from
+//                  Monday (`weeks` on from this one), each campaign's posts by day and where they stand (tracker.ts)
 //   insights       { profile }                  -> { campaigns, bestHours }   what works in each batch campaign's
 //                  videos (hookInsights.ts) and when they do best (bestHours.ts)
 //   best-hours     { profile, off }             -> profile    posting more at the best hours, on or off
@@ -143,6 +145,7 @@ import { PENDING_STATUSES, channelReport, endPlan, isPending, splitStop, type En
 import { VIEWS_WINDOW_DAYS, dueAt, fillPerVideo, notRead, parseCache, readViews, remember, type ViewsCache } from './views.ts'
 import { POST_VIEW_AGES_H, POST_VIEW_MAX_DAYS, accountNameFor, postViewCount, postViewsDue } from './postViews.ts'
 import { MONTH_DAYS, monthDays, type MonthDay, type MonthRow } from './month.ts'
+import { TRACKED_STATUSES, mondayOf, trackerWeek, type TrackerRow } from './tracker.ts'
 import {
   BUFFER_QUEUE,
   channelAccount,
@@ -4600,15 +4603,26 @@ async function views(profile: Profile): Promise<Response> {
   return reply({ accounts: cache.accounts, month: await lastMonth(profile, now).catch(() => null) })
 }
 
+/** Every row a query gives, a page at a time: the database hands back at
+ *  most 1000 rows a request, and his login sends more than that in a month
+ *  (1111 on 2026-11-14). `page` runs the query, ordered, on one range. */
+async function allPages<T>(page: (from: number, to: number) => PromiseLike<{ data: unknown[] | null; error: unknown }>, most = 20_000): Promise<T[]> {
+  const PAGE = 1000
+  const rows: T[] = []
+  for (let from = 0; from < most; from += PAGE) {
+    const { data, error } = await page(from, from + PAGE - 1)
+    if (error) throw error
+    rows.push(...((data ?? []) as T[]))
+    if ((data ?? []).length < PAGE) break
+  }
+  return rows
+}
+
 /** The last 30 days for the top of Analytics (month.ts): this login's videos
  *  by the day they went out, their views and how many didn't go. */
 async function lastMonth(profile: Profile, now: number): Promise<MonthDay[]> {
-  // Read a page at a time: the database hands back at most 1000 rows a
-  // request, and his login sends more than that in a month (1111 on 2026-11-14).
-  const PAGE = 1000
-  const rows: MonthRow[] = []
-  for (let from = 0; from < 20 * PAGE; from += PAGE) {
-    const { data, error } = await db
+  const rows = await allPages<MonthRow>((from, to) =>
+    db
       .from('cutter_posts')
       .select('post_at, status, views')
       .eq('profile_id', profile.id)
@@ -4617,12 +4631,35 @@ async function lastMonth(profile: Profile, now: number): Promise<MonthDay[]> {
       .lte('post_at', new Date(now).toISOString())
       .order('post_at', { ascending: true })
       .order('id', { ascending: true })
-      .range(from, from + PAGE - 1)
-    if (error) throw error
-    rows.push(...((data ?? []) as MonthRow[]))
-    if ((data ?? []).length < PAGE) break
-  }
+      .range(from, to),
+  )
   return monthDays(rows, now, profile.timezone || 'UTC')
+}
+
+/** The campaign tracker (tracker.ts): this login's posts in a week from
+ *  Monday - `weeks` on from this one, back when negative - and the week
+ *  before, for the campaigns that went quiet. */
+async function week(profile: Profile, body: Record<string, unknown>): Promise<Response> {
+  const now = Date.now()
+  const tz = profile.timezone || 'UTC'
+  const weeks = Math.max(-52, Math.min(52, Math.round(Number(body.weeks) || 0)))
+  const monday = mondayOf(localDate(new Date(now), tz), weeks)
+  // A day more each side: the dates are his, the times UTC.
+  const from = `${addDays(monday, -8)}T00:00:00Z`
+  const to = `${addDays(monday, 8)}T00:00:00Z`
+  const rows = await allPages<TrackerRow>((first, last) =>
+    db
+      .from('cutter_posts')
+      .select('post_at, status, campaign_id, campaign_name, batch')
+      .eq('profile_id', profile.id)
+      .in('status', [...TRACKED_STATUSES])
+      // One that failed before it was sent has no time: its batch day counts.
+      .or(`and(post_at.gte.${from},post_at.lt.${to}),and(post_at.is.null,status.eq.failed,created_at.gte.${addDays(monday, -16)}T00:00:00Z,created_at.lt.${to})`)
+      .order('created_at', { ascending: true })
+      .order('id', { ascending: true })
+      .range(first, last),
+  )
+  return reply(trackerWeek(rows, monday, now, tz, new Set(Object.keys(profile.settings.ended ?? {}))))
 }
 
 /** Asks Postiz how the posts that were due went: posted (with links), or
@@ -5078,6 +5115,8 @@ Deno.serve(async (req) => {
         return await saveBackup(profile, body)
       case 'views':
         return await views(profile)
+      case 'week':
+        return await week(profile, body)
       case 'insights':
         return await insights(profile)
       case 'best-hours':

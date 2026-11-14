@@ -643,6 +643,62 @@ export function lastMonth(): MonthDay[] | null {
   }
 }
 
+/** One campaign's posts on one day, as the server counts them for the
+ *  campaign tracker (postiz/tracker.ts). */
+export interface TrackerCell {
+  posted: number
+  /** Set to go out by themselves. */
+  scheduled: number
+  /** Waiting for his OK. */
+  waiting: number
+  /** Didn't go out. */
+  failed: number
+  /** Of all those, the batch's. */
+  batch: number
+}
+
+export interface TrackerCampaign {
+  id: string
+  name: string
+  days: TrackerCell[]
+  /** Its posts in the week before. */
+  before: number
+}
+
+/** A week from Monday: its seven days, today, and each campaign's posts by day. */
+export interface TrackerWeek {
+  days: string[]
+  today: string
+  campaigns: TrackerCampaign[]
+}
+
+const WEEK_KEY = 'cutter.week'
+
+/** This week as last read, for an instant start and offline; null before. */
+export function lastWeek(): TrackerWeek | null {
+  try {
+    const raw = localStorage.getItem(WEEK_KEY)
+    const week = raw ? (JSON.parse(raw) as TrackerWeek) : null
+    return week && Array.isArray(week.days) && Array.isArray(week.campaigns) ? week : null
+  } catch {
+    return null
+  }
+}
+
+/** The campaign tracker's week: this one, or `weeks` on from it (back when
+ *  negative). This week's is kept for next time. */
+export async function loadWeek(weeks = 0): Promise<TrackerWeek> {
+  const week = await call<TrackerWeek>('week', { profile: profileId(), weeks })
+  if (weeks === 0) {
+    try {
+      localStorage.setItem(WEEK_KEY, JSON.stringify(week))
+    } catch {
+      // Just won't be there offline.
+    }
+  }
+  return week
+}
+
 const INSIGHTS_KEY = 'cutter.insights'
 
 export interface Insights {

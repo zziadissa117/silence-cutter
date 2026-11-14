@@ -2139,3 +2139,64 @@ html.editor-dark .caption-sheet { --ink: #000000; --text: #ffffff; --dim: #aeaeb
 .month-dot { position: absolute; width: 10px; height: 10px; margin: -5px 0 0 -5px; border-radius: 50%; background: var(--accent);
   box-shadow: 0 0 0 4px color-mix(in srgb, var(--accent) 25%, transparent); }
 .month-ends { display: flex; justify-content: space-between; margin-top: 4px; font-size: 12px; font-weight: 600; color: var(--muted); }
+
+/* The campaign tracker at the top of the Videos tab (WeekTracker.tsx): a
+   week of boxes per campaign - yellow set to go, blue posted. */
+.tracker {
+  --track-scheduled: #ffd60a;
+  --track-coming: color-mix(in srgb, #ffd60a 52%, var(--surface));
+  --track-posted: #0a84ff;
+  --track-waiting: var(--accent);
+  --track-failed: var(--bad);
+}
+:root[data-theme='light'] .tracker { --track-scheduled: #ffcc00; --track-posted: #007aff; }
+.tracker-nav { display: flex; align-items: center; gap: 2px; }
+.tracker-nav button {
+  width: 32px; height: 32px; display: grid; place-items: center; border: 0; border-radius: 999px;
+  background: color-mix(in srgb, var(--text) 7%, transparent); color: var(--text); cursor: pointer; padding: 0;
+}
+.tracker-nav button svg { width: 16px; height: 16px; }
+.tracker-range { min-width: 92px; text-align: center; font-size: 13px; font-weight: 600; color: var(--muted); font-variant-numeric: tabular-nums; }
+.tracker-card {
+  padding: 14px 12px 12px; border-radius: 24px; border: 1px solid var(--hairline); box-shadow: var(--lift);
+  background: var(--card-sheen), var(--surface); transition: opacity 0.2s;
+}
+.tracker-card.loading { opacity: 0.5; }
+.tracker-empty { margin: 4px 2px; }
+.tracker-grid {
+  display: grid; grid-template-columns: minmax(96px, 118px) repeat(7, minmax(0, 1fr));
+  gap: 5px 4px; align-items: center;
+}
+.tracker-line { display: contents; }
+.tracker-day { display: flex; flex-direction: column; align-items: center; gap: 1px; padding: 3px 0; border-radius: 10px; font-size: 10.5px; font-weight: 600; color: var(--muted); }
+.tracker-day b { font-size: 13px; font-weight: 750; color: var(--text); font-variant-numeric: tabular-nums; }
+.tracker-day.today { background: var(--accent); color: color-mix(in srgb, var(--on-accent) 80%, transparent); }
+.tracker-day.today b { color: var(--on-accent); }
+.tracker-name { display: flex; align-items: center; gap: 6px; min-width: 0; }
+.tracker-name .brand-badge { width: 18px; height: 18px; border-radius: 6px; font-size: 10px; flex: none; box-shadow: none; }
+/* Whole words, two lines at most: "Godaddy / delphine", never "God / ad...". */
+.tracker-label {
+  min-width: 0; font-size: 12px; font-weight: 650; line-height: 1.15; color: var(--text); overflow-wrap: break-word; hyphens: none;
+  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
+}
+.tracker-line.quiet .tracker-name { opacity: 0.5; }
+.tracker-name.all { padding-left: 2px; font-size: 11px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted); }
+.tracker-box {
+  width: 100%; aspect-ratio: 1; min-height: 0; padding: 0; border: 0; border-radius: 9px; cursor: pointer;
+  display: grid; place-items: center; font: inherit; font-size: 14px; font-weight: 750; font-variant-numeric: tabular-nums;
+  color: #fff; -webkit-tap-highlight-color: transparent;
+}
+.tracker-box[data-ink='scheduled'] { color: #1c1c1e; }
+.tracker-box[data-ink='coming'] { color: var(--text); }
+.tracker-box[data-ink='mixed'] { text-shadow: 0 1px 2px rgb(0 0 0 / 0.6), 0 0 6px rgb(0 0 0 / 0.35); }
+.tracker-box.none { background: color-mix(in srgb, var(--text) 5%, transparent); }
+.tracker-box.open { background: transparent; box-shadow: inset 0 0 0 1.5px var(--hairline-strong); }
+.tracker-box.open.today, .tracker-box.none.today { box-shadow: inset 0 0 0 1.5px color-mix(in srgb, var(--accent) 55%, transparent); }
+.tracker-box.picked { outline: 2px solid var(--text); outline-offset: 1px; }
+.tracker-total { text-align: center; font-size: 12px; font-weight: 700; color: var(--muted); font-variant-numeric: tabular-nums; padding-top: 2px; }
+.tracker-total.today { color: var(--text); }
+.tracker-picked { margin: 12px 2px 0; font-size: 14px; line-height: 1.4; color: var(--dim); }
+.tracker-picked b { color: var(--text); }
+.tracker-legend { display: flex; flex-wrap: wrap; gap: 6px 12px; margin-top: 12px; padding: 0 2px; font-size: 11.5px; color: var(--muted); }
+.tracker-legend > span { display: inline-flex; align-items: center; gap: 5px; }
+.tracker-swatch { width: 10px; height: 10px; border-radius: 3px; flex: none; }

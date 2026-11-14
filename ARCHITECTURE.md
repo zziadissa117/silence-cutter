@@ -565,6 +565,20 @@ drag and pinch, as `.cuts-pic-preview` does for pictures and `<video>` overlays 
 the finished video's clock, `outputTime`). Things up together get their own timeline row
 (`overlayRows`).
 
+## Campaign tracker (`WeekTracker.tsx`, `trackerLines.ts`, server `postiz/tracker.ts`)
+
+On the Videos tab, under the Record / Add videos tiles, when posting is set up. The `week` action ({ weeks }: 0 this
+week, 1 next, -1 last) reads this login's `cutter_posts` from 8 days before that Monday to 8 after (a page of 1000
+rows at a time, `allPages`), and `trackerWeek` counts each campaign's posts by day in the profile's time zone:
+posted; scheduled (approved, scheduled, writing, uploading); waiting; failed (error, failed - a failed one with no
+time any more counts on its batch day); and of those, the batch's. Rejected rows aren't counted, but a campaign with
+nothing that week shows (from its posts the week before, `before`) only if it isn't ended (`settings.ended`) and
+its newest row isn't a rejected one. The phone keeps this week's answer (`cutter.week`) and adds, for each
+campaign whose batch bank is running, what the batch still makes on each day after today (`perDayOn` less the
+batch posts already there, no more than `leftToMake`; days between today and a later week spoken for first). Lines
+with posts first, by name; quiet ones under them. Each box is filled bottom-up in shares (`boxParts`); its number
+sits on its colour, or on a shadow when it has several (`boxInk`).
+
 ## Analytics (`analytics.ts`, `AnalyticsView.tsx`, server `postiz/views.ts`)
 
 Only campaigns with a batch bank (running or made before) are shown - his CPM campaigns.

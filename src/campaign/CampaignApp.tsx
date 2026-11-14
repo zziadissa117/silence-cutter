@@ -56,6 +56,7 @@ import { CutsEditor } from './CutsEditor'
 import { EditScreen, type EditedCuts } from './EditScreen'
 import { VoiceSetup, voiceReminder } from './VoiceSetup'
 import { ActionTiles, CampaignRow, HomeHeader, TodayCard } from './HomeTop'
+import { WeekTracker } from './WeekTracker'
 import { CheckQuestions } from './CheckQuestions'
 import { keptWords, talkWords } from './talkCaptions'
 import {
@@ -3984,6 +3985,8 @@ export function CampaignApp() {
               }
             />
           )}
+          {/* Which campaigns posted, which are covered, where to make videos. */}
+          {posting ? <WeekTracker campaigns={campaigns ?? []} refresh={toApprove} /> : null}
           <CampaignRow campaigns={ownCampaigns} onOpen={() => setTab('campaigns')} onAll={() => setTab('campaigns')} />
           {campaign && angle ? (
             <div className="under-drop-links">
