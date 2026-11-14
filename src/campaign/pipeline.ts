@@ -495,6 +495,9 @@ export async function makeMontage(
     /** A talking head's hook kept as filmed: nothing over it, no music
      *  under it (montageRender). */
     rawFirst?: boolean
+    /** A talking head: each clip from just before his first word to just
+     *  after his last (montageRender, voiceSpan.ts). */
+    joinTight?: Parameters<typeof renderMontage>[0]['joinTight']
     /** A talking batch's captions (talkCaptions.ts). */
     captions?: Parameters<typeof renderMontage>[0]['captions']
   } = {},
@@ -519,6 +522,7 @@ export async function makeMontage(
       keepShape: extra.keepShape,
       shorterBy: extra.shorterBy,
       rawFirst: extra.rawFirst,
+      joinTight: extra.joinTight,
       captions: extra.captions ?? null,
     },
     onRenderProgress,

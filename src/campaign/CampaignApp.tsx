@@ -2213,6 +2213,10 @@ export function CampaignApp() {
               shorterBy: trialLook?.trimSec,
               keepLines: Boolean(trialLook),
               rawFirst: rawHook,
+              // A talking head: no long pause where one clip meets the next -
+              // each from just before his first word to just after his last,
+              // with his talking videos' pause settings (voiceSpan.ts).
+              joinTight: keepsVoice && jobFormat?.kind === 'talking' && stepped?.length ? next.settings : undefined,
               ...(said.length > 0 || stepSaid.some(Boolean)
                 ? {
                     captions: {

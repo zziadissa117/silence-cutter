@@ -3,6 +3,26 @@
 Newest first. Every change says what it does, how to use it, and how it works
 underneath. Kept up to date with each commit.
 
+## Talking heads: no long pauses where one clip meets the next
+- His report (2026-11-14): "in between clips, there's too much separation ... It feels like there are too many pauses".
+- Why: every clip the Cutter edits keeps a breath before the first word (0.15 s) and after the last (0.2 s), so a
+  video opens and closes cleanly - two clips back to back left about a third of a second of nothing, twice the pause
+  of a cut inside his talking videos. A clip added as filmed (a raw hook, a step never edited) kept all the wait
+  before he talked and after he stopped - a second or two at every join.
+- Now, in a talking head: every clip after the hook starts just before his first word, and every clip ends just
+  after his last - the hook too, so a raw hook's dead air at its end is gone (its start is still exactly as filmed).
+  Each join is as tight as a cut in his talking videos (his pause setting's padding). The last clip keeps a breath
+  after his last word so the video doesn't end on a clipped syllable. The captions move with each clip.
+- Found from each clip's sound the way the Cutter finds pauses, once per clip; a clip whose sound can't be read, or
+  with no voice in it, plays as it is.
+- Checked in a real render here (Chrome for Testing): a raw hook and two steps, each with 0.8-1 s of quiet before
+  and 1-1.2 s after the talking - the pause at each join went from 1.96 s and 1.76 s to 0.14 s, the end from 1.2 s
+  after the last word to 0.23 s, the video from 9.5 s to 5.1 s; the hook's start untouched, each step's captions on
+  its words.
+- Underneath: `voiceSpan.ts` (`voiceSpanOf`, `voiceSpan`), montageRender `joinTight` (parts trimmed, `window` to
+  `writeWhole`, step captions from the part's start), `CampaignApp` passes the job's settings, `pipeline.makeMontage`.
+  Tests: `voiceSpan.test.ts`.
+
 ## Talking heads: the hook as filmed when "Use edits in hooks" is off, and full-phrase captions
 - His report (2026-11-14): "when 'Use edits in hooks' is off, why are there still captions in the hook? Why is there
   still music in the hook? ... the raw clip should play. That's it ... once the first product step starts, then the

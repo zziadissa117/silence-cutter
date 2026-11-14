@@ -706,6 +706,17 @@ the format card's Captions row), else full phrases on a talking head, else his C
 caption settings of its own (it fell back to one word): `serverLink` puts the phone's `defaultCaptionStyle/Size` on the
 bank it sends as `BatchBank.cutterCaptions` (part of `settingsKey`, never saved on the phone).
 
+### Where a talking head's clips meet (his report 2026-11-14: "too many pauses")
+
+A clip the Cutter edits keeps `HEAD_LEEWAY_SEC` before the first word and `TAIL_LEEWAY_SEC` after the last, so two
+back to back left ~0.35 s of nothing (twice a cut's pause), and a clip as filmed kept all its wait. `CampaignApp`
+passes the job's pause settings as `joinTight` for a talking head with steps; `montageRender` finds each clip's voice
+(`voiceSpan.voiceSpan`: `decodeAudio` levels, `findSilentRanges`, a click at an edge left out; measured once per clip
+in the page) and plays every clip after the first from `voice.start - pad` and every clip to `voice.end + pad`
+(`pad` = the preset's `paddingSec`, at least 0.06 s), the last to `voice.end + TAIL_LEEWAY_SEC`. The hook's start is
+never moved. A trimmed clip goes to `writeWhole` as a `window` (picture and sound); its step's captions are placed
+from the part's start. A clip whose sound can't be read, or with no voice found, plays as it is.
+
 ### A talking head's clips: edited, then checked one by one (`DropIn.tsx`, `dropQueue.ts`, `DropCheck.tsx`, his asks 2026-11-13)
 
 Every clip of a talking head format the Cutter edits - "Drop in all videos", a step's + Add (`dropInto`), his hooks'

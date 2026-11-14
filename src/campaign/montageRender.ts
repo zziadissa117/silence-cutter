@@ -49,6 +49,8 @@ import { fitShowcase, pickPiece, readActivity } from './stepPiece'
 import { musicProblem, prepareMusic } from './sounds'
 import { report as reportProblem } from '../report'
 import { onEncodedPacketMatchingColour } from './colourCheck'
+import { voiceSpan } from './voiceSpan'
+import { TAIL_LEEWAY_SEC, type SilenceSettings } from '../media/silenceMath'
 
 /** Every video written at one rate, stereo - what every AAC encoder takes
  *  (media/silenceCut.ts). */
@@ -154,6 +156,10 @@ function loweredFormula(layout: FormulaLayout | null, height: number): FormulaLa
   }
 }
 
+/** The least room left before a clip's first word and after its last at a
+ *  join, whatever his pause settings: his first sound is never clipped. */
+const MIN_JOIN_PAD_SEC = 0.06
+
 export interface MontageRenderInput {
   clips: Blob[]
   /** The headline's look and the campaign's effects; the logo and pictures are not used. */
@@ -214,6 +220,13 @@ export interface MontageRenderInput {
    *  then the music can start"). The music and the headline start with the
    *  second clip; with no second clip there are none. */
   rawFirst?: boolean
+  /** A talking head: his talking videos' pause settings. Every clip after
+   *  the first starts just before his first word, and every clip ends just
+   *  after his last - one runs into the next like a cut inside his talking
+   *  videos (his report, 2026-11-14: "in between clips, there's too much
+   *  separation ... too many pauses"). The video's very start is left as it
+   *  is; the last clip keeps a breath after his last word (voiceSpan.ts). */
+  joinTight?: SilenceSettings
   /** A talking batch's captions: what he says in the first clip, on that
    *  clip's own timeline (talkCaptions.ts), drawn as his talking videos'. */
   captions?: {
@@ -343,7 +356,7 @@ export function liftMusic(channels: Float32Array[], gain: number, sampleRate: nu
 }
 
 export async function renderMontage(
-  { clips: files, look, headlineText, music, seed = '', formula = null, windows = [], reactionFirst = false, titles = [], stepTexts = [], stepOverlays = [], voice = false, voiceAll = false, brightness = 0, keepLines = false, keepShape = false, shorterBy = 0, rawFirst = false, captions = null }: MontageRenderInput,
+  { clips: files, look, headlineText, music, seed = '', formula = null, windows = [], reactionFirst = false, titles = [], stepTexts = [], stepOverlays = [], voice = false, voiceAll = false, brightness = 0, keepLines = false, keepShape = false, shorterBy = 0, rawFirst = false, joinTight, captions = null }: MontageRenderInput,
   onProgress?: (fraction: number) => void,
 ): Promise<MontageRenderResult> {
   if (files.length === 0) throw new SilenceCutError('Add at least one clip.')
@@ -376,6 +389,24 @@ export async function renderMontage(
       // seconds plays instead.
       const activity = await readActivity(clip.video, clip.first, clip.duration).catch(() => null)
       parts.push(pickPiece(activity, clip.first, clip.duration, random))
+    }
+    // A talking head: each clip from just before his first word to just
+    // after his last (voiceSpan.ts) - the joins as tight as a cut in his
+    // talking videos. Its sound can't be read: the clip as it is.
+    const trimmed: boolean[] = []
+    if (joinTight && clips.length > 1) {
+      const pad = Math.max(MIN_JOIN_PAD_SEC, joinTight.paddingSec)
+      for (const [i, clip] of clips.entries()) {
+        if (windows[i]) continue
+        const voice = await voiceSpan(clip, joinTight).catch(() => null)
+        if (!voice) continue
+        const part = parts[i]
+        const from = i === 0 ? part.start : Math.max(part.start, voice.start - pad)
+        const to = Math.min(part.end, voice.end + (i === clips.length - 1 ? TAIL_LEEWAY_SEC : pad))
+        if (to - from < 0.2 || (from - part.start < 0.02 && part.end - to < 0.02)) continue
+        parts[i] = { start: from, end: to }
+        trimmed[i] = true
+      }
     }
     if (shorterBy > 0 && parts[0]) {
       const first = parts[0]
@@ -600,15 +631,16 @@ export async function renderMontage(
           overlays[i] = ready.filter((o): o is ReadyOverlay => o !== null)
           if (overlays[i].length < ownOverlays.length) reportProblem({ kind: 'fallback', phase: 'step overlay', message: `${ownOverlays.length - overlays[i].length} of clip ${i + 1}'s overlays couldn't be read` })
         }
-        // His words over a step he talks in, played whole: from its first
-        // frame shown, onto the video's timeline.
+        // His words over a step he talks in, played whole (or from just
+        // before his first word): from where it starts, onto the video's timeline.
         const own = i > 0 && !windows[i] ? captions?.steps?.[i - 1] : null
         if (own?.length && captions) {
-          const words = own.map((w) => ({ ...w, start: w.start - clip.first + start, end: w.end - clip.first + start }))
+          const from = parts[i].start
+          const words = own.filter((w) => w.end > from && w.start < parts[i].end).map((w) => ({ ...w, start: w.start - from + start, end: w.end - from + start }))
           stepSaid[i] = { words, times: words.map((w) => w.start), ranges: captionRanges(words, captions.style) }
         }
         at = await writeWhole(clip, at, {
-          window: windows[i] ? parts[i] : undefined,
+          window: windows[i] || trimmed[i] ? parts[i] : undefined,
           rate: RATE,
           channels: CHANNELS,
           videoClock,
