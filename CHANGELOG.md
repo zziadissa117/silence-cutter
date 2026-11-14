@@ -3,6 +3,20 @@
 Newest first. Every change says what it does, how to use it, and how it works
 underneath. Kept up to date with each commit.
 
+## Talking heads: the next clip starts right after the last word
+- His report (2026-11-14, on the videos remade with the change below): "still there's too much separation between
+  all clips ... too long before the second one plays ... it better to start next clip after last word".
+- The remade videos had the change below (made at 02:26 on the server's 02:18 build) but his step clips were already
+  edited, so each join only lost the extra breath: what was left was about 0.16 s of quiet plus the fading end of
+  his last word.
+- Now a clip ends 0.04 s after his last sound has faded and the next starts 0.03 s before his first - the measured
+  edges already hold a word's soft start and fading end. Each join's sound is faded out and in over 6 ms so the cut
+  between two takes never clicks. The hook's start and the breath after the very last word are as before.
+- Checked in a real render here: the quiet between one clip's last word and the next clip's first is about 0.1 s
+  (half-level points), the test video 4.9 s (9.5 s with no trimming).
+- Underneath: montageRender `JOIN_TAIL_SEC`, `JOIN_LEAD_SEC`, `JOIN_FADE_SEC` (fade-out before each join in the
+  voice, fade-in in `onSound`).
+
 ## Talking heads: no long pauses where one clip meets the next
 - His report (2026-11-14): "in between clips, there's too much separation ... It feels like there are too many pauses".
 - Why: every clip the Cutter edits keeps a breath before the first word (0.15 s) and after the last (0.2 s), so a

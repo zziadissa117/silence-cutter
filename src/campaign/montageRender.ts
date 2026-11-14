@@ -156,9 +156,16 @@ function loweredFormula(layout: FormulaLayout | null, height: number): FormulaLa
   }
 }
 
-/** The least room left before a clip's first word and after its last at a
- *  join, whatever his pause settings: his first sound is never clipped. */
-const MIN_JOIN_PAD_SEC = 0.06
+/** Where two of a talking head's clips meet (his ask, 2026-11-14: "start
+ *  next clip after last word"): the one before ends this long after his last
+ *  sound has faded, the next starts this long before his first - the
+ *  measured edges already hold a word's soft start and fading end
+ *  (silenceMath.findSilentRanges), so his voice follows straight on. */
+const JOIN_TAIL_SEC = 0.04
+const JOIN_LEAD_SEC = 0.03
+/** Each join's sound faded out and in over this long, so the cut between two
+ *  takes' room sound never clicks. */
+const JOIN_FADE_SEC = 0.006
 
 export interface MontageRenderInput {
   clips: Blob[]
@@ -220,12 +227,13 @@ export interface MontageRenderInput {
    *  then the music can start"). The music and the headline start with the
    *  second clip; with no second clip there are none. */
   rawFirst?: boolean
-  /** A talking head: his talking videos' pause settings. Every clip after
-   *  the first starts just before his first word, and every clip ends just
-   *  after his last - one runs into the next like a cut inside his talking
-   *  videos (his report, 2026-11-14: "in between clips, there's too much
-   *  separation ... too many pauses"). The video's very start is left as it
-   *  is; the last clip keeps a breath after his last word (voiceSpan.ts). */
+  /** A talking head: his talking videos' pause settings, for finding his
+   *  voice in each clip. Every clip after the first starts right on his first
+   *  word, and every clip ends right after his last - the next one follows
+   *  straight on (his asks, 2026-11-14: "in between clips, there's too much
+   *  separation" and "start next clip after last word"). The video's very
+   *  start is left as it is; the last clip keeps a breath after his last word
+   *  (voiceSpan.ts). */
   joinTight?: SilenceSettings
   /** A talking batch's captions: what he says in the first clip, on that
    *  clip's own timeline (talkCaptions.ts), drawn as his talking videos'. */
@@ -390,19 +398,18 @@ export async function renderMontage(
       const activity = await readActivity(clip.video, clip.first, clip.duration).catch(() => null)
       parts.push(pickPiece(activity, clip.first, clip.duration, random))
     }
-    // A talking head: each clip from just before his first word to just
-    // after his last (voiceSpan.ts) - the joins as tight as a cut in his
-    // talking videos. Its sound can't be read: the clip as it is.
+    // A talking head: each clip from right on his first word to right after
+    // his last (voiceSpan.ts) - the next one follows straight on. Its sound
+    // can't be read: the clip as it is.
     const trimmed: boolean[] = []
     if (joinTight && clips.length > 1) {
-      const pad = Math.max(MIN_JOIN_PAD_SEC, joinTight.paddingSec)
       for (const [i, clip] of clips.entries()) {
         if (windows[i]) continue
         const voice = await voiceSpan(clip, joinTight).catch(() => null)
         if (!voice) continue
         const part = parts[i]
-        const from = i === 0 ? part.start : Math.max(part.start, voice.start - pad)
-        const to = Math.min(part.end, voice.end + (i === clips.length - 1 ? TAIL_LEEWAY_SEC : pad))
+        const from = i === 0 ? part.start : Math.max(part.start, voice.start - JOIN_LEAD_SEC)
+        const to = Math.min(part.end, voice.end + (i === clips.length - 1 ? TAIL_LEEWAY_SEC : JOIN_TAIL_SEC))
         if (to - from < 0.2 || (from - part.start < 0.02 && part.end - to < 0.02)) continue
         parts[i] = { start: from, end: to }
         trimmed[i] = true
@@ -621,6 +628,13 @@ export async function renderMontage(
         // The first product step after a hook kept as filmed: the music
         // starts here, where it really does.
         if (rawFirst && i === 1) stepStart = start
+        // A tight join: the sound before it faded out, the next clip's faded
+        // in as it comes (onSound), so the cut never clicks.
+        const joinAt = joinTight && voicePlanes && i > 0 ? Math.round(start * RATE) : null
+        const fade = Math.round(JOIN_FADE_SEC * RATE)
+        if (joinAt !== null && voicePlanes) {
+          for (const plane of voicePlanes) for (let k = Math.max(0, joinAt - fade); k < Math.min(joinAt, plane.length); k++) plane[k] *= (joinAt - k) / fade
+        }
         const placed = clipPlace(clip.width, clip.height, width, height)
         stretches[i] = { fill: placed.box, whole: placed.whole, still: placed.whole ? true : null, start, length: Math.max(0.1, parts[i].end - parts[i].start) }
         // The pictures and videos he put on it; one this browser can't read
@@ -656,6 +670,7 @@ export async function renderMontage(
                     if (!plane || from >= into.length) continue
                     for (let k = 0; k < plane.length; k += 64) voicePeak = Math.max(voicePeak, Math.abs(plane[k]))
                     into.set(from < 0 ? plane.subarray(-from) : plane.subarray(0, into.length - from), Math.max(0, from))
+                    if (joinAt !== null) for (let k = Math.max(from, joinAt); k < Math.min(joinAt + fade, from + plane.length, into.length); k++) into[k] *= (k - joinAt) / fade
                   }
                 },
               }
