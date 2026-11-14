@@ -3,6 +3,14 @@
 Newest first. Every change says what it does, how to use it, and how it works
 underneath. Kept up to date with each commit.
 
+## Batch: as many product steps as he wants
+- His report (2026-11-14): "Why are there only 10 steps max?"
+- Set order's "+ Add step" stopped at 10. Nothing else ever limited steps - the mixing, the video and the Cutter server
+  all take any number - the cap came in by the way with an unrelated change (Buffer backup, 2026-10-22). It is gone:
+  add as many steps as the product shows. Each video still takes one clip from every step, in order.
+- Underneath: `StepOrder.tsx`. Tests: `stepOrder.test.tsx` (25 steps saved), `batchOnce.test.ts` (a 25-step batch
+  mixed: 30 videos, every step in order).
+
 ## Campaign tracker: the week, every campaign, a box a day
 - His ask (2026-11-14): "I can't remember, every single day, which brands posted, which did not post, and which ones
   I need to post on ... The goal for this is to be like a dashboard where we can see, on top, the days ... On the

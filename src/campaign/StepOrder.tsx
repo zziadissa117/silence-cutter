@@ -101,7 +101,8 @@ export function StepOrder({
         ))}
       </ol>
       <div className="actions-row">
-        <button type="button" className="btn small" disabled={drafts.length >= 10} onClick={() => setDrafts((all) => [...all, blank(all.length + 1)])}>
+        {/* As many steps as his product shows - there was a cap of 10, for no reason (his report, 2026-11-14). */}
+        <button type="button" className="btn small" onClick={() => setDrafts((all) => [...all, blank(all.length + 1)])}>
           + Add step
         </button>
       </div>

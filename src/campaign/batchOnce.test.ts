@@ -70,6 +70,20 @@ describe('each clip in one video only', () => {
     expect(combos({ ...bank, made }).left).toBe(0)
   })
 
+  it('many product steps (no cap at 10): each video takes one clip from every step, in order, quickly', () => {
+    const steps: BatchStep[] = Array.from({ length: 25 }, (_, i) => ({ id: `s${i + 1}`, name: `Step ${i + 1}`, files: files(`s${i + 1}-`, 3) }))
+    const bank = mix({ reactions: files('r', 4), products: [], steps })
+    const started = performance.now()
+    const { picks } = pickBatch(bank, 30, seeded(7))
+    expect(performance.now() - started).toBeLessThan(2000)
+    expect(picks).toHaveLength(30)
+    for (const p of picks) {
+      expect(p.steps).toHaveLength(25)
+      p.steps!.forEach((clip, i) => expect(clip.startsWith(`s${i + 1}-`)).toBe(true))
+    }
+    expect(leftToMake(bank).left).toBeGreaterThan(30)
+  })
+
   it('a video taken out again (Start over) gives its clips back', () => {
     const bank = mix({ reactionsOnce: true })
     const first = pickBatch(bank, 3, seeded(1))

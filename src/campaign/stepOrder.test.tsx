@@ -39,4 +39,17 @@ describe("a step's name", () => {
     await act(async () => ([...host.querySelectorAll('button')].find((b) => b.textContent === 'Save order') as HTMLButtonElement).click())
     expect(onSave.mock.calls[0][0][0].name).toBe(long)
   })
+
+  it('as many steps as he wants - no cap at 10', async () => {
+    const onSave = vi.fn()
+    await act(async () => root.render(<StepOrder campaignName="Lovable" steps={[{ id: 's1', name: 'Step 1', files: [] }]} onSave={onSave} onClose={() => {}} />))
+    const add = [...host.querySelectorAll('button')].find((b) => b.textContent === '+ Add step') as HTMLButtonElement
+    for (let i = 0; i < 24; i++) {
+      expect(add.disabled).toBe(false)
+      await act(async () => add.click())
+    }
+    await act(async () => ([...host.querySelectorAll('button')].find((b) => b.textContent === 'Save order') as HTMLButtonElement).click())
+    expect(onSave.mock.calls[0][0]).toHaveLength(25)
+    expect(onSave.mock.calls[0][0][24].name).toBe('Step 25')
+  })
 })
