@@ -159,6 +159,8 @@ export function DropIn({
   const [running, setRunning] = useState<{ at: number; of: number; name: string; phase: string } | null>(null)
   /** Clips he just picked, waiting on the checklist - ticked as he last left it. */
   const [picked, setPicked] = useState<File[] | null>(null)
+  /** The checklist open on its own, to set it before dropping anything in. */
+  const [setting, setSetting] = useState(false)
   const [draft, setDraft] = useState<DropChoices>(choices)
   const [failed, setFailed] = useState<{ name: string; why: string }[]>([])
   const stop = useRef(false)
@@ -472,6 +474,18 @@ export function DropIn({
           }}
           onCancel={() => setPicked(null)}
         />
+      ) : setting ? (
+        <DropChecklist
+          count={null}
+          zooms={hasZooms(effects)}
+          value={draft}
+          onChange={setDraft}
+          onStart={() => {
+            setSetting(false)
+            onChoices(draft)
+          }}
+          onCancel={() => setSetting(false)}
+        />
       ) : canDrop ? (
         <VideoPicker
           className={`btn small${queue.length > 0 ? '' : ' primary'}`}
@@ -485,6 +499,30 @@ export function DropIn({
           Drop in all videos
         </VideoPicker>
       ) : null}
+      {/* What it will do with them, in sight before he drops anything in (his
+          report, 2026-11-14: "I'm trying to look for the place where I can
+          choose to include music or not, or choose to cut things or not"). */}
+      {!running && !picked && !setting && canDrop ? (
+        <div className="drop-summary">
+          <span className="drop-summary-chips" aria-label="What the Cutter does with your clips">
+            {CHOICES.map((c) => (
+              <span key={c.key} className={`drop-chip${choices[c.key] ? ' on' : ''}`}>
+                {choices[c.key] ? '✓' : '✕'} {c.name}
+              </span>
+            ))}
+          </span>
+          <button
+            type="button"
+            className="linkbtn"
+            onClick={() => {
+              setDraft(choices)
+              setSetting(true)
+            }}
+          >
+            Change
+          </button>
+        </div>
+      ) : null}
       {cutting > 0 ? (
         <p className="hint">
           Your server is editing {cutting} more clip{cutting === 1 ? '' : 's'}
@@ -492,10 +530,10 @@ export function DropIn({
         </p>
       ) : null}
       {queue.length > 0 && !running ? <p className="hint">Each one: where it goes and its captions. It is in your videos once you approve it.</p> : null}
-      {!running && !picked && queue.length === 0 && cutting === 0 && canDrop ? (
+      {!running && !picked && !setting && queue.length === 0 && cutting === 0 && canDrop ? (
         <p className="hint">
-          Pick all your clips at once, then tick what the Cutter does with them - cut, captions, music, headline. Each goes in the step whose name
-          you say in it{hooks ? ' - one that says no step is a hook' : ''}; one where you don't talk, you place yourself. Then you check every one.
+          Pick all your clips at once: the Cutter does what is ticked above - you can change it then too. Each goes in the step whose name you say
+          in it{hooks ? ' - one that says no step is a hook' : ''}; one where you don't talk, you place yourself. Then you check every one.
         </p>
       ) : null}
       {unchecked.length > 0 && !running ? (
@@ -538,8 +576,9 @@ export function DropIn({
   )
 }
 
-/** What the Cutter does with the clips he just dropped in: four switches,
- *  ticked as he last left them, and Start. */
+/** What the Cutter does with the clips he just dropped in: the switches,
+ *  ticked as he last left them, and Start - or, opened with Change before
+ *  any clip (`count` null), Save. */
 function DropChecklist({
   count,
   zooms,
@@ -548,7 +587,7 @@ function DropChecklist({
   onStart,
   onCancel,
 }: {
-  count: number
+  count: number | null
   /** The campaign has zooms on: off, "Zoom" has nothing to add. */
   zooms: boolean
   value: DropChoices
@@ -558,9 +597,7 @@ function DropChecklist({
 }) {
   return (
     <div className="drop-choices" role="group" aria-label="What the Cutter does with these clips">
-      <span className="row-name">
-        {count} clip{count === 1 ? '' : 's'} - what should the Cutter do?
-      </span>
+      <span className="row-name">{count === null ? 'What the Cutter does with your clips' : `${count} clip${count === 1 ? '' : 's'} - what should the Cutter do?`}</span>
       {CHOICES.map((c) => (
         <label key={c.key} className="toggle drop-choice">
           <input type="checkbox" checked={value[c.key]} aria-label={c.name} onChange={(e) => onChange({ ...value, [c.key]: e.target.checked })} />
@@ -573,7 +610,7 @@ function DropChecklist({
       <span className="hint">Music and the headline are for every video of this format. You can still mirror or un-mirror each clip on its check.</span>
       <div className="actions-row">
         <button type="button" className="btn small primary" onClick={onStart}>
-          Start
+          {count === null ? 'Save' : 'Start'}
         </button>
         <button type="button" className="btn small" onClick={onCancel}>
           Cancel

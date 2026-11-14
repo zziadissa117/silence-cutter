@@ -3,6 +3,15 @@
 Newest first. Every change says what it does, how to use it, and how it works
 underneath. Kept up to date with each commit.
 
+## Batch drop-in: the choices in sight
+- His report (2026-11-14): "I'm trying to look for the place where I can choose to include music or not, or choose to
+  cut things or not, but I don't find it".
+- The checklist only showed after picking clips. Now, right under "Drop in all videos" in a talking head format,
+  what the Cutter will do is always in sight - Cut the clips, Zoom, Captions, Music, Headline, Mirror them, ticked or
+  crossed out - with Change to set them without dropping anything in (Save). Picking clips still asks, as before.
+- Underneath: `DropIn` summary (`drop-summary`, `drop-chip`), `DropChecklist` with `count` null for Change. Test:
+  `dropInView.test.tsx`.
+
 ## Batch drop-in checklist: Zoom
 - His ask (2026-11-14): "add the option to have a zoom, because sometimes we want to keep the raw clip at the hook,
   but sometimes we also want editing, meaning zooming in on the clips ... how the cutter zooms in and out ... or

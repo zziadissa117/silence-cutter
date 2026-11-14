@@ -269,6 +269,25 @@ describe('his clips, edited and waiting for his check', () => {
     expect(zoomsHere).toEqual([false, true])
   })
 
+  it('what it will do is in sight before he drops anything in; Change sets it without dropping (his report, 2026-11-14)', async () => {
+    await render(false, { cut: false, zoom: true, captions: true, music: false, headline: true, mirror: false })
+    const chips = [...host.querySelectorAll('.drop-chip')].map((c) => [c.textContent, c.classList.contains('on')])
+    expect(chips).toEqual([
+      ['✕ Cut the clips', false],
+      ['✓ Zoom', true],
+      ['✓ Captions', true],
+      ['✕ Music', false],
+      ['✓ Headline', true],
+      ['✕ Mirror them', false],
+    ])
+    await act(async () => button('Change').click())
+    expect(host.textContent).toContain('What the Cutter does with your clips')
+    await act(async () => (host.querySelector('input[aria-label="Music"]') as HTMLInputElement).click())
+    await act(async () => button('Save').click())
+    expect(onChoices).toHaveBeenCalledWith({ cut: false, zoom: true, captions: true, music: true, headline: true, mirror: false })
+    expect(onPhone).not.toHaveBeenCalled()
+  })
+
   it('Cancel: nothing edited', async () => {
     await render()
     const input = host.querySelector('input[aria-label="Drop in all videos"]') as HTMLInputElement
