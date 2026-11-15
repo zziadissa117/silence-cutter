@@ -26,6 +26,7 @@ import {
   type HeadlinePlace,
   type HeadlineStyle,
   type PictureCue,
+  type PostKind,
 } from './look'
 import { filesOf, type BankFile, type BatchBank } from './batch'
 import { emptyScript, type FormatScript } from './formats'
@@ -380,6 +381,9 @@ export interface SendEntry {
     duration: number
     fileName: string
     later?: boolean
+    /** Talking head or reaction: the campaign's caption text for that kind
+     *  goes on it (postKind.ts, CampaignPosting.byKind). */
+    kind?: PostKind
     /** Made by hand from New post: a finished video, sent as it is, at this
      *  time (none for straight away) - or spread over the campaign's times
      *  with the rest of its batch - with his caption or none for Claude to

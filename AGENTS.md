@@ -143,6 +143,7 @@ it back.)
 - The look: tokens and cards in the last blocks of `campaign.css`; Videos top `HomeTop.tsx`, Analytics top `Overview.tsx`, section marks `Mark.tsx` (Batch) and Settings' `Section`
 - Posting (server): `supabase/functions/postiz/*` (`slots.ts` times, `caption.ts`, `batch.ts`, `hand.ts`, `attach.ts`, `failed.ts` missed accounts,
   `channels.ts` accounts a campaign holds / `endPlan` for ending one - phone side `EndCampaign.tsx`)
+- Caption text per kind of video (talking head = advanced, reaction = basic - MediaMaxing tracking): `CampaignPosting.byKind` (PostingEditor), `postKind.ts` -> `meta.kind`; server `caption.kindText`, `finishCaption(..., add)`, `index.ts withKind`
 - Each video's cover on the grid: its own moment per video and account (`postiz/cover.ts`, Postiz `thumbnailTimestamp`)
 - Instagram location tagged on every Instagram post (default + per campaign): `postiz/place.ts`, `InstagramPlace.tsx`; Postiz doesn't pass it on yet - the request and patch for them in `docs/postiz-location`
 - Buffer, the backup for Postiz (same video, caption, time, Instagram accounts matched by username): `postiz/buffer.ts`;

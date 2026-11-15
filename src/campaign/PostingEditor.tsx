@@ -76,7 +76,8 @@ export function PostingEditor({
   const tags = parseTags(hashtagText)
   const before = { ...NO_POSTING, ...campaign.posting }
   const rulesChanged = posting.caption !== before.caption || posting.rules.trim() !== before.rules.trim()
-  const captionChanged = rulesChanged || tags.join(' ') !== before.hashtags.join(' ')
+  const kindChanged = (posting.byKind?.talking ?? '').trim() !== (before.byKind?.talking ?? '').trim() || (posting.byKind?.reaction ?? '').trim() !== (before.byKind?.reaction ?? '').trim()
+  const captionChanged = rulesChanged || kindChanged || tags.join(' ') !== before.hashtags.join(' ')
   const made = notOutYet(campaign.id)
   const redoOn = redoChoice ?? captionChanged
   const behind = accountsBehind(campaign.id, place.accounts)
@@ -119,7 +120,7 @@ export function PostingEditor({
           const window = timing === 'random' ? cleanWindow(windowDraft) : null
           if (window) saved = { accounts: place.accounts, times: [], window, ...own }
           try {
-            await onSave({ ...posting, rules: posting.rules.trim(), hashtags }, local ? saved : null, catchUpOn ? behind.accounts : [], made > 0 && redoOn ? (rewrite && rulesChanged ? 'rewrite' : 'hashtags') : null)
+            await onSave({ ...withoutByKind(posting), rules: posting.rules.trim(), hashtags, ...byKindOf(posting) }, local ? saved : null, catchUpOn ? behind.accounts : [], made > 0 && redoOn ? (rewrite && rulesChanged ? 'rewrite' : 'hashtags') : null)
           } catch (error) {
             throw new Error(error instanceof PostingError ? error.message : String(error))
           }
@@ -425,6 +426,38 @@ export function PostingEditor({
             </label>
           </>
         ) : null}
+        {/* Per kind of video (his ask, 2026-11-15: MediaMaxing pays more for
+            an advanced post - talking heads - than a basic one - reactions -
+            and tracks them by the caption). Added to every caption of that
+            kind, Claude's or pasted. */}
+        <div className="field">
+          <span className="label">Added to the caption, by kind of video</span>
+          <label className="field">
+            <span className="hint">Talking head videos (advanced)</span>
+            <input
+              type="text"
+              value={posting.byKind?.talking ?? ''}
+              placeholder="e.g. #advancedpost"
+              autoCapitalize="off"
+              autoCorrect="off"
+              aria-label="Added to talking head captions"
+              onChange={(e) => change({ byKind: { ...posting.byKind, talking: e.target.value } })}
+            />
+          </label>
+          <label className="field">
+            <span className="hint">Reaction videos (basic)</span>
+            <input
+              type="text"
+              value={posting.byKind?.reaction ?? ''}
+              placeholder="e.g. #basicpost"
+              autoCapitalize="off"
+              autoCorrect="off"
+              aria-label="Added to reaction captions"
+              onChange={(e) => change({ byKind: { ...posting.byKind, reaction: e.target.value } })}
+            />
+          </label>
+          <span className="hint tip">Hashtags, a line, or both - added to every post of that kind, never twice. Empty: nothing added.</span>
+        </div>
         {made > 0 && local ? (
           <label className="toggle">
             <input type="checkbox" checked={redoOn} onChange={() => setRedoChoice(!redoOn)} />
@@ -463,4 +496,17 @@ function parseTags(text: string): string[] {
     .map((t) => t.replace(/^#+/, ''))
     .filter(Boolean)
     .map((t) => `#${t}`)
+}
+
+/** The posting without its per-kind text (put back cleaned by byKindOf). */
+function withoutByKind(posting: CampaignPosting): CampaignPosting {
+  const { byKind: _byKind, ...rest } = posting
+  return rest
+}
+
+/** The per-kind text as kept: trimmed, empty ones left out. */
+function byKindOf(posting: CampaignPosting): Pick<CampaignPosting, 'byKind'> {
+  const talking = posting.byKind?.talking?.trim()
+  const reaction = posting.byKind?.reaction?.trim()
+  return talking || reaction ? { byKind: { ...(talking ? { talking } : {}), ...(reaction ? { reaction } : {}) } } : {}
 }

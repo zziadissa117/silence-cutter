@@ -31,6 +31,23 @@ export interface PostingRules {
   /** Only these of the campaign's accounts - an extra warm-up for one that
    *  went cold. Set by the server. */
   only?: string[]
+  /** What goes in the caption of each kind of video (his ask, 2026-11-15:
+   *  MediaMaxing pays $6 for an advanced post - talking heads - and $3 for a
+   *  basic one - reactions - tracked by the caption): hashtags, a line, or
+   *  both. */
+  byKind?: { talking?: string; reaction?: string }
+  /** This post's kind, as the phone said. */
+  kind?: PostKind
+  /** This post's kind's text from `byKind`, added to its caption. */
+  add?: string
+}
+
+export type PostKind = 'talking' | 'reaction'
+
+/** The text a post of `kind` adds to its caption, from the campaign's rules. */
+export function kindText(rules: Pick<PostingRules, 'byKind'>, kind: PostKind | undefined): string | undefined {
+  const text = kind ? rules.byKind?.[kind]?.trim() : ''
+  return text ? text.slice(0, 500) : undefined
 }
 
 /** The version of the rule a Trial reel's caption is written under: one
@@ -93,7 +110,7 @@ function tagsIn(text: string): Set<string> {
 
 /** The caption as it is posted: nothing that says ad or paid, and every
  *  required hashtag in it. */
-export function finishCaption(text: string, required: string[]): string {
+export function finishCaption(text: string, required: string[], add?: string): string {
   let out = text.trim().replace(/^["“]+|["”]+$/g, '').trim()
   out = out.replace(TAG, (whole, before: string, tag: string) => (FORBIDDEN_TAGS.has(tag.toLowerCase()) ? before : whole))
   for (const phrase of PAID_PHRASES) out = out.replace(phrase, '')
@@ -103,6 +120,17 @@ export function finishCaption(text: string, required: string[]): string {
     .join('\n')
     .replace(/\n{3,}/g, '\n\n')
     .trim()
+  // The post's kind's text (PostingRules.add): its words as a line of their
+  // own when they are not in it yet, its hashtags like any required one -
+  // pasted captions too: it is how the post is tracked.
+  const extra = (add ?? '').trim()
+  const extraTags = [...extra.matchAll(TAG)].map((m) => `#${m[2]}`)
+  const extraLine = extra.replace(TAG, (_whole, before: string) => before).replace(/[ \t]{2,}/g, ' ').trim()
+  if (extraLine && !out.toLowerCase().includes(extraLine.toLowerCase())) {
+    const at = out.search(/(?:\n|^)\s*#[\p{L}\p{N}_]+[^\n]*$/u)
+    out = at > 0 ? `${out.slice(0, at).trimEnd()}\n\n${extraLine}${out.slice(at)}` : out ? `${out}\n\n${extraLine}` : extraLine
+  }
+  required = [...required, ...extraTags]
   const have = tagsIn(out)
   const missing = [...new Set(required.map(normalTag).filter(Boolean))].filter(
     (t) => !isForbiddenTag(t) && !have.has(t.slice(1).toLowerCase()),

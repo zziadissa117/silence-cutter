@@ -16,7 +16,7 @@ import { VideoPicker } from '../VideoPicker'
 import { pickArrived, pickSaved } from '../pickWatch'
 import { filmingOf } from './filming'
 import { formatTime } from './jobs'
-import { NO_POSTING, type Campaign } from './look'
+import { NO_POSTING, isReaction, type Campaign } from './look'
 import { fingerprint, handPostKey, newOnes, skippedNotice } from './fingerprint'
 import { fingerprintsFor, isQueued, queueSend } from './outbox'
 import {
@@ -480,6 +480,8 @@ export function NewPost({
               headline: '',
               duration: item.seconds ?? 0,
               fileName: mp4.file.name,
+              // Talking head unless the campaign is a reaction one (postKind.ts).
+              kind: isReaction(campaign) ? 'reaction' : 'talking',
               byHand: {
                 at: planned !== undefined ? planned : timeOf(item),
                 caption: item.caption.trim(),

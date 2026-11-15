@@ -3,6 +3,23 @@
 Newest first. Every change says what it does, how to use it, and how it works
 underneath. Kept up to date with each commit.
 
+## Campaigns: caption text per kind of video (talking head / reaction)
+- His ask (2026-11-15): "set up different captions per post type ... on MediaMaxing you get paid like $3 for a basic
+  post or $6 for an advanced post. Advanced posts are mostly talking heads, and basic posts are mostly reaction-type
+  videos ... so I can get tracked correctly ... Make it inside of the campaign section."
+- Campaign -> Posting: "Added to the caption, by kind of video" - one box for talking head videos (advanced), one for
+  reaction videos (basic). Hashtags, a line, or both; added to every caption of that kind - Claude's or pasted - never
+  twice. The line goes above the hashtags. Empty: nothing added.
+- Which kind a video is, worked out by itself: a batch video by its format (talking head = talking; reaction = reaction;
+  green screen = talking when he talks in it); his own videos are talking heads unless nothing in them is talking or
+  the campaign is a reaction one; New post by the campaign's kind.
+- Videos sent from now on carry their kind. Ones already sent don't know theirs, so they get nothing added.
+- Needs deploying: run ./deploy-server.sh
+- Underneath: `CampaignPosting.byKind`, `PostingEditor`; `postKind.ts`; `SendEntry.meta.kind` (CampaignApp
+  `sendToPostiz`, serverTalk, NewPost); server `caption.kindText`, `finishCaption(..., add)`, `index.ts` `withKind`
+  (rules `kind`/`add` per post, re-resolved when the campaign's rules change). Tests: `postKind.test.ts`,
+  `caption.test.ts`.
+
 ## Batch clips with "Cut the clips" off are never cut
 - His question (2026-11-15): "I feel like the cutter itself is cutting those videos, even when the cut clips is off.
   Let me know if that's true or not."

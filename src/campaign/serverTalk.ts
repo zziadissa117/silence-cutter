@@ -168,7 +168,7 @@ async function runMake(order: MakeOrder): Promise<void> {
       key: order.send.key,
       profileId: order.send.profileId,
       campaign: order.send.campaign,
-      meta: { transcript: order.send.transcript, headline: result.headline, duration: result.newDurationSec, fileName: order.send.fileName },
+      meta: { transcript: order.send.transcript, headline: result.headline, duration: result.newDurationSec, fileName: order.send.fileName, kind: order.musicOnly === true ? 'reaction' : 'talking' },
     },
     result.blob,
   )

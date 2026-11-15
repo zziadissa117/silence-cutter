@@ -89,8 +89,10 @@ import {
   finishTitle,
   normalTag,
   ACCOUNT_VOICE,
+  kindText,
   type AccountVoice,
   type PostingRules,
+  type PostKind,
 } from './caption.ts'
 import { RECHECK_SCHEMA, RECHECK_SYSTEM, acceptFix, cleanContext, cleanUnsure, costCents, recheckMessage } from './recheck.ts'
 import { byteRange } from './range.ts'
@@ -2161,7 +2163,29 @@ function cleanRules(value: unknown): PostingRules {
     approval: r.approval === 'direct' || r.approval === 'brand' ? r.approval : 'me',
     remind: r.remind === true,
     repost: cleanRepost(r.repost),
+    ...cleanByKind(r.byKind),
   }
+}
+
+/** A campaign's text per kind of video (PostingRules.byKind). */
+function cleanByKind(value: unknown): Pick<PostingRules, 'byKind'> {
+  const v = (value && typeof value === 'object' ? value : {}) as Record<string, unknown>
+  const byKind: NonNullable<PostingRules['byKind']> = {}
+  for (const kind of ['talking', 'reaction'] as const) {
+    const text = typeof v[kind] === 'string' ? (v[kind] as string).trim().slice(0, 500) : ''
+    if (text) byKind[kind] = text
+  }
+  return Object.keys(byKind).length > 0 ? { byKind } : {}
+}
+
+/** The kind of video the phone said a post is. */
+const postKindOf = (value: unknown): PostKind | undefined => (value === 'talking' || value === 'reaction' ? value : undefined)
+
+/** The rules with this post's kind and its text resolved. */
+function withKind(rules: PostingRules, kind: PostKind | undefined): PostingRules {
+  const add = kindText(rules, kind)
+  const { add: _old, ...rest } = rules
+  return { ...rest, ...(kind ? { kind } : {}), ...(add ? { add } : {}) }
 }
 
 const text = (value: unknown, max: number): string | null => (typeof value === 'string' ? value.slice(0, max) : null)
@@ -2175,7 +2199,8 @@ async function start(profile: Profile, body: Record<string, unknown>): Promise<R
   if (!Number.isInteger(size) || size <= 0 || size > MAX_BYTES) throw new Problem('That video is too big to send.')
   if (typeof campaign.id !== 'string' || !campaign.id) throw new Problem('Which campaign?')
   const parts = Math.ceil(size / PART_BYTES)
-  const rules = cleanRules(campaign.posting)
+  // Talking head or reaction: the caption gets that kind's text (his ask, 2026-11-15).
+  const rules = withKind(cleanRules(campaign.posting), postKindOf(meta.kind))
   const hand = handFields(meta.byHand, rules, text(campaign.name, 200) ?? 'Campaign')
   const batch = hand ? null : batchInfo(meta.batch)
   // A warm-up: at its own time, always his yes first.
@@ -2185,7 +2210,7 @@ async function start(profile: Profile, body: Record<string, unknown>): Promise<R
   if (batch?.trial && !(await trialAllowedFor(profile.space_id))) throw new Problem('Trial reels are not turned on for this login.')
   // A login for Trial reels only posts nothing else - not by hand, not a batch.
   if (!batch?.trial && (await trialOnlyFor(profile.space_id))) throw new Problem('This login can only post Trial reels.', false, 403)
-  const carry = carryOver(meta.carry, (c) => finishCaption(c, rules.caption === 'paste' ? [] : rules.hashtags))
+  const carry = carryOver(meta.carry, (c) => finishCaption(c, rules.caption === 'paste' ? [] : rules.hashtags, rules.add))
   // Music added with "Add music & approve": the new version goes out without
   // asking again - never past a brand's own say.
   const approveNow = carry !== null && (meta.carry as Record<string, unknown>).approve === true && rules.approval !== 'brand'
@@ -2771,7 +2796,7 @@ async function writeCaption(
   if (apiKey === FAKE_CLAUDE) {
     const fake = fakeCaption(post.transcript || post.about || '', post.headline ?? '')
     return {
-      caption: finishCaption(fake.caption, post.rules.hashtags),
+      caption: finishCaption(fake.caption, post.rules.hashtags, post.rules.add),
       title: finishTitle(fake.title, [post.campaign_name]),
       ...(voice ? { rules: { ...post.rules, voice: ACCOUNT_VOICE } } : {}),
     }
@@ -2834,7 +2859,7 @@ async function writeCaption(
     return { caption: '', title: finishTitle('', [post.headline ?? '', post.campaign_name]), error: "Claude didn't write this caption - write it here." }
   }
   return {
-    caption: finishCaption(parsed.caption, [...post.rules.hashtags, ...(voice?.hashtags ?? [])]),
+    caption: finishCaption(parsed.caption, [...post.rules.hashtags, ...(voice?.hashtags ?? [])], post.rules.add),
     title: finishTitle(typeof parsed.title === 'string' ? parsed.title : '', [post.headline ?? '', post.campaign_name]),
     // Written in its account's voice: not written again for it.
     ...(voice ? { rules: { ...post.rules, voice: ACCOUNT_VOICE } } : {}),
@@ -3205,11 +3230,11 @@ async function ownPost(profile: Profile, id: unknown): Promise<Post> {
 /** His edits: caption, title and time. A time he picks is his, not a slot. */
 function edits(post: Post, body: Record<string, unknown>): Partial<Post> {
   const fields: Partial<Post> = {}
-  if (typeof body.caption === 'string') fields.caption = finishCaption(body.caption, post.rules.caption === 'paste' ? [] : post.rules.hashtags)
+  if (typeof body.caption === 'string') fields.caption = finishCaption(body.caption, post.rules.caption === 'paste' ? [] : post.rules.hashtags, post.rules.add)
   if (typeof body.title === 'string') fields.title = body.title.slice(0, 100)
   if (body.captions !== undefined) {
     const hashtags = post.rules.caption === 'paste' ? [] : post.rules.hashtags
-    fields.captions = cleanCaptions(body.captions, (c) => finishCaption(c, hashtags))
+    fields.captions = cleanCaptions(body.captions, (c) => finishCaption(c, hashtags, post.rules.add))
   }
   if (typeof body.at === 'string') {
     const at = Date.parse(body.at)
@@ -3749,7 +3774,7 @@ async function recaption(profile: Profile, body: Record<string, unknown>): Promi
     const { error: failed } = await db
       .from('cutter_posts')
       .update({
-        rules: { ...row.rules, caption: rules.caption, rules: rules.rules, hashtags: rules.hashtags },
+        rules: withKind({ ...row.rules, caption: rules.caption, rules: rules.rules, hashtags: rules.hashtags, byKind: rules.byKind }, row.rules.kind),
         error: mode === 'rewrite' ? REWRITING : ADDING_TAGS,
         attempts: 0,
         updated_at: at,
@@ -3796,9 +3821,9 @@ async function rewriteMarked(profileId?: string): Promise<void> {
       }
       const written: Partial<Post> = rewrite
         ? await writeCaption(keys.anthropic, post, [], null, await voiceFor(post))
-        : { caption: finishCaption(post.caption ?? '', tags) }
+        : { caption: finishCaption(post.caption ?? '', tags, post.rules.add) }
       const captions = Object.fromEntries(
-        Object.entries(post.captions ?? {}).map(([account, own]) => [account, { ...own, ...(own.caption ? { caption: finishCaption(own.caption, tags) } : {}) }]),
+        Object.entries(post.captions ?? {}).map(([account, own]) => [account, { ...own, ...(own.caption ? { caption: finishCaption(own.caption, tags, post.rules.add) } : {}) }]),
       )
       // Every hashtag already there: nothing to change, nothing to resend.
       if (!rewrite && written.caption === (post.caption ?? '') && JSON.stringify(captions) === JSON.stringify(post.captions ?? {})) {

@@ -232,7 +232,14 @@ export interface CampaignPosting {
   /** Opt-in: after `afterDays` days he is reminded, with the post's link, to
    *  tap the platform's own Repost button. Absent or off means never. */
   repost?: { on: boolean; afterDays: number }
+  /** Added to the caption of each kind of video - talking heads (an
+   *  advanced post on MediaMaxing) and reactions (a basic one): hashtags, a
+   *  line, or both (his ask, 2026-11-15). Absent or empty: nothing. */
+  byKind?: { talking?: string; reaction?: string }
 }
+
+/** A video as the brand counts it: him talking, or a reaction. */
+export type PostKind = 'talking' | 'reaction'
 
 export const NO_POSTING: CampaignPosting = { caption: 'claude', rules: '', hashtags: [], approval: 'me', remind: false }
 

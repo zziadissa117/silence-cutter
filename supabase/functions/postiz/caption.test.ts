@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { CAPTION_SYSTEM, captionLead, captionRequest, finishCaption, finishTitle, isForbiddenTag, normalTag } from './caption.ts'
+import { CAPTION_SYSTEM, kindText, captionLead, captionRequest, finishCaption, finishTitle, isForbiddenTag, normalTag } from './caption.ts'
 
 describe('finishCaption', () => {
   it('never says ad or paid partnership', () => {
@@ -127,5 +127,26 @@ describe("a Trial reel's caption, in its account's own voice", () => {
     const plain = captionRequest({ campaignName: 'ZIADTPS', rules: 'short', hashtags: [], headline: '', transcript: 'hello' })
     expect(plain).toContain('Campaign: ZIADTPS')
     expect(plain).not.toContain('his own account')
+  })
+})
+
+describe("each kind of video's own caption text (his ask, 2026-11-15: MediaMaxing basic and advanced posts)", () => {
+  it('adds the kind\'s line before the hashtags and its hashtags with the rest', () => {
+    const out = finishCaption('This app saved me hours\n\n#productivity #ai', ['#brand'], 'Advanced post #mmadvanced')
+    expect(out).toBe('This app saved me hours\n\nAdvanced post\n\n#productivity #ai #brand #mmadvanced')
+  })
+
+  it('never twice, and in a pasted caption too', () => {
+    const once = finishCaption('Tracking 123\n\nAdvanced post #mmadvanced', [], 'Advanced post #mmadvanced')
+    expect(once).toBe('Tracking 123\n\nAdvanced post #mmadvanced')
+    expect(finishCaption('Tracking 123', [], '#mmbasic')).toBe('Tracking 123\n\n#mmbasic')
+  })
+
+  it('picks the text of the post\'s kind', () => {
+    const rules = { byKind: { talking: '#adv', reaction: '#basic' } }
+    expect(kindText(rules, 'talking')).toBe('#adv')
+    expect(kindText(rules, 'reaction')).toBe('#basic')
+    expect(kindText(rules, undefined)).toBeUndefined()
+    expect(kindText({}, 'talking')).toBeUndefined()
   })
 })

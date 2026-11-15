@@ -122,6 +122,7 @@ import {
   withHeadlinePlace,
   withHeadlineStyle,
 } from './look'
+import { postKind } from './postKind'
 import { forgetSend, keepVoiceOnly, queueSend, replaceNow, sending, startSending, watchSending } from './outbox'
 import { headlineFor, listen, make, makeCampaignVideo, makeGreenScreen, makeMontage, makeReaction, makeSongCopy, plainCut, type CampaignResult, type PopSettings } from './pipeline'
 import { makeCutout } from './cutout'
@@ -1116,7 +1117,18 @@ export function CampaignApp() {
           .join(' ')
       : (result.said ?? '')
     const retired = retireOld(job)
-    const queued = retired.then((later) => queueSend(
+    // Talking head or reaction, for the campaign's caption text of that kind.
+    const kindNow = (async () => {
+      const bank = job.batch?.format ? await loadBatchBank(job.campaignId).catch(() => null) : null
+      const format = bank && job.batch?.format ? formatsOf(bank).find((f) => f.id === job.batch!.format) : null
+      return postKind({
+        format,
+        ...(format || !job.montage?.bank ? {} : { talks: Boolean(job.montage.bank.voice || job.montage.bank.reaction.talks) }),
+        noSpeech: Boolean(job.day?.noSpeech),
+        reactionCampaign: isReaction(campaign),
+      })
+    })()
+    const queued = Promise.all([retired, kindNow]).then(([later, kind]) => queueSend(
       {
         key: postKeyOf(job.id, job.version),
         ...(later ? { replaces: later } : {}),
@@ -1128,6 +1140,7 @@ export function CampaignApp() {
           duration: result.newDurationSec,
           fileName: job.name,
           later: job.later === true,
+          kind,
           // A Trial loop's video waits for his yes like any batch video,
           // until 3 copies of its viral reel have it (postiz trustKey).
           ...(job.batch ? { batch: job.batch } : {}),

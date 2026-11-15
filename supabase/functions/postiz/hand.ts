@@ -35,7 +35,7 @@ export function handFields(value: unknown, rules: PostingRules, campaignName: st
   const about = (typeof v.about === 'string' ? v.about.slice(0, 2000).trim() : '') || null
   const written =
     typeof v.caption === 'string' && v.caption.trim()
-      ? finishCaption(v.caption.slice(0, 5000), rules.caption === 'paste' ? [] : rules.hashtags)
+      ? finishCaption(v.caption.slice(0, 5000), rules.caption === 'paste' ? [] : rules.hashtags, rules.add)
       : null
   return {
     by_hand: v.spread !== true,
