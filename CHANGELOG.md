@@ -3,6 +3,17 @@
 Newest first. Every change says what it does, how to use it, and how it works
 underneath. Kept up to date with each commit.
 
+## Boxes and pickers that were the browser's plain ones, styled like the rest
+- Found testing every screen at iPhone size (2026-11-15):
+  - Campaign → Posting, "Most posts a day": a short box with small text (on an iPhone small text in a box zooms
+    the page in when tapped). Now the full-size box with 16 px text, like the others.
+  - Trial reels, "The Instagram account they go to": the browser's plain grey picker. Now styled.
+  - Settings → People, the new login's name: the browser's plain box. Now styled.
+  - Warm-ups and Analytics, "Post an extra warm-up on it?": "No" fell onto a line of its own; the question now has
+    its line and Yes / No sit together under it.
+- Underneath: `campaign.css` only (`.field > input[type=number]`, `.setting-text > select / input[type=text]`,
+  `.cold-warmup .hint`). Checked in Chrome at 390×844.
+
 ## Batch clip screen: Length opens the clip on its timeline (it opened empty)
 - Found testing for the guide (2026-11-15): a clip's Length opened a timeline at 0:00 with nothing on it - on the clip
   screen for every clip, on the clip check for clips added before recordings were kept. The timeline was opened before
