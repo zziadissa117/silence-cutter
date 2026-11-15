@@ -840,7 +840,12 @@ export async function renderCampaignCut(
                   lastWritten = sample.timestamp
                   continue
                 }
-                nextOut = slots[slots.length - 1].t + sample.duration * 0.999
+                // Sped up: one frame per source frame's length on the
+                // finished clock, kept on a steady grid - from the last frame
+                // written it dropped every other frame at 1.1x (16.5 fps from
+                // 30, under Instagram's 23 - his clips, 2026-11-15).
+                const wrote = slots[slots.length - 1].t
+                nextOut = (nextOut === -Infinity ? wrote : Math.max(nextOut, wrote - sample.duration)) + sample.duration
                 if (banded === null) banded = bandsIn((c, w, h) => sample.draw(c, 0, 0, w, h))
                 colour.noteFrame(sample)
                 for (const slot of slots) {

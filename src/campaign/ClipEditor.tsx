@@ -18,7 +18,7 @@ import type { BankFile, BatchBank, BatchFormat, BatchStep } from './batch'
 import { CLIP_SPEEDS, canLengthen, filesOfClip, leftBehind, oneAtATime, remakeClip, sourceOf, speedLabel, speedOfClip, swapClip, wantedSpeed } from './clipEdit'
 import { CutsEditor } from './CutsEditor'
 import { clipsOfFormat, HOOK, placed, withClip, type ClipSource, type PlacedClip } from './dropQueue'
-import { ChevronLeft, ChevronRight } from './icons'
+import { ChevronLeft, ChevronRight, CloseIcon } from './icons'
 import { formatTime } from './jobs'
 import { loadBankFile, retireBankFiles, saveBankFile } from './store'
 import { keptWords } from './talkCaptions'
@@ -217,19 +217,34 @@ export function ClipEditor({
   return (
     <div className={`drop-check-screen clip-viewer clip-editor${file.mirror ? ' mirrored' : ''}`}>
       <section className="screen review">
-        <div className="clip-viewer-head">
-          <button type="button" className="back" onClick={onClose}>
-            <ChevronLeft /> Batch
-          </button>
-          <span className="row-name">
-            {index + 1} / {clips.length}
+        {/* Always in reach, top right: out of the clips (his report,
+            2026-11-15: "I cannot leave the page"). */}
+        <div className="clip-editor-head">
+          <span className="clip-editor-title">
+            <span className="row-name">
+              Clip {index + 1} of {clips.length}
+            </span>
+            <span className="clip-viewer-where">
+              {where}
+              {file.seconds ? <span className="hint"> · {formatTime(file.seconds)}</span> : null}
+            </span>
           </span>
+          <button type="button" className="clip-editor-close" aria-label="Close" onClick={onClose}>
+            <CloseIcon />
+          </button>
         </div>
-        <span className="clip-viewer-where">
-          {where}
-          {file.seconds ? <span className="hint"> · {formatTime(file.seconds)}</span> : null}
-        </span>
         <div className="clip-viewer-frame">
+          {/* The previous and next clip, big over each side of the video. */}
+          {index > 0 && !busy ? (
+            <button type="button" className="clip-editor-arrow left" aria-label="Previous clip" onClick={() => go(-1)}>
+              <ChevronLeft />
+            </button>
+          ) : null}
+          {index < clips.length - 1 && !busy ? (
+            <button type="button" className="clip-editor-arrow right" aria-label="Next clip" onClick={() => go(1)}>
+              <ChevronRight />
+            </button>
+          ) : null}
           {busy ? (
             <div className="clip-editor-busy">
               <span className="row-name">
@@ -252,17 +267,9 @@ export function ClipEditor({
             </button>
           ) : null}
         </div>
-        <div className="clip-viewer-nav">
-          <button type="button" className="tl-round" aria-label="Previous clip" disabled={index === 0 || busy !== null} onClick={() => go(-1)}>
-            <ChevronLeft />
-          </button>
-          <button type="button" className="btn small" disabled={busy !== null} onClick={openTimeline}>
-            Length
-          </button>
-          <button type="button" className="tl-round" aria-label="Next clip" disabled={index >= clips.length - 1 || busy !== null} onClick={() => go(1)}>
-            <ChevronRight />
-          </button>
-        </div>
+        <button type="button" className="btn wide" disabled={busy !== null} onClick={openTimeline}>
+          Length
+        </button>
         <div className="clip-editor-row">
           <span className="row-name">Speed</span>
           <div className="seg full" role="radiogroup" aria-label="This clip's speed">

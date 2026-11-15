@@ -88,6 +88,8 @@ export interface BankFile {
   speed?: number
   /** The speed he set for this clip itself, over the format's. */
   speedSet?: number
+  /** Made again by clipEdit at this version (CLIP_MADE). */
+  made?: number
 }
 
 /** What one kind of video in a batch is: his silent reaction then the

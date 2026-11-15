@@ -10,9 +10,13 @@ describe("a talking head's clips changed after they are in the batch (his ask, 2
     expect(wantedSpeed(file('a'), {})).toBe(1)
     expect(wantedSpeed(file('a'), { speed: 1.1 })).toBe(1.1)
     expect(wantedSpeed(file('a', { speedSet: 1.3 }), { speed: 1.1 })).toBe(1.3)
-    const clips = [file('a'), file('b', { speed: 1.1 }), file('c', { speedSet: 1, speed: 1.1 })]
+    const clips = [file('a'), file('b', { speed: 1.1, made: 2 }), file('c', { speedSet: 1, speed: 1.1, made: 2 })]
     expect(clipsToSpeed(clips, { speed: 1.1 }).map((f) => f.id)).toEqual(['a', 'c'])
     expect(clipsToSpeed(clips, {}).map((f) => f.id)).toEqual(['b', 'c'])
+  })
+
+  it('a clip sped up before the frame-rate fix is made again; one made since is left (2026-11-15)', () => {
+    expect(clipsToSpeed([file('a', { speed: 1.1 }), file('b', { speed: 1.1, made: 2 }), file('c')], { speed: 1.1 }).map((f) => f.id)).toEqual(['a'])
   })
 
   it('every part kept plays at the speed; 1 leaves them plain', () => {

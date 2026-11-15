@@ -3,6 +3,22 @@
 Newest first. Every change says what it does, how to use it, and how it works
 underneath. Kept up to date with each commit.
 
+## Clip screen: a big X and big arrows; sped-up clips keep 30 fps
+- His report (2026-11-15): "when I'm looking at all the videos individually, I cannot go to the next one, and I cannot
+  leave it ... I have to close the cutter completely. Make a big X button at the top right, and make it so I can see
+  visually the arrows."
+- The clip screen: a big round X at the top right closes it; big round arrows over the left and right of the video go
+  to the previous and next clip; "Clip 3 of 12" and the step at the top; Length as a full-width button.
+- While a clip is open, the format's speed-up waits: it was making clips again behind the screen and could hold the
+  phone up.
+- Found in his reports: clips made 1.1x came out at 16.5 frames a second (every other frame dropped; Instagram takes
+  no fewer than 23). Sped-up parts now keep the source's frame rate (30 stays 30, 60 stays 60). This also applies to
+  the edit screen's Speed tool, which dropped frames the same way. The GoDaddy traderzi2 hooks already sped up are made
+  again by themselves from their originals the next time that format is open.
+- Underneath: `render.ts` - the next sped-up frame on a steady grid (`nextOut`), 1x untouched; `clipEdit.CLIP_MADE`
+  (`BankFile.made`) makes earlier sped-up clips again; `SpeedRunner paused`; `ClipEditor` head and arrows. Test:
+  `clipEdit.test.ts`.
+
 ## Batch: a day emptied by Start over is filled again
 - His report (2026-11-15): "Why did my Pumpfun batch not post anything today or create anything inside of the batch
   today? For today and Sunday, it did for Monday."

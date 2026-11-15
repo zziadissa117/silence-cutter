@@ -33,7 +33,20 @@ export function SpeedRow({ format, onSpeed }: { format: BatchFormat; onSpeed: (s
 
 /** Every clip of the format brought to the speed wanted, one at a time,
  *  while the card is open - with how many are left, and Stop. */
-export function SpeedRunner({ format, clips, getBank, keep }: { format: BatchFormat; clips: BankFile[]; getBank: () => BatchBank | null; keep: (bank: BatchBank) => void }) {
+export function SpeedRunner({
+  format,
+  clips,
+  getBank,
+  keep,
+  paused = false,
+}: {
+  format: BatchFormat
+  clips: BankFile[]
+  getBank: () => BatchBank | null
+  keep: (bank: BatchBank) => void
+  /** A clip is open over the tab: the phone is kept free for him (his report, 2026-11-15: he couldn't leave it). */
+  paused?: boolean
+}) {
   const [stopped, setStopped] = useState(false)
   const [doing, setDoing] = useState<{ name: string; fraction: number } | null>(null)
   const [problem, setProblem] = useState<string | null>(null)
@@ -43,7 +56,7 @@ export function SpeedRunner({ format, clips, getBank, keep }: { format: BatchFor
   const next = due[0]
 
   useEffect(() => {
-    if (stopped || running.current || !next) return
+    if (stopped || paused || running.current || !next) return
     running.current = true
     const speed = wantedSpeed(next, format)
     setDoing({ name: next.name, fraction: 0 })
@@ -66,7 +79,7 @@ export function SpeedRunner({ format, clips, getBank, keep }: { format: BatchFor
         running.current = false
         setDoing(null)
       })
-  }, [next?.id, stopped]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [next?.id, stopped, paused]) // eslint-disable-line react-hooks/exhaustive-deps
 
   if (due.length === 0 && !problem) return null
   return (

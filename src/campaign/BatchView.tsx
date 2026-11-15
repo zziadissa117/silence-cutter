@@ -1439,7 +1439,7 @@ export function BatchView({
 
         <div className="format-box">
           <SpeedRow format={f} onSpeed={(speed) => changeFormat(f.id, { speed })} />
-          <SpeedRunner format={f} clips={clips} getBank={() => bankRef.current} keep={keep} />
+          <SpeedRunner format={f} clips={clips} getBank={() => bankRef.current} keep={keep} paused={viewing !== null || checking !== null} />
         </div>
 
         <div className="format-section">

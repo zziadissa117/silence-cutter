@@ -2264,3 +2264,13 @@ html.editor-dark .caption-sheet { --ink: #000000; --text: #ffffff; --dim: #aeaeb
 .clip-editor-actions { grid-template-columns: repeat(2, 1fr); }
 .clip-editor-busy { display: flex; flex-direction: column; gap: 10px; width: 100%; padding: 24px; }
 .clip-editor .screen.review { overflow-y: auto; }
+/* The clip screen's way out and its arrows, big and always seen (his report, 2026-11-15). */
+.clip-editor-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
+.clip-editor-title { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.clip-editor-close { flex: none; width: 52px; height: 52px; border-radius: 50%; display: grid; place-items: center; border: 2px solid rgb(255 255 255 / 0.85); background: rgb(255 255 255 / 0.14); color: #fff; cursor: pointer; }
+.clip-editor-close svg { width: 26px; height: 26px; }
+.clip-editor-arrow { position: absolute; top: 50%; z-index: 2; width: 56px; height: 56px; margin-top: -28px; border-radius: 50%; display: grid; place-items: center; border: 2px solid rgb(255 255 255 / 0.9); background: rgb(0 0 0 / 0.5); color: #fff; cursor: pointer; }
+.clip-editor-arrow.left { left: 4px; }
+.clip-editor-arrow.right { right: 4px; }
+.clip-editor-arrow svg { width: 30px; height: 30px; }
+.drop-check-screen.mirrored .clip-editor-arrow { transform: none; }

@@ -45,10 +45,15 @@ export function wantedSpeed(file: Pick<BankFile, 'speedSet'>, format: Pick<Batch
 /** Whether the clip's recording is kept, so it can be made longer. */
 export const canLengthen = (file: Pick<BankFile, 'source'>): boolean => Boolean(file.source && !file.source.self)
 
-/** The clips of a talking head format whose file is not at the speed wanted.
- *  His hooks kept as filmed (`rawHooks`) are never touched. */
+/** How clips are made again now: 2 since sped-up clips keep the source's
+ *  frame rate (render.ts; 1 made them 16.5 fps at 1.1x). A sped-up clip made
+ *  before is made again from its source. */
+export const CLIP_MADE = 2
+
+/** The clips of a talking head format whose file is not at the speed wanted,
+ *  or sped up before CLIP_MADE. */
 export function clipsToSpeed(clips: readonly BankFile[], format: Pick<BatchFormat, 'speed'>): BankFile[] {
-  return clips.filter((f) => Math.abs(wantedSpeed(f, format) - speedOfClip(f)) > 0.001)
+  return clips.filter((f) => Math.abs(wantedSpeed(f, format) - speedOfClip(f)) > 0.001 || (speedOfClip(f) !== 1 && (f.made ?? 1) < CLIP_MADE))
 }
 
 /** The parts kept, every one at `speed`. */
@@ -143,6 +148,7 @@ export async function remakeClip(
   }
   if (speed === 1) delete next.speed
   else next.speed = speed
+  next.made = CLIP_MADE
   return next
 }
 
