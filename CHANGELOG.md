@@ -3,6 +3,13 @@
 Newest first. Every change says what it does, how to use it, and how it works
 underneath. Kept up to date with each commit.
 
+## Classic captions: less bold, a thin outline, no shadow look
+- His report (2026-11-15): "The captions do not need to have a shadow at all, and they're a little too bold."
+- Classic captions are now medium weight (600, was 800) with a thin black outline (9% of the letter size, was 16% -
+  the thick one read as a shadow); no shadow is ever drawn. Checked on a real render.
+- His Cutter server already made some batch videos with the bolder look: it picks up each push by itself.
+- Underneath: `captions.ts` `LINE_WEIGHT`, `LINE_STROKE`, `drawLine` (shadow cleared).
+
 ## Classic captions, the new default; Trial reel copies a touch warmer or cooler
 - From his call with a MediaMaxxing coach (2026-11-15): captions "3-4 words per line, one line only ... one consistent
   spot ... Remove animations and presets; use classic font with white or black outline"; to vary reposts, "adjust

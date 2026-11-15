@@ -950,12 +950,17 @@ export function drawLine(
   ctx.lineWidth = fontPx * LINE_STROKE
   ctx.strokeStyle = '#000000'
   ctx.fillStyle = '#ffffff'
+  ctx.shadowColor = 'transparent'
+  ctx.shadowBlur = 0
   const y = height * captionY(position)
   ctx.strokeText(text, width / 2, y)
   ctx.fillText(text, width / 2, y)
   ctx.restore()
 }
 
-const LINE_WEIGHT = 800
-const LINE_STROKE = 0.16
+/** Less bold, and a thin outline - no shadow look (his report, 2026-11-15:
+ *  "The captions do not need to have a shadow at all, and they're a little
+ *  too bold"). */
+const LINE_WEIGHT = 600
+const LINE_STROKE = 0.09
 const LINE_SIZE = 0.066
