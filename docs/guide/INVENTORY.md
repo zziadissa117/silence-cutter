@@ -36,7 +36,7 @@ His suggested order holds, with three moves the code argues for:
 9. Motion graphics, Warm-ups
 10. Settings - captions, cutting, framing, effects, server, engine, people, look
 11. Things the app does by itself (all sections)
-12. Found while mapping (checked in Phase 3)
+12. Phase 3: what was tested, found and fixed
 
 ---
 
@@ -241,28 +241,48 @@ His suggested order holds, with three moves the code argues for:
 - **Shares setups** (campaigns, angles, bank, music) between the phones of a login; videos stay on the phone.
 - **Updates itself** only at a moment nothing would be lost.
 
-## 12. Found while mapping (checked in Phase 3)
+## 12. Phase 3: what was tested, found and fixed (2026-11-15)
 
-Copy and small UI problems the code reading turned up. Each is checked in Phase 3 and either fixed or listed as a
-question for the owner.
+**Automatic checks:** `npx vitest run` (1,670 tests), `npx tsc -b`, `npm run lint` (no errors), `npx vite build` - all
+pass. Every screen above was opened at 390×844 in Chrome for Testing 138 in demo mode, in dark and light.
 
-1. Caption check button says "about about 3¢ of credits" (`CaptionReview.tsx` 781 + `captionFlags.centsLabel`).
-2. Quick check says "Claude read them all and found nothing to fix." even when Claude never ran (no posting set
-   up) (`CaptionReview.tsx` 1132).
-3. Batch tab: "Change a look on the videos not out yet ↓" scrolls to `#hook-results`, a section that was taken out
-   (`BatchView.tsx` 2199-2204).
-4. Timeline editor hint says "(+ Overlay, + Text)" but the buttons are "Overlay" and "Text" (`JoinPicker.tsx` 180).
-5. "More → Music" doesn't exist: Trial talking clips and Motion graphics point there (`TrialTalkStart.tsx` 245,
-   `MotionView.tsx` 306); music is under More → Bank.
-6. Sign-out confirm says setups "just stop being shared" - signing out now closes the app to the sign-in page
-   (`CampaignApp.tsx` 5070).
-7. The owner's "new phone" notification opens Posts, not Settings → People (`CampaignApp.tsx` 1229, 1439).
-8. The owner's name is in a server error other logins see ("Ask Ziad to take one off", `cutter/index.ts` 399).
-9. A "Trial reels only" login has no way to turn notifications on (the switch is in Settings, which it doesn't have).
-10. The Notifications line says only "Posts to approve, and reminders to submit"; the blocked line says "iPhone
-    Settings" on every phone.
-11. Unreachable UI kept in the code: Clips + music maker (`ClipsMaker.tsx`), "Add videos for {label}", talking-head
-    controls inside the generic format card, "Watch every clip", automatic weak-hook dropping.
-12. Tapping a campaign badge on Videos opens the campaign list, not that campaign (`HomeTop.tsx`, `CampaignApp.tsx`
-    4045).
-13. Back from the standalone "Edit cuts" editor throws the changes away; back from the edit screen keeps them.
+**Made for real here** (Chrome for Testing, H.264): a talking video (cut, headline, captions, zooms, a clip at 1.25×,
+index at the front for Instagram), a reaction batch video and a talking head batch video (hook + 3 steps, music), a
+Cut only video, the voice set-up (fake mic) and a recording (fake camera). Sending went through the real outbox, in
+parts, to the demo's pretend server.
+
+**Can't be tested in this container:**
+- The speech model (listening, sorting, "um"s, new captions, drop-ins, Formats takes, Motion graphics, Trial
+  talking clips): its download hosts (huggingface.co, cdn.jsdelivr.net) are blocked by this container's network.
+  Everything after listening was tested with videos already heard.
+- iPhone Safari, the Home Screen app, the iPhone camera/torch/steadying, notifications.
+- Real posting (Postiz, Instagram, TikTok, YouTube, Buffer), Claude's real answers, his Cutter server and engine,
+  anything on his server's 5-minute tick - read in the code only.
+
+**Bugs found and fixed** (each with a test or a check at phone size, and a CHANGELOG entry):
+1. Batch clip screen: **Length opened an empty timeline** (every clip there; on the clip check, older clips).
+2. Batch clip screen: **the video covered the big X and Length** at iPhone size (tapping X restarted the clip).
+3. Steps and rules: step names cut to three letters beside "Words on screen".
+4. Batch: dead "Change a look on the videos not out yet ↓" link (its section was taken out).
+5. Start over: "the 1 video … that haven't gone out yet … make them again".
+6. Caption check: "about about 2¢ of credits".
+7. Quick check: "Claude read them all and found nothing to fix." when Claude never ran.
+8. Hints pointing at "More → Music" / "Music, under Sound effects" (it is More → Bank); "+ Overlay, + Text".
+9. Posts → Add music: the browser's plain picker.
+10. Campaign → Posting → Most posts a day: small box with small text (zooms the iPhone page when tapped).
+11. Trial reels account picker and Settings → People name box: the browser's plain ones.
+12. Warm-ups / Analytics "Post an extra warm-up on it?": "No" alone on a line.
+13. New post and the Timeline editor picker dropped picked videos on a computer's dev server (React's StrictMode) -
+    never on the phone, but it broke the demo.
+
+**Questions for the owner (behaviour, not changed):**
+- The owner's "new phone" notification opens Posts, not Settings → People (`CampaignApp.tsx` 1229, 1439).
+- A "Trial reels only" login has no way to turn notifications on (the switch is in Settings, which it doesn't have).
+- Tapping a campaign badge on Videos opens the campaign list, not that campaign.
+- Back from the standalone "Edit cuts" throws the changes away; back from the edit screen keeps them.
+- The sign-out question says setups "just stop being shared" - signing out now closes the app to the sign-in page.
+- The Notifications line says only "Posts to approve, and reminders to submit"; there are about 13 kinds.
+- A login on a 4th phone is told "Ask Ziad to take one off" (right for his students; would need changing if the
+  Cutter is ever used by someone else's team).
+- Unreachable code kept: Clips + music maker, "Add videos for {label}", talking-head controls inside the generic
+  format card, "Watch every clip", automatic weak-hook dropping.
