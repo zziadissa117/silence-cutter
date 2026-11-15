@@ -110,6 +110,7 @@ import {
   NO_POSTING,
   blankCampaign,
   isReaction,
+  reactionChoices,
   copyAngle,
   generalCampaign,
   type Angle,
@@ -610,7 +611,7 @@ export function CampaignApp() {
     // No talking at all: a reaction (his ask, 2026-11-06) - kept whole, no
     // captions, in the reaction campaign he used last.
     if (!next.reaction && !next.forFormat && !next.day?.chosen && noSpeechIn(plan.words)) {
-      const reactions = campaignsRef.current.filter(isReaction)
+      const reactions = reactionChoices(campaignsRef.current)
       const last = reactions.find((c) => c.id === lastReactionCampaign())
       const campaign = last ?? reactions[0] ?? campaignsRef.current.find((c) => c.general)
       const angle = campaign?.angles.find((a) => !a.isFormat) ?? campaign?.angles[0]
@@ -3195,7 +3196,7 @@ export function CampaignApp() {
   // "Approve all" never covers a video marked Needs you - those wait for him
   // to look.
   const sorted = jobs.filter((j) => j.status === 'sorted' && j.day?.guess?.sure !== false)
-  const reactionCampaigns = (campaigns ?? []).filter(isReaction)
+  const reactionCampaigns = reactionChoices(campaigns ?? [])
   // Batch videos are followed on the Batch tab, format takes on Formats.
   const listed = useMemo(() => jobs.filter((j) => j.status !== 'joined' && !j.batch && !j.forFormat), [jobs])
   const batchJobs = useMemo(() => jobs.filter((j) => j.batch), [jobs])

@@ -259,7 +259,7 @@ parts, to the demo's pretend server.
 - Real posting (Postiz, Instagram, TikTok, YouTube, Buffer), Claude's real answers, his Cutter server and engine,
   anything on his server's 5-minute tick - read in the code only.
 
-**Bugs found and fixed** (each with a test or a check at phone size, and a CHANGELOG entry):
+**Bugs found and fixed** (each with a test or a check at phone size, and a CHANGELOG entry) - 16 in all:
 1. Batch clip screen: **Length opened an empty timeline** (every clip there; on the clip check, older clips).
 2. Batch clip screen: **the video covered the big X and Length** at iPhone size (tapping X restarted the clip).
 3. Steps and rules: step names cut to three letters beside "Words on screen".
@@ -274,6 +274,9 @@ parts, to the demo's pretend server.
 12. Warm-ups / Analytics "Post an extra warm-up on it?": "No" alone on a line.
 13. New post and the Timeline editor picker dropped picked videos on a computer's dev server (React's StrictMode) -
     never on the phone, but it broke the demo.
+14. Reaction video offered the Trial reels campaign (and could sort a silent video into it).
+15. Talking head Steps and rules → Words on screen: buttons squeezed into a column one word wide.
+16. Batch → Claude + X: the two logo buttons cut their own labels at phone width.
 
 **Questions for the owner (behaviour, not changed):**
 - The owner's "new phone" notification opens Posts, not Settings → People (`CampaignApp.tsx` 1229, 1439).
@@ -284,5 +287,7 @@ parts, to the demo's pretend server.
 - The Notifications line says only "Posts to approve, and reminders to submit"; there are about 13 kinds.
 - A login on a 4th phone is told "Ask Ziad to take one off" (right for his students; would need changing if the
   Cutter is ever used by someone else's team).
+- The voice set-up's "Done reading" button starts under the floating tab bar while he reads (a little scroll
+  reaches it); the tab bar could be hidden during the set-up.
 - Unreachable code kept: Clips + music maker, "Add videos for {label}", talking-head controls inside the generic
   format card, "Watch every clip", automatic weak-hook dropping.

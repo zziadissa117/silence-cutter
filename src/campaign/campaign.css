@@ -640,6 +640,9 @@ input.bank-name { background: transparent; border: 0; border-bottom: 1px solid c
 /* The "Claude + X" hook on the Batch tab. */
 .formula-logos { display: flex; gap: 8px; flex-wrap: wrap; }
 .formula-pick { position: relative; overflow: hidden; flex: 1 1 140px; text-align: center; }
+/* Its label on as many lines as it needs: on a phone "Right logo (e.g. …)" was
+   cut at both ends (2026-11-15). */
+.formula-pick.btn { white-space: normal; height: auto; min-height: 36px; line-height: 1.25; padding-block: 6px; }
 .formula-pick input[type='file'] { position: absolute; inset: 0; opacity: 0; cursor: pointer; }
 .formula-range { display: flex; align-items: center; gap: 6px; }
 .formula-range input { width: 6.5em; font: inherit; font-size: 16px; }
@@ -1994,13 +1997,14 @@ img.mark { border-radius: 14px; }
 .step-card > .clips-toggle { margin: -4px 0 0 36px; }
 .step-card > .bank-list { margin: 0; }
 /* The words & overlays screen inside a step: the phone on top, its buttons
-   two by two under it - side by side it was squeezed into a thin column. */
-.step-card .step-texts { padding-top: 6px; }
-.step-card .step-texts-main { flex-direction: column; align-items: stretch; }
-.step-card .step-phone { width: min(66%, 240px); align-self: center; }
-.step-card .step-texts-side { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
-.step-card .step-texts-side > :not(.btn):not(label) { grid-column: 1 / -1; }
-.step-card .step-texts-side > .hint { text-align: center; }
+   two by two under it - side by side it was squeezed into a thin column.
+   A talking head's Steps and rules too (2026-11-15: one word a line there). */
+:is(.step-card, .talk-step-rules) .step-texts { padding-top: 6px; }
+:is(.step-card, .talk-step-rules) .step-texts-main { flex-direction: column; align-items: stretch; }
+:is(.step-card, .talk-step-rules) .step-phone { width: min(66%, 240px); align-self: center; }
+:is(.step-card, .talk-step-rules) .step-texts-side { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+:is(.step-card, .talk-step-rules) .step-texts-side > :not(.btn):not(label) { grid-column: 1 / -1; }
+:is(.step-card, .talk-step-rules) .step-texts-side > .hint { text-align: center; }
 .clips-toggle { all: unset; box-sizing: border-box; display: inline-flex; align-items: center; flex-wrap: wrap; gap: 4px 10px; align-self: flex-start;
   padding: 2px 0; font-size: 14px; color: var(--muted); cursor: pointer; }
 .clips-toggle:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 6px; }

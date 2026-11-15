@@ -215,6 +215,12 @@ export type CampaignFormat = 'talking' | 'reaction'
 
 export const isReaction = (campaign: Campaign | undefined | null): boolean => campaign?.format === 'reaction'
 
+/** The reaction campaigns he picks from (Videos, Reaction video) and a video
+ *  with no talking is sorted into: never the Trial reels one, which is a
+ *  reaction campaign only so its loop's videos are made like reactions
+ *  (2026-11-15: it was offered first in Reaction video). */
+export const reactionChoices = (campaigns: readonly Campaign[]): Campaign[] => campaigns.filter((c) => isReaction(c) && !c.trial)
+
 /** A campaign's posting rules, the same for everyone who posts it. */
 export interface CampaignPosting {
   /** Claude writes each caption from what he says in the video, or he

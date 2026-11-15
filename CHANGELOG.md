@@ -3,6 +3,23 @@
 Newest first. Every change says what it does, how to use it, and how it works
 underneath. Kept up to date with each commit.
 
+## Batch, Claude + X: the logo buttons show their whole label
+- On a phone "Left logo (e.g. …)" / "Right logo (e.g. …)" were cut at both ends inside their buttons. They now
+  wrap onto a second line. Underneath: `campaign.css` `.formula-pick.btn`.
+
+## Reaction video no longer offers the Trial reels campaign
+- Found taking the guide's screenshots (2026-11-15): Videos → Reaction video listed the "Trial reels" campaign (made
+  by the Trial reels screen, a reaction campaign only so its copies are made like reactions) and picked it first when
+  it came first. A video with no talking could also be sorted into it, when no reaction campaign had been used yet.
+- Now neither: the reaction campaigns offered and the one a silent video goes to leave the Trial reels one out.
+- Underneath: `look.reactionChoices`, used by `CampaignApp` (`reactionCampaigns`, `afterListen`). Test:
+  `reactionChoices.test.ts`.
+
+## Talking head steps: Words on screen laid out for a phone
+- In a talking head's Steps and rules, the Words on screen editor put its buttons in a thin column beside the phone
+  ("+ Text / at / the / top", one word a line). It now has the phone on top and its buttons two by two under it, as
+  the reaction steps already did. Underneath: `campaign.css` (`.talk-step-rules` with `.step-card`).
+
 ## Boxes and pickers that were the browser's plain ones, styled like the rest
 - Found testing every screen at iPhone size (2026-11-15):
   - Campaign → Posting, "Most posts a day": a short box with small text (on an iPhone small text in a box zooms

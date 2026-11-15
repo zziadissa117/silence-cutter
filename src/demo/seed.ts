@@ -79,6 +79,12 @@ export function planOf(name: string): CampaignPlan {
 /** The talking head format's speed, every clip already made at it. */
 const TALK_SPEED = { speed: 1.1, made: CLIP_MADE } as const
 
+const logoFile = async (id: string, name: string): Promise<BankFile> => {
+  const blob = await file(name)
+  await saveBankFile(id, blob)
+  return { id, name: `${name}.png`, type: 'image/png', size: blob.size }
+}
+
 const bankFile = async (id: string, name: string, extra: Partial<BankFile> = {}): Promise<BankFile> => {
   const blob = await file(name)
   await saveBankFile(id, blob)
@@ -192,6 +198,8 @@ export async function seedPhone(world: World, now = Date.now()): Promise<void> {
       { look: 'outline', parts: 2 },
       { look: 'box', parts: 1 },
     ],
+    // Its Claude + X logos, for when that look is picked: two made-up ones.
+    formula: { left: await logoFile('mb-formula-left', 'logo-moonbrew'), right: await logoFile('mb-formula-right', 'logo-notely'), leftName: 'Moonbrew', rightName: 'Notely', min: 500, max: 1000 },
     formats: [
       { id: 'fmt-react', kind: 'reaction', name: 'Reaction - shocked' },
       { id: 'fmt-talk', kind: 'talking', name: 'Talking head', speed: 1.1, dropHooks: true },

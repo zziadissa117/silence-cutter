@@ -233,8 +233,22 @@ export function makeServer(world: World, now: () => number = Date.now): DemoServ
         return json({ rewriting: 0, tooSoon: 0 })
       case 'respread-batches':
         return json({ moved: 0, failed: 0, left: 0 })
-      case 'end-campaign':
-        return json(body.confirm ? { stopped: 0, removing: 0, profile: profile() } : { plan: { remove: [], keep: [], gone: 0 }, stopping: 0, connected: world.profile.accounts.length })
+      case 'end-campaign': {
+        // As the server works it out: its accounts that nothing else uses come out of Postiz.
+        const id = String(body.campaignId)
+        const places = world.profile.settings.campaigns ?? {}
+        const mine = places[id]?.accounts ?? []
+        const usedBy = (account: string) => Object.entries(places).find(([other, place]) => other !== id && place.accounts.includes(account))?.[0]
+        const names = (body.names ?? {}) as Record<string, string>
+        const shown = (account: string) => {
+          const a = world.profile.accounts.find((x) => x.id === account)!
+          return { id: a.id, name: a.name, platform: a.platform, profile: a.profile }
+        }
+        const remove = mine.filter((a) => !usedBy(a)).map(shown)
+        const keep = mine.flatMap((a) => (usedBy(a) ? [{ ...shown(a), why: `${names[usedBy(a)!] ?? 'Another campaign'} posts to it too` }] : []))
+        const stopping = world.posts.filter((p) => p.campaignId === id && ['waiting', 'approved', 'scheduled'].includes(p.status)).length
+        return json(body.confirm ? { stopped: stopping, removing: remove.length, profile: profile() } : { plan: { remove, keep, gone: 0 }, stopping, connected: world.profile.accounts.length })
+      }
       case 'recheck-captions': {
         const phrases = ((body.phrases as string[]) ?? []).map((t) => t.replace(/\bmoon ?brew\b/gi, 'Moonbrew').replace(/\bfit ?pocket\b/gi, 'FitPocket'))
         const before = (body.phrases as string[]) ?? []

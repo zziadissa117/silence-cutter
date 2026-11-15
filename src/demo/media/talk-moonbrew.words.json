@@ -1,185 +1,195 @@
 {
-"duration": 17.168,
+"duration": 17.645,
 "words": [
 {
 "text": "Okay",
 "start": 0.68,
-"end": 0.983
+"end": 0.982
 },
 {
 "text": "so",
-"start": 1.01,
-"end": 1.212
+"start": 1.009,
+"end": 1.21
 },
 {
 "text": "I",
-"start": 1.229,
-"end": 1.381
+"start": 1.228,
+"end": 1.379
 },
 {
 "text": "found",
-"start": 1.394,
-"end": 1.748
+"start": 1.392,
+"end": 1.744
 },
 {
 "text": "this",
-"start": 1.779,
-"end": 2.082
+"start": 1.775,
+"end": 2.077
 },
 {
 "text": "coffee",
-"start": 2.109,
-"end": 2.513
+"start": 2.104,
+"end": 2.507
 },
 {
 "text": "app",
-"start": 2.548,
-"end": 2.801
+"start": 2.542,
+"end": 2.794
 },
 {
-"text": "that",
-"start": 2.823,
-"end": 3.126
+"text": "called",
+"start": 2.815,
+"end": 3.219
 },
 {
-"text": "completely",
-"start": 3.153,
-"end": 3.759
+"text": "Moonbrew",
+"start": 3.254,
+"end": 3.757
+},
+{
+"text": "and",
+"start": 3.801,
+"end": 4.053
+},
+{
+"text": "it",
+"start": 4.075,
+"end": 4.276
 },
 {
 "text": "changed",
-"start": 3.812,
-"end": 4.267
+"start": 4.294,
+"end": 4.747
 },
 {
 "text": "my",
-"start": 4.307,
-"end": 4.509
+"start": 4.787,
+"end": 4.988
 },
 {
 "text": "mornings.",
-"start": 4.526,
-"end": 5.083
+"start": 5.006,
+"end": 5.56
 },
 {
 "text": "Um,",
-"start": 6.731,
-"end": 6.988
+"start": 7.208,
+"end": 7.465
 },
 {
 "text": "it",
-"start": 7.01,
-"end": 7.216
+"start": 7.488,
+"end": 7.693
 },
 {
 "text": "tells",
-"start": 7.234,
-"end": 7.594
+"start": 7.711,
+"end": 8.071
 },
 {
 "text": "you",
-"start": 7.625,
-"end": 7.882
+"start": 8.102,
+"end": 8.36
 },
 {
 "text": "the",
-"start": 7.905,
-"end": 8.162
+"start": 8.382,
+"end": 8.639
 },
 {
 "text": "best",
-"start": 8.184,
-"end": 8.493
+"start": 8.661,
+"end": 8.97
 },
 {
 "text": "time",
-"start": 8.52,
-"end": 8.828
+"start": 8.997,
+"end": 9.305
 },
 {
 "text": "to",
-"start": 8.855,
-"end": 9.061
+"start": 9.332,
+"end": 9.538
 },
 {
 "text": "drink",
-"start": 9.079,
-"end": 9.439
+"start": 9.556,
+"end": 9.916
 },
 {
 "text": "your",
-"start": 9.47,
-"end": 9.779
+"start": 9.947,
+"end": 10.256
 },
 {
 "text": "coffee.",
-"start": 9.805,
-"end": 10.268
+"start": 10.282,
+"end": 10.745
 },
 {
 "text": "And",
-"start": 12.108,
-"end": 12.375
+"start": 12.586,
+"end": 12.852
 },
 {
 "text": "honestly",
-"start": 12.398,
-"end": 12.93
+"start": 12.875,
+"end": 13.407
 },
 {
 "text": "it",
-"start": 12.976,
-"end": 13.189
+"start": 13.453,
+"end": 13.666
 },
 {
 "text": "saved",
-"start": 13.208,
-"end": 13.58
+"start": 13.685,
+"end": 14.058
 },
 {
 "text": "me",
-"start": 13.613,
-"end": 13.826
+"start": 14.09,
+"end": 14.303
 },
 {
 "text": "so",
-"start": 13.844,
-"end": 14.057
+"start": 14.321,
+"end": 14.534
 },
 {
 "text": "much",
-"start": 14.076,
-"end": 14.395
+"start": 14.553,
+"end": 14.872
 },
 {
 "text": "money",
-"start": 14.423,
-"end": 14.795
+"start": 14.9,
+"end": 15.273
 },
 {
 "text": "this",
-"start": 14.828,
-"end": 15.147
+"start": 15.305,
+"end": 15.624
 },
 {
 "text": "month.",
-"start": 15.175,
-"end": 15.601
+"start": 15.652,
+"end": 16.078
 },
 {
 "text": "Go",
-"start": 15.638,
-"end": 15.851
+"start": 16.115,
+"end": 16.328
 },
 {
 "text": "try",
-"start": 15.869,
-"end": 16.135
+"start": 16.346,
+"end": 16.613
 },
 {
 "text": "it.",
-"start": 16.159,
-"end": 16.425
+"start": 16.636,
+"end": 16.902
 }
 ]
 }
