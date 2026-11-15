@@ -574,16 +574,28 @@ function planTrialVideos(
 }
 
 /** Top-ups running now, by campaign: the Batch tab and the app's own
- *  top-up never make the same days at once. */
+ *  top-up never make the same days at once - with when each began. */
 const busy = new Map<string, Promise<unknown>>()
+const busySince = new Map<string, number>()
+
+/** Holds the campaign's lock while `work` runs; let go only by this work
+ *  itself, never a newer one's (letGo may have handed it on). */
+function hold<T>(campaignId: string, work: () => Promise<T>): Promise<T> {
+  const running: Promise<T> = work().finally(() => {
+    if (busy.get(campaignId) !== running) return
+    busy.delete(campaignId)
+    busySince.delete(campaignId)
+  })
+  busy.set(campaignId, running)
+  busySince.set(campaignId, Date.now())
+  return running
+}
 
 /** Runs `work` for the campaign unless a top-up for it is running already;
  *  resolves once it is done. */
 export function oneAtATime<T>(campaignId: string, work: () => Promise<T>): Promise<T | null> {
   if (busy.has(campaignId)) return Promise.resolve(null)
-  const running = work().finally(() => busy.delete(campaignId))
-  busy.set(campaignId, running)
-  return running
+  return hold(campaignId, work)
 }
 
 /** Runs `work` for the campaign after any top-up of it that is running -
@@ -591,14 +603,27 @@ export function oneAtATime<T>(campaignId: string, work: () => Promise<T>): Promi
  *  making waits its turn (a top-up only plans, so the wait is short). */
 export async function nextInLine<T>(campaignId: string, work: () => Promise<T>): Promise<T> {
   while (busy.has(campaignId)) await settled(campaignId)
-  const running = work().finally(() => busy.delete(campaignId))
-  busy.set(campaignId, running)
-  return running
+  return hold(campaignId, work)
 }
 
 /** Waits for a top-up of the campaign that is running, if any. */
 export async function settled(campaignId: string): Promise<void> {
   await busy.get(campaignId)?.catch(() => {})
+}
+
+/** A top-up only plans: one holding the campaign this long is stuck (a
+ *  request that never came back), and Make now lets it go. */
+export const STUCK_TOP_UP_MS = 90_000
+
+/** Lets go of a top-up of the campaign that has held it for `after` or
+ *  more (Make now, his ask 2026-11-15: "I press Start again, and nothing
+ *  happens"). Returns whether one was let go. */
+export function letGo(campaignId: string, after = STUCK_TOP_UP_MS, now = Date.now()): boolean {
+  const since = busySince.get(campaignId)
+  if (since === undefined || now - since < after) return false
+  busy.delete(campaignId)
+  busySince.delete(campaignId)
+  return true
 }
 
 export function isToppingUp(campaignId: string): boolean {
@@ -628,6 +653,11 @@ export function takenBy(posts: readonly ServerPost[], jobs: readonly Job[], camp
   return (date) => taken.get(date) ?? []
 }
 
+/** Why a top-up made nothing: the batch is the Cutter server's, it is
+ *  stopped or missing a clip, the next days hold all their videos already,
+ *  or no mix is left that wasn't made before. */
+export type NothingToMake = 'server' | 'stopped' | 'missing' | 'full' | 'used'
+
 /** Makes the days the batch is missing, if it is running and has what its
  *  videos need: on this phone (`make` queues them) or handed to the engine.
  *  The bank is saved before the videos are queued, so a day is never made
@@ -646,6 +676,7 @@ export async function topUp({
   make,
   say = () => {},
   latest = () => bank,
+  onNothing = () => {},
   now = new Date(),
 }: {
   bank: BatchBank
@@ -659,21 +690,35 @@ export async function topUp({
   make: (videos: BatchVideo[], retire: string[]) => void
   say?: (line: string | null) => void
   latest?: () => BatchBank
+  /** Why nothing was made, when nothing was - so Start never says nothing. */
+  onNothing?: (why: NothingToMake) => void
   now?: Date
 }): Promise<BatchBank | null> {
   // Moved to the Cutter server, or about to be: made there (serverLink.ts,
   // serverMode.ts), never here too.
-  if (!SERVER_MODE && (bank.where === 'server' || (serverConnected() && bank.layout !== 'engine'))) return null
+  if (!SERVER_MODE && (bank.where === 'server' || (serverConnected() && bank.layout !== 'engine'))) {
+    onNothing('server')
+    return null
+  }
   // Copies of a video are made whether the batch runs or not (Stop stops
   // them too: BatchView.stop).
-  if (!(bank.running && missingFor(bank).length === 0) && copiesToMake(bank) === 0) return null
+  if (!(bank.running && missingFor(bank).length === 0) && copiesToMake(bank) === 0) {
+    onNothing(bank.running ? 'missing' : 'stopped')
+    return null
+  }
   const slots = runSlots({ bank, place, campaignId: campaign.id, taken, disliked, now })
-  if (slots.length === 0) return null
+  if (slots.length === 0) {
+    onNothing('full')
+    return null
+  }
   const id = `b-${now.getTime().toString(36)}`
   const plan = planVideos(bank, slots, { id, now })
 
   if (bank.layout !== 'engine') {
-    if (plan.slots.length === 0) return null
+    if (plan.slots.length === 0) {
+      onNothing('used')
+      return null
+    }
     const next = { ...plan.bank, runProblem: undefined }
     await save(next)
     make(plan.videos, plan.retire)

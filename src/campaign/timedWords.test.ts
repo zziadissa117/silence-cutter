@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { addHeard, isNonSpeech, keepInWindow, padWithQuiet, partWindows, stuckOn, timedWords, unstuck } from './timedWords'
+import { addHeard, foldWord, isNonSpeech, keepInWindow, looped, loopsInWord, padWithQuiet, partWindows, stuckOn, timedWords, unstuck } from './timedWords'
 
 describe('the words of two windows that share a stretch', () => {
   const w = (text: string, start: number, end: number) => ({ text, start, end })
@@ -175,5 +175,30 @@ describe('a window the model got stuck on', () => {
   it('leaves a window that is not stuck exactly as it is', () => {
     const words = ['very', 'very', 'good,', 'no,', 'no,', 'no.'].map(word)
     expect(unstuck(words)).toEqual(words)
+  })
+})
+
+// His report, 2026-11-15: "If you use ChatGPT" came back as one word,
+// "chagitititititi..." three hundred letters long.
+describe('a word the model got stuck inside', () => {
+  const word = (text: string, i: number) => ({ text, start: i * 0.3, end: i * 0.3 + 0.2 })
+  const chat = 'chag' + 'it'.repeat(150) + 'i'
+
+  it('is seen, though every word in the window differs', () => {
+    expect(stuckOn(['If', 'you', 'use', chat])).toBe(0)
+    expect(loopsInWord(chat)).toBe(true)
+    expect(looped(['If', 'you', 'use', chat])).toBe(true)
+  })
+
+  it('folds to the piece twice, the words around it untouched', () => {
+    expect(foldWord(chat)).toBe('chagititi')
+    expect(foldWord('Hahahahahaha!')).toBe('Haha!')
+    const words = unstuck(['If', 'you', 'use', chat, 'today'].map(word))
+    expect(words.map((w) => w.text)).toEqual(['If', 'you', 'use', 'chagititi', 'today'])
+  })
+
+  it('leaves ordinary words alone', () => {
+    for (const text of ['Mississippi', 'banana', 'ChatGPT', 'GoDaddy', 'tititi', 'hahaha', "c'est-à-dire", 'aaah']) expect(loopsInWord(text)).toBe(false)
+    expect(looped(['so', 'good', 'no,', 'no,', 'no.'])).toBe(false)
   })
 })

@@ -428,13 +428,16 @@ export const PHRASE_HOLD_SEC = 0.5
 export function captionAt(starts: readonly number[], words: CaptionWord[], t: number, hold = HOLD_SEC): number {
   const at = t + CAPTION_LEAD
   let i = -1
-  for (let k = 0; k < starts.length; k++) {
+  // Never past the words: a list of starts read before he changed a phrase
+  // can be longer than the words now (the check crashed, 2026-11-15).
+  const count = Math.min(starts.length, words.length)
+  for (let k = 0; k < count; k++) {
     if (starts[k] <= at) i = k
     else break
   }
   if (i < 0) return -1
   const length = Math.max(0.05, words[i].end - words[i].start)
-  const until = Math.min(i + 1 < starts.length ? starts[i + 1] : Infinity, starts[i] + length + hold)
+  const until = Math.min(i + 1 < count ? starts[i + 1] : Infinity, starts[i] + length + hold)
   if (at >= until) return -1
   return cleanWord(words[i].text) ? i : -1
 }

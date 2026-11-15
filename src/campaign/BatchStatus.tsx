@@ -28,6 +28,7 @@ export function BatchStatus({
   sending,
   stop,
   stopAll,
+  makeNow = null,
 }: {
   state: BatchState
   where: keyof typeof WHERE
@@ -46,6 +47,9 @@ export function BatchStatus({
   /** Stops making and takes out every one of the batch's posts not out yet
    *  (his ask, 2026-11-01: Stop alone leaves what is scheduled posting). */
   stopAll?: { label: string; busy: boolean; run: () => void } | null
+  /** Make now: the batch's videos first in line, the days missing made at
+   *  once (BatchView.makeNow). */
+  makeNow?: { run: () => void } | null
 }) {
   const ahead = days.reduce((n, d) => n + d.target, 0)
   const ready = days.reduce((n, d) => n + Math.min(d.ready, d.target || d.ready), 0)
@@ -124,8 +128,13 @@ export function BatchStatus({
           {freeGB !== null ? ` · ${freeGB} GB free` : ''}
         </p>
       ) : null}
-      {stop || stopAll ? (
+      {stop || stopAll || makeNow ? (
         <div className="post-actions">
+          {makeNow ? (
+            <button type="button" className="btn small primary" onClick={makeNow.run}>
+              Make now
+            </button>
+          ) : null}
           {stop ? (
             <button type="button" className="btn small status-stop" disabled={stop.busy} onClick={stop.run}>
               {stop.label}

@@ -507,7 +507,6 @@ export function CaptionReview({
     const first = firstWordOf(k)
     if (first < 0) return
     setCurrent(k)
-    const starts = wordsRef.current.map((w) => w.start)
     v.muted = false
     v.currentTime = whole ? 0 : Math.max(0, wordsRef.current[first].start - 0.3)
     setPlaying(true)
@@ -515,6 +514,8 @@ export function CaptionReview({
     let following = k
     const tick = () => {
       const t = v.currentTime
+      // The words as they are now: he may change a phrase while it plays.
+      const starts = wordsRef.current.map((w) => w.start)
       const shown = captionAt(starts, wordsRef.current, t, styleRef.current === 'word' ? undefined : PHRASE_HOLD_SEC)
       paint(shown, shown >= 0 ? t + CAPTION_LEAD - starts[shown] : 0)
       const now = shown >= 0 ? ownerRef.current[shown] : following

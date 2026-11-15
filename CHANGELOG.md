@@ -3,6 +3,33 @@
 Newest first. Every change says what it does, how to use it, and how it works
 underneath. Kept up to date with each commit.
 
+## "ChatGPT" no longer jams the Cutter; Make now on the Batch tab
+- His report (2026-11-15): "the cutter is tweaking the second it hears ChatGPT" - "If you use ChatGPT" came back
+  as one caption word, "chagititititi..." hundreds of letters long. And: "I press Start again, and nothing
+  happens. For the past 20 minutes."
+- What happened: the speech model is told the bank's words before it listens (so it spells "ChatGPT" right), and
+  the small phone model went round in a loop inside that one word. Hearing it took ages, the captions came out
+  broken, and the phone does one thing at a time - so the batch's videos sat waiting behind that video the whole
+  time, while the Batch tab said nothing.
+- Now:
+  - A word that loops inside itself is caught like a looping phrase: that stretch is heard again with the names
+    alone, then with nothing told at all; whatever still loops is cut back to normal length.
+  - The caption check no longer crashes when a phrase is changed while it plays ("undefined is not an object
+    (evaluating 't[a].end')").
+  - Batch tab: Start always says what came of it - "4 videos added to make now", or why none: every mix made
+    before, the next days already full, the Cutter server makes it, a clip missing.
+  - Make now (in the status card, while the batch runs on the phone with nothing of it being made): lets go of a
+    top-up stuck on a request that never came back, puts the batch's videos first in the phone's line, and makes
+    the days missing at once.
+  - "Waiting its turn" in the status card when the batch waits behind one of his own videos, naming it.
+  - A caption check whose video was taken out or heard again no longer holds every batch video back.
+- Underneath: `timedWords.loopsInWord`/`foldWord`/`looped`, `transcribe.worker.ts` (third hearing with no prompt);
+  `captions.captionAt` never reads past the words, `CaptionReview` takes the starts afresh each frame;
+  `batchRun.letGo`/`STUCK_TOP_UP_MS` (a lock is only let go by its own work), `topUp` `onNothing`
+  (`NothingToMake`); `BatchView.makeNow`, `madeWords`/`nothingWords`; `CampaignApp` `rush` and the stale-check
+  clean-up; `batchNow.batchState` `behind`; `BatchStatus` `makeNow`. Tests: `timedWords.test.ts`,
+  `captions.test.ts`, `batchRun.test.ts`, `batchNow.test.ts`.
+
 ## Batch: a quick look at every clip
 - His ask (2026-11-15): "make an option where I can check all, meaning it opens the page and automatically plays the
   full video ... not in full screen ... An arrow that goes to next and an arrow that goes to previous ... a way to

@@ -45,6 +45,9 @@ describe('what the card leads with', () => {
 
   it('making, up to date, about to make more, paused, stopped', () => {
     expect(batchState({ ...base, making: true })).toMatchObject({ tone: 'ok', title: 'Making videos' })
+    // Waiting behind a video of his the phone is listening to: said, not "Making videos".
+    const line = 'The phone is listening for words in take.mov first. Make now puts this batch next.'
+    expect(batchState({ ...base, where: 'phone', making: true, behind: line })).toMatchObject({ tone: 'idle', title: 'Waiting its turn', line })
     expect(batchState(base)).toMatchObject({ tone: 'ok', title: 'Up to date' })
     expect(batchState({ ...base, days: short }).title).toBe('About to make more')
     expect(batchState({ ...base, days: short }).line).toContain('2 still to make')

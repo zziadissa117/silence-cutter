@@ -89,6 +89,9 @@ export function batchState(input: {
   problem: string | null
   /** A video is being made, or waiting its turn. */
   making: boolean
+  /** Its videos are waiting behind something else the phone is making: said
+   *  so, in place of "Making videos" over a batch that isn't moving. */
+  behind?: string | null
   /** Its videos that couldn't be made. */
   failed?: number
   /** When the server last checked in (server only). */
@@ -110,6 +113,7 @@ export function batchState(input: {
       line: `Nothing from it for ${minutes(quietFor)}. Railway starts it again by itself - if this stays, open it on Railway and check it is running.`,
     }
   }
+  if (input.making && input.behind) return { tone: 'idle', title: 'Waiting its turn', line: input.behind }
   if (input.making) {
     return {
       tone: 'ok',

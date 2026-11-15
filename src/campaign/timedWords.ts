@@ -142,10 +142,50 @@ export function stuckOn(words: readonly string[]): number {
   return 0
 }
 
+/** A piece of a word (one to four letters) that comes back this many times
+ *  in a row inside one word is the model gone round mid-word: told
+ *  "ChatGPT" before it listened, it wrote "chagititititititi..." for three
+ *  hundred letters (his report, 2026-11-15) - one word, so stuckOn, which
+ *  looks at whole words, never saw it. No word he says holds a piece five
+ *  times over; laughter ("hahahaha") folded to "haha" loses nothing. */
+const STUCK_PIECE = 5
+const PIECE_LOOP = new RegExp(`(\\p{L}{1,4}?)\\1{${STUCK_PIECE - 1},}`, 'u')
+
+/** Whether the model went round in a loop inside this one word. */
+export function loopsInWord(text: string): boolean {
+  return PIECE_LOOP.test(text.toLowerCase())
+}
+
+/** The word with every loop inside it folded: the piece kept twice, as
+ *  unstuck keeps a looping phrase - "chagitititi..." comes out "chagititi". */
+export function foldWord(text: string): string {
+  const lower = text.toLowerCase()
+  const loop = new RegExp(PIECE_LOOP.source, 'gu')
+  let out = ''
+  let from = 0
+  for (const match of lower.matchAll(loop)) {
+    const at = match.index ?? 0
+    out += text.slice(from, at) + text.slice(at, at + 2 * match[1].length)
+    from = at + match[0].length
+  }
+  return out + text.slice(from)
+}
+
+/** The model stuck in a loop over these words - on a phrase, or inside a word. */
+export function looped(words: readonly string[]): boolean {
+  return stuckOn(words) > 0 || words.some(loopsInWord)
+}
+
 /** The words with a loop folded: a phrase that repeats STUCK_REPEATS times
  *  or more in a row is kept twice (he may really have said it twice), the
- *  rest dropped. The last resort when hearing a window again still loops. */
+ *  rest dropped; a word looping inside itself folded (foldWord). The last
+ *  resort when hearing a window again still loops. */
 export function unstuck(words: WordChunk[]): WordChunk[] {
+  const folded = words.map((w) => (loopsInWord(w.text) ? { ...w, text: foldWord(w.text) } : w))
+  return unstuckPhrases(folded)
+}
+
+function unstuckPhrases(words: WordChunk[]): WordChunk[] {
   const n = stuckOn(words.map((w) => w.text))
   if (n === 0) return words
   const bare = bareWords(words.map((w) => w.text))

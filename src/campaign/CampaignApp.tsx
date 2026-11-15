@@ -407,6 +407,9 @@ function firstWords(job: Job): string {
   return words.length > 0 ? `${words.slice(0, 6).join(' ')}${words.length > 6 ? '…' : ''}` : 'no words heard'
 }
 
+/** How long Make now waits for its videos to be queued before it lets go. */
+const RUSH_WAIT_MS = 2 * 60_000
+
 export function CampaignApp() {
   const [supported, setSupported] = useState<boolean | null>(null)
   const [campaigns, setCampaigns] = useState<Campaign[] | null>(null)
@@ -1149,6 +1152,10 @@ export function CampaignApp() {
   // The videos whose captions are being checked, one after another; the
   // first is the one on screen.
   const [reviewing, setReviewing] = useState<string[] | null>(null)
+  /** Campaigns whose batch videos go first in the phone's line (Make now on
+   *  the Batch tab, his ask 2026-11-15): from the tap - before its videos are
+   *  even queued (`seen` once they are) - until none of them is waiting. */
+  const [rush, setRush] = useState<{ id: string; at: number; seen: boolean }[]>([])
   // The video whose cuts are being fixed by hand - over the list, or over
   // the caption check it was opened from.
   const [cutting, setCutting] = useState<{ id: string } | null>(null)
@@ -1850,6 +1857,7 @@ export function CampaignApp() {
     const next = reviewing
       ? here.find((j) => j.status === 'queued' && j.day && !j.day.parts && !j.prejoin)
       : (here.find((j) => j.status === 'approved') ??
+        here.find((j) => j.status === 'queued' && j.batch && rush.some((r) => r.id === j.campaignId)) ??
         here.find((j) => j.status === 'queued' && j.day) ??
         here.find((j) => j.status === 'queued' && !j.day && !j.batch && !j.forFormat) ??
         here.find((j) => j.status === 'queued' && !j.day))
@@ -2510,7 +2518,7 @@ export function CampaignApp() {
       setNotice(BUSY_ELSEWHERE)
       window.setTimeout(() => setJobs((js) => [...js]), BUSY_RECHECK_MS)
     })
-  }, [jobs, campaigns, visible, reviewing, updateWaiting, talkDown])
+  }, [jobs, campaigns, visible, reviewing, updateWaiting, talkDown, rush])
 
   // The new version, once no video is being made (the queue starts none
   // while it waits): the same safe restart as after a stall - never while he
@@ -3176,6 +3184,30 @@ export function CampaignApp() {
   // Batch videos are followed on the Batch tab, format takes on Formats.
   const listed = useMemo(() => jobs.filter((j) => j.status !== 'joined' && !j.batch && !j.forFormat), [jobs])
   const batchJobs = useMemo(() => jobs.filter((j) => j.batch), [jobs])
+  // What the phone is busy with that isn't a batch video - the batch's
+  // videos wait their turn behind it (the line above), and the Batch tab
+  // says so rather than looking stuck.
+  const busyWith = jobs.find((j) => j.status === 'working' && !j.batch) ?? null
+  // Make now is done once none of that campaign's batch videos is waiting.
+  useEffect(() => {
+    if (rush.length === 0) return
+    const now = Date.now()
+    const next = rush.flatMap((r) => {
+      if (jobs.some((j) => j.campaignId === r.id && j.batch && j.status === 'queued')) return [r.seen ? r : { ...r, seen: true }]
+      // All of them started - or none ever came (nothing was due).
+      return r.seen || now - r.at > RUSH_WAIT_MS ? [] : [r]
+    })
+    if (next.length !== rush.length || next.some((r, i) => r !== rush[i])) setRush(next)
+  }, [jobs, rush])
+  // A check open on a video that is no longer there to check (taken out,
+  // or heard again): nothing is on screen, yet the line still held every
+  // batch video back for it.
+  useEffect(() => {
+    if (!reviewing) return
+    if (jobs.some((j) => j.id === reviewing[0] && j.day?.plan)) return
+    const rest = reviewing.slice(1).filter((id) => jobs.some((j) => j.id === id && j.day?.plan))
+    setReviewing(rest.length > 0 ? rest : null)
+  }, [jobs, reviewing])
   const formatJobs = useMemo(() => jobs.filter((j) => j.forFormat), [jobs])
   const [dismissedJoins, setDismissedJoins] = useState<Set<string>>(() => new Set())
   // Recordings filmed one right after the other, offered to be joined.
@@ -5005,9 +5037,11 @@ export function CampaignApp() {
         campaigns={campaigns}
         posting={posting}
         jobs={batchJobs}
+        busyWith={busyWith ? { name: busyWith.name, phase: busyWith.phase } : null}
         onMake={addBatch}
         onRetry={startHeld}
         onRemove={removeJob}
+        onRush={(id) => setRush((all) => [...all.filter((r) => r.id !== id), { id, at: Date.now(), seen: false }])}
       />
     ) : tab === 'settings' ? (
       <SettingsView

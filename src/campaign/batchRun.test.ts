@@ -13,7 +13,7 @@ vi.mock('./posting', async (original) => ({
 }))
 
 import { addDays, emptyBank, recastPicks, type BankFile, type BatchBank } from './batch'
-import { AHEAD_DAYS, changeLook, countedDays, dayVideos, daysToMake, filledOn, growthSummary, leftToMake, missingFor, nextInLine, oneAtATime, overfull, perDayOn, planVideos, runSlots, startOver, takeOutHook, takenBy, topUp, trimPlan, variationParts, withGrowth, withPerDay, type BatchVideo } from './batchRun'
+import { AHEAD_DAYS, changeLook, countedDays, dayVideos, daysToMake, filledOn, growthSummary, isToppingUp, leftToMake, letGo, missingFor, nextInLine, oneAtATime, STUCK_TOP_UP_MS, overfull, perDayOn, planVideos, runSlots, startOver, takeOutHook, takenBy, topUp, trimPlan, variationParts, withGrowth, withPerDay, type BatchVideo } from './batchRun'
 import { hookOfJob, hookOfPost, swapLook } from './batchHooks'
 import { makeOnEngine } from './engine'
 import type { Job } from './jobs'
@@ -129,6 +129,19 @@ describe('a top-up', () => {
     expect(await topUp({ bank: bank({ reactions: [] }), campaign, place, profileId: 'p', save, make, now: NOON })).toBeNull()
     expect(save).not.toHaveBeenCalled()
     expect(make).not.toHaveBeenCalled()
+  })
+
+  it('says why it made nothing, so Start is never silent', async () => {
+    const why: string[] = []
+    const onNothing = (w: string) => void why.push(w)
+    const save = vi.fn(async () => {})
+    await topUp({ bank: bank({ running: false }), campaign, place, profileId: 'p', save, make: vi.fn(), now: NOON, onNothing })
+    await topUp({ bank: bank({ reactions: [] }), campaign, place, profileId: 'p', save, make: vi.fn(), now: NOON, onNothing })
+    // Every day ahead already holding its videos.
+    const full = Object.fromEntries(Array.from({ length: AHEAD_DAYS }, (_, d) => [addDays('2026-09-30', d), 3]))
+    await topUp({ bank: bank({ reactions: files('r', 6), products: files('p', 6), filled: full }), campaign, place, profileId: 'p', save, make: vi.fn(), now: NOON, onNothing })
+    expect(why).toEqual(['stopped', 'missing', 'full'])
+    expect(save).not.toHaveBeenCalled()
   })
 
   it('saves the bank before it queues the videos', async () => {
@@ -584,6 +597,26 @@ describe('nextInLine', () => {
     await topUp
     expect(await change).toBe('done')
     expect(order).toEqual(['top-up', 'change'])
+  })
+})
+
+describe('Make now letting go of a stuck top-up', () => {
+  it('lets go only of one stuck past the limit, and the old one never frees the new', async () => {
+    let finishOld = () => {}
+    const old = oneAtATime('stuck', () => new Promise<void>((resolve) => (finishOld = resolve)))
+    expect(letGo('stuck')).toBe(false)
+    expect(isToppingUp('stuck')).toBe(true)
+    expect(letGo('stuck', STUCK_TOP_UP_MS, Date.now() + STUCK_TOP_UP_MS)).toBe(true)
+    expect(isToppingUp('stuck')).toBe(false)
+    let finishNew = () => {}
+    const fresh = oneAtATime('stuck', () => new Promise<string>((resolve) => (finishNew = () => resolve('made'))))
+    // The stuck one coming back at last leaves the new one's hold alone.
+    finishOld()
+    await old
+    expect(isToppingUp('stuck')).toBe(true)
+    finishNew()
+    expect(await fresh).toBe('made')
+    expect(isToppingUp('stuck')).toBe(false)
   })
 })
 

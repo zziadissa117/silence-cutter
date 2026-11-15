@@ -12,7 +12,7 @@
 
 import { Tensor, pipeline } from '@huggingface/transformers'
 
-import { QUIET_PAD_SEC, addHeard, keepInWindow, padWithQuiet, stuckOn, timedWords, unstuck, type TimestampedChunk } from '../campaign/timedWords'
+import { QUIET_PAD_SEC, addHeard, keepInWindow, looped, padWithQuiet, timedWords, unstuck, type TimestampedChunk } from '../campaign/timedWords'
 import { pointRuntimeAtCdn } from './ort'
 
 import type { WordChunk } from './fillerWords'
@@ -201,13 +201,18 @@ self.onmessage = async (event: MessageEvent<TranscribeRequest>) => {
         const heardSlice = padWithQuiet(slice, sampleRate)
         const length = slice.length / sampleRate
         const inWindow = (heard: WordChunk[]) => keepInWindow(heard, sliceStart, sliceStart + length)
+        const stuck = (words: WordChunk[]) => looped(words.map((w) => w.text))
         let heard = inWindow(await hear(heardSlice, sliceStart - QUIET_PAD_SEC, primed))
-        // Stuck on a phrase ("okay, okay, okay, ..."): once more with less of
-        // a prompt, and failing that the loop is folded (timedWords.unstuck).
-        if (stuckOn(heard.map((w) => w.text)) && primed) {
-          const again = inWindow(await hear(heardSlice, sliceStart - QUIET_PAD_SEC, fallback))
-          heard = stuckOn(again.map((w) => w.text)) ? unstuck(again.length < heard.length ? again : heard) : again
-        } else if (stuckOn(heard.map((w) => w.text))) heard = unstuck(heard)
+        // Stuck on a phrase ("okay, okay, okay, ...") or inside a word
+        // ("chagitititi..." for ChatGPT): once more with less of a prompt,
+        // then with none - a name it was told can be the very word it loops
+        // on (his report, 2026-11-15) - and failing that the loop is folded
+        // (timedWords.unstuck).
+        if (stuck(heard) && primed) {
+          let again = inWindow(await hear(heardSlice, sliceStart - QUIET_PAD_SEC, fallback))
+          if (stuck(again) && fallback) again = inWindow(await hear(heardSlice, sliceStart - QUIET_PAD_SEC, null))
+          heard = stuck(again) ? unstuck(again.length < heard.length ? again : heard) : again
+        } else if (stuck(heard)) heard = unstuck(heard)
         words = addHeard(words, heard)
       } else {
         const result = await transcriber(slice, {

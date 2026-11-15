@@ -257,6 +257,18 @@ describe('captionWords', () => {
     for (let t = 0.9; t < 2; t += 1 / 30) seen.add(captionAt(starts, words, t))
     for (let i = 0; i < words.length; i++) expect(seen.has(i)).toBe(true)
   })
+
+  it('never reads past the words, when the starts were taken before a phrase got shorter', () => {
+    // His caption check crashed (2026-11-15): "Chat GPT" typed as one word
+    // while it played left the starts one longer than the words.
+    const words = [
+      { text: 'use', start: 0, end: 0.3 },
+      { text: 'ChatGPT', start: 0.4, end: 0.9 },
+    ]
+    const starts = [0, 0.4, 0.7]
+    expect(() => captionAt(starts, words, 1)).not.toThrow()
+    expect(captionAt(starts, words, 0.8)).toBe(1)
+  })
 })
 
 describe('phrasesOf', () => {

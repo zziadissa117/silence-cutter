@@ -99,7 +99,7 @@ import {
   type HookStat,
 } from './batchHooks'
 import { fingerprint, skippedNotice } from './fingerprint'
-import { formatTime, labelOf, type Job } from './jobs'
+import { PHASE_LABEL, formatTime, labelOf, type Job } from './jobs'
 import type { Angle, Campaign } from './look'
 import { CheckMark, ChevronDown, CloseIcon, MinusIcon, PlusIcon } from './icons'
 import { MAX_TRACK_MB } from './music'
@@ -117,7 +117,7 @@ import {
   type LocalPosting,
   type ServerPost,
 } from './posting'
-import { deleteBankFile, loadBankFile, loadBatchBank, retireBankFiles, saveBankFile, saveBatchBank } from './store'
+import { deleteBankFile, loadBankFile, loadBatchBank, retireBankFiles, saveBankFile, saveBatchBank, type JobPhase } from './store'
 import {
   AHEAD_DAYS,
   dayVideos,
@@ -136,6 +136,8 @@ import {
   stopCopies,
   goCopies,
   copiesToMake,
+  isToppingUp,
+  letGo,
   runSlots,
   settled,
   startOver,
@@ -147,6 +149,7 @@ import {
   trimDown,
   variationParts,
   type BatchVideo,
+  type NothingToMake,
 } from './batchRun'
 import { FormulaPreview } from './FormulaPreview'
 import { CORNER_SIZES, DEFAULT_CORNER } from './greenScreenRender'
@@ -271,18 +274,25 @@ export function BatchView({
   campaigns,
   posting,
   jobs,
+  busyWith = null,
   onMake,
   onRetry,
   onRemove,
+  onRush = () => {},
 }: {
   campaigns: Campaign[]
   posting: LocalPosting | null
   /** The batch videos still on this phone: being made, or failed. */
   jobs: Job[]
+  /** What the phone is making now that isn't a batch video: the batch's
+   *  videos wait their turn behind it. */
+  busyWith?: { name: string; phase: JobPhase } | null
   /** Makes the videos; `retire` is footage to let go of once they are made. */
   onMake: (campaign: Campaign, angle: Angle, videos: BatchVideo[], retire?: string[]) => void
   onRetry: (id: string) => void
   onRemove: (id: string) => void
+  /** Puts the campaign's batch videos first in the phone's line (Make now). */
+  onRush?: (campaignId: string) => void
 }) {
   const profile = posting?.profile ?? null
   // The Trial reels campaign has its own screen (TrialView).
@@ -842,10 +852,17 @@ export function BatchView({
   const canStart = Boolean(bank) && !running && perDay > 0 && missing.length === 0 && saving === null && !topping
 
   /** Makes the days the batch is missing (batchRun.topUp) - on this phone or
-   *  on the engine - unless a top-up of it is already going. */
-  const runTopUp = (from: BatchBank) => {
+   *  on the engine - unless a top-up of it is already going. `tell`: he
+   *  tapped for it, so what came of it is said, even nothing - Start used
+   *  to do nothing at all, in silence (his report, 2026-11-15). */
+  const runTopUp = (from: BatchBank, tell = false) => {
     if (!profile) return
+    if (tell && isToppingUp(campaign.id)) {
+      setNotice('Already working out the next days - a moment. If nothing comes, tap Make now.')
+      return
+    }
     setTopping(true)
+    let nothing: NothingToMake | null = null
     void oneAtATime(campaign.id, () =>
       topUp({
         bank: from,
@@ -859,13 +876,58 @@ export function BatchView({
           bankRef.current = next
           await saveBatchBank(next)
         },
-        make: (videos, retire) => onMake(campaign, angle, videos, retire),
+        make: (videos, retire) => {
+          onMake(campaign, angle, videos, retire)
+          if (tell && !onEngine) setNotice(madeWords(videos.length))
+        },
         say: setSaving,
         latest: () => bankRef.current ?? from,
+        onNothing: (why) => {
+          nothing = why
+        },
       }),
     )
+      .then(() => {
+        if (tell && nothing) setNotice(nothingWords(nothing))
+      })
       .catch(() => setProblem("The bank couldn't be saved on this phone. Free some space and try again."))
       .finally(() => setTopping(false))
+  }
+
+  /** What a tap made: the videos on their way, and what is ahead of them. */
+  const madeWords = (n: number) =>
+    `${n} video${n === 1 ? '' : 's'} added to make now${busyWith ? `, after the phone finishes ${busyWith.name}` : ''} - one at a time, with the app open.`
+
+  /** Why a tap made nothing, in his words. */
+  const nothingWords = (why: NothingToMake) =>
+    why === 'server'
+      ? 'Your Cutter server makes this batch - it starts there by itself, day and night.'
+      : why === 'stopped'
+        ? 'The batch is stopped. Tap Start to make videos.'
+        : why === 'missing'
+          ? `Nothing can be made yet: it needs ${missing.join(', ')}.`
+          : why === 'used'
+            ? 'Every mix of these clips was made before. Add clips, or tap Start anyway to make them again.'
+            : `Nothing to make: the next ${AHEAD_DAYS} days already have all their videos. Each new day is made by itself.`
+
+  /** Make now (his ask, 2026-11-15: "Can we make it so that we can
+   *  force-start the generation?"): a top-up stuck on a request that never
+   *  came back is let go, the batch's videos go first in the phone's line,
+   *  and the days missing are made at once - with what came of it said. */
+  const makeNow = () => {
+    const current = bankRef.current
+    if (!current) return
+    remember(campaign.id)
+    setProblem(null)
+    letGo(campaign.id)
+    if (!isToppingUp(campaign.id)) setTopping(false)
+    onRush(campaign.id)
+    const next = current.running
+      ? { ...current, runProblem: undefined }
+      : { ...current, running: true, runProblem: undefined, spent: undefined, startedAt: new Date().toISOString(), ...(current.copies ? { copies: goCopies(current.copies) } : {}) }
+    keep(next)
+    if (waitingHere > 0) setNotice(`${waitingHere} video${waitingHere === 1 ? '' : 's'} of this batch go${waitingHere === 1 ? 'es' : ''} first now${busyWith ? `, right after ${busyWith.name}` : ''}.`)
+    runTopUp(next, waitingHere === 0)
   }
 
   /** One tap: the batch starts and keeps going. */
@@ -876,7 +938,7 @@ export function BatchView({
     setProblem(null)
     const next = { ...current, running: true, runProblem: undefined, spent: undefined, startedAt: new Date().toISOString(), ...(current.copies ? { copies: goCopies(current.copies) } : {}) }
     keep(next)
-    runTopUp(next)
+    runTopUp(next, true)
   }
 
   /** Start anyway: the same, but the mixes already made are forgotten for
@@ -890,7 +952,7 @@ export function BatchView({
     const at = new Date().toISOString()
     const next = { ...current, running: true, runProblem: undefined, spent: undefined, made: [], startedAt: at, anyway: at, ...(current.copies ? { copies: goCopies(current.copies) } : {}) }
     keep(next)
-    runTopUp(next)
+    runTopUp(next, true)
   }
 
   /** Stop: at once, nothing more is made - the next days aren't planned, and
@@ -1865,6 +1927,10 @@ export function BatchView({
     where,
     problem: statusProblem,
     making: makingNow !== null || waitingNow > 0 || engineBusy || (where === 'phone' && topping),
+    behind:
+      where === 'phone' && waitingHere > 0 && !workingHere && busyWith
+        ? `The phone is ${PHASE_LABEL[busyWith.phase]} in ${busyWith.name} first. Make now puts this batch next.`
+        : null,
     failed: failedNow,
     heardAt: serverSeen ?? null,
     askedAt: onServer ? (lastServerStatus()?.askedAt ?? null) : null,
@@ -1999,6 +2065,13 @@ export function BatchView({
           stop={running || stoppable || copiesDue > 0 ? { label: running || copiesDue > 0 ? 'Stop' : `Stop the ${waitingHere} waiting to be made`, busy: saving === 'Stopping…', run: stop } : null}
           stopAll={
             scheduledHere > 0 ? { label: `Stop and take out the ${scheduledHere} scheduled`, busy: saving === 'Stopping…', run: () => void stopEverything() } : null
+          }
+          makeNow={
+            // On the phone, running, with nothing of it being made right now:
+            // its videos waiting, days short, or a top-up that never ended.
+            where === 'phone' && running && !workingHere && missing.length === 0 && (waitingHere > 0 || topping || days.some((d) => d.target > d.planned))
+              ? { run: makeNow }
+              : null
           }
         />
       ) : null}
