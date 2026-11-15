@@ -1378,7 +1378,7 @@ export function BatchView({
 
         <div className="format-box">
           <SpeedRow format={f} onSpeed={(speed) => changeFormat(f.id, { speed })} />
-          <SpeedRunner format={f} clips={clips} getBank={() => bankRef.current} keep={keep} paused={viewing !== null || checking !== null} />
+          <SpeedRunner format={f} clips={clips} steps={steps} names={campaign.brandWords ?? []} getBank={() => bankRef.current} keep={keep} paused={viewing !== null || checking !== null} />
         </div>
 
         <div className="format-section">
@@ -1390,6 +1390,10 @@ export function BatchView({
             onOpen={open}
             onAddHooks={(files) => void (!f.rawHooks && dropInto(f.id, files, HOOK) ? undefined : add({ format: f.id, as: 'reactions' }, files))}
             onAddToStep={(stepId, files) => void (dropInto(f.id, files, stepId) ? undefined : add({ step: stepId }, files))}
+            onStepClips={(stepId, value) => {
+              const latest = bankRef.current ?? bank
+              keep({ ...latest, steps: (latest.steps ?? []).map((x) => (x.id === stepId ? { ...x, clips: value } : x)) })
+            }}
           />
           {steps.length === 0 ? (
             <div className="format-actions">

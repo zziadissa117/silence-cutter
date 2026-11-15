@@ -2283,3 +2283,6 @@ main.full-page > * { max-width: 720px; margin-left: auto; margin-right: auto; }
 /* Cut by the Cutter or kept raw, per clip, on its check (DropCheck.tsx). */
 .drop-check-cut { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-top: 6px; }
 .drop-check-cut .seg { flex: 0 0 auto; }
+/* A product step's clips cut or raw, all at once (TalkClips.tsx). */
+.talk-step-cut { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.talk-step-cut .seg { flex: 0 0 auto; }

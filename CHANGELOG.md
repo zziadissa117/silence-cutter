@@ -3,6 +3,20 @@
 Newest first. Every change says what it does, how to use it, and how it works
 underneath. Kept up to date with each commit.
 
+## Talking head steps: all of a step's clips Cut or Raw, one tap
+- His ask (2026-11-15): "I can select in batches, not select one at a time, because I know exactly which ... product
+  steps need to be cut and which product steps need to be raw ... inside of the product step section, add an option to
+  keep it raw or keep it cut ... the second that I save it, it edits all of those ... and I don't have to drop in new
+  videos."
+- Batch tab, a talking head format, Your clips: under each product step's name, Cut | Raw. One tap and every clip of
+  that step is made again that way from its recording, in the background while the card is open ("Making your clips
+  cut or raw as their step says… 6 left", Stop). A clip approved into that step later is made to match too. Neither
+  picked: each clip stays as it was dropped in. The clip list marks the raw ones.
+- Clips added before recordings were kept can be made Cut but not Raw; the card says how many couldn't be changed.
+- The per-clip Cut / Raw switch on the check and the clip screen stays, for one clip.
+- Underneath: `BatchStep.clips`, `clipEdit.clipsToSwitch`; `TalkClips.SpeedRunner` switches clips (`cutOrRaw`) before
+  their speed; `TalkClips` `cutChoice`, `BatchView` `onStepClips`. Tests: `clipEdit.test.ts`, `batchView.test.tsx`.
+
 ## Batch tab: "How each hook is doing" taken out
 - His ask (2026-11-15): "remove the how each hook is doing from the batch section its useless".
 - The section (each hook's views, Stop using it, Change words, Change to…, "Drop a hook that does badly by itself") is

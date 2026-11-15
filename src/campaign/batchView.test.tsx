@@ -747,6 +747,17 @@ describe('one batch for the account, in formats', () => {
     expect((await savedBank()).formats?.[0].speed).toBe(1.1)
   })
 
+  it("a product step's clips all cut or all raw, one tap (his ask, 2026-11-15)", async () => {
+    const steps = [{ id: 's1', name: 'Open the app', formats: ['t'], files: [{ id: 'c1', name: 'IMG_1.mp4', type: 'video/mp4', size: 1e6, seconds: 4, edited: true }] }]
+    storedBank = { ...bank, formats: [{ id: 't', kind: 'talking', name: 'Talk' }], steps, reactions: bank.reactions.map((r) => ({ ...r, formats: ['t'] })), products: [] }
+    await show({})
+    await openFirstFormat()
+    const choice = host.querySelector('[aria-label="Open the app: cut or raw"]') as HTMLElement
+    expect(choice.querySelector('[aria-checked="true"]')).toBeNull()
+    await act(async () => ([...choice.querySelectorAll('button')].find((b) => b.textContent === 'Raw') as HTMLButtonElement).click())
+    expect((await savedBank()).steps?.[0].clips).toBe('raw')
+  })
+
   it("a talking format's hooks are edited unless he switches Edit my hooks off (his ask, 2026-11-13)", async () => {
     storedBank = { ...bank, formats: [{ id: 't', kind: 'talking', name: 'Talk' }], reactions: bank.reactions.map((r) => ({ ...r, formats: ['t'] })), products: [] }
     await show({})

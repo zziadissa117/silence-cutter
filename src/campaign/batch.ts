@@ -402,6 +402,12 @@ export interface BatchStep {
   /** Each of this step's clips in one video only (his ask, 2026-11-14).
    *  Absent: its clips go round every combination, as always. */
   once?: boolean
+  /** A talking head's step: every clip in it cut by the Cutter ('cut') or
+   *  kept as he filmed it ('raw') - his pick per step (his ask, 2026-11-15:
+   *  "I know exactly which ... product steps need to be cut and which
+   *  product steps need to be raw"). Its clips are made again to match
+   *  (TalkClips.SpeedRunner). Absent: each clip as it was dropped in. */
+  clips?: 'cut' | 'raw'
 }
 
 /** A picture or video on a step's clip. */

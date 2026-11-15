@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 
 import type { BankFile, BatchBank } from './batch'
-import { atSpeed, joinTouching, splitAtPieces, captionsAtSpeed, clipsToSpeed, filesOfClip, leftBehind, swapClip, wantedSpeed } from './clipEdit'
+import { atSpeed, clipsToSwitch, joinTouching, splitAtPieces, captionsAtSpeed, clipsToSpeed, filesOfClip, leftBehind, swapClip, wantedSpeed } from './clipEdit'
 
 const file = (id: string, more: Partial<BankFile> = {}): BankFile => ({ id, name: `${id}.mp4`, type: 'video/mp4', size: 1, ...more })
 
@@ -58,5 +58,17 @@ describe("a talking head's clips changed after they are in the batch (his ask, 2
     expect(joinTouching(pieces)).toEqual([{ start: 0, end: 4 }])
     expect(joinTouching([{ start: 0, end: 1 }, { start: 2, end: 3 }])).toEqual([{ start: 0, end: 1 }, { start: 2, end: 3 }])
     expect(splitAtPieces([{ start: 0.5, end: 4.6 }], pieces)).toEqual([{ start: 0.5, end: 1.2 }, { start: 1.2, end: 2.5 }, { start: 2.5, end: 4.6 }])
+  })
+
+  it("a step set to cut or raw: its clips that aren't so are made again; a step that says nothing is left (his ask, 2026-11-15)", () => {
+    const steps = [
+      { files: [file('a', { edited: true }), file('b', { ownCut: true })], clips: 'raw' as const },
+      { files: [file('c', { ownCut: true }), file('d', { edited: true })], clips: 'cut' as const },
+      { files: [file('e', { ownCut: true })] },
+    ]
+    expect(clipsToSwitch(steps).map((c) => [c.file.id, c.cut])).toEqual([
+      ['a', false],
+      ['c', true],
+    ])
   })
 })

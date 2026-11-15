@@ -9,7 +9,7 @@ import { useEffect, useRef, useState } from 'react'
 
 import { VideoPicker } from '../VideoPicker'
 import type { BankFile, BatchBank, BatchFormat, BatchStep } from './batch'
-import { CLIP_SPEEDS, clipsToSpeed, leftBehind, oneAtATime, remakeClip, speedLabel, speedOfClip, swapClip, wantedSpeed } from './clipEdit'
+import { CLIP_SPEEDS, clipsToSpeed, clipsToSwitch, cutOrRaw, leftBehind, oneAtATime, remakeClip, speedLabel, speedOfClip, swapClip, wantedSpeed } from './clipEdit'
 import { ChevronRight } from './icons'
 import { formatTime } from './jobs'
 import { retireBankFiles } from './store'
@@ -31,17 +31,26 @@ export function SpeedRow({ format, onSpeed }: { format: BatchFormat; onSpeed: (s
   )
 }
 
-/** Every clip of the format brought to the speed wanted, one at a time,
- *  while the card is open - with how many are left, and Stop. */
+/** Every clip of the format brought to what it should be, one at a time,
+ *  while the card is open: first cut or raw as its step says
+ *  (BatchStep.clips), then the format's speed - with how many are left, and
+ *  Stop. */
 export function SpeedRunner({
   format,
   clips,
+  steps = [],
+  names = [],
   getBank,
   keep,
   paused = false,
 }: {
   format: BatchFormat
+  /** The clips the speed is for (his hooks kept as filmed left out). */
   clips: BankFile[]
+  /** The format's steps, each cut or raw as he set it. */
+  steps?: BatchStep[]
+  /** The campaign's brand words, heard right when a clip is cut. */
+  names?: string[]
   getBank: () => BatchBank | null
   keep: (bank: BatchBank) => void
   /** A clip is open over the tab: the phone is kept free for him (his report, 2026-11-15: he couldn't leave it). */
@@ -52,49 +61,62 @@ export function SpeedRunner({
   const [problem, setProblem] = useState<string | null>(null)
   const failed = useRef(new Set<string>())
   const running = useRef(false)
-  const due = clipsToSpeed(clips, format).filter((f) => !failed.current.has(f.id))
-  const next = due[0]
+  const toSwitch = clipsToSwitch(steps).filter((c) => !failed.current.has(c.file.id))
+  const switching = new Set(toSwitch.map((c) => c.file.id))
+  const toSpeed = clipsToSpeed(clips, format).filter((f) => !failed.current.has(f.id) && !switching.has(f.id))
+  const due = toSwitch.length + toSpeed.length
+  // Cut or raw first: making it so puts it back at 1x, the speed after.
+  const job = toSwitch[0] ? { file: toSwitch[0].file, cut: toSwitch[0].cut as boolean | null } : toSpeed[0] ? { file: toSpeed[0], cut: null } : null
 
   useEffect(() => {
-    if (stopped || paused || running.current || !next) return
+    if (stopped || paused || running.current || !job) return
     running.current = true
-    const speed = wantedSpeed(next, format)
-    setDoing({ name: next.name, fraction: 0 })
-    void oneAtATime(() => remakeClip(next, { speed }, (fraction) => setDoing({ name: next.name, fraction })))
-      .then((made) => {
+    const { file, cut } = job
+    const speed = wantedSpeed(file, format)
+    const progress = (fraction: number) => setDoing({ name: file.name, fraction })
+    setDoing({ name: file.name, fraction: 0 })
+    const made =
+      cut === null
+        ? oneAtATime(() => remakeClip(file, { speed }, progress))
+        : oneAtATime(() => cutOrRaw(file, { cut, names }, (phase, fraction) => progress(phase === 'cutting' ? 0.5 + fraction / 2 : fraction / 2)).then((r) => r.file))
+    void made
+      .then((next) => {
         const bank = getBank()
         // Changed meanwhile (moved, taken out, made again by hand): left as it is.
-        if (!bank || ![...bank.reactions, ...(bank.steps ?? []).flatMap((s) => s.files)].some((f) => f.id === next.id)) {
-          void retireBankFiles(leftBehind(next, made)).catch(() => {})
+        if (!bank || ![...bank.reactions, ...(bank.steps ?? []).flatMap((s) => s.files)].some((f) => f.id === file.id)) {
+          void retireBankFiles(leftBehind(file, next)).catch(() => {})
           return
         }
-        keep(swapClip(bank, next.id, made))
-        void retireBankFiles(leftBehind(next, made)).catch(() => {})
+        keep(swapClip(bank, file.id, next))
+        void retireBankFiles(leftBehind(file, next)).catch(() => {})
       })
       .catch((error: unknown) => {
-        failed.current.add(next.id)
-        setProblem(`${next.name}: couldn't make it ${speedLabel(speed)} (${error instanceof Error ? error.message : String(error)}).`)
+        failed.current.add(file.id)
+        const what = cut === null ? speedLabel(speed) : cut ? 'cut' : 'raw'
+        const n = failed.current.size
+        setProblem(`${n > 1 ? `${n} clips couldn't be changed - the last, ` : ''}${file.name}: couldn't make it ${what} (${error instanceof Error ? error.message : String(error)}).`)
       })
       .finally(() => {
         running.current = false
         setDoing(null)
       })
-  }, [next?.id, stopped, paused]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [job?.file.id, job?.cut, stopped, paused]) // eslint-disable-line react-hooks/exhaustive-deps
 
-  if (due.length === 0 && !problem) return null
+  if (due === 0 && !problem) return null
+  const what = toSwitch.length > 0 ? (toSpeed.length > 0 ? `cut or raw, then ${speedLabel(format.speed ?? 1)}` : 'cut or raw as their step says') : speedLabel(format.speed ?? 1)
   return (
     <div className="talk-speeding">
-      {due.length > 0 ? (
+      {due > 0 ? (
         <>
           <span className="row-name">
-            {stopped ? `${due.length} clip${due.length === 1 ? '' : 's'} not at ${speedLabel(format.speed ?? 1)} yet` : `Making your clips ${speedLabel(format.speed ?? 1)}… ${due.length} left`}
+            {stopped ? `${due} clip${due === 1 ? '' : 's'} not ${what} yet` : `Making your clips ${what}… ${due} left`}
           </span>
           {doing && !stopped ? (
             <div className="bar">
               <div style={{ width: `${Math.round(doing.fraction * 100)}%` }} />
             </div>
           ) : null}
-          <span className="hint">{stopped ? 'They play at their old speed until then.' : 'Keep this open - each clip is made again from your recording.'}</span>
+          <span className="hint">{stopped ? 'They stay as they are until then.' : 'Keep this open - each clip is made again from your recording.'}</span>
           <button type="button" className="linkbtn" onClick={() => setStopped(!stopped)}>
             {stopped ? 'Go on' : 'Stop'}
           </button>
@@ -114,6 +136,7 @@ function Group({
   onAdd,
   addLabel,
   extra,
+  cutChoice,
 }: {
   title: string
   num?: number
@@ -122,6 +145,8 @@ function Group({
   onAdd?: (files: File[]) => void
   addLabel: string
   extra?: React.ReactNode
+  /** A product step: its clips cut by the Cutter or kept raw (BatchStep.clips). */
+  cutChoice?: { value: 'cut' | 'raw' | undefined; onChange: (value: 'cut' | 'raw') => void }
 }) {
   return (
     <div className="talk-group">
@@ -136,6 +161,25 @@ function Group({
         ) : null}
       </div>
       {extra}
+      {cutChoice ? (
+        <div className="talk-step-cut">
+          <div className="seg" role="radiogroup" aria-label={`${title}: cut or raw`}>
+            {(['cut', 'raw'] as const).map((v) => (
+              <button
+                key={v}
+                type="button"
+                role="radio"
+                aria-checked={cutChoice.value === v}
+                className={cutChoice.value === v ? 'active' : ''}
+                onClick={() => cutChoice.value !== v && cutChoice.onChange(v)}
+              >
+                {v === 'cut' ? 'Cut' : 'Raw'}
+              </button>
+            ))}
+          </div>
+          <span className="hint">{cutChoice.value === 'cut' ? 'The Cutter cuts every clip here.' : cutChoice.value === 'raw' ? 'Every clip here as you filmed it.' : 'Each clip as it was dropped in.'}</span>
+        </div>
+      ) : null}
       {files.length === 0 ? (
         <p className="hint warn-text talk-empty">No clips yet</p>
       ) : (
@@ -171,6 +215,7 @@ export function TalkClips({
   onOpen,
   onAddHooks,
   onAddToStep,
+  onStepClips,
   hookNote,
 }: {
   hooks: BankFile[]
@@ -179,13 +224,17 @@ export function TalkClips({
   onOpen: (id: string) => void
   onAddHooks: (files: File[]) => void
   onAddToStep: (stepId: string, files: File[]) => void
+  /** A step's clips set to be cut or raw, all of them. */
+  onStepClips?: (stepId: string, value: 'cut' | 'raw') => void
   hookNote?: React.ReactNode
 }) {
   return (
     <div className="talk-list">
       <Group title={rawHooks ? 'Hook - as filmed' : 'Hook'} files={hooks} onOpen={onOpen} onAdd={onAddHooks} addLabel="Add hooks" extra={hookNote} />
       {steps.map((st, i) => (
-        <Group key={st.id} num={i + 1} title={st.name} files={st.files} onOpen={onOpen} onAdd={(files) => onAddToStep(st.id, files)} addLabel={`Add clips for ${st.name}`} />
+        <Group key={st.id} num={i + 1} title={st.name} files={st.files} onOpen={onOpen} onAdd={(files) => onAddToStep(st.id, files)} addLabel={`Add clips for ${st.name}`}
+          cutChoice={onStepClips ? { value: st.clips, onChange: (v) => onStepClips(st.id, v) } : undefined}
+        />
       ))}
     </div>
   )

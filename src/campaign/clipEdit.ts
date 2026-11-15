@@ -283,3 +283,10 @@ export async function cutOrRaw(
 
 /** Whether a clip is the Cutter's cut (else kept as he filmed it). */
 export const isCut = (file: Pick<BankFile, 'edited' | 'ownCut'>): boolean => !file.ownCut
+
+/** The clips of these steps that aren't as their step says - cut or raw
+ *  (BatchStep.clips) - with what each should be. A step that says nothing
+ *  leaves its clips as they are. */
+export function clipsToSwitch(steps: readonly { files: BankFile[]; clips?: 'cut' | 'raw' }[]): { file: BankFile; cut: boolean }[] {
+  return steps.flatMap((st) => (st.clips ? st.files.filter((f) => isCut(f) !== (st.clips === 'cut')).map((file) => ({ file, cut: st.clips === 'cut' })) : []))
+}
