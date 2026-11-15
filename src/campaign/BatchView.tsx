@@ -2184,6 +2184,7 @@ export function BatchView({
           setChecking(viewingFormat.id)
         }}
         onReplace={(file, clip) => dropInto(viewingFormat.id, [file], clip.place, clip.file)}
+        names={campaign.brandWords ?? []}
         onClose={() => {
           setViewing(null)
           setViewFirst(null)

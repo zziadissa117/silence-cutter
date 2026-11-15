@@ -150,6 +150,7 @@ function Group({
                     {f.seconds ? formatTime(f.seconds) : ''}
                     {speed !== 1 ? ` · ${speedLabel(speed)}` : ''}
                     {f.mirror ? ' · mirrored' : ''}
+                    {f.ownCut ? ' · raw' : ''}
                   </span>
                   <ChevronRight />
                 </button>

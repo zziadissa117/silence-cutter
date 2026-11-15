@@ -21,8 +21,16 @@ vi.mock('./talkLink', () => ({ downloadFile: vi.fn(async () => new Blob(['clip']
 vi.mock('./posting', () => ({ postingHere: () => ({}), recheckCaptions: vi.fn() }))
 // Made again from the timeline: what it was asked for.
 const recuts: { keep: { start: number; end: number }[]; seed: string }[] = []
+// Made cut or as filmed from the check's Cutter switch: what it was asked for.
+const cutCalls: { asFilmed: boolean; seed: string }[] = []
 vi.mock('./prepareDrop', () => ({
   dropSettings: () => ({ settings: {} }),
+  videoType: () => 'video/quicktime',
+  cutDropped: vi.fn(async (_file: Blob, { asFilmed = false, seed }: { asFilmed?: boolean; seed: string }) => {
+    cutCalls.push({ asFilmed, seed })
+    const keep = asFilmed ? [{ start: 0, end: 3 }] : [{ start: 0.5, end: 2 }]
+    return { blob: new Blob(['made']), words: [{ text: asFilmed ? 'whole' : 'tight', start: 0, end: 0.4 }], text: asFilmed ? 'whole' : 'tight', cut: !asFilmed, remade: true, plan: { keep, words: [], duration: 3 } }
+  }),
   cutName: (name: string) => name.replace(/\.[^./]+$/, '') + '.mp4',
   recut: vi.fn(async (_file: Blob, { keep, seed }: { keep: { start: number; end: number }[]; seed: string }) => {
     recuts.push({ keep, seed })
@@ -142,7 +150,7 @@ const render = () =>
       />,
     ),
   )
-const button = (text: string) => [...host.querySelectorAll('button')].find((b) => b.textContent?.includes(text)) as HTMLButtonElement
+const button = (text: string) => [...document.body.querySelectorAll('button')].find((b) => b.textContent?.includes(text)) as HTMLButtonElement
 const click = (text: string) => act(async () => button(text).click())
 const lit = () => host.querySelector('.drop-check-steps [aria-checked="true"]')?.textContent
 const settle = async () => {
@@ -326,7 +334,7 @@ describe('looking again at where the clips of the batch are (his ask, 2026-11-14
     await settle()
     await click('Timeline editor')
     await settle()
-    expect(host.querySelector('.timeline-parts')?.textContent).toBe('[{"start":1,"end":2}]')
+    expect(document.body.querySelector('.timeline-parts')?.textContent).toBe('[{"start":1,"end":2}]')
     await click('Done')
     await settle()
     // Made again from the recording, the first part half a second longer, with its own seed.
@@ -338,7 +346,7 @@ describe('looking again at where the clips of the batch are (his ask, 2026-11-14
     expect(retired).toContainEqual(['a'])
     // Back on the check, with the new clip: approved into the batch, its
     // recording kept with it - to make it longer or faster later.
-    expect(host.querySelector('.timeline-stub')).toBeNull()
+    expect(document.body.querySelector('.timeline-stub')).toBeNull()
     await click('Approve')
     expect(bank.steps![0].files.at(-1)!.id).toBe(q.file.id)
     expect(bank.steps![0].files.at(-1)!.source).toMatchObject({ fileId: 'src-1', keep: [{ start: 0.5, end: 2 }] })
@@ -353,7 +361,7 @@ describe('looking again at where the clips of the batch are (his ask, 2026-11-14
     await click('Timeline editor')
     await settle()
     // The clip itself, whole, is its timeline.
-    expect(host.querySelector('.timeline-parts')?.textContent).toBe('[{"start":0,"end":3}]')
+    expect(document.body.querySelector('.timeline-parts')?.textContent).toBe('[{"start":0,"end":3}]')
     await click('Done')
     await settle()
     expect(recuts).toHaveLength(1)
@@ -363,6 +371,41 @@ describe('looking again at where the clips of the batch are (his ask, 2026-11-14
     // The old clip is kept as the new one's source, not let go.
     expect(now!.source).toMatchObject({ fileId: 'old', self: true })
     expect(retired.flat()).not.toContain('old')
+  })
+
+  it('each clip cut by the Cutter or kept raw, from its recording (his ask, 2026-11-15)', async () => {
+    cutCalls.length = 0
+    const source = {
+      fileId: 'src-1',
+      size: 5,
+      type: 'video/quicktime',
+      keep: [{ start: 0.5, end: 2 }],
+      words: [],
+      duration: 3,
+      effects: { cutPunch: 'off', hookPush: 'off', brandHit: 'off', logoPop: false } as const,
+      brandWords: [],
+      voice: true,
+      seed: 'fp-rec',
+    }
+    saveQueue('t', [clip('a', 's1', true, { source })])
+    await render()
+    await settle()
+    const radio = (label: string) => [...host.querySelectorAll('[aria-label="Cut by the Cutter or kept raw"] button')].find((b) => b.textContent === label) as HTMLButtonElement
+    expect(radio('Cut').getAttribute('aria-checked')).toBe('true')
+    await act(async () => radio('Raw').click())
+    await settle()
+    expect(cutCalls).toEqual([{ asFilmed: true, seed: 'fp-rec' }])
+    const [q] = loadQueue('t')
+    expect(q.file).toMatchObject({ ownCut: true, fp: 'fp-again' })
+    expect(q.file.edited).toBeUndefined()
+    expect(q.text).toBe('whole')
+    expect(q.source).toMatchObject({ fileId: 'src-1', keep: [{ start: 0, end: 3 }] })
+    expect(radio('Raw').getAttribute('aria-checked')).toBe('true')
+    // And back: cut again from the same recording.
+    await act(async () => radio('Cut').click())
+    await settle()
+    expect(cutCalls[1]).toEqual({ asFilmed: false, seed: 'fp-rec' })
+    expect(loadQueue('t')[0].file).toMatchObject({ edited: true })
   })
 
   it('every clip has its Timeline editor at the bottom - one with no recording kept too (his ask, 2026-11-15)', async () => {

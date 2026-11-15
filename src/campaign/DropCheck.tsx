@@ -27,7 +27,8 @@ import type { Campaign } from './look'
 import { ChevronLeft } from './icons'
 import { postingHere, recheckCaptions } from './posting'
 import { CutsEditor } from './CutsEditor'
-import { filesOfClip, joinTouching, leftBehind, remakeWithWords, sourceOf, speedOfClip, splitAtPieces, swapClip } from './clipEdit'
+import { FullPage } from './FullPage'
+import { cutOrRaw, filesOfClip, isCut, joinTouching, leftBehind, remakeWithWords, sourceOf, speedOfClip, splitAtPieces, swapClip } from './clipEdit'
 import { filmingOf } from './filming'
 import { fingerprint } from './fingerprint'
 import { cutName, dropSettings, recut } from './prepareDrop'
@@ -118,6 +119,8 @@ export function DropCheck({
   /** Being made again from the timeline: how far, or what went wrong. */
   const [remaking, setRemaking] = useState<number | null>(null)
   const [remakeProblem, setRemakeProblem] = useState<string | null>(null)
+  /** Being made again cut or as filmed: what, and how far. */
+  const [switching, setSwitching] = useState<{ what: string; fraction: number } | null>(null)
 
   // The ones out of the batch by now are out of the check for good.
   useEffect(() => {
@@ -271,6 +274,34 @@ export function DropCheck({
           {place === OUT ? 'Keep it' : item.recheck ? 'Take out' : 'Leave out'}
         </button>
       </div>
+      {/* Cut by the Cutter, or kept as he filmed it - his pick per clip
+          (his ask, 2026-11-15: "some clips i want to keep them raw but others no"). */}
+      <div className="drop-check-cut">
+        <span className="row-name">Cutter</span>
+        <div className="seg" role="radiogroup" aria-label="Cut by the Cutter or kept raw">
+          {([true, false] as const).map((on) => {
+            const now = isCut(liveFile())
+            return (
+              <button
+                key={String(on)}
+                type="button"
+                role="radio"
+                aria-checked={now === on}
+                className={now === on ? 'active' : ''}
+                disabled={switching !== null || listening}
+                onClick={() => now !== on && void switchCut(on)}
+              >
+                {on ? 'Cut' : 'Raw'}
+              </button>
+            )
+          })}
+        </div>
+        {switching ? (
+          <span className="hint">
+            {switching.what}… {Math.round(switching.fraction * 100)}%
+          </span>
+        ) : null}
+      </div>
       {/* The step it goes in is the one lit below; said in words only when
           there is something to do. */}
       {place === null || place === OUT || pickFirst ? (
@@ -379,7 +410,7 @@ export function DropCheck({
   // arrows to make one longer or shorter - Done makes the clip again.
   if (timeline) {
     return (
-      <div className="drop-check-screen">
+      <FullPage>
         {remaking !== null ? (
           <section className="screen review">
             <span className="row-name">Making the clip again… {Math.round(remaking * 100)}%</span>
@@ -407,8 +438,40 @@ export function DropCheck({
             cutsOnly
           />
         )}
-      </div>
+      </FullPage>
     )
+  }
+
+  /** The clip made again cut by the Cutter (`on`) or as he filmed it, from its
+   *  recording - in its place in the check, and in the batch for one in it. */
+  const switchCut = async (on: boolean) => {
+    setRemakeProblem(null)
+    const what = on ? 'Cutting it' : 'Putting it back as filmed'
+    setSwitching({ what, fraction: 0 })
+    try {
+      const was = liveFile()
+      const made = await cutOrRaw(was, { cut: on, names: campaign.brandWords ?? [], ...(item.source ? { given: item.source } : {}) }, (phase, fraction) =>
+        setSwitching({ what: phase === 'cutting' ? what : 'Listening', fraction }),
+      )
+      const bank = getBank()
+      if (item.recheck && bank && fileIn(bank, was.id)) keepBank(swapClip(bank, was.id, made.file))
+      void retireBankFiles(leftBehind(was, made.file)).catch(() => {})
+      const changed: ToCheck = {
+        ...item,
+        file: made.file,
+        words: made.words,
+        text: made.text,
+        unheard: undefined,
+        ...(item.source ? { source: made.source } : {}),
+      }
+      saveQueue(format.id, loadQueue(format.id).map((q) => (q.file.id === item.file.id ? changed : q)))
+      setQueue((now) => now.map((q) => (q.file.id === item.file.id ? changed : q)))
+      setHeard(null)
+    } catch (error) {
+      setRemakeProblem(`Couldn't make it ${on ? 'cut' : 'raw'} (${error instanceof Error ? error.message : String(error)}). The clip is as it was.`)
+    } finally {
+      setSwitching(null)
+    }
   }
 
   /** At the bottom of the check, above Approve: the clip's timeline. */

@@ -2276,3 +2276,10 @@ html.editor-dark .caption-sheet { --ink: #000000; --text: #ffffff; --dim: #aeaeb
 .drop-check-screen.mirrored .clip-editor-arrow { transform: none; }
 .review-bottom { padding: 8px 0 4px; }
 .drop-check-timeline-btn { margin-top: 4px; }
+/* A page of its own over everything (FullPage.tsx): the batch's timeline, laid
+   out like the Cutter's edit screen - the same box as a page, nothing under it. */
+main.full-page { position: fixed; inset: 0; z-index: 100; overflow-y: auto; overscroll-behavior: contain; -webkit-overflow-scrolling: touch; background: #000; max-width: none; margin: 0; }
+main.full-page > * { max-width: 720px; margin-left: auto; margin-right: auto; }
+/* Cut by the Cutter or kept raw, per clip, on its check (DropCheck.tsx). */
+.drop-check-cut { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-top: 6px; }
+.drop-check-cut .seg { flex: 0 0 auto; }

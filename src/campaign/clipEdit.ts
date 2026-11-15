@@ -24,7 +24,7 @@ import type { ClipSource } from './dropQueue'
 import { NO_EFFECTS } from './effects'
 import { filmingOf } from './filming'
 import { fingerprint } from './fingerprint'
-import { cutName, recut } from './prepareDrop'
+import { cutDropped, cutName, dropSettings, recut, videoType, type DropPhase } from './prepareDrop'
 import { loadBankFile, saveBankFile } from './store'
 import { downloadFile } from './talkLink'
 
@@ -232,3 +232,54 @@ export function splitAtPieces(kept: readonly Range[], pieces: readonly Range[]):
     return edges.slice(1).map((end, i) => ({ start: edges[i], end }))
   })
 }
+
+/** A clip cut by the Cutter or kept as filmed, his pick per clip (his ask,
+ *  2026-11-15: "select clips i want to be edited, meaning cutted by the
+ *  cutter. because some clips i want to keep them raw but others no"): made
+ *  again from its recording exactly as the drop-in makes it with "Cut the
+ *  clips" on or off - the same cut, the same zooms. `given`: the recording
+ *  of a clip still in the check (ToCheck.source); else the clip's own
+ *  (BankFile.source), or the clip itself for an older one - which can be
+ *  cut, but not put back as filmed. */
+export async function cutOrRaw(
+  file: BankFile,
+  { cut, names, given }: { cut: boolean; names: string[]; given?: ClipSource },
+  onPhase?: (phase: DropPhase, fraction: number) => void,
+): Promise<{ file: BankFile; words: CaptionWord[]; text: string; source: ClipSource }> {
+  const from = given
+    ? await bankBlob({ id: given.fileId, name: file.name, type: given.type, size: given.size }).then((recording) => (recording ? { source: given, recording } : null))
+    : await sourceOf(file)
+  if (!from) throw new Error('its video is no longer on this phone or your server')
+  const { source, recording } = from
+  if (!cut && source.self) throw new Error('it was added before recordings were kept, so what was cut out of it is gone')
+  const how = dropSettings({ effects: source.effects, brandWords: source.brandWords })
+  const made = await cutDropped(recording, { ...how, voice: source.voice, names, seed: source.seed, asFilmed: !cut, onPhase })
+  const id = crypto.randomUUID()
+  await saveBankFile(id, made.blob)
+  const seconds = (await filmingOf(made.blob).catch(() => null))?.seconds
+  const kept: ClipSource = { ...source, keep: made.plan.keep, words: made.plan.words, duration: made.plan.duration }
+  const next: BankFile = {
+    ...file,
+    id,
+    name: made.remade ? cutName(file.name) : file.name,
+    type: made.remade ? 'video/mp4' : videoType(file.name, source.type),
+    size: made.blob.size,
+    fp: await fingerprint(made.blob),
+    from: file.from ?? file.fp,
+    source: kept,
+    ...(seconds ? { seconds } : {}),
+    ...(file.captions ? { captions: made.words } : {}),
+    made: CLIP_MADE,
+  }
+  // Cut: the Cutter's; as filmed: his own, never trimmed in the batch video.
+  delete next.edited
+  delete next.ownCut
+  if (made.cut) next.edited = true
+  else next.ownCut = true
+  // At 1x now: the format's speed makes it again by itself (SpeedRunner).
+  delete next.speed
+  return { file: next, words: made.words, text: made.text, source: kept }
+}
+
+/** Whether a clip is the Cutter's cut (else kept as he filmed it). */
+export const isCut = (file: Pick<BankFile, 'edited' | 'ownCut'>): boolean => !file.ownCut

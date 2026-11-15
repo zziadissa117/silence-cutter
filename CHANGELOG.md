@@ -3,6 +3,22 @@
 Newest first. Every change says what it does, how to use it, and how it works
 underneath. Kept up to date with each commit.
 
+## Batch clips: Cut or Raw per clip; the timeline opens as a page of its own
+- His report and ask (2026-11-15): "The timeline editor page in the batch section does not open good. I have an idea
+  instead. Make it so i can select clips i want to be edited, meaning cutted by the cutter. because some clips i want
+  to keep them raw but others no."
+- Every clip has a Cutter switch - Cut / Raw - on its check (under "Clip 3 of 12") and on its clip screen (above
+  Speed). Cut: the Cutter takes the silences out, exactly as "Cut the clips" does at drop-in. Raw: the clip as filmed,
+  never trimmed in the batch video. Made again from the clip's recording, in its place - in the batch too. The clip
+  list marks the raw ones.
+- A clip added before recordings were kept can be cut, but not put back raw (what was cut out of it is gone).
+- The timeline (Length, Timeline editor): it was drawn inside the Batch tab's page, which on the iPhone could scroll
+  under his drags and sit under the tab bar. Now it opens as a page of its own like the Cutter's edit screen, the
+  Batch tab held still under it.
+- Underneath: `clipEdit.cutOrRaw` (`prepareDrop.cutDropped` with `asFilmed`), `isCut`; `DropCheck` `switchCut`,
+  `ClipEditor` `switchCut` (`names`); `FullPage.tsx` (portal to the body, background scroll locked). Test:
+  `dropCheck.test.tsx`.
+
 ## Batch clip check: a Timeline editor on every clip
 - His ask (2026-11-15): "I speak too slowly ... I kind of want to trim them so it feels like I'm continuously speaking
   ... in the check clips feature ... Keep that, but also, just at the bottom, put Timeline Editor ... just like the usual

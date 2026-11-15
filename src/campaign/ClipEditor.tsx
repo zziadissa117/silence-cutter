@@ -15,8 +15,9 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { VideoPicker } from '../VideoPicker'
 import type { Range } from '../media/silenceMath'
 import type { BankFile, BatchBank, BatchFormat, BatchStep } from './batch'
-import { CLIP_SPEEDS, canLengthen, joinTouching, splitAtPieces, filesOfClip, leftBehind, oneAtATime, remakeClip, sourceOf, speedLabel, speedOfClip, swapClip, wantedSpeed } from './clipEdit'
+import { CLIP_SPEEDS, canLengthen, cutOrRaw, isCut, joinTouching, splitAtPieces, filesOfClip, leftBehind, oneAtATime, remakeClip, sourceOf, speedLabel, speedOfClip, swapClip, wantedSpeed } from './clipEdit'
 import { CutsEditor } from './CutsEditor'
+import { FullPage } from './FullPage'
 import { clipsOfFormat, HOOK, placed, withClip, type ClipSource, type PlacedClip } from './dropQueue'
 import { ChevronLeft, ChevronRight, CloseIcon } from './icons'
 import { formatTime } from './jobs'
@@ -34,6 +35,7 @@ export function ClipEditor({
   onCaptions,
   onReplace,
   onClose,
+  names = [],
 }: {
   format: BatchFormat
   /** This format's product steps, in order. */
@@ -48,6 +50,8 @@ export function ClipEditor({
   onCaptions: (clip: PlacedClip) => void
   /** A video from the phone, edited, to take this clip's place - false when it couldn't be started. */
   onReplace: (file: File, clip: PlacedClip) => boolean
+  /** The campaign's brand words, heard right when a clip is cut again. */
+  names?: string[]
   onClose: () => void
 }) {
   // In the order a video plays them, as on the card: his hooks, then each step.
@@ -133,6 +137,26 @@ export function ClipEditor({
   }
 
   /** The clip made again (speed, or the parts kept) in its place. */
+  /** Cut by the Cutter or kept as filmed, from its recording (clipEdit.cutOrRaw). */
+  const switchCut = async (on: boolean) => {
+    if (busy) return
+    setNote(null)
+    const what = on ? 'Cutting it' : 'Putting it back as filmed'
+    setBusy({ what, fraction: 0 })
+    try {
+      const made = await oneAtATime(() => cutOrRaw(file, { cut: on, names }, (phase, fraction) => setBusy({ what: phase === 'cutting' ? what : 'Listening', fraction })))
+      const bank = getBank()
+      if (!bank) return
+      keep(swapClip(bank, file.id, made.file))
+      void retireBankFiles(leftBehind(file, made.file)).catch(() => {})
+      setCurrentId(made.file.id)
+    } catch (error) {
+      setNote(`Couldn't make it ${on ? 'cut' : 'raw'} (${error instanceof Error ? error.message : String(error)}). The clip is as it was.`)
+    } finally {
+      setBusy(null)
+    }
+  }
+
   const remake = async (what: string, change: { keep?: Range[]; speed: number }, mark: Partial<BankFile> = {}) => {
     setNote(null)
     setBusy({ what, fraction: 0 })
@@ -192,7 +216,7 @@ export function ClipEditor({
     // A clip he didn't have cut is one part on its timeline, not its zoom pieces.
     const shownParts = source ? (file.ownCut ? joinTouching(source.keep) : source.keep) : []
     return (
-      <div className="drop-check-screen">
+      <FullPage>
         <CutsEditor
           name={file.name}
           file={recording instanceof Blob ? recording : null}
@@ -210,7 +234,7 @@ export function ClipEditor({
           onCancel={() => setTimeline(null)}
           cutsOnly
         />
-      </div>
+      </FullPage>
     )
   }
 
@@ -275,6 +299,24 @@ export function ClipEditor({
         <button type="button" className="btn wide" disabled={busy !== null} onClick={openTimeline}>
           Length
         </button>
+        <div className="clip-editor-row">
+          <span className="row-name">Cutter</span>
+          <div className="seg full" role="radiogroup" aria-label="Cut by the Cutter or kept raw">
+            {([true, false] as const).map((on) => (
+              <button
+                key={String(on)}
+                type="button"
+                role="radio"
+                aria-checked={isCut(file) === on}
+                className={isCut(file) === on ? 'active' : ''}
+                disabled={busy !== null}
+                onClick={() => isCut(file) !== on && void switchCut(on)}
+              >
+                {on ? 'Cut' : 'Raw'}
+              </button>
+            ))}
+          </div>
+        </div>
         <div className="clip-editor-row">
           <span className="row-name">Speed</span>
           <div className="seg full" role="radiogroup" aria-label="This clip's speed">
