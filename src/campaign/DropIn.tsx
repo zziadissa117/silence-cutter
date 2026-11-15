@@ -23,6 +23,7 @@ import type { BankFile, BatchBank, BatchStep } from './batch'
 import { addToQueue, checkedClip, clipsOfFormat, loadQueue, notEdited, QUEUE_EVENT, queueRecheck, sameRecording, suggestPlace, type ClipSource, type DropChoices, type ToCheck } from './dropQueue'
 import type { AngleEffects } from './effects'
 import { fingerprint } from './fingerprint'
+import { scriptMatches } from './ScriptCheck'
 import { NO_EFFECTS } from './effects'
 import { cutName, dropSettings, hasZooms, prepareClip, type DropPhase } from './prepareDrop'
 import { loadBankFile, retireBankFiles, saveBankFile } from './store'
@@ -138,6 +139,7 @@ export function DropIn({
   brandWords,
   getBank,
   onCheck,
+  onScriptCheck,
   choices,
   onChoices,
   onWatch,
@@ -159,6 +161,8 @@ export function DropIn({
   getBank: () => BatchBank | null
   /** Opens the check of the clips waiting for it. */
   onCheck: () => void
+  /** The clips that match their step's caption script, approved after one look (ScriptCheck.tsx). */
+  onScriptCheck?: () => void
   /** The drop-in checklist as he last left it for this format (dropQueue.choicesOf). */
   choices: DropChoices
   /** His picks, kept on the format - music and the headline are its videos'. */
@@ -496,6 +500,8 @@ export function DropIn({
   const queued = new Set(queue.map((q) => q.file.id))
   const unchecked = clips.filter((c) => !checkedClip(c.file) && !queued.has(c.file.id))
   const elsewhere = unchecked.filter((c) => c.elsewhere).length
+  /** Clips waiting that match their step's caption script. */
+  const matching = scriptMatches(queue, steps).length
   const recheck = (list: typeof clips) => {
     setQueue(queueRecheck(formatId, list))
     onCheck()
@@ -503,9 +509,15 @@ export function DropIn({
 
   return (
     <div className="drop-in">
+      {/* The ones that match their step's caption script: one look, one tap. */}
+      {onScriptCheck && matching > 0 ? (
+        <button type="button" className="btn primary wide drop-check-btn script-match-btn" onClick={onScriptCheck}>
+          ✓ {matching} match{matching === 1 ? 'es' : ''} the caption script - look & approve
+        </button>
+      ) : null}
       {queue.length > 0 ? (
-        <button type="button" className="btn primary wide drop-check-btn" onClick={onCheck}>
-          Check {queue.length} clip{queue.length === 1 ? '' : 's'}
+        <button type="button" className={`btn wide drop-check-btn${onScriptCheck && matching > 0 ? '' : ' primary'}`} onClick={onCheck}>
+          Check {queue.length} clip{queue.length === 1 ? '' : 's'}{onScriptCheck && matching > 0 ? ' one by one' : ''}
         </button>
       ) : null}
       {running ? (

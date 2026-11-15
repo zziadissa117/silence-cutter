@@ -137,6 +137,7 @@ function Group({
   addLabel,
   extra,
   cutChoice,
+  script,
 }: {
   title: string
   num?: number
@@ -147,7 +148,10 @@ function Group({
   extra?: React.ReactNode
   /** A product step: its clips cut by the Cutter or kept raw (BatchStep.clips). */
   cutChoice?: { value: 'cut' | 'raw' | undefined; onChange: (value: 'cut' | 'raw') => void }
+  /** A product step's caption script (BatchStep.script). */
+  script?: { value: string | undefined; onSave: (value: string) => void }
 }) {
+  const [editing, setEditing] = useState<string | null>(null)
   return (
     <div className="talk-group">
       <div className="talk-group-head">
@@ -161,6 +165,46 @@ function Group({
         ) : null}
       </div>
       {extra}
+      {/* Its caption script: what he says in it, as the captions should read
+          (captionScript.ts) - set by him for every step. */}
+      {script ? (
+        editing !== null ? (
+          <div className="talk-script edit">
+            <textarea
+              rows={2}
+              value={editing}
+              placeholder="What you say in this step, e.g. Go to ChatGPT and paste this prompt"
+              aria-label={`${title}: caption script`}
+              onChange={(e) => setEditing(e.target.value)}
+            />
+            <div className="actions-row">
+              <button
+                type="button"
+                className="btn small primary"
+                onClick={() => {
+                  script.onSave(editing.trim())
+                  setEditing(null)
+                }}
+              >
+                Save
+              </button>
+              <button type="button" className="btn small" onClick={() => setEditing(null)}>
+                Cancel
+              </button>
+            </div>
+          </div>
+        ) : script.value ? (
+          <button type="button" className="talk-script" onClick={() => setEditing(script.value ?? '')}>
+            <span className="hint">Captions</span>
+            <span className="talk-script-text">“{script.value}”</span>
+          </button>
+        ) : (
+          <button type="button" className="talk-script missing" onClick={() => setEditing('')}>
+            <span className="warn-text">No caption script yet</span>
+            <span className="hint">Tap to type what you say in this step</span>
+          </button>
+        )
+      ) : null}
       {cutChoice ? (
         <div className="talk-step-cut">
           <div className="seg" role="radiogroup" aria-label={`${title}: cut or raw`}>
@@ -216,6 +260,7 @@ export function TalkClips({
   onAddHooks,
   onAddToStep,
   onStepClips,
+  onStepScript,
   hookNote,
 }: {
   hooks: BankFile[]
@@ -226,6 +271,8 @@ export function TalkClips({
   onAddToStep: (stepId: string, files: File[]) => void
   /** A step's clips set to be cut or raw, all of them. */
   onStepClips?: (stepId: string, value: 'cut' | 'raw') => void
+  /** A step's caption script saved. */
+  onStepScript?: (stepId: string, script: string) => void
   hookNote?: React.ReactNode
 }) {
   return (
@@ -234,6 +281,7 @@ export function TalkClips({
       {steps.map((st, i) => (
         <Group key={st.id} num={i + 1} title={st.name} files={st.files} onOpen={onOpen} onAdd={(files) => onAddToStep(st.id, files)} addLabel={`Add clips for ${st.name}`}
           cutChoice={onStepClips ? { value: st.clips, onChange: (v) => onStepClips(st.id, v) } : undefined}
+          script={onStepScript ? { value: st.script, onSave: (v) => onStepScript(st.id, v) } : undefined}
         />
       ))}
     </div>

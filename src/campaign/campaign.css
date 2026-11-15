@@ -2308,3 +2308,24 @@ main.full-page > * { max-width: 720px; margin-left: auto; margin-right: auto; }
 /* A product step's clips cut or raw, all at once (TalkClips.tsx). */
 .talk-step-cut { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
 .talk-step-cut .seg { flex: 0 0 auto; }
+/* A product step's caption script (TalkClips.tsx). */
+.talk-script { display: flex; flex-direction: column; align-items: flex-start; gap: 2px; width: 100%; padding: 8px 12px; border-radius: 12px; border: 1px dashed var(--hairline); background: none; color: inherit; font: inherit; text-align: left; cursor: pointer; }
+.talk-script.missing { border-color: var(--warn); }
+.talk-script-text { font-weight: 600; }
+.talk-script.edit { cursor: default; border-style: solid; gap: 8px; }
+.talk-script.edit textarea { width: 100%; font: inherit; border-radius: 10px; padding: 8px; }
+.drop-check-script { display: block; font-size: 14px; font-weight: 600; margin-top: 4px; }
+.drop-check-script.ok { color: var(--ok); }
+.drop-check-script.differs { color: var(--warn); }
+.drop-check-setscript { margin-top: 4px; text-align: left; }
+/* The clips that match their caption script, at once (ScriptCheck.tsx). */
+.script-check .screen.review { overflow-y: auto; }
+.script-check-player { display: grid; place-items: center; min-height: 34vh; }
+.script-check-player .drop-check-video { max-height: 42vh; }
+.script-check-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+.script-check-list li { display: flex; align-items: center; gap: 8px; border-radius: 12px; border: 1px solid var(--hairline); padding: 4px 8px; }
+.script-check-list li.on { border-color: var(--accent); }
+.script-check-row { flex: 1; min-width: 0; display: flex; align-items: center; gap: 10px; background: none; border: 0; color: inherit; font: inherit; text-align: left; padding: 6px 0; cursor: pointer; }
+.script-check-text { display: flex; flex-direction: column; min-width: 0; }
+.script-check-step { font-size: 13px; color: var(--dim); }
+.script-match-btn { background: var(--ok); }

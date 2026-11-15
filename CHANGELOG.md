@@ -3,6 +3,28 @@
 Newest first. Every change says what it does, how to use it, and how it works
 underneath. Kept up to date with each commit.
 
+## Talking head steps: a caption script each, and the clips that match it approved in one tap
+- His ask (2026-11-15): "the way to check captions right now on the batches ... takes too long. Is there a way to ...
+  put a certain caption framework for every single product step ... When I talk in the video, Claude inspires himself
+  from that caption framework so that it can never have them wrong again. I still need to verify them" - and "I want
+  to make sure that I set the framework for every single product step."
+- Each product step has its caption script (Batch tab, Your clips, under the step's name): what he says in it, as the
+  captions should read. Tap to type it; a step without one says "No caption script yet". Or on a clip's check: "use
+  these captions as its script".
+- Every clip of a step is lined up against its script: a misheard word takes the script's spelling ("GPT" and "chat
+  GPT" become "ChatGPT", "past" becomes "paste"), on the times it was heard. Anything he may really have said
+  differently is never changed - another word, another form of one ("prompts", "these", "used"), a word that only
+  looks alike ("cat" / "chat") - it is kept as heard and pointed out. Claude's caption check is given the script too.
+- On the check: "✓ Matches the step's caption script", or "Differs from the script: heard "claude", script
+  "ChatGPT"".
+- The fast lane: "✓ N match the caption script - look & approve" above "Check N clips". It lists every waiting clip that
+  matches - its step and its captions exactly as they will read - a tap plays it, Check opens one alone, "Approve all N"
+  puts them all in the batch. The ones that differ stay for the one-by-one check.
+- No server deploy needed.
+- Underneath: `BatchStep.script`; `captionScript.ts` (`fitToScript`, `scriptFrom`); `TalkClips` script box;
+  `DropCheck` (fitted words, match line, Claude's context); `ScriptCheck.tsx` (`scriptMatches`, `approveMatches`);
+  `DropIn` `onScriptCheck`. Tests: `captionScript.test.ts`, `scriptCheck.test.ts`.
+
 ## Classic captions: less bold, a thin outline, no shadow look
 - His report (2026-11-15): "The captions do not need to have a shadow at all, and they're a little too bold."
 - Classic captions are now medium weight (600, was 800) with a thin black outline (9% of the letter size, was 16% -

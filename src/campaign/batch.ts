@@ -408,6 +408,11 @@ export interface BatchStep {
    *  product steps need to be raw"). Its clips are made again to match
    *  (TalkClips.SpeedRunner). Absent: each clip as it was dropped in. */
   clips?: 'cut' | 'raw'
+  /** What he says in this step, as its captions should read - its caption
+   *  script (his ask, 2026-11-15: "put a certain caption framework for every
+   *  single product step"). Every clip's heard words are lined up against it
+   *  (captionScript.ts). Absent: not set yet. */
+  script?: string
 }
 
 /** A picture or video on a step's clip. */

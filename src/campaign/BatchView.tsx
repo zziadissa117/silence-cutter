@@ -68,6 +68,7 @@ import { DropIn, HOOK, dropInto } from './DropIn'
 import { choicesOf, queueRecheck, withChoices } from './dropQueue'
 import { ClipEditor } from './ClipEditor'
 import { SpeedRow, SpeedRunner, TalkClips } from './TalkClips'
+import { ScriptCheck } from './ScriptCheck'
 import { filesOfClip } from './clipEdit'
 import { defaultEffects, effectsFor } from './defaultEffects'
 import { StepTexts } from './StepTexts'
@@ -368,6 +369,8 @@ export function BatchView({
   const [viewing, setViewing] = useState<string | null>(null)
   /** The clip the editor opens on (ClipEditor.tsx). */
   const [viewFirst, setViewFirst] = useState<string | null>(null)
+  /** A format's clips that match their caption script, looked over at once (ScriptCheck.tsx). */
+  const [scriptChecking, setScriptChecking] = useState<string | null>(null)
   const [choosingKind, setChoosingKind] = useState(false)
   /** The batch the engine is making for this campaign, as it last said. */
   const [engineState, setEngineState] = useState<EngineJob | null>(null)
@@ -1368,6 +1371,7 @@ export function BatchView({
             brandWords={campaign.brandWords ?? []}
             getBank={() => bankRef.current}
             onCheck={() => setChecking(f.id)}
+            onScriptCheck={() => setScriptChecking(f.id)}
             choices={choicesOf(f)}
             onChoices={(picked) => changeFormat(f.id, withChoices(picked))}
           />
@@ -1387,6 +1391,10 @@ export function BatchView({
             onOpen={open}
             onAddHooks={(files) => void (!f.rawHooks && dropInto(f.id, files, HOOK) ? undefined : add({ format: f.id, as: 'reactions' }, files))}
             onAddToStep={(stepId, files) => void (dropInto(f.id, files, stepId) ? undefined : add({ step: stepId }, files))}
+            onStepScript={(stepId, script) => {
+              const latest = bankRef.current ?? bank
+              keep({ ...latest, steps: (latest.steps ?? []).map((x) => (x.id === stepId ? { ...x, script: script || undefined } : x)) })
+            }}
             onStepClips={(stepId, value) => {
               const latest = bankRef.current ?? bank
               keep({ ...latest, steps: (latest.steps ?? []).map((x) => (x.id === stepId ? { ...x, clips: value } : x)) })
@@ -2132,10 +2140,29 @@ export function BatchView({
       />
     ) : null
 
+  const scriptFormat = scriptChecking && bank && !checkLayer ? formatList.find((x) => x.id === scriptChecking) : undefined
+  const scriptLayer =
+    scriptFormat && bank ? (
+      <ScriptCheck
+        key={scriptFormat.id}
+        format={scriptFormat}
+        steps={formatBank(bank, scriptFormat).steps ?? []}
+        getBank={() => bankRef.current}
+        keep={keep}
+        onCheckOne={(fileId) => {
+          setScriptChecking(null)
+          setCheckFirst(fileId)
+          setChecking(scriptFormat.id)
+        }}
+        onClose={() => setScriptChecking(null)}
+      />
+    ) : null
+
   return (
     <>
     {checkLayer}
     {viewLayer}
+    {scriptLayer}
     <section className="screen batch">
       <div className="screen-head">
         <h1>Batch</h1>

@@ -28,6 +28,7 @@ import { ChevronLeft } from './icons'
 import { postingHere, recheckCaptions } from './posting'
 import { CutsEditor } from './CutsEditor'
 import { FullPage } from './FullPage'
+import { fitToScript, scriptFrom, scriptWords } from './captionScript'
 import { cutOrRaw, filesOfClip, isCut, joinTouching, leftBehind, remakeWithWords, sourceOf, speedOfClip, splitAtPieces, swapClip } from './clipEdit'
 import { filmingOf } from './filming'
 import { fingerprint } from './fingerprint'
@@ -213,6 +214,13 @@ export function DropCheck({
   /** What he says in it: as it came, or heard here. */
   const said = item.unheard ? (Array.isArray(heard) ? heard : []) : item.words
   const text = item.unheard ? said.map((w) => w.text).join(' ') : item.text
+  /** The step it goes in, and that step's caption script (captionScript.ts):
+   *  the heard words lined up against it - the script's spelling where they
+   *  match, what differs pointed out. */
+  const stepNow = steps.find((st) => st.id === place)
+  const script = stepNow?.script?.trim() || ''
+  const fitted = script && said.length > 0 ? fitToScript(said, script) : null
+  const shown = fitted ? fitted.words : said
 
   /** Approved: in the batch where he says, with its captions as he left them. */
   const approve = (words: CaptionWord[]) => {
@@ -318,6 +326,32 @@ export function DropCheck({
         </span>
       ) : null}
       {listening ? <span className="hint">Listening to what you say in it…</span> : null}
+      {fitted ? (
+        fitted.matches ? (
+          <span className="drop-check-script ok">✓ Matches the step&rsquo;s caption script{fitted.respelled > 0 ? ` - ${fitted.respelled} word${fitted.respelled === 1 ? '' : 's'} spelled as the script` : ''}</span>
+        ) : (
+          <span className="drop-check-script differs">
+            Differs from the script:{' '}
+            {fitted.diffs
+              .slice(0, 3)
+              .map((d) => (d.heard && d.script ? `heard “${d.heard}”, script “${d.script}”` : d.heard ? `heard “${d.heard}” (not in the script)` : `“${d.script}” not heard`))
+              .join(' · ')}
+            {fitted.diffs.length > 3 ? ` · ${fitted.diffs.length - 3} more` : ''}
+          </span>
+        )
+      ) : stepNow && said.length > 0 && !listening ? (
+        <button
+          type="button"
+          className="linkbtn drop-check-setscript"
+          onClick={() => {
+            const bank = getBank()
+            if (!bank) return
+            keepBank({ ...bank, steps: (bank.steps ?? []).map((st) => (st.id === stepNow.id ? { ...st, script: scriptFrom(said) } : st)) })
+          }}
+        >
+          No caption script for {stepNow.name} - use these captions as its script
+        </button>
+      ) : null}
       {remakeProblem ? <span className="hint warn-text">{remakeProblem}</span> : null}
       {/* The step its words sound like, one tap away. */}
       {hint && place !== hint && place !== OUT ? (
@@ -528,11 +562,11 @@ export function DropCheck({
   return (
     <div className={screen}>
     <CaptionReview
-      key={item.file.id}
+      key={`${item.file.id}:${script}`}
       name={item.name}
       file={file}
       missing={missing}
-      initial={said}
+      initial={shown}
       top={where}
       bottom={timelineButton}
       backLabel="Batch"
@@ -543,14 +577,18 @@ export function DropCheck({
       onSize={(size) => onFormat({ captionSize: size })}
       captionStyle={look.style}
       onCaptionStyle={(style) => onFormat({ captionStyle: style })}
-      vocabulary={campaign.brandWords}
+      vocabulary={[...(campaign.brandWords ?? []), ...(script ? scriptWords(script) : [])]}
       onRecheck={
         postingHere()
           ? (phrases) =>
-              recheckCaptions(phrases, campaign.brandWords, campaign.id, {
+              recheckCaptions(phrases, [...(campaign.brandWords ?? []), ...(script ? scriptWords(script) : [])], campaign.id, {
                 campaign: campaign.name,
                 brand: campaign.brandWords,
-                about: campaign.posting?.rules ?? '',
+                // What he says in this step, as its captions should read: Claude
+                // goes by it (his ask, 2026-11-15).
+                about: [campaign.posting?.rules ?? '', script ? `In this clip he says (his own caption script for the step - spell its words exactly like this): "${script}"` : '']
+                  .filter(Boolean)
+                  .join('\n'),
                 angle: '',
                 headline: '',
               })
