@@ -3,6 +3,19 @@
 Newest first. Every change says what it does, how to use it, and how it works
 underneath. Kept up to date with each commit.
 
+## Batch clip check: a Timeline editor on every clip
+- His ask (2026-11-15): "I speak too slowly ... I kind of want to trim them so it feels like I'm continuously speaking
+  ... in the check clips feature ... Keep that, but also, just at the bottom, put Timeline Editor ... just like the usual
+  timeline editor that's in the cutter."
+- Every clip's check now has "Timeline editor" at the bottom, above Approve (captions, Mirror, where it goes all as
+  before). It opens the Cutter's timeline on the clip: drag the arrows to shorten the pauses or a part, Done makes the
+  clip again in its place - in the batch too for a clip already in it.
+- A clip whose recording was kept (dropped in since this morning): made longer or shorter from the recording. An older
+  clip: its timeline is the clip itself - it can be trimmed shorter, not longer.
+- After a trim, the captions are the words as heard (on the new clip), to look over on the same check.
+- Underneath: `DropCheck` `openTimeline` (item.source, or `clipEdit.sourceOf`), `remake` via `clipEdit.remakeWithWords`
+  + `swapClip`; `CaptionReview bottom`. Test: `dropCheck.test.tsx`.
+
 ## Campaigns: caption text per kind of video (talking head / reaction)
 - His ask (2026-11-15): "set up different captions per post type ... on MediaMaxing you get paid like $3 for a basic
   post or $6 for an advanced post. Advanced posts are mostly talking heads, and basic posts are mostly reaction-type

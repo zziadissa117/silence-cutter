@@ -262,6 +262,7 @@ export function CaptionReview({
   quick = false,
   onTimeline,
   top,
+  bottom,
   backLabel = 'Videos',
   sheet,
 }: {
@@ -325,6 +326,8 @@ export function CaptionReview({
   onTimeline?: () => void
   /** Shown with the video, above it - a batch clip's step (DropCheck.tsx). */
   top?: ReactNode
+  /** Shown at the bottom, above Approve - a batch clip's Timeline editor (DropCheck.tsx). */
+  bottom?: ReactNode
   /** What the back button goes back to. */
   backLabel?: string
   /** The phrases' sheet open or closed, when the page around keeps it (the
@@ -977,6 +980,7 @@ export function CaptionReview({
         ) : null}
       </div>
 
+      {bottom ? <div className="review-bottom">{bottom}</div> : null}
       <div className="editor-foot sticky">
         <button type="button" className="btn primary wide" onClick={() => onApprove(words)}>
           {approveLabel}

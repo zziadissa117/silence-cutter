@@ -54,6 +54,7 @@ vi.mock('./CaptionReview', () => ({
   CaptionReview: (p: {
     name: string
     top: React.ReactNode
+    bottom?: React.ReactNode
     initial: CaptionWord[]
     approveLabel: string
     recheckKey?: string
@@ -77,6 +78,7 @@ vi.mock('./CaptionReview', () => ({
         <button type="button" onClick={() => p.onSkip([])}>
           Without captions
         </button>
+        {p.bottom}
       </section>
     )
   },
@@ -322,7 +324,7 @@ describe('looking again at where the clips of the batch are (his ask, 2026-11-14
     saveQueue('t', [clip('a', 's1', true, { source })])
     await render()
     await settle()
-    await click('Timeline')
+    await click('Timeline editor')
     await settle()
     expect(host.querySelector('.timeline-parts')?.textContent).toBe('[{"start":1,"end":2}]')
     await click('Done')
@@ -343,11 +345,31 @@ describe('looking again at where the clips of the batch are (his ask, 2026-11-14
     expect(retired.flat()).not.toContain('src-1')
   })
 
-  it('no recording kept (a clip already in the batch, or from before): no Timeline', async () => {
+  it("a clip of the batch with no recording kept: trimmed from the clip itself, swapped in the batch (his ask, 2026-11-15)", async () => {
+    bank.steps![0].files.push({ id: 'old', name: 'old.mp4', type: 'video/mp4', size: 1, fp: 'fp-old', edited: true, seconds: 3, captions: [{ text: 'hi', start: 0.2, end: 0.5 }] })
+    saveQueue('t', [clip('old', 's1', true, { recheck: true })])
+    await render()
+    await settle()
+    await click('Timeline editor')
+    await settle()
+    // The clip itself, whole, is its timeline.
+    expect(host.querySelector('.timeline-parts')?.textContent).toBe('[{"start":0,"end":3}]')
+    await click('Done')
+    await settle()
+    expect(recuts).toHaveLength(1)
+    const now = bank.steps![0].files.find((f) => f.fp === 'fp-again')
+    expect(now).toBeDefined()
+    expect(bank.steps![0].files.some((f) => f.id === 'old')).toBe(false)
+    // The old clip is kept as the new one's source, not let go.
+    expect(now!.source).toMatchObject({ fileId: 'old', self: true })
+    expect(retired.flat()).not.toContain('old')
+  })
+
+  it('every clip has its Timeline editor at the bottom - one with no recording kept too (his ask, 2026-11-15)', async () => {
     saveQueue('t', [clip('a', 's1', true)])
     await render()
     await settle()
-    expect(button('Timeline')).toBeUndefined()
+    expect(button('Timeline editor')).toBeDefined()
   })
 
   it('opens on the clip he asked for (the quick look’s Re-edit)', async () => {

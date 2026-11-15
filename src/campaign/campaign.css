@@ -2274,3 +2274,5 @@ html.editor-dark .caption-sheet { --ink: #000000; --text: #ffffff; --dim: #aeaeb
 .clip-editor-arrow.right { right: 4px; }
 .clip-editor-arrow svg { width: 30px; height: 30px; }
 .drop-check-screen.mirrored .clip-editor-arrow { transform: none; }
+.review-bottom { padding: 8px 0 4px; }
+.drop-check-timeline-btn { margin-top: 4px; }

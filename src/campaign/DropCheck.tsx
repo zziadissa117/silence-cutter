@@ -22,12 +22,12 @@ import { useEffect, useMemo, useState } from 'react'
 import { batchCaptionLook, type BankFile, type BatchBank, type BatchFormat, type BatchStep } from './batch'
 import { CaptionReview } from './CaptionReview'
 import { defaultCaptionPosition, defaultCaptionSize, defaultCaptionStyle, type CaptionWord } from './captions'
-import { checkOrder, fileIn, HOOK, loadQueue, placed, placeOf, saveQueue, soundsElsewhere, type ToCheck } from './dropQueue'
+import { checkOrder, fileIn, HOOK, loadQueue, placed, placeOf, saveQueue, soundsElsewhere, type ClipSource, type ToCheck } from './dropQueue'
 import type { Campaign } from './look'
 import { ChevronLeft } from './icons'
 import { postingHere, recheckCaptions } from './posting'
 import { CutsEditor } from './CutsEditor'
-import { filesOfClip, joinTouching, splitAtPieces } from './clipEdit'
+import { filesOfClip, joinTouching, leftBehind, remakeWithWords, sourceOf, speedOfClip, splitAtPieces, swapClip } from './clipEdit'
 import { filmingOf } from './filming'
 import { fingerprint } from './fingerprint'
 import { cutName, dropSettings, recut } from './prepareDrop'
@@ -86,6 +86,8 @@ export function DropCheck({
   startWith?: string
   onClose: () => void
 }) {
+  /** Saves the batch (`keep` is also the name of a clip's kept parts below). */
+  const keepBank = keep
   /** The queue, without clips looked at again that are out of the batch by now. */
   const live = () => {
     const bank = getBank()
@@ -112,7 +114,7 @@ export function DropCheck({
   /** Its timeline open (his ask, 2026-11-14: "sometimes it cuts it too
    *  short, and I could just manually extend it"): the recording, or null
    *  while it loads; 'missing' when it is no longer on the phone. */
-  const [timeline, setTimeline] = useState<{ recording: Blob | null | 'missing' } | null>(null)
+  const [timeline, setTimeline] = useState<{ recording: Blob | null | 'missing'; source: ClipSource | null; viaClip: boolean } | null>(null)
   /** Being made again from the timeline: how far, or what went wrong. */
   const [remaking, setRemaking] = useState<number | null>(null)
   const [remakeProblem, setRemakeProblem] = useState<string | null>(null)
@@ -177,15 +179,31 @@ export function DropCheck({
     setQueue(checkOrder(rest))
   }
 
-  /** The clip's timeline, from its recording and how it was cut. */
+  /** The clip as it is now: in the batch for one looked at again. */
+  const liveFile = (): BankFile => {
+    const bank = getBank()
+    return (item.recheck && bank ? fileIn(bank, item.file.id) : null) ?? item.file
+  }
+
+  /** The clip's timeline (his ask, 2026-11-15: "at the bottom, put Timeline
+   *  Editor ... trim the video or do whatever I want to the video"): from
+   *  its recording and how it was cut - kept with a dropped clip until it is
+   *  checked, or with a clip of the batch since then (BankFile.source) - or,
+   *  for an older clip, the clip itself (shorter, not longer). */
   const openTimeline = () => {
-    const source = item.source
-    if (!source) return
     setRemakeProblem(null)
-    setTimeline({ recording: null })
-    void loadBankFile({ id: source.fileId, name: item.name, type: source.type, size: source.size })
+    const source = item.source
+    if (source) {
+      setTimeline({ recording: null, source, viaClip: false })
+      void loadBankFile({ id: source.fileId, name: item.name, type: source.type, size: source.size })
+        .catch(() => null)
+        .then((recording) => setTimeline((t) => (t ? { ...t, recording: recording ?? 'missing' } : t)))
+      return
+    }
+    setTimeline({ recording: null, source: null, viaClip: true })
+    void sourceOf(liveFile())
       .catch(() => null)
-      .then((recording) => setTimeline((t) => (t ? { recording: recording ?? 'missing' } : t)))
+      .then((from) => setTimeline((t) => (t ? (from ? { recording: from.recording, source: from.source, viaClip: true } : { ...t, recording: 'missing' }) : t)))
   }
 
   const listening = Boolean(item.unheard) && heard === null
@@ -244,13 +262,6 @@ export function DropCheck({
         </span>
         {(!item.sure || hint) && place === item.place && place !== null ? (
           <span className="drop-check-unsure">{hint ? 'Maybe the wrong step' : 'Not sure - check it'}</span>
-        ) : null}
-        {/* The parts kept from the recording, to make one longer - kept on the
-            phone until the clip is checked. */}
-        {item.source ? (
-          <button type="button" className="linkbtn drop-check-timeline" onClick={openTimeline}>
-            Timeline
-          </button>
         ) : null}
         {/* Left and right swapped - a paper he holds up reads the right way. */}
         <button type="button" className={`linkbtn drop-check-mirror${mirror ? ' active' : ''}`} aria-pressed={mirror} onClick={() => setMirror(!mirror)}>
@@ -316,11 +327,27 @@ export function DropCheck({
    *  in the check, with his words on its new clock (his caption changes go
    *  back to what was heard). */
   const remake = async (keep: Range[]) => {
-    const source = item.source
+    const source = timeline?.source
     const recording = timeline?.recording
     if (!source || !(recording instanceof Blob)) return
     setRemaking(0)
     try {
+      if (timeline?.viaClip) {
+        // From what the batch keeps of it (clipEdit.ts): in place of it in
+        // the batch when it is there, and in the check.
+        const was = liveFile()
+        const made = await remakeWithWords(was, { keep, speed: speedOfClip(was) }, setRemaking)
+        const bank = getBank()
+        if (item.recheck && bank && fileIn(bank, was.id)) keepBank(swapClip(bank, was.id, made.file))
+        void retireBankFiles(leftBehind(was, made.file)).catch(() => {})
+        const text = made.words.map((w) => w.text.trim()).join(' ')
+        const changed: ToCheck = { ...item, file: made.file, words: made.words, text, ...(made.words.length > 0 ? { unheard: undefined } : {}) }
+        saveQueue(format.id, loadQueue(format.id).map((q) => (q.file.id === item.file.id ? changed : q)))
+        setQueue((now) => now.map((q) => (q.file.id === item.file.id ? changed : q)))
+        setHeard(null)
+        setTimeline(null)
+        return
+      }
       const made = await recut(recording, { ...source, keep, onPhase: setRemaking })
       const id = crypto.randomUUID()
       await saveBankFile(id, made.blob)
@@ -365,11 +392,17 @@ export function DropCheck({
             name={item.name}
             file={timeline.recording instanceof Blob ? timeline.recording : null}
             missing={timeline.recording === 'missing'}
-            duration={item.source!.duration}
-            initial={item.file.ownCut ? joinTouching(item.source!.keep) : item.source!.keep}
-            words={item.source!.words}
+            duration={timeline.source?.duration ?? item.file.seconds ?? 0}
+            initial={timeline.source ? (item.file.ownCut ? joinTouching(timeline.source.keep) : timeline.source.keep) : []}
+            words={timeline.source?.words ?? []}
             // A clip he didn't have cut is one part there; its zoom pieces come back inside what he kept.
-            onDone={(keep) => void remake(item.file.ownCut ? splitAtPieces(keep, item.source!.keep) : keep)}
+            onDone={(keep) => {
+              const was = timeline.source
+              if (!was) return setTimeline(null)
+              const parts = item.file.ownCut ? splitAtPieces(keep, was.keep) : keep
+              if (JSON.stringify(parts) === JSON.stringify(was.keep)) return setTimeline(null)
+              void remake(parts)
+            }}
             onCancel={() => setTimeline(null)}
             cutsOnly
           />
@@ -377,6 +410,13 @@ export function DropCheck({
       </div>
     )
   }
+
+  /** At the bottom of the check, above Approve: the clip's timeline. */
+  const timelineButton = (
+    <button type="button" className="btn wide drop-check-timeline-btn" onClick={openTimeline}>
+      Timeline editor
+    </button>
+  )
 
   const approveLabel = place === OUT ? (item.recheck ? 'Take it out' : 'Leave it out') : queue.length > 1 ? 'Approve & next clip' : 'Approve'
   const screen = `drop-check-screen${mirror ? ' mirrored' : ''}`
@@ -393,6 +433,7 @@ export function DropCheck({
           {where}
           <ClipPlayer file={file} missing={missing} name={item.name} />
           <p className="hint">{item.noCaptions ? 'No captions on it - you unticked them for these clips.' : 'No talking in it - it goes in as it is, no captions.'}</p>
+          {timelineButton}
           <div className="actions-row">
             <button type="button" className="btn primary" onClick={() => approve([])}>
               {approveLabel}
@@ -424,6 +465,7 @@ export function DropCheck({
       missing={missing}
       initial={said}
       top={where}
+      bottom={timelineButton}
       backLabel="Batch"
       approveLabel={approveLabel}
       bare={bareCaptions()}

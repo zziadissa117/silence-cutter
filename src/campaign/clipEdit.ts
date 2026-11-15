@@ -116,9 +116,19 @@ export async function sourceOf(file: BankFile): Promise<{ source: ClipSource; re
  *  the clip's place, captions and marks carried over. */
 export async function remakeClip(
   file: BankFile,
-  { keep, speed }: { keep?: Range[]; speed: number },
+  change: { keep?: Range[]; speed: number },
   onProgress?: (fraction: number) => void,
 ): Promise<BankFile> {
+  return (await remakeWithWords(file, change, onProgress)).file
+}
+
+/** remakeClip, with the words heard in it on the new clip's clock (its
+ *  captions on the check, DropCheck's Timeline editor). */
+export async function remakeWithWords(
+  file: BankFile,
+  { keep, speed }: { keep?: Range[]; speed: number },
+  onProgress?: (fraction: number) => void,
+): Promise<{ file: BankFile; words: CaptionWord[] }> {
   const from = await sourceOf(file)
   if (!from) throw new Error('its video is no longer on this phone or your server')
   const { source, recording } = from
@@ -149,7 +159,7 @@ export async function remakeClip(
   if (speed === 1) delete next.speed
   else next.speed = speed
   next.made = CLIP_MADE
-  return next
+  return { file: next, words: captions ?? made.words }
 }
 
 /** The bank with the clip `oldId` swapped for `next`, where it is - and the
