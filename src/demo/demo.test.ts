@@ -54,7 +54,7 @@ describe('demo mode: the pretend server', () => {
     const call = async (action: string, body: Record<string, unknown> = {}) => (await server.answer(`${FUNCTIONS_URL}/postiz`, { method: 'POST', body: JSON.stringify({ action, ...body }) })).json()
     const week = await call('week', { weeks: 0 })
     expect(week.days).toHaveLength(7)
-    expect(week.campaigns.map((c: { name: string }) => c.name).sort()).toEqual(['FitPocket', 'Moonbrew'])
+    expect(week.campaigns.map((c: { name: string }) => c.name).sort()).toEqual(['FitPocket', 'Moonbrew', 'Trial reels'])
     const views = await call('views')
     expect(views.month).toHaveLength(30)
     expect(Object.keys(views.accounts)).toEqual(ACCOUNTS.map((a) => a.id))

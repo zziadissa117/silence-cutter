@@ -10,9 +10,12 @@ import { CLIP_MADE } from '../campaign/clipEdit'
 import { NO_EFFECTS } from '../campaign/effects'
 import { blankAngle, generalAngle, generalCampaign, type Angle, type Campaign } from '../campaign/look'
 import { saveMusicBank, type Song } from '../campaign/musicBank'
+import { saveSession } from '../campaign/motion/session'
+import { REWORD_CHECK } from '../campaign/trialLoop'
+import { fakeStoryboard } from '../../supabase/functions/postiz/motion.ts'
 import type { CampaignPlan } from '../campaign/plan'
 import { keepPosting } from '../campaign/posting'
-import { persistJob, saveBankFile, saveBankPicture, saveBatchBank, saveCampaign } from '../campaign/store'
+import { persistJob, saveBankFile, saveBankPicture, saveBatchBank, saveCampaign, saveFormatScript } from '../campaign/store'
 import { PRESETS } from '../media/silenceMath'
 import { addDays, localDate } from '../../supabase/functions/postiz/slots.ts'
 import { CAMPAIGN_IDS, DEMO_NAME, FITPOCKET_HEADLINES, MOONBREW_HEADLINES, type World } from './world'
@@ -143,7 +146,11 @@ export async function seedPhone(world: World, now = Date.now()): Promise<void> {
     angles: [],
   }
   notely.angles = [angle('nt-react', 'Reaction', { headlineText: 'I can’t believe this note app is free' }), generalAngle(notely)]
-  for (const campaign of [generalCampaign(), moonbrew, fitpocket, notely]) await saveCampaign(campaign, { asIs: true })
+  // A format: its look (an angle marked as a format) and, below, its script.
+  moonbrew.angles.splice(2, 0, { ...angle('mb-format', 'Day in the life', { headlineText: 'A day with my coffee app', style: 'box' }), isFormat: true })
+  const trial: Campaign = { id: CAMPAIGN_IDS.trial, name: 'Trial reels', logo: null, brandWords: [], format: 'reaction', trial: true, updatedAt: now, posting: { caption: 'claude', rules: '', hashtags: [], approval: 'me', remind: false }, angles: [] }
+  trial.angles = [generalAngle(trial)]
+  for (const campaign of [generalCampaign(), moonbrew, fitpocket, notely, trial]) await saveCampaign(campaign, { asIs: true })
 
   // The picture bank: the logos, brought up by their names.
   await saveBankPicture({ id: 'pic-moonbrew', image: await file('logo-moonbrew'), words: ['Moonbrew'], addedAt: now - 3 * 86_400_000 })
@@ -215,6 +222,53 @@ export async function seedPhone(world: World, now = Date.now()): Promise<void> {
     formats: [{ id: 'fmt-fp', kind: 'reaction', name: 'Reaction' }],
   }
   await saveBatchBank(fitBatch)
+
+  // The Trial reels loop: one reel that went well, made again and again.
+  const trialClip = await bankFile('tr-clip-1', 'react-2', { name: 'viral-coffee-clean.mp4' })
+  const trialSound = await bankFile('tr-sound-1', 'song-sunny', { name: 'viral-coffee-sound.m4a' })
+  await saveBatchBank({
+    campaignId: CAMPAIGN_IDS.trial,
+    angleId: trial.angles[0].id,
+    layout: 'trial',
+    reactions: [trialClip],
+    products: [],
+    headlines: [],
+    music: [trialSound],
+    perDay: 3,
+    days: 7,
+    running: true,
+    startedAt: new Date(now - 2 * 86_400_000).toISOString(),
+    filled: { [today]: 3, [addDays(today, 1)]: 3, [addDays(today, 2)]: 3 },
+    used: {},
+    trial: {
+      sources: [
+        {
+          id: 'ts-1',
+          name: 'viral-coffee-reel.mp4',
+          clip: trialClip.id,
+          sound: trialSound.id,
+          read: { text: 'POV: your coffee knows your schedule', style: 'outline', outlineColor: '#000000', size: 'medium', x: 0.5, y: 0.2, rewordings: ['POV: my coffee knows my schedule', 'When your coffee knows your schedule'], checked: REWORD_CHECK },
+          addedAt: now - 2 * 86_400_000,
+        },
+      ],
+    },
+  })
+
+  // Motion graphics, left at its plan: the video heard, checked and planned.
+  const plan = planOf('talk-moonbrew')
+  await saveSession({ id: 'demo-motion', file: await file('talk-moonbrew'), fileName: 'Morning coffee take.mp4', ask: 'Make the money numbers big', format: 'board', plan, storyboard: fakeStoryboard(plan.spoken?.length ?? plan.words.length, 'board'), chat: [], checked: true, costCents: 2 })
+
+  // The format's script: three lines, takes of the first two.
+  await saveFormatScript({
+    angleId: 'mb-format',
+    lines: [
+      { id: 'ln-1', words: 'My coffee app woke me up at the right time', takes: [await bankFile('fm-take-1', 'hook-1', { name: 'take 1.mp4' }), await bankFile('fm-take-2', 'hook-2', { name: 'take 2.mp4' })] },
+      { id: 'ln-2', words: 'It planned my whole morning', takes: [await bankFile('fm-take-3', 'talk-moonbrew', { name: 'take 3.mp4' })] },
+      { id: 'ln-3', words: 'Comment COFFEE for the link', takes: [] },
+    ],
+    uses: {},
+    opened: [],
+  })
 
   // Two videos on the Videos tab: one sorted and waiting for its caption
   // check, one that needs him to say which angle.

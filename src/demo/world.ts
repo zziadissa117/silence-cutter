@@ -18,17 +18,19 @@ export const ACCOUNTS: PostizAccount[] = [
   { id: 'acc-ig-2', name: 'Sam daily', platform: 'instagram', profile: 'samdaily.demo', picture: '', disabled: false },
 ]
 
-export const CAMPAIGN_IDS = { moonbrew: 'demo-moonbrew', fitpocket: 'demo-fitpocket', notely: 'demo-notely' } as const
+export const CAMPAIGN_IDS = { moonbrew: 'demo-moonbrew', fitpocket: 'demo-fitpocket', notely: 'demo-notely', trial: 'demo-trial' } as const
 
 const PLACES: Record<string, string[]> = {
   [CAMPAIGN_IDS.moonbrew]: ['acc-tt-1', 'acc-ig-1', 'acc-yt-1'],
   [CAMPAIGN_IDS.fitpocket]: ['acc-tt-2', 'acc-ig-2'],
+  [CAMPAIGN_IDS.trial]: ['acc-ig-1'],
 }
 
 const NAMES: Record<string, string> = {
   [CAMPAIGN_IDS.moonbrew]: 'Moonbrew',
   [CAMPAIGN_IDS.fitpocket]: 'FitPocket',
   [CAMPAIGN_IDS.notely]: 'Notely',
+  [CAMPAIGN_IDS.trial]: 'Trial reels',
 }
 
 export const MOONBREW_HEADLINES = [
@@ -260,6 +262,17 @@ export function makeWorld(now: number, tz: string, videoUrl: (name: string) => s
   })
   posts.push(missed)
 
+  // Trial reels: copies of a reel that went well, for people who don't follow.
+  const trialWords = ['POV: your coffee knows your schedule', 'POV: my coffee knows my schedule', 'When your coffee knows your schedule']
+  for (let i = 0; i < 9; i++) {
+    const day = i < 3 ? addDays(today, -1) : i < 6 ? today : tomorrow
+    const time = ['09:40', '13:15', '18:50'][i % 3]
+    const status: ServerPost['status'] = i < 4 ? 'posted' : i < 6 ? 'scheduled' : 'waiting'
+    const p = post({ id: `demo-trial-${i}`, campaignId: CAMPAIGN_IDS.trial, status, approval: 'me', postAt: iso(at(day, time)), headline: trialWords[i % 3], caption: 'wait for it ☕️', fileName: 'viral-coffee-reel.mp4', batch: { id: 'demo-batch-trial', date: day, time, size: 3, trial: true, source: 'ts-1' }, videoUrl: videoUrl('react-2') })
+    if (status === 'posted') p.links = linksFor(p)
+    posts.push(p)
+  }
+
   const weights = Array.from({ length: 7 }, (_, day) => Array.from({ length: 24 }, (_, hour) => Math.round(hourBoost(hour) * (day === 0 || day === 6 ? 1.1 : 1) * 10) / 10))
 
   const profile: Profile = {
@@ -269,6 +282,7 @@ export function makeWorld(now: number, tz: string, videoUrl: (name: string) => s
       campaigns: {
         [CAMPAIGN_IDS.moonbrew]: { accounts: PLACES[CAMPAIGN_IDS.moonbrew], times: [], window: { from: '09:00', to: '23:00', perDay: 4 } },
         [CAMPAIGN_IDS.fitpocket]: { accounts: PLACES[CAMPAIGN_IDS.fitpocket], times: ['12:30', '18:00', '20:30'] },
+        [CAMPAIGN_IDS.trial]: { accounts: PLACES[CAMPAIGN_IDS.trial], times: [] },
       },
       limits: { platforms: { youtube: { perDay: 3 } } },
     },

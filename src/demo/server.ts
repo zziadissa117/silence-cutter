@@ -14,6 +14,7 @@ import type { Profile, ServerPost } from '../campaign/posting'
 import { deadAccounts } from '../../supabase/functions/postiz/deadAccounts.ts'
 import { hookInsights } from '../../supabase/functions/postiz/hookInsights.ts'
 import { monthDays } from '../../supabase/functions/postiz/month.ts'
+import { fakeStoryboard } from '../../supabase/functions/postiz/motion.ts'
 import { localDate } from '../../supabase/functions/postiz/slots.ts'
 import { mondayOf, trackerWeek } from '../../supabase/functions/postiz/tracker.ts'
 import { DEMO_NAME, makeWorld, type World } from './world'
@@ -312,7 +313,13 @@ export function makeServer(world: World, now: () => number = Date.now): DemoServ
       case 'push':
       case 'unpush':
         return json({})
-      case 'motion-plan':
+      case 'motion-plan': {
+        // The server's own made-up plan (its tests' fake), over his words.
+        const words = Array.isArray(body.words) ? body.words.length : 0
+        const format = body.format === 'glass' ? 'glass' : 'board'
+        const reply = Array.isArray(body.chat) && body.chat.length > 0 ? 'Done - in the demo the plan stays the same.' : ''
+        return json({ status: 'done', storyboard: fakeStoryboard(words, format), reply, costCents: 2 })
+      }
       case 'motion-result':
       case 'trial-read':
         return json({ error: 'Demo mode: Claude is not connected here.' }, 400)
