@@ -20,6 +20,7 @@
 import type { Range } from '../media/silenceMath'
 import type { BankFile, BatchBank, BatchFormat } from './batch'
 import type { CaptionWord } from './captions'
+import { carryCaptions } from './captionScript'
 import type { ClipSource } from './dropQueue'
 import { NO_EFFECTS } from './effects'
 import { filmingOf } from './filming'
@@ -143,7 +144,7 @@ export async function remakeWithWords(
   // Only the speed changed: his own captions, on the new clock. Its length
   // changed: the words as heard, on the new clock.
   const sameParts = !keep || JSON.stringify(keep) === JSON.stringify(source.keep)
-  const captions = file.captions ? (sameParts ? captionsAtSpeed(file.captions, speedOfClip(file), speed) : made.words) : undefined
+  const captions = file.captions ? (sameParts ? captionsAtSpeed(file.captions, speedOfClip(file), speed) : carryCaptions(made.words, file.captions)) : undefined
   const next: BankFile = {
     ...file,
     id,
@@ -268,7 +269,8 @@ export async function cutOrRaw(
     from: file.from ?? file.fp,
     source: kept,
     ...(seconds ? { seconds } : {}),
-    ...(file.captions ? { captions: made.words } : {}),
+    // His checked captions carried over, never the raw hearing (2026-11-15).
+    ...(file.captions ? { captions: carryCaptions(made.words, file.captions) } : {}),
     made: CLIP_MADE,
   }
   // Cut: the Cutter's; as filmed: his own, never trimmed in the batch video.
@@ -278,7 +280,8 @@ export async function cutOrRaw(
   else next.ownCut = true
   // At 1x now: the format's speed makes it again by itself (SpeedRunner).
   delete next.speed
-  return { file: next, words: made.words, text: made.text, source: kept }
+  const words = next.captions ?? made.words
+  return { file: next, words, text: words.map((w) => w.text).join(' '), source: kept }
 }
 
 /** Whether a clip is the Cutter's cut (else kept as he filmed it). */

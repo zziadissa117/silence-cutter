@@ -3,6 +3,20 @@
 Newest first. Every change says what it does, how to use it, and how it works
 underneath. Kept up to date with each commit.
 
+## Batch clips keep his checked captions when they are made again
+- His report (2026-11-15): "when I redo a batch because I see one little thing wrong, I have to redo the whole captions
+  again. I edited the captions once, and they were good. Then I redid the batch, and it completely deleted the
+  captions."
+- What happened: a clip made again - a step switched to Cut or Raw, a clip's Cut / Raw or Length changed, or the same
+  recording dropped in again - took the raw hearing as its captions, throwing away the ones he had checked.
+- Now his checked captions carry over onto the new clip: words he corrected keep his text, words he took out stay out,
+  words cut away go, and words the clip didn't have before (made longer) come in as heard - each on the new clip's
+  times. A same recording dropped in again comes to its check with his captions already on it.
+- "Start over" on a batch already kept them (videos are made from the clips' saved captions); nothing in the batch
+  running now is touched.
+- Underneath: `captionScript.carryCaptions` (`fitToScript` with `trust`); `clipEdit.remakeWithWords` and `cutOrRaw`;
+  `DropIn.toCheck` for a replaced clip. Tests: `captionScript.test.ts`.
+
 ## Talking head steps: a caption script each, and the clips that match it approved in one tap
 - His ask (2026-11-15): "the way to check captions right now on the batches ... takes too long. Is there a way to ...
   put a certain caption framework for every single product step ... When I talk in the video, Claude inspires himself

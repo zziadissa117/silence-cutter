@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { fitToScript, scriptFrom } from './captionScript'
+import { carryCaptions, fitToScript, scriptFrom } from './captionScript'
 
 const heard = (text: string) => text.split(' ').map((t, i) => ({ text: t, start: i, end: i + 0.8 }))
 const shown = (fit: { words: { text: string }[] }) => fit.words.map((w) => w.text).join(' ')
@@ -68,5 +68,27 @@ describe("a step's caption script (his ask, 2026-11-15)", () => {
   it('words that only look a little alike are not swapped ("cat" for "chat", "app" for "apple")', () => {
     expect(fitToScript(heard('open the cat'), 'Open the chat').matches).toBe(false)
     expect(fitToScript(heard('open the app'), 'Open the apple').matches).toBe(false)
+  })
+})
+
+describe('his checked captions carried onto a clip made again (his report, 2026-11-15)', () => {
+  const approved = heard('Go to ChatGPT and paste this prompt.')
+
+  it('what he corrected keeps his text, even where the hearing was far off', () => {
+    const again = carryCaptions(heard('go to claude and paste this prompt'), approved)
+    expect(shown({ words: again })).toBe('Go to ChatGPT and paste this prompt.')
+  })
+
+  it('a word he took out stays out; a word cut away goes', () => {
+    // He had deleted "um"; the new cut has it again in the hearing.
+    expect(shown({ words: carryCaptions(heard('go to chatgpt um and paste this prompt'), approved) })).toBe('Go to ChatGPT and paste this prompt.')
+    // The clip made shorter: "prompt" cut off the end.
+    expect(shown({ words: carryCaptions(heard('go to chatgpt and paste this'), approved) })).toBe('Go to ChatGPT and paste this')
+  })
+
+  it('made longer: the new words come in as heard, on the new times', () => {
+    const again = carryCaptions(heard('go to chatgpt and paste this prompt right now'), approved)
+    expect(shown({ words: again })).toBe('Go to ChatGPT and paste this prompt. right now')
+    expect(again[7]).toMatchObject({ start: 7 })
   })
 })

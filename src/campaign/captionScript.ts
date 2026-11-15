@@ -101,7 +101,7 @@ export function scriptWords(script: string): string[] {
 type Step = { cost: number; from: [number, number]; kind: 'same' | 'merge' | 'split' | 'sub' | 'extra' | 'missing' }
 
 /** The heard words lined up against the script (see the top of the file). */
-export function fitToScript(heard: readonly CaptionWord[], script: string): ScriptFit {
+export function fitToScript(heard: readonly CaptionWord[], script: string, { trust = false }: { trust?: boolean } = {}): ScriptFit {
   const said = scriptWords(script)
   const h = heard.map((w) => norm(w.text))
   const s = said.map(norm)
@@ -143,7 +143,19 @@ export function fitToScript(heard: readonly CaptionWord[], script: string): Scri
   const words: CaptionWord[] = []
   const diffs: ScriptDiff[] = []
   let respelled = 0
-  for (const { kind, hi, sj } of pieces) {
+  // Trusted (his own checked captions of the same recording): the stretch
+  // they cover, so a word heard inside it that he took out stays out, and
+  // one heard outside it (the clip made longer) comes in.
+  const lined = pieces.map((p, k) => (p.kind === 'extra' || p.kind === 'missing' ? -1 : k)).filter((k) => k >= 0)
+  const firstLined = lined[0] ?? Infinity
+  const lastLined = lined[lined.length - 1] ?? -Infinity
+  for (const [k, { kind, hi, sj }] of pieces.entries()) {
+    if (trust && kind === 'sub') {
+      // The same sound: what he corrected it to.
+      words.push({ ...heard[hi], text: said[sj] })
+      continue
+    }
+    if (trust && kind === 'extra' && k > firstLined && k < lastLined) continue
     if (kind === 'same') {
       const shown = said[sj]
       if (norm(heard[hi].text) !== s[sj]) respelled++
@@ -187,4 +199,17 @@ export function scriptFrom(words: readonly CaptionWord[]): string {
     .map((w) => w.text.trim())
     .filter(Boolean)
     .join(' ')
+}
+
+/** His checked captions carried onto a clip made again from the same
+ *  recording - cut or raw, longer or shorter, faster (his report,
+ *  2026-11-15: "when I redo a batch ... it completely deleted the captions
+ *  while they were good"): the new clip's heard words, on its own clock,
+ *  each reading as he had it - words he corrected keep his text, words he
+ *  took out stay out, words cut away go, and words the clip didn't have
+ *  before (made longer) come in as heard. */
+export function carryCaptions(heard: readonly CaptionWord[], approved: readonly CaptionWord[]): CaptionWord[] {
+  const text = scriptFrom(approved)
+  if (!text || heard.length === 0) return [...heard]
+  return fitToScript(heard, text, { trust: true }).words
 }

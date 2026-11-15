@@ -20,10 +20,11 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 
 import { VideoPicker } from '../VideoPicker'
 import type { BankFile, BatchBank, BatchStep } from './batch'
-import { addToQueue, checkedClip, clipsOfFormat, loadQueue, notEdited, QUEUE_EVENT, queueRecheck, sameRecording, suggestPlace, type ClipSource, type DropChoices, type ToCheck } from './dropQueue'
+import { addToQueue, checkedClip, fileIn, clipsOfFormat, loadQueue, notEdited, QUEUE_EVENT, queueRecheck, sameRecording, suggestPlace, type ClipSource, type DropChoices, type ToCheck } from './dropQueue'
 import type { AngleEffects } from './effects'
 import { fingerprint } from './fingerprint'
 import { scriptMatches } from './ScriptCheck'
+import { carryCaptions } from './captionScript'
 import { NO_EFFECTS } from './effects'
 import { cutName, dropSettings, hasZooms, prepareClip, type DropPhase } from './prepareDrop'
 import { loadBankFile, retireBankFiles, saveBankFile } from './store'
@@ -206,12 +207,17 @@ export function DropIn({
   ) => {
     const bank = getBank()
     const { place, sure, hint } = suggestPlace(bank, steps, clip.text, { to, replaces, hooks })
+    // The same recording again, its clip's captions checked before: his
+    // captions carried onto the new cut, not the raw hearing (his report,
+    // 2026-11-15: "it completely deleted the captions while they were good").
+    const before = replaces && bank ? fileIn(bank, replaces)?.captions : undefined
+    const words = before?.length ? carryCaptions(clip.words, before) : clip.words
     setQueue(
       addToQueue(formatId, {
         file: mirror ? { ...clip.file, mirror: true } : clip.file,
         name,
-        text: clip.text,
-        words: clip.words,
+        text: words.map((w) => w.text).join(' '),
+        words,
         place,
         sure,
         ...(hint ? { hint } : {}),
