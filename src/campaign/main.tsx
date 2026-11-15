@@ -30,12 +30,19 @@ const show = () =>
 
 // On the Cutter server, signed in and set up first (serverMode.ts); on a
 // phone, nothing to wait for.
-if (SERVER_MODE) {
-  startServerMode()
-    .then(show)
-    .catch((error) => {
-      document.body.textContent = error instanceof Error ? error.message : String(error)
-      // Connected meanwhile: the server opens it again, or this tries again.
-      setTimeout(() => location.reload(), 60_000)
-    })
-} else show()
+const start = () => {
+  if (SERVER_MODE) {
+    startServerMode()
+      .then(show)
+      .catch((error) => {
+        document.body.textContent = error instanceof Error ? error.message : String(error)
+        // Connected meanwhile: the server opens it again, or this tries again.
+        setTimeout(() => location.reload(), 60_000)
+      })
+  } else show()
+}
+
+// The demo (src/demo, `?demo=1` on `npm run dev` only): a build replaces
+// import.meta.env.DEV with false and leaves it out altogether.
+if (import.meta.env.DEV) void import('../demo/hook').then((demo) => demo.beforeApp()).then(start)
+else start()

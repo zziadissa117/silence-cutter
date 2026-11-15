@@ -3,6 +3,26 @@
 Newest first. Every change says what it does, how to use it, and how it works
 underneath. Kept up to date with each commit.
 
+## Demo mode for the guide's screenshots (on a computer only, never in the app)
+- His ask (2026-11-15): a guide for his students with real screenshots, "a demo mode that runs locally only ... never
+  active in production ... No real brand names, account names, emails or numbers from my data."
+- On a computer: `npm run dev`, then open `http://localhost:5173/campaign.html?demo=1`. The Cutter opens signed in as a
+  made-up creator ("Sam") with three made-up brands (Moonbrew, FitPocket, Notely), five made-up accounts, two running
+  batches, posts to approve / scheduled / posted / missed, a month and a half of views, warm-up ideas and People. The
+  footage is a drawn cartoon with a robot voice. `?demo=0` ends it. Approving, rejecting and sending work in it.
+- Nothing changes in the app he uses: the demo is only reached behind `import.meta.env.DEV`, which a build turns into
+  `false`, so the built app has none of it (checked: no demo code, names or files in `dist/`; `demo.test.ts` fails if
+  anything reaches the demo another way). On the dev server it only starts on the computer's own address.
+- Security: while it runs, every call to the real server is answered by a pretend server in the page; a call to the
+  real project it doesn't know is refused there, never sent. Starting or ending it wipes that browser's Cutter storage
+  on that address, so made-up campaigns can't be sent to a real login from it.
+- On a Linux computer's Chrome (no AAC encoder) the demo loads the same sound encoder the Cutter server does, so real
+  videos can be made in it for testing.
+- Underneath: `src/demo/` (`flag.ts` when, `hook.ts` the one way in, `start.ts`, `server.ts` the pretend server -
+  week, month, insights and dead accounts worked out by the server's own `tracker.ts`/`month.ts`/`hookInsights.ts`/
+  `deadAccounts.ts`, `world.ts` the made-up data, `seed.ts` the phone's storage, `media/` made by
+  `docs/guide/tools/make_demo_media.py`). Entry: `src/campaign/main.tsx`, `src/main.tsx`. Test: `demo.test.ts`.
+
 ## Talking head steps: all of a step's clips Cut or Raw, one tap
 - His ask (2026-11-15): "I can select in batches, not select one at a time, because I know exactly which ... product
   steps need to be cut and which product steps need to be raw ... inside of the product step section, add an option to

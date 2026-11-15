@@ -161,6 +161,10 @@ it back.)
 - The engine (Railway, Python + ffmpeg, Ilyan's Le plateau): `engine/` (setup in `engine/README.md`); phone side
   `campaign/engine.ts`, Batch layout "On the engine", Settings "Engine". Tests: `cd engine && python3 -m unittest tests.test_engine`
 
+- Demo mode for the guide's screenshots (`npm run dev`, `campaign.html?demo=1`; `?demo=0` ends it): `src/demo/`, reached
+  only behind `import.meta.env.DEV` from the two entry files (`demo.test.ts` keeps it that way), so a build has none
+  of it; its pretend server answers every call to the real one and sends nothing on. The guide: `docs/guide/`.
+
 ## Workflow
 
 Phases, verified one at a time (tests, `tsc`, lint, no console errors, existing

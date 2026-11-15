@@ -11,7 +11,7 @@ followPhone()
 // Campaign videos (see opening.ts), so the cutter's code - React, the media
 // library, the queue - is only fetched and run when the page is staying.
 // Written without JSX on purpose: JSX would pull React in up front.
-void staysOnCutOnly().then(async (stay) => {
+const start = () => staysOnCutOnly().then(async (stay) => {
   if (!stay) {
     window.location.replace('/campaign.html')
     return
@@ -40,3 +40,8 @@ void staysOnCutOnly().then(async (stay) => {
     ),
   )
 })
+
+// The demo (src/demo, `?demo=1` on `npm run dev` only): a build replaces
+// import.meta.env.DEV with false and leaves it out altogether.
+if (import.meta.env.DEV) void import('./demo/hook').then((demo) => demo.beforePlainPage()).then(start)
+else void start()

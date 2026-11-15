@@ -908,6 +908,9 @@ src/{config,words,share}.ts    the server's address + key; the words both pages 
 src/media/{workLock,stallWatch}.ts  one tab works at a time (Web Lock); a cut that stops moving fails, not hangs
                                decoder recovery for every render: clipParts.withDecoderRecovery (render.ts still
                                has its own loop); speech windows overlap 0.5 s in a pause-free stretch (silenceMath)
+src/demo/                      demo mode for the guide (`?demo=1` on `npm run dev` only, never in a build): a pretend
+                               server in front of fetch (server.ts), made-up data (world.ts, seed.ts, media/);
+                               the guide itself in docs/guide/ (INVENTORY.md, the PDF and its source)
 supabase/functions/cutter      login + shared-setup sync (Edge Function)
 supabase/functions/postiz      posting, captions, scheduler, push (Edge Function);
                                slots.ts times, window.ts random times (also imported by the phone's
