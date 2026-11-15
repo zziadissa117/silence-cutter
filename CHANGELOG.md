@@ -3,6 +3,13 @@
 Newest first. Every change says what it does, how to use it, and how it works
 underneath. Kept up to date with each commit.
 
+## The guide is now a walkthrough: what to tap, numbered on the screens
+- `docs/guide/cutter-guide.pdf` is rewritten as hands-on lessons for a new user: each one says what you will do,
+  shows the screen with pink numbers on what to tap, and lists the steps with the same numbers. It no longer explains
+  how the app works inside (rules, numbers, what it decides by itself) - only how to use it. Nothing in the app changed.
+- Underneath: `docs/guide/tools/shots.cjs` saves where each thing to tap is on its screenshot (`shots/marks.json`,
+  its `MARKS` list); `build_pdf.cjs` draws the numbers and stops if a step's number is missing from its screenshot.
+
 ## Batch, Claude + X: the logo buttons show their whole label
 - On a phone "Left logo (e.g. …)" / "Right logo (e.g. …)" were cut at both ends inside their buttons. They now
   wrap onto a second line. Underneath: `campaign.css` `.formula-pick.btn`.

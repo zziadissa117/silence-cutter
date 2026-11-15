@@ -50,7 +50,12 @@ async function start({ theme = 'dark', devices = false } = {}) {
   const page = await ctx.newPage()
   page.setDefaultTimeout(12000)
   page.on('pageerror', (e) => problems.push(`page error: ${e.message.slice(0, 200)}`))
-  page.on('dialog', (d) => d.dismiss().catch(() => {}))
+  // Questions the app asks are answered no, unless a step said yes to the next one.
+  page.on('dialog', (d) => {
+    const yes = page.acceptNext
+    page.acceptNext = false
+    ;(yes ? d.accept() : d.dismiss()).catch(() => {})
+  })
   await page.goto(`${BASE}/campaign.html?demo=1`)
   await page.waitForTimeout(5000)
   if (theme === 'light') {
@@ -67,6 +72,112 @@ async function dismiss(page) {
   await page.waitForTimeout(300)
 }
 
+// What each step of the guide points at on a shot: numbered markers drawn
+// over it in the PDF (build_pdf.cjs), in this order. Kept in shots/marks.json.
+const B = (p, name) => p.getByRole('button', { name })
+const X = (p, text) => p.getByText(text, { exact: true })
+/** A file picker drawn as a button (VideoPicker and the music one). */
+const P = (p, text) => p.locator('.picker', { hasText: text })
+const MARKS = {
+  '01-start-01-sign-in': (p) => [p.locator('input').nth(0), p.locator('input').nth(1), B(p, /^Sign in$/)],
+  '01-start-02-videos-home': (p) => [B(p, /^Set up$/), X(p, 'Record'), X(p, 'Add videos'), p.locator('nav.tabbar')],
+  '01-start-03-more': (p) => [B(p, /^Campaigns/), B(p, /^Bank/), B(p, /^Settings/)],
+  '01-start-04-posting': (p) => [B(p, /^Change keys$/), p.locator('label.toggle, .setting').filter({ hasText: 'Send finished videos' }).locator('input').first()],
+  '01-start-05-posting-keys': (p) => [p.getByRole('radio', { name: 'Postiz' }).or(B(p, 'Postiz')), p.locator('input').nth(0), p.locator('input').nth(1), B(p, /^Connect$/)],
+  '01-start-07-week-tracker': (p) => [p.locator('.tracker-grid button').nth(5)],
+  '01-start-09-voice-intro': (p) => [p.locator('select').first(), B(p, /^Start$/)],
+  '01-start-11-voice-done': (p) => [B(p, /^Done$/)],
+  '01-start-12-record': (p) => [B(p, 'Record'), B(p, 'Flip camera'), B(p, /^Done/)],
+  '01-start-13-recording': (p) => [B(p, 'Pause'), B(p, /Delete the last part/), B(p, /^Done/)],
+  '02-cut-02-needs-you': (p) => [B(p, /^Check captions$/).nth(0), X(p, 'Needs you ·').or(p.getByText(/^Needs you/)).first(), B(p, /^Check captions$/).nth(1)],
+  '02-cut-03-check-questions': (p) => [p.locator('select').first(), p.getByPlaceholder('No headline').first(), B(p, /^Next/)],
+  '02-cut-04-quick-check': (p) => [B(p, /^Approve/), B(p, 'Timeline editor')],
+  '02-cut-05-timeline': (p) => [p.locator('.tl-clip').first(), B(p, /^Text$/), B(p, /^Overlay$/), B(p, /^Sound$/), B(p, /^Captions$/), B(p, /^Headline$/)],
+  '02-cut-06-clip-speed': (p) => [p.locator('.tl-speeds')],
+  '02-cut-07-text': (p) => [p.getByPlaceholder('Type your words'), p.locator('.cuts-text-hold').first()],
+  '02-cut-08-overlay': (p) => [B(p, /A photo or video from my phone/), p.locator('button img').first()],
+  '02-cut-11-caption-sheet': (p) => [B(p, /Check (again|captions) with Claude/), p.locator('.caption-sheet textarea').first()],
+  '02-cut-12-made': (p) => [p.getByRole('link', { name: /^Save$/ })],
+  '02-cut-13-reaction-video': (p) => [p.locator('select').first(), p.getByPlaceholder(/Headline on the reaction/), P(p, /^Choose$/)],
+  '02-cut-14-timeline-editor': (p) => [p.getByText('+ Add the videos, in order'), p.getByRole('radio', { name: 'Cut the silences' }).or(B(p, /Cut the silences/)), B(p, /Open the timeline editor/)],
+  '02-cut-15-cut-only': (p) => [B(p, /^Balanced$/), p.getByText('Add videos', { exact: true }).first()],
+  '02-cut-16-cut-only-done': (p) => [p.getByRole('link', { name: /Save video/ })],
+  '03-camp-01-list': (p) => [B(p, /^New campaign$/)],
+  '03-camp-02-campaign': (p) => [B(p, /^Brand & logo$/), B(p, /^Morning routine/), B(p, /^New angle$/), B(p, /Postiz/)],
+  '03-camp-03-brand': (p) => [p.locator('input[type=text]').nth(0), p.getByRole('radio', { name: 'Talking head' }).or(B(p, 'Talking head')), p.locator('input[type=text]').nth(1), B(p, /Change image|Choose image/), B(p, /^Save campaign$/)],
+  '03-camp-05-angle-headline': (p) => [p.getByPlaceholder(/Your headline/), p.locator('label').filter({ hasText: 'Write it from the video' }).locator('input'), B(p, /^Outline$/).first()],
+  '03-camp-10-posting-accounts': (p) => [p.locator('input[type=checkbox]').first(), B(p, /Look again/), p.getByLabel('Most posts a day')],
+  '03-camp-11-posting-times': (p) => [p.getByRole('radio', { name: 'Random times' }).or(B(p, 'Random times')), p.locator('select').first()],
+  '03-camp-12-posting-approval': (p) => [p.getByRole('radio', { name: 'I approve' }).or(B(p, 'I approve')), p.locator('label').filter({ hasText: 'Remind me to submit' }).locator('input')],
+  '03-camp-13-posting-caption': (p) => [p.getByRole('radio', { name: 'Claude writes it' }).or(B(p, 'Claude writes it')), p.locator('textarea').first(), p.getByPlaceholder(/#/).first()],
+  '03-camp-14-captions-by-kind': (p) => [p.getByPlaceholder('e.g. #advancedpost'), p.getByPlaceholder('e.g. #basicpost'), B(p, /^Save posting$/)],
+  '03-camp-17-bank': (p) => [B(p, /^Add pictures$/), B(p, /^Add music$/)],
+  '04-post-01-to-approve': (p) => [p.locator('textarea').first(), B(p, /^Approve$/).first(), B(p, /^Post now$/).first(), B(p, /^Approve all/)],
+  '04-post-02-more-options': (p) => [B(p, /^Approve, post later$/), B(p, /^Change time$/), B(p, /^Add music$/)],
+  '04-post-03-add-music': (p) => [p.locator('.music-after select'), B(p, /Add music & approve|^Add music$/).first()],
+  '04-post-05-scheduled': (p) => [p.getByText(/^Today$/).first(), B(p, /^Take back$/).first()],
+  '04-post-07-didnt-go-out': (p) => [B(p, /^Post it myself$/), B(p, /^Let the Cutter post it$/)],
+  '04-post-09-select-stop': (p) => [p.locator('.chips button, .chip').first(), B(p, /Stop \d+ post|Tick posts to stop/)],
+  '04-post-10-new-post': (p) => [p.locator('select').first(), p.getByPlaceholder('Anything Claude should know? (optional)'), p.getByText(/\+ Add more videos|\+ Choose the videos/).first()],
+  '04-post-11-new-post-when': (p) => [p.getByRole('radio', { name: /Spread them/ }).or(B(p, /Spread them/)), p.locator('button.btn.primary', { hasText: /^Post \d/ })],
+  '04-post-12-limits': (p) => [p.locator('input[type=number]').first(), p.locator('input[type=checkbox]').first()],
+  '05-batch-01-top': (p) => [p.locator('.chooser, .batch-hero').first(), p.locator('.batch-status').first()],
+  '05-batch-02-formats': (p) => [p.locator('.format-head').first(), B(p, /\+ Add a format/)],
+  '05-batch-03-reaction-format': (p) => [P(p, /^\+ Add$/).nth(0), P(p, /^\+ Add$/).nth(1)],
+  '05-batch-04-talking-head': (p) => [P(p, /Drop in clips/), B(p, /^Change$/), p.locator('[aria-label="Speed"], .seg').filter({ hasText: '1.1×' }).first()],
+  '05-batch-06-clips': (p) => [B(p, /hook-1\.mp4/), p.getByRole('radio', { name: 'Raw' }).or(B(p, /^Raw$/)).first(), P(p, /^\+ Add$/)],
+  '05-batch-07-clip-screen': (p) => [p.locator('.clip-editor-close'), B(p, 'Next clip'), B(p, /^Length$/), p.locator('[aria-label="Cut by the Cutter or kept raw"]'), p.locator('[aria-label="This clip\'s speed"]')],
+  '05-batch-11-steps-rules': (p) => [B(p, /^Names and order$/), B(p, /^Words on screen$/).first(), p.locator('.talk-step-rules input[type=checkbox]').first()],
+  '05-batch-12-words-on-screen': (p) => [B(p, /Text at the top/), p.getByPlaceholder('Type the words')],
+  '05-batch-14-hook-looks': (p) => [p.getByRole('checkbox', { name: 'Snapchat' }), B(p, /^More Outline$/), p.locator('textarea').first()],
+  '05-batch-15-claude-x': (p) => [p.locator('.formula-logos'), p.getByRole('radio', { name: 'Amount a day' }).or(B(p, /^Amount a day$/))],
+  '05-batch-17-copies': (p) => [p.locator('.copies .picker')],
+  '05-batch-18-videos-a-day': (p) => [p.getByRole('radio', { name: 'Every day' }), B(p, 'More a day')],
+  '05-batch-20-start': (p) => [p.locator('.batch-make'), B(p, /^Start over$/)],
+  '05-batch-22-making': (p) => [p.locator('.batch-status').first()],
+  '05-batch-23-clip-check': (p) => [p.locator('.drop-check-steps'), B(p, /^Mirror/)],
+  '06-formats-02-script': (p) => [P(p, /^\+ Takes$/), B(p, /^Look & clips$/)],
+  '07-an-01-overview': (p) => [p.getByText('LAST 30 DAYS').or(p.getByText(/^Last \d+ days$/)).first()],
+  '07-an-02-cold-accounts': (p) => [B(p, /^Pause$/).first(), B(p, /^Yes$/).first()],
+  '07-an-03-when-to-post': (p) => [B(p, /^Turn off$/).first()],
+  '07-an-04-campaign': (p) => [B(p, /^Yes, \d+ a day$/), B(p, /^Use the best hooks$/)],
+  '08-trial-04-start': (p) => [B(p, /Not talking - a viral reel/), P(p, /^Pick videos$/), B(p, /^Start$/)],
+  '09-motion-01-pick': (p) => [p.locator('.motion-format').first(), p.getByPlaceholder(/Tap an example below/)],
+  '09-motion-02-plan': (p) => [B(p, 'Play it as it will be made')],
+  '09-motion-04-chat': (p) => [p.getByPlaceholder(/make the sum come in later/), B(p, /Make the video/)],
+  '09-warm-01-main': (p) => [B(p, /^Film \d+ in one go$/), B(p, /^\+ Idea$/)],
+  '09-warm-04-idea': (p) => [B(p, /^Film it$/).first()],
+  '10-set-03-cutting': (p) => [p.getByRole('radio', { name: 'Balanced' }), p.getByRole('radio', { name: 'Fit' })],
+  '10-set-06-people': (p) => [B(p, /^Make link$/)],
+  '10-set-07-look': (p) => [p.getByRole('radio', { name: 'Light' }), p.locator('label').filter({ hasText: 'Show tips' }).locator('input')],
+}
+const MARKS_FILE = path.join(OUT, 'marks.json')
+const marks = fs.existsSync(MARKS_FILE) ? JSON.parse(fs.readFileSync(MARKS_FILE, 'utf8')) : {}
+
+/** Where each target is on the screen, as fractions of it; off screen or not found: null. */
+async function placesOf(page, name) {
+  const targets = MARKS[name]
+  if (!targets) return null
+  const out = []
+  for (const target of targets(page)) {
+    // The first match that is on the screen (a list can hold the same button above it).
+    let box = null
+    let seen = false
+    for (const one of (await target.all().catch(() => [])).slice(0, 30)) {
+      box = await one.boundingBox({ timeout: 1500 }).catch(() => null)
+      seen = !!box && box.width > 0 && box.y + box.height > 0 && box.y < 844 && box.x < 390
+      if (seen) break
+    }
+    if (!seen) {
+      const count = await target.count().catch(() => -1)
+      problems.push(`${name}: marker ${out.length + 1} not on screen (found ${count}, at ${box ? Math.round(box.y) : '-'})`)
+      if (process.env.DOM_DIR) fs.writeFileSync(path.join(process.env.DOM_DIR, `${name}.html`), await page.content())
+    }
+    out.push(seen ? { x: box.x / 390, y: box.y / 844, w: box.width / 390, h: box.height / 844 } : null)
+  }
+  return out
+}
+
 async function snap(page, name) {
   await page.waitForTimeout(700)
   const text = await page.innerText('body').catch(() => '')
@@ -75,6 +186,11 @@ async function snap(page, name) {
   const wide = await page.evaluate(() => document.documentElement.scrollWidth > document.documentElement.clientWidth)
   if (wide) problems.push(`${name}: wider than the phone`)
   await page.screenshot({ path: path.join(OUT, `${name}.png`) })
+  const places = await placesOf(page, name)
+  if (places) {
+    marks[name] = places
+    fs.writeFileSync(MARKS_FILE, JSON.stringify(marks, null, 1))
+  }
   console.log('shot', name)
 }
 
@@ -418,7 +534,7 @@ const groups = {
     await step('05-batch-15', async () => {
       await page.getByRole('checkbox', { name: 'Claude + X' }).click()
       await page.waitForTimeout(1000)
-      await toTop(page, page.getByText('Under the logos'), 120)
+      await toTop(page, page.locator('.formula-logos'), 24)
       await snap(page, '05-batch-15-claude-x')
       await page.getByRole('checkbox', { name: 'Claude + X' }).click()
       await page.waitForTimeout(600)
@@ -479,7 +595,7 @@ const groups = {
     await step('05-batch-15', async () => {
       await page.getByRole('checkbox', { name: 'Claude + X' }).click()
       await page.waitForTimeout(1200)
-      await toTop(page, page.getByText('Under the logos'), 140)
+      await toTop(page, page.locator('.formula-logos'), 24)
       await snap(page, '05-batch-15-claude-x')
     })
   },
@@ -555,6 +671,8 @@ const groups = {
     await snap(page, '09-motion-03-moments')
     await toTop(page, page.getByText(/Tell Claude what to change/).first(), 200)
     await snap(page, '09-motion-04-chat')
+    // It asks first ("This plan is let go") - say yes.
+    page.acceptNext = true
     await page.getByRole('button', { name: /Start again with another video/ }).click()
     await page.waitForTimeout(2000)
     await scrollTop(page)
