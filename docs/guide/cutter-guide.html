@@ -1,0 +1,873 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>The Cutter Guide</title>
+<!--
+  The source of cutter-guide.pdf. Printed by docs/guide/tools/build_pdf.cjs
+  (A4, Chrome), which also writes the page numbers into the contents.
+  Screenshots: docs/guide/shots/ (docs/guide/tools/shots.cjs, demo mode -
+  every name, account and number in them is made up).
+-->
+<style>
+  @page { size: A4; margin: 16mm 15mm 16mm 15mm; }
+  :root {
+    --ink: #17151f; --dim: #5d5a6b; --faint: #8b889a; --rule: #e4e1ee; --paper: #ffffff;
+    --accent: #6b4ee6; --accent-soft: #efeafe; --green: #1f9d6a; --green-soft: #e6f6ef;
+    --amber: #a86400; --amber-soft: #fff4e0; --red: #c23a3a;
+  }
+  * { box-sizing: border-box; }
+  html { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  body { margin: 0; font-family: Inter, 'Helvetica Neue', Arial, sans-serif; font-size: 10.4pt; line-height: 1.5; color: var(--ink); background: var(--paper); }
+  h1, h2, h3, h4 { line-height: 1.2; margin: 0; }
+  p { margin: 0 0 7pt; }
+  ul, ol { margin: 0 0 7pt; padding-left: 16pt; }
+  li { margin: 0 0 2.5pt; }
+  strong { font-weight: 650; }
+  /* A new page before each section; inside one, its features flow on. */
+  .page { break-before: page; page-break-before: always; }
+  .cover { break-before: auto; page-break-before: auto; }
+
+  /* Cover */
+  .cover { height: 265mm; display: flex; flex-direction: column; justify-content: space-between; padding: 10mm 4mm 0; }
+  .cover .kicker { font-size: 10pt; letter-spacing: .18em; text-transform: uppercase; color: var(--accent); font-weight: 700; }
+  .cover h1 { font-size: 46pt; letter-spacing: -.02em; margin: 6mm 0 4mm; }
+  .cover .sub { font-size: 16pt; color: var(--dim); max-width: 140mm; }
+  .cover .phones { display: flex; gap: 6mm; justify-content: center; align-items: flex-end; margin: 6mm 0; }
+  .cover .phones img { width: 52mm; border-radius: 7mm; box-shadow: 0 6mm 14mm rgba(40, 20, 90, .22); border: 1.4mm solid #0d0b14; }
+  .cover .phones img.mid { width: 60mm; }
+  .cover .foot { display: flex; justify-content: space-between; color: var(--faint); font-size: 9pt; border-top: 1px solid var(--rule); padding-top: 4mm; }
+
+  /* Running pages */
+  .section-title { display: flex; align-items: baseline; gap: 4mm; border-bottom: 2px solid var(--ink); padding-bottom: 3mm; margin-bottom: 5mm; }
+  .section-title .num { font-size: 30pt; font-weight: 800; color: var(--accent); line-height: 1; }
+  .section-title h2 { font-size: 22pt; letter-spacing: -.01em; }
+  .section-lede { font-size: 11.5pt; color: var(--dim); margin-bottom: 6mm; }
+  h2.plain { font-size: 22pt; margin-bottom: 4mm; letter-spacing: -.01em; }
+  .badge { display: inline-block; font-size: 7.5pt; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; padding: 1pt 5pt; border-radius: 6pt; vertical-align: middle; margin-left: 4pt; }
+  .badge.owner { background: var(--amber-soft); color: var(--amber); border: 1px solid #f1d39a; }
+  .badge.auto { background: var(--green-soft); color: var(--green); }
+
+  /* A feature: text beside its screenshot(s) */
+  .feature { display: grid; grid-template-columns: 1fr 50mm; gap: 6mm; padding: 4mm 0 5mm; border-bottom: 1px solid var(--rule); break-inside: avoid; page-break-inside: avoid; }
+  .feature.two { grid-template-columns: 1fr 43mm 43mm; }
+  .feature.wide { grid-template-columns: 1fr; }
+  .feature h3 { font-size: 13.5pt; margin-bottom: 2mm; }
+  .feature .why { color: var(--dim); margin-bottom: 3mm; }
+  .feature h4 { font-size: 8.5pt; text-transform: uppercase; letter-spacing: .08em; color: var(--accent); margin: 3mm 0 1.2mm; }
+  .feature h4.auto { color: var(--green); }
+  .feature h4.tip { color: var(--amber); }
+  .shot { margin: 0; }
+  .shot img { width: 100%; display: block; border-radius: 4.5mm; border: 1mm solid #0d0b14; box-shadow: 0 2mm 5mm rgba(30, 20, 60, .14); }
+  .shot figcaption { font-size: 7.6pt; color: var(--faint); text-align: center; margin-top: 1.5mm; line-height: 1.3; }
+  .shots-row { display: flex; gap: 5mm; justify-content: flex-start; margin: 2mm 0 1mm; }
+  .shots-row .shot { width: 40mm; }
+  .note { background: var(--accent-soft); border-radius: 3mm; padding: 3mm 4mm; margin: 3mm 0; font-size: 9.6pt; }
+  .note.warn { background: var(--amber-soft); }
+  .note.good { background: var(--green-soft); }
+
+  /* Contents */
+  .toc { list-style: none; padding: 0; margin: 0; }
+  .toc li { display: flex; align-items: baseline; gap: 3mm; padding: 2.4mm 0; border-bottom: 1px solid var(--rule); font-size: 11.5pt; }
+  .toc li .n { width: 9mm; font-weight: 800; color: var(--accent); }
+  .toc li .t { flex: 1; }
+  .toc li .t small { display: block; color: var(--faint); font-size: 8.8pt; }
+  .toc li .p { color: var(--dim); font-variant-numeric: tabular-nums; }
+
+  /* What it does */
+  .loop { display: grid; grid-template-columns: repeat(5, 1fr); gap: 3mm; margin: 5mm 0 7mm; }
+  .loop div { background: var(--accent-soft); border-radius: 3mm; padding: 3mm; font-size: 9pt; }
+  .loop div b { display: block; font-size: 10.5pt; margin-bottom: 1mm; }
+  .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 5mm 8mm; }
+  .grid2 h3 { font-size: 12pt; margin-bottom: 1.5mm; }
+
+  /* Quick start */
+  .steps { counter-reset: s; list-style: none; padding: 0; }
+  .steps > li { counter-increment: s; position: relative; padding: 0 0 5mm 13mm; break-inside: avoid; }
+  .steps > li::before { content: counter(s); position: absolute; left: 0; top: -1mm; width: 9mm; height: 9mm; border-radius: 50%; background: var(--accent); color: #fff; font-weight: 800; display: grid; place-items: center; font-size: 12pt; }
+  .steps h3 { font-size: 13pt; margin-bottom: 1.5mm; }
+
+  /* Troubleshooting */
+  .trouble { width: 100%; border-collapse: collapse; font-size: 9.4pt; }
+  .trouble td { vertical-align: top; padding: 2.2mm 2mm; border-bottom: 1px solid var(--rule); }
+  .trouble td:first-child { width: 42%; font-weight: 600; }
+  .trouble tr { break-inside: avoid; }
+  .key { font-size: 8.5pt; color: var(--faint); }
+</style>
+</head>
+<body>
+
+<!-- ============================== COVER ============================== -->
+<section class="page cover">
+  <div>
+    <div class="kicker">UGC Roadmap · The Cutter</div>
+    <h1>The Cutter Guide</h1>
+    <p class="sub">Film it, check it, and let it post. Everything the Cutter does, from your first video to batches that post day and night.</p>
+  </div>
+  <div class="phones">
+    <img src="shots/02-cut-05-timeline.png" alt="">
+    <img class="mid" src="shots/01-start-02-videos-home.png" alt="">
+    <img src="shots/05-batch-01-top.png" alt="">
+  </div>
+  <div class="foot">
+    <span>For students and everyone using the Cutter</span>
+    <span>Every name, account and number in the screenshots is made up.</span>
+  </div>
+</section>
+
+<!-- ============================== WHAT IT DOES ============================== -->
+<section class="page" id="what">
+  <h2 class="plain">What the Cutter does</h2>
+  <p class="section-lede">The Cutter is an app on your phone that turns raw takes into finished UGC videos and posts them for you. You film; it does the editing, the captions and the posting, and then tells you what is working.</p>
+  <div class="loop">
+    <div><b>1. Film</b>In the Cutter, or add videos from your camera roll.</div>
+    <div><b>2. It edits</b>Pauses and "um"s out, captions, headline, logo, zooms.</div>
+    <div><b>3. You check</b>Look over the captions and the cut, then Approve.</div>
+    <div><b>4. It posts</b>To your accounts, at good times, through Postiz or Buffer.</div>
+    <div><b>5. It learns</b>Views, best hours and best hooks, so you make more of what works.</div>
+  </div>
+  <div class="grid2">
+    <div><h3>Your talking videos</h3><p>Add a take and the Cutter listens to it, puts it in the right campaign, cuts the silences and the "um"s, writes word-by-word captions and adds the brand's headline and logo. You check, approve, and it goes out.</p></div>
+    <div><h3>Campaigns</h3><p>One per brand: its name, logo, the look of its videos, which of your accounts it posts to, when, and how captions are written. Set it once; every video follows it.</p></div>
+    <div><h3>Batches</h3><p>Film a handful of clips once - reactions, hooks, product shots - and the Cutter mixes them into many different videos and posts a set number every day, by itself, until every mix is used.</p></div>
+    <div><h3>Posts</h3><p>Everything on its way out: what waits for your OK, what is scheduled, what went out, and what didn't (it tries again by itself).</p></div>
+    <div><h3>Analytics</h3><p>Views per video, the best hours to post, which headlines, reactions and songs do best, and accounts that suddenly stopped getting views.</p></div>
+    <div><h3>On your phone</h3><p>Videos are made on the phone. Only the finished video goes out, to your own posting service. Your campaigns are backed up to your login.</p></div>
+  </div>
+  <div class="note"><strong>Tip:</strong> Install the Cutter on your Home Screen (in Safari: Share → Add to Home Screen) and open it from there. Notifications only work that way on an iPhone, and the app keeps working with no signal.</div>
+</section>
+
+<!-- ============================== CONTENTS ============================== -->
+<section class="page" id="contents">
+  <h2 class="plain">Contents</h2>
+  <ul class="toc">
+    <li><span class="n"></span><span class="t">Quick start - five things on day one</span><span class="p" data-for="quick"></span></li>
+    <li><span class="n">1</span><span class="t">Getting started<small>Sign in, the tabs, posting keys, your voice, recording</small></span><span class="p" data-for="s1"></span></li>
+    <li><span class="n">2</span><span class="t">Simple cutting<small>Silences and "um"s out, captions, the caption check, the edit screen, Cut only</small></span><span class="p" data-for="s2"></span></li>
+    <li><span class="n">3</span><span class="t">Campaigns and the Bank<small>Brand, look, headlines, posting rules, captions per kind of video, accounts</small></span><span class="p" data-for="s3"></span></li>
+    <li><span class="n">4</span><span class="t">Posting<small>To approve, scheduling, missed posts, Edit again, New post, limits, Buffer</small></span><span class="p" data-for="s4"></span></li>
+    <li><span class="n">5</span><span class="t">Batches<small>Formats, drop-in, clip check, Cut or Raw, speed, steps, music, Start</small></span><span class="p" data-for="s5"></span></li>
+    <li><span class="n">6</span><span class="t">Formats and One video, new songs</span><span class="p" data-for="s6"></span></li>
+    <li><span class="n">7</span><span class="t">Analytics and What works</span><span class="p" data-for="s7"></span></li>
+    <li><span class="n">8</span><span class="t">Trial reels <span class="badge owner">Owner</span></span><span class="p" data-for="s8"></span></li>
+    <li><span class="n">9</span><span class="t">Motion graphics and Warm-ups</span><span class="p" data-for="s9"></span></li>
+    <li><span class="n">10</span><span class="t">Settings</span><span class="p" data-for="s10"></span></li>
+    <li><span class="n"></span><span class="t">Troubleshooting</span><span class="p" data-for="trouble"></span></li>
+  </ul>
+  <p class="key" style="margin-top:6mm"><span class="badge owner">Owner</span> marks what only the main login sees (and the logins it turns those features on for). <span class="badge auto">Automatic</span> marks what the Cutter does by itself.</p>
+</section>
+
+<!-- ============================== QUICK START ============================== -->
+<section class="page" id="quick">
+  <h2 class="plain">Quick start: five things on day one</h2>
+  <p class="section-lede">Do these once, in this order, and you can post your first video today.</p>
+  <ol class="steps">
+    <li><h3>Sign in and put the Cutter on your Home Screen</h3><p>Open the link you were given, type your login and password (or choose your password if you got a one-time sign-in link). Then, in Safari: Share → <strong>Add to Home Screen</strong>, and from now on open the Cutter from that icon.</p></li>
+    <li><h3>Connect posting</h3><p><strong>More → Settings → Posting → Set up.</strong> Pick <strong>Postiz</strong> or <strong>Buffer</strong>, paste its API key, paste your Anthropic (Claude) key, tap <strong>Connect</strong>. Your keys stay on the server, never on the phone. Then turn <strong>Notifications</strong> on in the same card.</p></li>
+    <li><h3>Set up your voice (45 seconds)</h3><p>Tap <strong>Set up</strong> on the Videos tab. Stay quiet for 3 seconds, read the text out loud, say your "um"s, take a breath. Use the mic you film with. From then on the Cutter never cuts into your words.</p></li>
+    <li><h3>Make your first campaign</h3><p><strong>More → Campaigns → New campaign:</strong> the brand's name, the brand name as you say it, its logo. Then open its <strong>Posting</strong>: tick the accounts it posts to, pick times (or random times), choose who approves, and paste the brand's caption rules and hashtags.</p></li>
+    <li><h3>Film or add a video, check it, approve it</h3><p>On Videos, tap <strong>Record</strong> or <strong>Add videos</strong>. When it says <strong>Check captions</strong>, go through the questions, look over the captions and the cut, and tap <strong>Approve</strong>. It is made on your phone and goes to <strong>Posts</strong> - approve it there and it posts at its time.</p></li>
+  </ol>
+  <div class="note good"><strong>Then:</strong> once you have a brand with several clips, set up a <strong>Batch</strong> (section 5) and let it post every day by itself.</div>
+</section>
+
+<!-- ============================== 1 GETTING STARTED ============================== -->
+<section class="page" id="s1">
+  <div class="section-title"><span class="num">1</span><h2>Getting started</h2></div>
+  <p class="section-lede">Signing in, finding your way around, and the three things the Cutter needs from you once: your posting keys, your voice, and a first video.</p>
+
+  <div class="feature">
+    <div>
+      <h3>Sign in</h3>
+      <p class="why">The Cutter is private: nothing shows until you sign in, and your campaigns are kept on your login so they are backed up and the same on every phone you use.</p>
+      <h4>How</h4>
+      <ol><li>Type your login and password, tap <strong>Sign in</strong>.</li><li>Got a one-time sign-in link? Open it and choose your password. The link works once, within 48 hours.</li></ol>
+      <h4 class="auto">By itself</h4>
+      <p>You stay signed in, even with no signal. A login made with a link works on up to 3 phones (Safari and the Home Screen app count as two).</p>
+      <h4 class="tip">Tips</h4>
+      <ul><li>5 wrong passwords lock the login for 30 minutes.</li><li>Need a 4th phone? Ask the owner to remove an old one (Settings → People).</li></ul>
+    </div>
+    <figure class="shot"><img src="shots/01-start-01-sign-in.png" alt=""><figcaption>The sign-in page</figcaption></figure>
+  </div>
+
+  <div class="feature two">
+    <div>
+      <h3>The Videos tab and the tab bar</h3>
+      <p class="why">Your home: today's numbers, your videos, and the tabs for everything else.</p>
+      <h4>What you see</h4>
+      <ul><li><strong>Today</strong>: how many videos go out today - out, scheduled, to approve, failed. Tap it to open Posts.</li><li><strong>Record</strong> and <strong>Add videos</strong>.</li><li><strong>This week</strong> and your campaigns (next pages).</li><li>Your videos, each in a row, under them.</li></ul>
+      <h4>The tabs</h4>
+      <p><strong>Videos</strong> · <strong>Posts</strong> (the red number = posts to approve) · <strong>Batch</strong> · <strong>Analytics</strong> (a dot = a suggestion for you) · <strong>More</strong> (Campaigns, Formats, Motion graphics, Warm-ups, Bank, Settings, Cut only).</p>
+      <h4 class="tip">Tip</h4>
+      <p>The chip at the top right says whether your setups are backed up ("Shared"). Tap it if it says "Not synced".</p>
+    </div>
+    <figure class="shot"><img src="shots/01-start-02-videos-home.png" alt=""><figcaption>Videos (dark look)</figcaption></figure>
+    <figure class="shot"><img src="shots/01-start-02-videos-home-light.png" alt=""><figcaption>The same in the light look</figcaption></figure>
+  </div>
+</section>
+
+<section class="cont">
+  <div class="feature two">
+    <div>
+      <h3>This week</h3>
+      <p class="why">One look tells you if every campaign got its posts this week - the thing brands pay for.</p>
+      <h4>How to read it</h4>
+      <ul><li>A line per campaign, a box per day.</li><li><strong>Blue</strong> posted · <strong>yellow</strong> scheduled · <strong>pale yellow</strong> the batch will make it · <strong>purple</strong> waiting for your OK · <strong>red</strong> didn't go out.</li><li>Tap a box for that day's details; ‹ › for other weeks.</li></ul>
+      <h4 class="auto">By itself</h4>
+      <p>Refreshes every 5 minutes and whenever you come back to the app.</p>
+    </div>
+    <figure class="shot"><img src="shots/01-start-07-week-tracker.png" alt=""><figcaption>A day tapped: its details under the grid</figcaption></figure>
+    <figure class="shot"><img src="shots/01-start-03-more.png" alt=""><figcaption>More: everything you set up once</figcaption></figure>
+  </div>
+
+  <div class="feature two">
+    <div>
+      <h3>Connect posting <span class="badge">once</span></h3>
+      <p class="why">The Cutter posts through your own Postiz or Buffer, with captions Claude writes. Without this, finished videos stay on your phone.</p>
+      <h4>How</h4>
+      <ol><li><strong>More → Settings → Posting → Set up</strong> (or <strong>Change keys</strong>).</li><li>Choose <strong>Postiz</strong> or <strong>Buffer</strong>. Postiz: Settings → Public API → copy the key. Buffer: Settings → API.</li><li>Paste your <strong>Anthropic API key</strong> (console.anthropic.com → API keys).</li><li>Tap <strong>Connect</strong>.</li></ol>
+      <h4 class="tip">Common mistakes</h4>
+      <ul><li>Use <em>your own</em> keys, never a friend's: the Cutter posts to whatever accounts that key holds.</li><li>Leave "Send finished videos from this phone" on, on the phone you film with.</li></ul>
+    </div>
+    <figure class="shot"><img src="shots/01-start-04-posting.png" alt=""><figcaption>Settings → Posting</figcaption></figure>
+    <figure class="shot"><img src="shots/01-start-05-posting-keys.png" alt=""><figcaption>Your keys</figcaption></figure>
+  </div>
+</section>
+
+<section class="cont">
+  <div class="feature two">
+    <div>
+      <h3>Your voice <span class="badge">45 seconds, once</span></h3>
+      <p class="why">The cut is only as good as the Cutter's idea of where your words end. Measuring your voice once means it never clips a word, in your room, with your mic.</p>
+      <h4>How</h4>
+      <ol><li>Tap <strong>Set up</strong> on Videos (or Settings → Your voice).</li><li>Pick the mic you film with, tap <strong>Start</strong>.</li><li>Stay quiet → read the text out loud, pausing where it says → say your "um"s → one breath.</li><li><strong>Done</strong>.</li></ol>
+      <h4 class="auto">By itself</h4>
+      <p>Each video uses the voice it sounds like. If your videos start to sound different (a new mic), the Videos tab asks you to add a voice.</p>
+      <h4 class="tip">Tips</h4>
+      <ul><li>Do it where you film, with the same mic.</li><li>French? Tap <strong>Lire en français</strong>.</li><li>Scroll a little to reach <strong>Done reading</strong> under the text.</li></ul>
+    </div>
+    <figure class="shot"><img src="shots/01-start-10-voice-read.png" alt=""><figcaption>Read this out loud</figcaption></figure>
+    <figure class="shot"><img src="shots/01-start-11-voice-done.png" alt=""><figcaption>Done: your room and your voice measured</figcaption></figure>
+  </div>
+
+  <div class="feature two">
+    <div>
+      <h3>Record in the Cutter</h3>
+      <p class="why">Filming inside the Cutter skips the camera roll and the picker - the take goes straight to editing.</p>
+      <h4>How</h4>
+      <ol><li>Tap <strong>Record</strong>.</li><li>Tap the red button to record, again to pause. Record several parts if you like; <strong>⌫</strong> deletes the last one.</li><li>Double tap to flip the camera, pinch to zoom, ⚡ for light.</li><li>Tap <strong>✓</strong> when you are done.</li></ol>
+      <h4 class="auto">By itself</h4>
+      <p>The parts are joined into one video, the back camera's footage is steadied when it helps (<strong>Steady</strong> switches it off), and the video opens for its caption check as soon as it has been listened to.</p>
+      <h4 class="tip">Tip</h4>
+      <p>Allow the camera and microphone for the Cutter in the iPhone settings if it asks.</p>
+    </div>
+    <figure class="shot"><img src="shots/01-start-12-record.png" alt=""><figcaption>The camera</figcaption></figure>
+    <figure class="shot"><img src="shots/01-start-13-recording.png" alt=""><figcaption>Recording</figcaption></figure>
+  </div>
+</section>
+
+<!-- ============================== 2 SIMPLE CUTTING ============================== -->
+<section class="page" id="s2">
+  <div class="section-title"><span class="num">2</span><h2>Simple cutting</h2></div>
+  <p class="section-lede">From a raw take to a finished talking video: the Cutter does the edit, you look it over, and it posts. This is the part you will use every day.</p>
+
+  <div class="feature">
+    <div>
+      <h3>Add videos - they sort themselves</h3>
+      <p class="why">Drop in the whole day's takes at once. You never pick a campaign for each one.</p>
+      <h4>How</h4>
+      <ol><li>Tap <strong>Add videos</strong> and pick all of today's takes.</li><li>Each gets a row: "Waiting to be listened to", then "Listening… 40%".</li></ol>
+      <h4 class="auto">By itself</h4>
+      <ul><li>Listens to each video and puts it in its campaign and angle from what you say (the brand's name, the angle's words).</li><li>A video with no talking becomes a <strong>reaction</strong>: kept whole, music only.</li><li>Two takes filmed seconds apart: "Join them?"</li><li>A wide video: "Cut it and make 9:16, or only make 9:16?"</li></ul>
+      <h4 class="tip">Tips</h4>
+      <ul><li><strong>Needs you</strong> means it wasn't sure of the angle - open the row and pick.</li><li>iPhone: in the picker tap <strong>⋯ → Options → Format → Current</strong>, so videos arrive at full quality without a long wait.</li></ul>
+    </div>
+    <figure class="shot"><img src="shots/02-cut-02-needs-you.png" alt=""><figcaption>Two videos: one ready to check, one that "Needs you"</figcaption></figure>
+  </div>
+
+  <div class="feature two">
+    <div>
+      <h3>Check captions: the questions, then the quick check</h3>
+      <p class="why">A wrong caption or the wrong campaign is the one mistake a viewer (or a brand) notices. This is your 30-second check.</p>
+      <h4>How</h4>
+      <ol><li>Tap <strong>Check captions</strong> on the row.</li><li>Check <strong>Goes to</strong>, the <strong>Headline</strong> and its look, the <strong>Music</strong>, the pictures and clips. Tap <strong>Next</strong>.</li><li>The quick check shows only what may be wrong, one card at a time: <strong>Good</strong>, <strong>Fix</strong> or <strong>Undo change</strong>.</li><li><strong>Approve</strong> - or <strong>Timeline editor</strong> for more.</li></ol>
+      <h4 class="auto">By itself</h4>
+      <p>Claude reads every video's captions once and fixes what it misheard (brand names especially). Each "um" it cut is listed so you can put it back.</p>
+      <h4 class="tip">Tip</h4>
+      <p>"Captions on the hook too": off, captions start after the headline, so the hook stays clean.</p>
+    </div>
+    <figure class="shot"><img src="shots/02-cut-03-check-questions.png" alt=""><figcaption>The questions</figcaption></figure>
+    <figure class="shot"><img src="shots/02-cut-04-quick-check.png" alt=""><figcaption>The quick check</figcaption></figure>
+  </div>
+</section>
+
+<section class="cont">
+  <div class="feature two">
+    <div>
+      <h3>The edit screen (Timeline editor)</h3>
+      <p class="why">Like TikTok's editor: fix the cut, change a clip's speed, add your own words, pictures, videos and sounds - before the video is made.</p>
+      <h4>How</h4>
+      <ul><li>Slide the timeline to move through the video; pinch it to zoom.</li><li>Tap a clip: drag its white arrows inward to trim, outward to bring back what was cut. <strong>Split</strong>, <strong>Delete</strong>, <strong>Speed</strong> (0.5× to 3×, your voice keeps its pitch).</li><li><strong>Undo</strong> / <strong>Redo</strong> are next to the timer.</li></ul>
+      <h4 class="auto">By itself</h4>
+      <p>The captions follow every change you make to the cut.</p>
+      <h4 class="tip">Tip</h4>
+      <p>Talking too slowly? Tap a clip → Speed → 1.25×.</p>
+    </div>
+    <figure class="shot"><img src="shots/02-cut-05-timeline.png" alt=""><figcaption>The timeline and its tools</figcaption></figure>
+    <figure class="shot"><img src="shots/02-cut-06-clip-speed.png" alt=""><figcaption>A clip tapped → Speed</figcaption></figure>
+  </div>
+
+  <div class="feature two">
+    <div>
+      <h3>Text, Overlay, Sound and Headline</h3>
+      <p class="why">Your call to action, a screenshot of the app, a whoosh on the reveal - the things that make a talking video feel produced.</p>
+      <h4>How</h4>
+      <ul><li><strong>Text</strong>: type your words, pick White box / Outline / Snapchat, drag and pinch them on the video. Their bar on the timeline sets when they show.</li><li><strong>Overlay</strong>: a photo or video from your phone or the Bank, placed at the playhead.</li><li><strong>Sound</strong>: a sound effect, a song from the music bank or a sound from your phone.</li><li><strong>Headline</strong>: drag it, pinch it, <strong>Put back</strong>.</li></ul>
+      <h4 class="auto">By itself</h4>
+      <p>A headline you move stays there for that angle's next videos.</p>
+    </div>
+    <figure class="shot"><img src="shots/02-cut-07-text.png" alt=""><figcaption>Text: words on the video</figcaption></figure>
+    <figure class="shot"><img src="shots/02-cut-08-overlay.png" alt=""><figcaption>Overlay: from the phone or the Bank</figcaption></figure>
+  </div>
+</section>
+
+<section class="cont">
+  <div class="feature two">
+    <div>
+      <h3>All the captions at once</h3>
+      <p class="why">For a longer video, read every caption in one list and fix any line by typing.</p>
+      <h4>How</h4>
+      <ul><li>Tap <strong>Captions</strong> in the toolbar: a see-through sheet slides up over the video. Drag its handle for half or three quarters of the screen.</li><li>Tap ▶ beside a line to hear it; type to fix it.</li><li><strong>Check captions with Claude</strong> - it shows what it costs (about 2¢).</li><li>Under the list: caption <strong>position</strong>, <strong>style</strong> (One word / Highlight / Phrase) and <strong>size</strong>.</li></ul>
+      <h4 class="auto">By itself</h4>
+      <p>Your last caption style and size become the default for the next videos.</p>
+    </div>
+    <figure class="shot"><img src="shots/02-cut-11-caption-sheet.png" alt=""><figcaption>The caption sheet</figcaption></figure>
+    <figure class="shot"><img src="shots/02-cut-12-made.png" alt=""><figcaption>Made: 0:18 → 0:13, logo and picture placed</figcaption></figure>
+  </div>
+
+  <div class="feature">
+    <div>
+      <h3>Approve: made on your phone, then sent</h3>
+      <p class="why">Approving is the last thing you do. The rest - making the video and getting it to your accounts - happens by itself.</p>
+      <h4 class="auto">By itself</h4>
+      <ul><li>Approved videos are made one at a time, on your phone (keep the app open with the screen on - about half a minute each).</li><li>Each finished video goes to Posts with a caption Claude writes from what you say, for the campaign's accounts and times.</li><li>The row shows what was cut: "0:18 → 0:13 · 1 pause cut · 1 "um" · logo at 0:03".</li><li>A made video stays editable until it goes out (and 2 hours after) - see Edit again.</li></ul>
+      <h4 class="tip">Common mistakes</h4>
+      <ul><li>Closing the app while videos are being made: they wait and carry on when you open it again.</li><li>"Not sent to Postiz: no accounts are picked" - open the campaign's Posting and tick its accounts.</li></ul>
+    </div>
+    <figure class="shot"><img src="shots/02-cut-10-headline.png" alt=""><figcaption>Moving the headline</figcaption></figure>
+  </div>
+</section>
+
+<section class="cont">
+  <div class="feature two">
+    <div>
+      <h3>Reaction videos and the Timeline editor</h3>
+      <p class="why">Two more ways to make a video, under <strong>More ways to make one</strong> on Videos.</p>
+      <h4>Reaction video</h4>
+      <p>Pick a reaction campaign, type a headline, choose the <strong>product clip</strong>, then add your reaction clips: each becomes its own video - your reaction, then the product.</p>
+      <h4>Timeline editor</h4>
+      <p>Add several clips in order, then choose: <strong>Post it</strong> (nothing cut by itself, you edit), <strong>Cut the silences</strong> (cut as usual, then the editor), or <strong>Just keep it</strong> (made but not posted).</p>
+    </div>
+    <figure class="shot"><img src="shots/02-cut-13-reaction-video.png" alt=""><figcaption>Reaction video</figcaption></figure>
+    <figure class="shot"><img src="shots/02-cut-14-timeline-editor.png" alt=""><figcaption>Timeline editor</figcaption></figure>
+  </div>
+
+  <div class="feature two">
+    <div>
+      <h3>Cut only</h3>
+      <p class="why">Just the silences out, nothing else - for a video that isn't for a campaign. Nothing is posted.</p>
+      <h4>How</h4>
+      <ol><li><strong>More → Cut only</strong>.</li><li>Pick the <strong>Pacing</strong>: Natural, Balanced or Tight (<strong>Fine-tune</strong> for the exact numbers).</li><li><strong>Add videos</strong>, then <strong>Save video</strong> or <strong>Share</strong>.</li></ol>
+      <h4 class="tip">Tips</h4>
+      <ul><li>"Cut "um"s and stumbles" and "Write captions (.srt)" work in English.</li><li>Words getting clipped? Lower the silence level in Fine-tune.</li><li>Leaving Cut only clears its finished videos - save them first.</li></ul>
+    </div>
+    <figure class="shot"><img src="shots/02-cut-15-cut-only.png" alt=""><figcaption>Cut only</figcaption></figure>
+    <figure class="shot"><img src="shots/02-cut-16-cut-only-done.png" alt=""><figcaption>0:18 → 0:12, 8 pauses removed</figcaption></figure>
+  </div>
+</section>
+
+<!-- ============================== 3 CAMPAIGNS ============================== -->
+<section class="page" id="s3">
+  <div class="section-title"><span class="num">3</span><h2>Campaigns and the Bank</h2></div>
+  <p class="section-lede">A campaign is a brand: how its videos look and where, when and how they are posted. Set it up once and every video follows it.</p>
+
+  <div class="feature two">
+    <div>
+      <h3>A campaign: brand and logo</h3>
+      <p class="why">The brand's name as you <em>say</em> it is what the Cutter listens for: it sorts your videos by it and brings the logo up when you say it.</p>
+      <h4>How</h4>
+      <ol><li><strong>More → Campaigns → New campaign</strong>.</li><li><strong>Campaign name</strong>; <strong>Its videos</strong>: Talking head, or Reaction + product.</li><li><strong>Brand name, as you say it</strong> - one spelling is enough.</li><li><strong>Logo</strong>: a PNG with a clear background looks best. <strong>Save campaign</strong>.</li></ol>
+      <h4 class="auto">By itself</h4>
+      <p>Every campaign has a <strong>General</strong> angle for its videos that fit no other angle.</p>
+    </div>
+    <figure class="shot"><img src="shots/03-camp-02-campaign.png" alt=""><figcaption>A campaign: its angles and posting</figcaption></figure>
+    <figure class="shot"><img src="shots/03-camp-03-brand.png" alt=""><figcaption>Brand & logo</figcaption></figure>
+  </div>
+
+  <div class="feature two">
+    <div>
+      <h3>Angles: the look of each kind of video</h3>
+      <p class="why">One brand, several proven kinds of video ("morning routine", "money saved"): each angle has its own headline, logo spot, pictures, sounds and effects.</p>
+      <h4>Look</h4>
+      <ul><li><strong>Recognise it by</strong>: words that put a video in this angle.</li><li><strong>Headline</strong>: your text, or <strong>Write it from the video</strong> (Claude writes one from what you say, in the style of your past headlines). Where, style, size, seconds on screen.</li><li><strong>Logo</strong>: where, how big, how long, when you say the brand.</li></ul>
+      <h4>Pictures · Sound · Effects · Clips</h4>
+      <p>A picture that comes up when you say its words; background music and sounds (whoosh on the brand); zooms (punch-in at cuts, push-in on the hook); a video before, after or in the middle of every video.</p>
+    </div>
+    <figure class="shot"><img src="shots/03-camp-05-angle-headline.png" alt=""><figcaption>An angle's headline</figcaption></figure>
+    <figure class="shot"><img src="shots/03-camp-08-angle-effects.png" alt=""><figcaption>Effects, with examples to play</figcaption></figure>
+  </div>
+</section>
+
+<section class="cont">
+  <div class="feature two">
+    <div>
+      <h3>Posting: accounts and times</h3>
+      <p class="why">Where and when this brand's videos go. Accounts and times are yours alone, even if a friend shares the campaign.</p>
+      <h4>How</h4>
+      <ol><li>Open the campaign → <strong>Posting</strong>.</li><li>Tick <strong>Your accounts</strong>. Added one in Postiz? <strong>Look again</strong>.</li><li><strong>Most posts a day</strong>: the brand's limit, if it has one.</li><li><strong>Your times</strong>: your own times, or <strong>Random times</strong> between two hours, N a day.</li></ol>
+      <h4 class="auto">By itself</h4>
+      <p>Each video takes the next free time. Random times change every day and stay 30 minutes apart. A new account can be added to videos already made, without anything posting twice.</p>
+    </div>
+    <figure class="shot"><img src="shots/03-camp-10-posting-accounts.png" alt=""><figcaption>Your accounts</figcaption></figure>
+    <figure class="shot"><img src="shots/03-camp-11-posting-times.png" alt=""><figcaption>Random times</figcaption></figure>
+  </div>
+
+  <div class="feature two">
+    <div>
+      <h3>Who approves, and the caption</h3>
+      <p class="why">Some brands want to see each video first; some pay only if you submit fast; all have caption rules.</p>
+      <h4>Before it posts</h4>
+      <ul><li><strong>I approve</strong>: it waits in Posts for you.</li><li><strong>Straight away</strong>: scheduled as soon as it is ready.</li><li><strong>Brand approves</strong>: you send it to the brand, then tap Brand approved.</li><li><strong>Remind me to submit it when it goes live</strong> - for brands that pay within 2 hours.</li></ul>
+      <h4>Caption</h4>
+      <p><strong>Claude writes it</strong> from what you say, following <strong>the brand's caption rules</strong> and <strong>hashtags</strong> - or <strong>I paste it</strong> (a tracking caption).</p>
+      <h4 class="tip">Tip</h4>
+      <p>Changed the hashtags? Tick "Add the hashtags to posts already made".</p>
+    </div>
+    <figure class="shot"><img src="shots/03-camp-12-posting-approval.png" alt=""><figcaption>Before it posts</figcaption></figure>
+    <figure class="shot"><img src="shots/03-camp-13-posting-caption.png" alt=""><figcaption>Caption rules and hashtags</figcaption></figure>
+  </div>
+</section>
+
+<section class="cont">
+  <div class="feature two">
+    <div>
+      <h3>Captions per kind of video</h3>
+      <p class="why">On platforms that pay per post type (a talking video counts as "advanced", a reaction as "basic"), the right tag on the right video is how you get tracked and paid.</p>
+      <h4>How</h4>
+      <p>Posting → <strong>Added to the caption, by kind of video</strong>: one line for <strong>Talking head videos (advanced)</strong>, one for <strong>Reaction videos (basic)</strong>. Hashtags, a line, or both.</p>
+      <h4 class="auto">By itself</h4>
+      <p>Each video's kind is worked out from what it is; the line is added once, never twice, above the hashtags.</p>
+      <h3 style="margin-top:5mm">Instagram location</h3>
+      <p>Paste the place's Facebook page link to tag every Instagram post with it (or set one for all campaigns in Settings). Postiz doesn't pass it on to Instagram yet; it will show once they do.</p>
+    </div>
+    <figure class="shot"><img src="shots/03-camp-14-captions-by-kind.png" alt=""><figcaption>By kind of video</figcaption></figure>
+    <figure class="shot"><img src="shots/03-camp-15-instagram-location.png" alt=""><figcaption>Instagram location</figcaption></figure>
+  </div>
+
+  <div class="feature two">
+    <div>
+      <h3>Stop or end a campaign · the Bank</h3>
+      <h4>Stop or end</h4>
+      <ul><li><strong>Stop all posts</strong>: nothing of this brand goes out (other campaigns untouched).</li><li><strong>End campaign</strong>: stops its posts and takes its accounts out of Postiz so they stop counting toward your Postiz limit - you see which go, and which stay and why, before anything happens.</li></ul>
+      <h4>The Bank (More → Bank)</h4>
+      <p><strong>Pictures</strong> and <strong>Videos</strong> that pop up when you say their words, and the <strong>Music</strong> and <strong>Sound effects</strong> every picker uses - shared on every phone of your login.</p>
+      <h4 class="tip">Tip</h4>
+      <p>Name each song so you recognise it later; tap ▶ to hear it.</p>
+    </div>
+    <figure class="shot"><img src="shots/03-camp-16-stop-end.png" alt=""><figcaption>End campaign: what goes, what stays</figcaption></figure>
+    <figure class="shot"><img src="shots/03-camp-17-bank.png" alt=""><figcaption>The Bank</figcaption></figure>
+  </div>
+</section>
+
+<!-- ============================== 4 POSTING ============================== -->
+<section class="page" id="s4">
+  <div class="section-title"><span class="num">4</span><h2>Posting</h2></div>
+  <p class="section-lede">The Posts tab is everything on its way out: what waits for you, what is scheduled, what went out and what didn't.</p>
+
+  <div class="feature two">
+    <div>
+      <h3>To approve</h3>
+      <p class="why">Always at the top: the only posts that need you.</p>
+      <h4>How</h4>
+      <ul><li>Read the caption (fix it right there), <strong>Watch</strong> the video, then <strong>Approve</strong> - it goes at its time. <strong>Post now</strong> sends it at once.</li><li><strong>Approve all</strong> for a whole batch.</li><li><strong>More options</strong>: Approve, post later · Change time · Add music · Save video · a different caption for one platform.</li><li><strong>Reject</strong>: it won't post (a batch makes another in its place).</li></ul>
+      <h4 class="auto">By itself</h4>
+      <p>Approve 3 videos of a batch and the rest of it is approved for you. A post whose time passes while it waits moves an hour later (9 AM the next morning after midnight).</p>
+    </div>
+    <figure class="shot"><img src="shots/04-post-01-to-approve.png" alt=""><figcaption>To approve</figcaption></figure>
+    <figure class="shot"><img src="shots/04-post-02-more-options.png" alt=""><figcaption>More options</figcaption></figure>
+  </div>
+
+  <div class="feature two">
+    <div>
+      <h3>Add music after, and brand approval</h3>
+      <h4>Add music</h4>
+      <p>More options → <strong>Add music</strong>: pick a song, ▶ to hear it, <strong>Add music & approve</strong>. A new version replaces the old post - nothing posts twice.</p>
+      <h4>Brand approves</h4>
+      <p>For a brand that checks first: <strong>Save video</strong>, send it to them, and when they say yes tap <strong>Brand approved</strong>.</p>
+    </div>
+    <figure class="shot"><img src="shots/04-post-03-add-music.png" alt=""><figcaption>Add music</figcaption></figure>
+    <figure class="shot"><img src="shots/04-post-04-brand.png" alt=""><figcaption>Brand approves</figcaption></figure>
+  </div>
+</section>
+
+<section class="cont">
+  <div class="feature two">
+    <div>
+      <h3>Scheduled, Just posted, Didn't go out</h3>
+      <p class="why">See every day ahead, check what went out (with its views and links), and catch anything that failed.</p>
+      <h4>How to read it</h4>
+      <ul><li>A block per day; Today and Tomorrow open. Chips: Scheduled · Going out · <strong>Posting again</strong> · Posted · Partly · Not posted.</li><li>Tap a post for its accounts, links and caption. <strong>Take back</strong> returns it to To approve.</li><li><strong>Just posted</strong>: the last 3 hours, with views.</li><li><strong>Didn't go out</strong> (folded at the bottom): <strong>Post it myself</strong> (save the video, copy the caption) or <strong>Let the Cutter post it</strong>.</li></ul>
+      <h4 class="auto">By itself</h4>
+      <p>A post that missed an account is posted again at the next free time, up to twice (YouTube when its daily limit starts over). You get a notification that opens that post.</p>
+    </div>
+    <figure class="shot"><img src="shots/04-post-05-scheduled.png" alt=""><figcaption>The days ahead</figcaption></figure>
+    <figure class="shot"><img src="shots/04-post-07-didnt-go-out.png" alt=""><figcaption>Didn't go out: you choose</figcaption></figure>
+  </div>
+
+  <div class="feature two">
+    <div>
+      <h3>Edit again · Select to stop</h3>
+      <h4>Edit again</h4>
+      <p>A talking video you made can be opened again - cut, captions, music - until it goes out, and for 2 hours after (then it goes out as a new post). <strong>Edit again</strong> is on the post. A batch video: change its headline or music.</p>
+      <h4>Select</h4>
+      <p>Tap <strong>Select</strong>, tick a whole campaign or posts one by one, and <strong>Stop</strong> them: they are taken out of Postiz and won't go out.</p>
+      <h4 class="tip">Tip</h4>
+      <p>The filter at the top shows one campaign at a time.</p>
+    </div>
+    <figure class="shot"><img src="shots/04-post-08-missed-sheet.png" alt=""><figcaption>From a "didn't go out" notification</figcaption></figure>
+    <figure class="shot"><img src="shots/04-post-09-select-stop.png" alt=""><figcaption>Select → Stop</figcaption></figure>
+  </div>
+</section>
+
+<section class="cont">
+  <div class="feature two">
+    <div>
+      <h3>New post: finished videos</h3>
+      <p class="why">A video you edited somewhere else, or one the brand sent back: post it through the Cutter with a Claude caption and good timing - no cutting, no approving.</p>
+      <h4>How</h4>
+      <ol><li>Posts → <strong>+ New post</strong>, pick the campaign.</li><li><strong>Choose the videos</strong>. Claude writes each caption from stills of the video (or paste yours).</li><li>Optional: tell Claude something - "I already posted today, post them tomorrow".</li><li><strong>When</strong>: Post now / Pick a time, or for several: Spread them (N a day) / All now / One by one. Then <strong>Post</strong>.</li></ol>
+      <h4 class="tip">Common mistake</h4>
+      <p>"Duplicate skipped" means that video was already posted for this campaign - tap <strong>Add it anyway</strong> if you mean it.</p>
+    </div>
+    <figure class="shot"><img src="shots/04-post-10-new-post.png" alt=""><figcaption>Two videos, captions being written</figcaption></figure>
+    <figure class="shot"><img src="shots/04-post-11-new-post-when.png" alt=""><figcaption>When they go</figcaption></figure>
+  </div>
+
+  <div class="feature two">
+    <div>
+      <h3>Pause and daily limits · Buffer backup</h3>
+      <h4>Pause and daily limits</h4>
+      <p>Settings → Posting → <strong>Pause and daily limits</strong>: pause a platform or one account, or set the most posts a day. Held videos wait and go out by themselves once there is room - nothing is lost.</p>
+      <h4>Buffer backup</h4>
+      <p>Paste a Buffer key and your Instagram accounts are backed up: a video Postiz can't take goes through Buffer by itself. <strong>Postiz is down</strong> hands everything over until you switch it off.</p>
+      <h4>Notifications</h4>
+      <p>Posts to approve, a batch ready, a post that didn't go out, submit and repost reminders, a morning summary, an account that stopped getting views. iPhone: only from the Home Screen app.</p>
+    </div>
+    <figure class="shot"><img src="shots/04-post-12-limits.png" alt=""><figcaption>Pause and daily limits</figcaption></figure>
+    <figure class="shot"><img src="shots/04-post-13-buffer.png" alt=""><figcaption>Buffer backup</figcaption></figure>
+  </div>
+</section>
+
+<!-- ============================== 5 BATCHES ============================== -->
+<section class="page" id="s5">
+  <div class="section-title"><span class="num">5</span><h2>Batches</h2></div>
+  <p class="section-lede">Film a set of clips once; the Cutter mixes them into many different videos and posts a set number every day, by itself, for as long as the mixes last. One batch per brand.</p>
+
+  <div class="feature two">
+    <div>
+      <h3>The status card</h3>
+      <p class="why">One look tells you if the batch is doing its job.</p>
+      <h4>How to read it</h4>
+      <ul><li><strong>Up to date</strong>: every day ahead is made. <strong>Making videos</strong>: with the one being made now. <strong>About to make more</strong>. <strong>Waiting its turn</strong>: your own video goes first.</li><li><strong>Next 3 days</strong>: ready / wanted each day, and what went out.</li><li><strong>Make now</strong> puts the batch first; <strong>Stop</strong>; <strong>Stop and take out the N scheduled</strong>.</li></ul>
+      <h4 class="auto">By itself</h4>
+      <p>The next 3 days are made whenever the app is open (or day and night on a Cutter server). Times are spread around the clock, more at your best hours.</p>
+      <h4 class="tip">Tip</h4>
+      <p>On the phone, keep the app open with the screen on while it makes videos (about half a minute each).</p>
+    </div>
+    <figure class="shot"><img src="shots/05-batch-01-top.png" alt=""><figcaption>Up to date</figcaption></figure>
+    <figure class="shot"><img src="shots/05-batch-22-making.png" alt=""><figcaption>Making videos</figcaption></figure>
+  </div>
+
+  <div class="feature two">
+    <div>
+      <h3>Formats: the kinds of video in a batch</h3>
+      <p class="why">A brand's batch can mix several kinds of video, each from its own clips - and the ones that get more views get more of the day.</p>
+      <ul><li><strong>Reaction</strong>: you react without a word, then the product. Music only.</li><li><strong>Talking head</strong>: you talk to the camera (captions, music under your voice), then the product steps.</li><li><strong>Green screen</strong>: the product full screen, you cut out in a corner.</li></ul>
+      <h4>How</h4>
+      <p><strong>+ Add a format</strong>, pick its kind, add its clips. Each card says how many different videos are left. <strong>Pause</strong> one, or <strong>Take out this format</strong>.</p>
+      <h4 class="auto">By itself</h4>
+      <p>Formats take turns evenly; once each has enough views, the better one gets up to twice its share.</p>
+    </div>
+    <figure class="shot"><img src="shots/05-batch-02-formats.png" alt=""><figcaption>Two formats</figcaption></figure>
+    <figure class="shot"><img src="shots/05-batch-03-reaction-format.png" alt=""><figcaption>A reaction format, open</figcaption></figure>
+  </div>
+</section>
+
+<section class="cont">
+  <div class="feature two">
+    <div>
+      <h3>Talking head: drop in, speed, your clips</h3>
+      <p class="why">Film every hook and every product step in one go, drop them all in, and the Cutter files each clip in the step you name in it.</p>
+      <h4>How</h4>
+      <ol><li><strong>+ Drop in clips</strong>: pick them all at once.</li><li>The checklist: <strong>Cut the clips</strong>, <strong>Zoom</strong>, <strong>Captions</strong>, <strong>Music</strong>, <strong>Headline</strong>, <strong>Mirror them</strong> (remembered).</li><li><strong>Check N clips</strong> (next page).</li><li><strong>Speed</strong> 1× to 1.5× for every clip of the format.</li></ol>
+      <h4>Your clips</h4>
+      <p>In the order a video plays them: Hook, then each step with <strong>+ Add</strong> and <strong>Cut | Raw</strong> - one tap makes every clip of that step cut by the Cutter or kept as you filmed it.</p>
+      <h4 class="auto">By itself</h4>
+      <p>Clips are made again in the background to match the speed and Cut/Raw ("Making your clips 1.1×… 4 left").</p>
+    </div>
+    <figure class="shot"><img src="shots/05-batch-04-talking-head.png" alt=""><figcaption>A talking head format</figcaption></figure>
+    <figure class="shot"><img src="shots/05-batch-06-clips.png" alt=""><figcaption>Your clips, Cut or Raw per step</figcaption></figure>
+  </div>
+
+  <div class="feature two">
+    <div>
+      <h3>The clip check and the clip screen</h3>
+      <p class="why">Every dropped clip is checked once - where it goes and its captions - before any video uses it.</p>
+      <h4>Clip check</h4>
+      <p>One clip at a time: tap the step it belongs to (or Hook), Mirror, Cut / Raw, fix its captions, <strong>Timeline editor</strong> to trim it, then <strong>Approve & next clip</strong>. "Sounds like step 2 · Move it" when it may be in the wrong step.</p>
+      <h4>Clip screen</h4>
+      <p>Tap any clip in Your clips: it plays whole. Big <strong>‹ ›</strong> for the others, <strong>✕</strong> to close. <strong>Length</strong> (make it shorter or longer), <strong>Cutter</strong> Cut/Raw, <strong>Speed</strong> for this clip, <strong>In</strong> (move it), Mirror, Captions, Replace, Remove.</p>
+    </div>
+    <figure class="shot"><img src="shots/05-batch-23-clip-check.png" alt=""><figcaption>The clip check</figcaption></figure>
+    <figure class="shot"><img src="shots/05-batch-07-clip-screen.png" alt=""><figcaption>The clip screen</figcaption></figure>
+  </div>
+</section>
+
+<section class="cont">
+  <div class="feature two">
+    <div>
+      <h3>Product steps and words on screen</h3>
+      <p class="why">The product part of every video, in your order: "Open the app", "Your plan", "Savings" - one clip of each step per video.</p>
+      <h4>How</h4>
+      <ul><li><strong>Steps and rules → Names and order</strong>: name the steps, ↑ ↓ to order them, + Add step.</li><li><strong>Words on screen</strong>: tap the phone screen where words go and type; add a picture or video that pops up every time the step plays. It snaps to the middle.</li><li><strong>Use each clip once</strong>: for brands that don't want clips repurposed.</li></ul>
+      <h4 class="tip">Tip</h4>
+      <p>On talking heads, a step you talk over shows your captions instead of its name.</p>
+    </div>
+    <figure class="shot"><img src="shots/05-batch-11-steps-rules.png" alt=""><figcaption>Steps and rules</figcaption></figure>
+    <figure class="shot"><img src="shots/05-batch-12-words-on-screen.png" alt=""><figcaption>Words on screen</figcaption></figure>
+  </div>
+
+  <div class="feature two">
+    <div>
+      <h3>How the videos look: hooks, headlines, captions, music</h3>
+      <ul><li><strong>Hook</strong>: White box, Outline, Snapchat - or <strong>Claude + X</strong> (two logos and an amount a day). Pick several and the videos take turns, in the shares you set with − / +.</li><li><strong>Headlines</strong>: paste them, one a line - each video gets one.</li><li><strong>How the videos look</strong> (talking head): headline on or off, music on or off, captions look and <strong>Captions height</strong> (drag them).</li><li><strong>Music</strong>: songs for the batch or from the music bank; tap a format under a song to use it there or not.</li></ul>
+    </div>
+    <figure class="shot"><img src="shots/05-batch-14-hook-looks.png" alt=""><figcaption>Hook looks in shares</figcaption></figure>
+    <figure class="shot"><img src="shots/05-batch-15-claude-x.png" alt=""><figcaption>Claude + X</figcaption></figure>
+  </div>
+</section>
+
+<section class="cont">
+  <div class="feature two">
+    <div>
+      <h3>Videos a day, Start, and what's left</h3>
+      <p class="why">The only number you set. Everything else - which mix, which time, which day - the Cutter works out.</p>
+      <h4>How</h4>
+      <ul><li><strong>How often</strong>: <strong>Every day</strong> (Videos a day, up to 48; "More each day" adds one a day) or <strong>Some days</strong> (tick the days, N on each).</li><li><strong>Start</strong>: makes the next 3 days now, then keeps going.</li><li><strong>Start over</strong>: takes out what hasn't gone out, to make it again with your latest settings.</li><li><strong>Start anyway</strong> (red): makes mixes made before again.</li></ul>
+      <h4 class="auto">By itself</h4>
+      <p>Change the number any time: the days ahead follow at once, up or down. When every different video is made, the clips are cleared and you are told to film new ones.</p>
+      <h4 class="tip">Tip</h4>
+      <p>"N variations" at the bottom is how many different videos your clips make - and how many days that lasts.</p>
+    </div>
+    <figure class="shot"><img src="shots/05-batch-18-videos-a-day.png" alt=""><figcaption>Videos a day</figcaption></figure>
+    <figure class="shot"><img src="shots/05-batch-21-variations.png" alt=""><figcaption>Start and the variations</figcaption></figure>
+  </div>
+
+  <div class="feature">
+    <div>
+      <h3>The Cutter server (optional)</h3>
+      <p class="why">With a Cutter server, batches are made day and night with your phone closed.</p>
+      <p>Settings → <strong>Server</strong>: paste the server's address, <strong>Connect</strong>. From then on every batch is handed to it: its clips go up while the app is open, and the status card says "On the server". <strong>Make batches on this phone again</strong> takes them back. Ask whoever set your Cutter up whether you have one.</p>
+    </div>
+    <figure class="shot"><img src="shots/10-set-05-server.png" alt=""><figcaption>Settings → Server</figcaption></figure>
+  </div>
+</section>
+
+<!-- ============================== 6 FORMATS ============================== -->
+<section class="page" id="s6">
+  <div class="section-title"><span class="num">6</span><h2>Formats, and One video, new songs</h2></div>
+  <p class="section-lede">Two ways to get many posts out of little filming.</p>
+
+  <div class="feature two">
+    <div>
+      <h3>Formats: one script, many videos</h3>
+      <p class="why">Film the same short script again and again - each line several times - and the Cutter mixes the takes into a month of different videos for the brand to approve.</p>
+      <h4>How</h4>
+      <ol><li><strong>More → Formats → + New format</strong>, name it, set its look and clips.</li><li>Write the <strong>Script</strong>: one line each, in order.</li><li><strong>+ Takes</strong> on each line: your takes of it.</li><li><strong>Make N videos</strong>: each take of line 1 opens one video, with a take of every other line.</li><li><strong>Save all to my phone</strong> to send the brand; when they say yes: <strong>Over the month</strong>, <strong>Schedule for the week</strong> or <strong>Next 5 days</strong>.</li></ol>
+      <h4 class="auto">By itself</h4>
+      <p>No two videos open the same way; it picks the take used least, filmed closest to the opening.</p>
+    </div>
+    <figure class="shot"><img src="shots/06-formats-02-script.png" alt=""><figcaption>A format's script and takes</figcaption></figure>
+    <figure class="shot"><img src="shots/06-formats-03-new.png" alt=""><figcaption>A new format</figcaption></figure>
+  </div>
+
+  <div class="feature">
+    <div>
+      <h3>One video, new songs</h3>
+      <p class="why">A video that did well, posted again with other songs - the picture exactly as it was.</p>
+      <h4>How</h4>
+      <p>Batch tab → <strong>One video, new songs → + Add</strong>, then <strong>Copies of each</strong>. Each copy gets another song from the batch's music and takes the batch's next free time. If you talk in it, your voice stays and the song goes quietly under it ("Your voice + song under"), otherwise the song replaces its sound ("Song only"). <strong>Stop</strong> / <strong>Go on</strong> per video.</p>
+      <h4 class="tip">Tip</h4>
+      <p>You can have as many copies as the batch has songs - add songs to its Music first.</p>
+    </div>
+    <figure class="shot"><img src="shots/05-batch-17-copies.png" alt=""><figcaption>One video, new songs</figcaption></figure>
+  </div>
+</section>
+
+<!-- ============================== 7 ANALYTICS ============================== -->
+<section class="page" id="s7">
+  <div class="section-title"><span class="num">7</span><h2>Analytics and What works</h2></div>
+  <p class="section-lede">Your views, read for you from your accounts, and what to do about them. Only campaigns with a batch are shown.</p>
+
+  <div class="feature two">
+    <div>
+      <h3>The last 30 days</h3>
+      <p class="why">Is it growing? A line that only climbs, today's new views and your best day.</p>
+      <ul><li><strong>N videos out in 30 days</strong> with the share that went out, and Posted / Scheduled / To approve / Didn't go out.</li></ul>
+      <h4>Accounts that stopped getting views</h4>
+      <p>"About 40 views a video lately - it usually gets 2,800": most often a shadowban. Check it in its app. <strong>Pause</strong> holds its videos; <strong>Post an extra warm-up on it?</strong> helps it recover.</p>
+      <h4 class="auto">By itself</h4>
+      <p>Views are read a day, three days and a week after each video goes out.</p>
+    </div>
+    <figure class="shot"><img src="shots/07-an-01-overview.png" alt=""><figcaption>The last 30 days</figcaption></figure>
+    <figure class="shot"><img src="shots/07-an-02-cold-accounts.png" alt=""><figcaption>An account gone cold</figcaption></figure>
+  </div>
+
+  <div class="feature two">
+    <div>
+      <h3>When to post · Ready for more a day?</h3>
+      <h4>When to post</h4>
+      <p>A heat map of your best hours by day. Batch times crowd toward them (up to twice as many), never back to back. Tap an hour for its number; <strong>Turn off</strong> to spread evenly again. It needs 150 videos with views to learn.</p>
+      <h4>Ready for 5 a day?</h4>
+      <p>Each batch campaign shows views per video and the trend. When views go up a fifth (or reach the number you set), it suggests one more a day; when they fall, one fewer. <strong>Yes</strong> changes the batch at once.</p>
+    </div>
+    <figure class="shot"><img src="shots/07-an-03-when-to-post.png" alt=""><figcaption>When to post</figcaption></figure>
+    <figure class="shot"><img src="shots/07-an-04-campaign.png" alt=""><figcaption>A suggestion</figcaption></figure>
+  </div>
+</section>
+
+<section class="cont">
+  <div class="feature two">
+    <div>
+      <h3>What works</h3>
+      <p class="why">The fastest way to grow a batch: make more of the headlines, reactions, songs and looks that get the most views.</p>
+      <h4>How</h4>
+      <ul><li>Bars per headline, reaction, song and headline look: <strong>★ Best</strong> and <strong>Worst</strong>, views a video and how many videos.</li><li><strong>Use the best hooks</strong>: the best ones come round twice as often - and follow the numbers as they change. <strong>Back to even</strong> undoes it.</li><li><strong>Write more like the best</strong>: Claude writes new headlines in the style of your best; <strong>Add</strong> the ones you like.</li></ul>
+      <h4 class="tip">Tip</h4>
+      <p>Wait until videos are 3 days old: a 1-day-old video hasn't got its views yet.</p>
+    </div>
+    <figure class="shot"><img src="shots/07-an-05-what-works.png" alt=""><figcaption>What works</figcaption></figure>
+    <figure class="shot"><img src="shots/07-an-01-overview-light.png" alt=""><figcaption>Analytics in the light look</figcaption></figure>
+  </div>
+</section>
+
+<!-- ============================== 8 TRIAL REELS ============================== -->
+<section class="page" id="s8">
+  <div class="section-title"><span class="num">8</span><h2>Trial reels <span class="badge owner">Owner</span></h2></div>
+  <p class="section-lede">For the owner's login, and the logins the owner turns it on for in Settings → People. Not shown to anyone else.</p>
+
+  <div class="feature two">
+    <div>
+      <h3>A reel that went viral, again and again</h3>
+      <p class="why">Instagram Trial Reels are shown only to people who don't follow you. The Cutter makes copies of a reel that did well - its words moved or reworded, a touch brighter or darker - and posts them as trial reels.</p>
+      <h4>How</h4>
+      <ol><li><strong>More → Trial reels → Start a Trial loop</strong>.</li><li><strong>Not talking - a viral reel</strong>: pick the viral reel and the same video with no text and no sound, together. Or <strong>Talking - my own video</strong> with songs from your music bank.</li><li>Pick the Instagram account, tap <strong>Start</strong>.</li><li>Set <strong>Videos a day</strong>.</li></ol>
+      <h4 class="auto">By itself</h4>
+      <p>Claude reads the reel's words and writes rewordings; copies are made a few days ahead and spread around the clock. Approve 3 copies of a reel and the rest go by themselves. Instagram's daily trial limit is learnt and kept to.</p>
+    </div>
+    <figure class="shot"><img src="shots/08-trial-01-loop.png" alt=""><figcaption>A Trial loop, making copies</figcaption></figure>
+    <figure class="shot"><img src="shots/08-trial-04-start.png" alt=""><figcaption>Start a Trial loop</figcaption></figure>
+  </div>
+  <div class="note warn"><strong>Instagram's rules:</strong> trial reels need a public professional account allowed in recommendations. If Instagram refuses them, nothing more is made until one goes through. Never through Buffer: it would post them as normal Reels to your followers.</div>
+</section>
+
+<!-- ============================== 9 MOTION / WARM-UPS ============================== -->
+<section class="page" id="s9">
+  <div class="section-title"><span class="num">9</span><h2>Motion graphics and Warm-ups</h2></div>
+
+  <div class="feature two">
+    <div>
+      <h3>Motion graphics</h3>
+      <p class="why">For your own brand's talking videos: Claude plans graphics around what you say - cards, numbers counting up, lists - each landing on its word.</p>
+      <h4>How</h4>
+      <ol><li><strong>More → Motion graphics</strong>, pick a look (or let Claude pick), say what you want if anything, pick a talking video.</li><li>It is cut like on Videos; check the captions.</li><li>The plan: <strong>Play</strong> to see it over your video; tap a moment to change its words or take it out; tell Claude what to change.</li><li><strong>Make the video</strong>, then <strong>Save / share</strong> (or post it with New post).</li></ol>
+      <h4 class="tip">Tip</h4>
+      <p>Only your words go to Claude, never the video. Numbers you say make the best graphics.</p>
+    </div>
+    <figure class="shot"><img src="shots/09-motion-02-plan.png" alt=""><figcaption>The plan, played over the video</figcaption></figure>
+    <figure class="shot"><img src="shots/09-motion-03-moments.png" alt=""><figcaption>Its moments, each one editable</figcaption></figure>
+  </div>
+
+  <div class="feature two">
+    <div>
+      <h3>Warm-ups</h3>
+      <p class="why">Short no-talking posts (about 7 seconds, a set headline and sound) that keep an account warm between its batch videos.</p>
+      <h4>How</h4>
+      <ul><li>Read an idea (how to film it, its headline, its sound), then <strong>Film it</strong> - or <strong>Film N in one go</strong>. The sound plays while you film and it stops by itself.</li><li><strong>Where they go</strong>: turn warm-ups on per campaign, N a week, which categories.</li><li><strong>+ Idea</strong>: share an idea with everyone. <span class="badge owner">Owner</span> approves new ideas and categories.</li></ul>
+      <h4 class="auto">By itself</h4>
+      <p>Each goes out once, at the account's best hour, waiting for your OK; an idea never twice on a campaign; an account with nothing posted for a day gets one by itself (you still approve it).</p>
+    </div>
+    <figure class="shot"><img src="shots/09-warm-01-main.png" alt=""><figcaption>Warm-ups</figcaption></figure>
+    <figure class="shot"><img src="shots/09-warm-04-idea.png" alt=""><figcaption>An idea</figcaption></figure>
+  </div>
+</section>
+
+<!-- ============================== 10 SETTINGS ============================== -->
+<section class="page" id="s10">
+  <div class="section-title"><span class="num">10</span><h2>Settings</h2></div>
+  <p class="section-lede">More → Settings. Most of it is set once; the defaults are right for most people.</p>
+
+  <div class="feature two">
+    <div>
+      <h3>Voice, cutting, captions, effects</h3>
+      <ul><li><strong>Your voice</strong>: your voices (Automatic picks the right one, or pin one), + Voice, "Make my voice louder and clearer".</li><li><strong>Cutting</strong>: <strong>Pacing</strong> Natural / Balanced / Tight; <strong>Wide clips</strong> Fit (whole, black above and below) / Fill (cropped) / Off; "Also cut sounds that aren't speech".</li><li><strong>Captions</strong>: on or off; leave out punctuation.</li><li><strong>Default effects</strong>: Off / Subtle / Strong for angles with none of their own.</li></ul>
+      <h4 class="tip">Tip</h4>
+      <p>Words getting clipped? Try Natural pacing, and make sure your voice is set up for the mic you use.</p>
+    </div>
+    <figure class="shot"><img src="shots/10-set-03-cutting.png" alt=""><figcaption>Cutting</figcaption></figure>
+    <figure class="shot"><img src="shots/10-set-04-captions-effects.png" alt=""><figcaption>Captions and effects</figcaption></figure>
+  </div>
+
+  <div class="feature two">
+    <div>
+      <h3>People <span class="badge owner">Owner</span> · Look</h3>
+      <h4>People</h4>
+      <p>Make a one-time sign-in link for a new person: type their login name, <strong>Make link</strong>, <strong>Send</strong>. Their Cutter starts empty - nothing of yours. For each login: their phones (<strong>Remove</strong>), <strong>Pause</strong>, <strong>Trial reels</strong> on/off, <strong>Partner</strong> (their warm-up ideas go up without waiting).</p>
+      <h4>Look</h4>
+      <p><strong>Dark</strong> or <strong>Light</strong>, and <strong>Show tips</strong> - the grey hints under every setting, off by default.</p>
+    </div>
+    <figure class="shot"><img src="shots/10-set-06-people.png" alt=""><figcaption>People</figcaption></figure>
+    <figure class="shot"><img src="shots/10-set-01-top-light.png" alt=""><figcaption>Settings in the light look</figcaption></figure>
+  </div>
+</section>
+
+<!-- ============================== TROUBLESHOOTING ============================== -->
+<section class="page" id="trouble">
+  <h2 class="plain">Troubleshooting</h2>
+  <p class="section-lede">What a message means and what to do. Most problems fix themselves - the Cutter tries again on its own.</p>
+  <table class="trouble">
+    <tr><td>"This browser can't make video yet"</td><td>The Cutter needs iOS 26 / Safari 26 or newer, or Chrome. Update the iPhone.</td></tr>
+    <tr><td>Picked videos take long to arrive, or don't show up</td><td>In the picker tap ⋯ → Options → Format → <strong>Current</strong>. Check free space in Settings → General → iPhone Storage.</td></tr>
+    <tr><td>"Another Cutter tab is working on the videos"</td><td>The Cutter is open twice (Safari and the Home Screen app). Close one.</td></tr>
+    <tr><td>"The phone's video maker stopped answering"</td><td>That is the iPhone, not the video. Restart the iPhone, open the Cutter: your videos carry on where they were.</td></tr>
+    <tr><td>"The phone ran out of memory… starting again"</td><td>Nothing to do: it restarts itself and carries on. Close other apps if it keeps happening.</td></tr>
+    <tr><td>Videos aren't being made</td><td>Keep the Cutter open with the screen on - it only makes videos while it is open (unless you have a Cutter server).</td></tr>
+    <tr><td>Words are clipped at the end</td><td>Set up your voice with the mic you film with; try Pacing → Natural.</td></tr>
+    <tr><td>A caption is wrong</td><td>Fix it on the caption check (Fix, or type in the caption sheet). Brand names: make sure "Brand name, as you say it" is right in the campaign.</td></tr>
+    <tr><td>"Not sent to Postiz: no accounts are picked for this campaign"</td><td>Campaigns → the campaign → Posting → tick its accounts. Then Send to Postiz on the video.</td></tr>
+    <tr><td>"Posting is not set up on this phone"</td><td>Settings → Posting → Set up, with your own keys.</td></tr>
+    <tr><td>A post "Didn't go out"</td><td>It posts again by itself at the next free time, up to twice. Or open it: Post it myself / Let the Cutter post it. If an account was disconnected, reconnect it in Postiz.</td></tr>
+    <tr><td>"Duplicate skipped"</td><td>That video was already posted for this campaign. Add it anyway only if you mean to post it twice.</td></tr>
+    <tr><td>No notifications</td><td>Open the Cutter from the Home Screen icon, then Settings → Posting → Notifications → Turn on. If it says they're off, allow them in the iPhone's Settings → Notifications.</td></tr>
+    <tr><td>Batch: "Waiting its turn"</td><td>Your own video is being made first. <strong>Make now</strong> puts the batch next.</td></tr>
+    <tr><td>Batch: "Every mix of these clips was made before"</td><td>Add new clips - or Start anyway to make the same mixes again.</td></tr>
+    <tr><td>Batch: "The server went quiet"</td><td>Your Cutter server stopped answering; it usually restarts by itself. If it stays, tell whoever runs it.</td></tr>
+    <tr><td>"This login is on 3 phones already"</td><td>Ask the owner to remove a phone you no longer use (Settings → People).</td></tr>
+    <tr><td>Something looks old after an update</td><td>Close the Cutter fully and open it again: the new version comes in then. "Updating the Cutter…" means it is doing it safely.</td></tr>
+    <tr><td>"Something went wrong on this page"</td><td>Tap Reload. Videos that were waiting come back; the details were sent so it can be fixed.</td></tr>
+  </table>
+</section>
+
+</body>
+</html>

@@ -171,7 +171,7 @@ def logo(name, text, colour):
 
 with tempfile.TemporaryDirectory() as tmp:
     talking('talk-moonbrew', [
-        ('Okay so I found this coffee app that completely changed my mornings.', 1.4),
+        ('Okay so I found this coffee app called Moonbrew and it changed my mornings.', 1.4),
         ('Um, it tells you the best time to drink your coffee.', 1.6),
         ('And honestly it saved me so much money this month. Go try it.', 0.6),
     ], tmp, (76, 110, 245), (255, 236, 214), (247, 205, 170))
