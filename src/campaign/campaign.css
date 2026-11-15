@@ -2223,3 +2223,16 @@ html.editor-dark .caption-sheet { --ink: #000000; --text: #ffffff; --dim: #aeaeb
   color: var(--muted); background: color-mix(in srgb, var(--text) 6%, transparent); text-decoration: line-through; }
 .song-format.on { color: var(--text); text-decoration: none; background: color-mix(in srgb, var(--ok) 18%, transparent); }
 .bank-item:has(.song-formats) { flex-wrap: wrap; }
+/* The quick look at every clip of a format (ClipViewer.tsx). */
+.clip-viewer .screen.review { display: flex; flex-direction: column; gap: 10px; }
+.clip-viewer-head { display: flex; align-items: center; justify-content: space-between; }
+.clip-viewer-where { font-size: 15px; font-weight: 700; color: var(--dim); }
+.clip-viewer-frame { position: relative; display: grid; place-items: center; min-height: 40vh; }
+.clip-viewer-frame .drop-check-video { max-height: 58vh; }
+.clip-viewer-sound { position: absolute; bottom: 12px; left: 50%; transform: translateX(-50%); }
+.clip-viewer-nav { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.clip-viewer-nav .tl-round { width: 52px; height: 52px; }
+.clip-viewer-nav .tl-round:disabled { opacity: 0.3; }
+.clip-viewer-actions { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+.clip-viewer-actions > * { justify-content: center; text-align: center; }
+.drop-in-watch { align-self: flex-start; }

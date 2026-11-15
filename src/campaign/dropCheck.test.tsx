@@ -347,5 +347,16 @@ describe('looking again at where the clips of the batch are (his ask, 2026-11-14
     await settle()
     expect(button('Timeline')).toBeUndefined()
   })
+
+  it('opens on the clip he asked for (the quick look’s Re-edit)', async () => {
+    saveQueue('t', [clip('a', 's1', false), clip('b', 's1', true), clip('c', 's1', true)])
+    await act(async () =>
+      root.render(
+        <DropCheck format={formatNow} steps={bank.steps!} campaign={campaign} getBank={() => bank} keep={(next) => void (bank = next)} onFormat={() => {}} startWith="c" onClose={onClose} />,
+      ),
+    )
+    await settle()
+    expect(host.querySelector('.review-name')?.textContent).toBe('c.mov')
+  })
 })
 

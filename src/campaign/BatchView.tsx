@@ -65,7 +65,8 @@ import { CaptionHeight } from './CaptionHeight'
 import { CAPTION_STYLES, defaultCaptionSize, defaultCaptionStyle } from './captions'
 import { DropCheck } from './DropCheck'
 import { DropIn, HOOK, dropInto } from './DropIn'
-import { choicesOf, withChoices } from './dropQueue'
+import { choicesOf, queueRecheck, withChoices } from './dropQueue'
+import { QuickCheck } from './QuickCheck'
 import { defaultEffects, effectsFor } from './defaultEffects'
 import { StepTexts } from './StepTexts'
 import { BatchStatus } from './BatchStatus'
@@ -357,6 +358,10 @@ export function BatchView({
   const [openFormat, setOpenFormat] = useState<string | null>(null)
   // The format whose edited clips he is checking one by one (DropCheck.tsx).
   const [checking, setChecking] = useState<string | null>(null)
+  /** The clip the check opens on (the quick look's Re-edit). */
+  const [checkFirst, setCheckFirst] = useState<string | null>(null)
+  /** A format's clips in the quick look (QuickCheck.tsx). */
+  const [viewing, setViewing] = useState<string | null>(null)
   const [choosingKind, setChoosingKind] = useState(false)
   /** The batch the engine is making for this campaign, as it last said. */
   const [engineState, setEngineState] = useState<EngineJob | null>(null)
@@ -1567,6 +1572,7 @@ export function BatchView({
                     onCheck={() => setChecking(f.id)}
                     choices={choicesOf(f)}
                     onChoices={(picked) => changeFormat(f.id, withChoices(picked))}
+                    onWatch={() => setViewing(f.id)}
                   />
                   {/* His pick per format (2026-11-13: "make it so I choose each
                       new format"): dropped clips can be hooks too. */}
@@ -1880,13 +1886,39 @@ export function BatchView({
         getBank={() => bankRef.current}
         keep={keep}
         onFormat={(patch) => changeFormat(checkingFormat.id, patch)}
-        onClose={() => setChecking(null)}
+        startWith={checkFirst ?? undefined}
+        onClose={() => {
+          setChecking(null)
+          setCheckFirst(null)
+        }}
+      />
+    ) : null
+  // Every clip of a format, one after another, playing whole (QuickCheck.tsx, his ask 2026-11-15).
+  const viewingFormat = viewing && bank ? formatList.find((f) => f.id === viewing) : undefined
+  const viewLayer =
+    viewingFormat && bank && !checkLayer ? (
+      <QuickCheck
+        key={viewingFormat.id}
+        formatId={viewingFormat.id}
+        steps={formatBank(bank, viewingFormat).steps ?? []}
+        hooks={formatBank(bank, viewingFormat).reactions}
+        getBank={() => bankRef.current}
+        keep={keep}
+        onReedit={(clip) => {
+          queueRecheck(viewingFormat.id, [clip])
+          setCheckFirst(clip.file.id)
+          setViewing(null)
+          setChecking(viewingFormat.id)
+        }}
+        onReplace={(file, clip) => dropInto(viewingFormat.id, [file], clip.place, clip.file)}
+        onClose={() => setViewing(null)}
       />
     ) : null
 
   return (
     <>
     {checkLayer}
+    {viewLayer}
     <section className="screen batch">
       <div className="screen-head">
         <h1>Batch</h1>

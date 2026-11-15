@@ -3,6 +3,29 @@
 Newest first. Every change says what it does, how to use it, and how it works
 underneath. Kept up to date with each commit.
 
+## Batch: a quick look at every clip
+- His ask (2026-11-15): "make an option where I can check all, meaning it opens the page and automatically plays the
+  full video ... not in full screen ... An arrow that goes to next and an arrow that goes to previous ... a way to
+  remove that video from the batch, or a way to reedit ... or a button that replaces that video with another video
+  that we have on our phone ... A button where we can mirror it or unmirror it ... no captions needed ... right now
+  the checking process takes so long."
+- Batch tab, a talking head format: "Watch every clip (N)" under the drop-in. Each clip plays whole from its start,
+  in the page, over and over (tap it to start again); the step it is in on top; ‹ and › go through them all, the
+  product steps in order then the hooks. Under it:
+  - Mirror / Mirrored - saved at once.
+  - Re-edit - the full check on that clip (where it goes, its captions, Mirror; Timeline when its recording is still
+    kept).
+  - Replace - a video from the phone, edited with the drop-in's checklist into the same step; it takes this clip's
+    place once he approves it on the check.
+  - Remove - takes it out of the batch (asks first).
+  An iPhone may start a clip muted until it is tapped: "Tap for sound", then the next clips keep their sound.
+- The regular check: a tap on the video now plays the whole clip from its very start, not from the phrase it was on
+  (after a clip had played through, that was the last one - "it was just starting by the end"). Tapping a phrase
+  still plays from that phrase.
+- Underneath: `QuickCheck.tsx` (the old single-clip `ClipViewer.tsx` is unchanged), `dropQueue.withClip`,
+  `dropInto(..., replaces)`, `DropCheck startWith`, `CaptionReview playFrom(k, whole)`. Tests: `quickCheck.test.tsx`,
+  `dropCheck.test.tsx`.
+
 ## Batch: songs for some formats only
 - His ask (2026-11-15): "Make it so there's music for talking heads and music for reaction-type formats ... I want
   to add a new one for talking heads, but it doesn't fit for reactions."

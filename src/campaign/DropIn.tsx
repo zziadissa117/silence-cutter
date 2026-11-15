@@ -113,14 +113,15 @@ const CHOICES: { key: keyof DropChoices; name: string; on: string; off: string }
 ]
 
 /** The + Add buttons of each open talking head format, edited here. */
-const dropTargets = new Map<string, (files: File[], to: string) => void>()
+const dropTargets = new Map<string, (files: File[], to: string, replaces?: BankFile) => void>()
 
 /** His clips edited like a drop-in and checked, for a step's or the hooks'
- *  + Add - false when that format's drop-in isn't on screen. */
-export function dropInto(formatId: string, files: File[], to: string): boolean {
+ *  + Add - or in place of a clip of the batch (`replaces`, the quick check's
+ *  Replace) - false when that format's drop-in isn't on screen. */
+export function dropInto(formatId: string, files: File[], to: string, replaces?: BankFile): boolean {
   const run = dropTargets.get(formatId)
   if (!run) return false
-  run(files, to)
+  run(files, to, replaces)
   return true
 }
 
@@ -139,6 +140,7 @@ export function DropIn({
   onCheck,
   choices,
   onChoices,
+  onWatch,
 }: {
   formatId: string
   /** This format's product steps. */
@@ -161,6 +163,8 @@ export function DropIn({
   choices: DropChoices
   /** His picks, kept on the format - music and the headline are its videos'. */
   onChoices: (choices: DropChoices) => void
+  /** Every clip of the format, playing one after another (QuickCheck.tsx). */
+  onWatch?: () => void
 }) {
   const [running, setRunning] = useState<{ at: number; of: number; name: string; phase: string } | null>(null)
   /** Clips he just picked, waiting on the checklist - ticked as he last left it. */
@@ -336,7 +340,7 @@ export function DropIn({
   /** Recordings he picked: each edited as the checklist says - for a step's
    *  + Add, as he last left it - in place of the same one in the batch when
    *  it is there already. */
-  const run = async (files: File[], to?: string, how: DropChoices = choices) => {
+  const run = async (files: File[], to?: string, how: DropChoices = choices, instead?: BankFile) => {
     setFailed([])
     const asked = {
       ...(how.cut ? {} : { asFilmed: true }),
@@ -352,7 +356,7 @@ export function DropIn({
         continue
       }
       const bank = getBank()
-      const same = bank ? sameRecording(bank, formatId, from) : null
+      const same = instead ?? (bank ? sameRecording(bank, formatId, from) : null)
       items.push({ blob: file, name: file.name, from, ...asked, ...(to !== undefined ? { to } : {}), ...(same ? { replaces: same } : {}) })
     }
     await go(items)
@@ -385,7 +389,8 @@ export function DropIn({
   const runRef = useRef(run)
   runRef.current = run
   useEffect(() => {
-    const target = (files: File[], to: string) => void runRef.current(files, to)
+    // undefined: the checklist as it is now, not as it was when this was set up.
+    const target = (files: File[], to: string, replaces?: BankFile) => void runRef.current(files, to, undefined, replaces)
     dropTargets.set(formatId, target)
     return () => {
       if (dropTargets.get(formatId) === target) dropTargets.delete(formatId)
@@ -605,6 +610,12 @@ export function DropIn({
             Check {unchecked.length === 1 ? 'it' : `the ${unchecked.length}`}
           </button>
         </div>
+      ) : null}
+      {/* A quick look at every clip, playing whole (his ask, 2026-11-15). */}
+      {onWatch && clips.length > 0 && !running && !picked && !setting ? (
+        <button type="button" className="btn small drop-in-watch" onClick={onWatch}>
+          Watch every clip ({clips.length})
+        </button>
       ) : null}
       {clips.length > 0 && unchecked.length === 0 && queue.length === 0 && !running ? (
         <button type="button" className="linkbtn drop-in-again" onClick={() => recheck(clips)}>

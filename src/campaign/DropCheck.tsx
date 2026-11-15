@@ -70,6 +70,7 @@ export function DropCheck({
   getBank,
   keep,
   onFormat,
+  startWith,
   onClose,
 }: {
   format: BatchFormat
@@ -80,6 +81,8 @@ export function DropCheck({
   keep: (bank: BatchBank) => void
   /** The format's caption look, picked here for every video of it. */
   onFormat: (patch: Partial<BatchFormat>) => void
+  /** The clip to show first (the quick look's Re-edit). */
+  startWith?: string
   onClose: () => void
 }) {
   /** The queue, without clips looked at again that are out of the batch by now. */
@@ -88,7 +91,11 @@ export function DropCheck({
     const list = loadQueue(format.id)
     return bank ? list.filter((q) => !q.recheck || placeOf(bank, q.file.id) !== null) : list
   }
-  const [queue, setQueue] = useState<ToCheck[]>(() => checkOrder(live()))
+  const [queue, setQueue] = useState<ToCheck[]>(() => {
+    const order = checkOrder(live())
+    const first = order.findIndex((q) => q.file.id === startWith)
+    return first > 0 ? [order[first], ...order.slice(0, first), ...order.slice(first + 1)] : order
+  })
   const [done, setDone] = useState(0)
   const item = queue[0] ?? null
   const [place, setPlace] = useState<string | null>(item?.place ?? null)

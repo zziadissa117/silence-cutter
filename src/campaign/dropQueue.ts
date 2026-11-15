@@ -225,6 +225,17 @@ export function fileIn(bank: BatchBank, id: string): BankFile | null {
   return (bank.steps ?? []).flatMap((s) => s.files).find((f) => f.id === id) ?? bank.reactions.find((r) => r.id === id) ?? null
 }
 
+/** The bank with one clip changed where it is (a step's or a hook), and
+ *  nothing else. */
+export function withClip(bank: BatchBank, id: string, patch: Partial<BankFile>): BatchBank {
+  const change = (f: BankFile) => (f.id === id ? { ...f, ...patch } : f)
+  return {
+    ...bank,
+    steps: bank.steps?.map((s) => (s.files.some((f) => f.id === id) ? { ...s, files: s.files.map(change) } : s)),
+    reactions: bank.reactions.some((r) => r.id === id) ? bank.reactions.map(change) : bank.reactions,
+  }
+}
+
 /** The bank with `file` in `to` (a step, or HOOK - one of this format's
  *  hooks, his voice kept), out of everywhere else, and the clip it replaces
  *  gone. `to` null: in no place. */

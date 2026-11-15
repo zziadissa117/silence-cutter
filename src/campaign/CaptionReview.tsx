@@ -484,13 +484,16 @@ export function CaptionReview({
 
   /** Plays from just before phrase `k`, the captions popping in as they
    *  will in the video and the list following along; a tap stops it. */
-  const playFrom = (k: number) => {
+  /** Plays from phrase `k` - or, `whole`, the clip from its very start (a
+   *  tap on the video: his report, 2026-11-15, "the full video was not always
+   *  playing ... It was just starting by the end"). */
+  const playFrom = (k: number, whole = false) => {
     if (embedded) {
       const first = firstWordOf(k)
       if (first < 0) return
       setCurrent(k)
-      if (playing && k === current) embedded.seek(words[first].start + 0.02)
-      else embedded.playFrom(Math.max(0, words[first].start - 0.3))
+      if (playing && k === current && !whole) embedded.seek(words[first].start + 0.02)
+      else embedded.playFrom(whole ? 0 : Math.max(0, words[first].start - 0.3))
       return
     }
     const v = video.current
@@ -498,14 +501,15 @@ export function CaptionReview({
     showBox.current = false
     if (playing) {
       stop()
-      if (k === current) return
+      // A tap on the video while it plays stops it.
+      if (k === current || whole) return
     }
     const first = firstWordOf(k)
     if (first < 0) return
     setCurrent(k)
     const starts = wordsRef.current.map((w) => w.start)
     v.muted = false
-    v.currentTime = Math.max(0, wordsRef.current[first].start - 0.3)
+    v.currentTime = whole ? 0 : Math.max(0, wordsRef.current[first].start - 0.3)
     setPlaying(true)
     void v.play().catch(() => setPlaying(false))
     let following = k
@@ -707,7 +711,7 @@ export function CaptionReview({
           ) : null}
         </div>
         {top}
-        <div className="review-frame" style={{ aspectRatio: String(aspect) }} onClick={() => playFrom(current)}>
+        <div className="review-frame" style={{ aspectRatio: String(aspect) }} onClick={() => playFrom(0, true)}>
           {url ? (
             <video
               ref={video}
