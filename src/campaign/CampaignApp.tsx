@@ -2232,7 +2232,9 @@ export function CampaignApp() {
               joinTight: keepsVoice && jobFormat?.kind === 'talking' && stepped?.length ? next.settings : undefined,
               // The clips he cut himself play exactly as he gave them; the
               // ones he mirrored are flipped - each as it is in the batch now.
-              asGiven: [Boolean(talkingClip?.ownCut), ...(stepped ?? []).map((s) => Boolean(stepFileNow(s.file).ownCut))],
+              // A hook kept as filmed ("Edit my hooks" off) too: never trimmed to
+              // its first and last word (his report, 2026-11-15).
+              asGiven: [Boolean(talkingClip?.ownCut) || Boolean(rawHook), ...(stepped ?? []).map((s) => Boolean(stepFileNow(s.file).ownCut))],
               mirrored: [Boolean(talkingClip?.mirror), ...(stepped ?? []).map((s) => Boolean(stepFileNow(s.file).mirror))],
               ...(said.length > 0 || stepSaid.some(Boolean)
                 ? {

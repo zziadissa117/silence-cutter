@@ -15,7 +15,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { VideoPicker } from '../VideoPicker'
 import type { Range } from '../media/silenceMath'
 import type { BankFile, BatchBank, BatchFormat, BatchStep } from './batch'
-import { CLIP_SPEEDS, canLengthen, filesOfClip, leftBehind, oneAtATime, remakeClip, sourceOf, speedLabel, speedOfClip, swapClip, wantedSpeed } from './clipEdit'
+import { CLIP_SPEEDS, canLengthen, joinTouching, splitAtPieces, filesOfClip, leftBehind, oneAtATime, remakeClip, sourceOf, speedLabel, speedOfClip, swapClip, wantedSpeed } from './clipEdit'
 import { CutsEditor } from './CutsEditor'
 import { clipsOfFormat, HOOK, placed, withClip, type ClipSource, type PlacedClip } from './dropQueue'
 import { ChevronLeft, ChevronRight, CloseIcon } from './icons'
@@ -189,6 +189,8 @@ export function ClipEditor({
   // The timeline over the whole screen: Done makes the clip again.
   if (timeline) {
     const { source, recording } = timeline
+    // A clip he didn't have cut is one part on its timeline, not its zoom pieces.
+    const shownParts = source ? (file.ownCut ? joinTouching(source.keep) : source.keep) : []
     return (
       <div className="drop-check-screen">
         <CutsEditor
@@ -196,11 +198,14 @@ export function ClipEditor({
           file={recording instanceof Blob ? recording : null}
           missing={recording === 'missing'}
           duration={source?.duration ?? file.seconds ?? 0}
-          initial={source?.keep ?? []}
+          initial={shownParts}
           words={source?.words ?? []}
           onDone={(kept) => {
             setTimeline(null)
-            if (JSON.stringify(kept) !== JSON.stringify(source?.keep)) void remake('Making it again', { keep: kept, speed: speedOfClip(file) })
+            if (!source || JSON.stringify(kept) === JSON.stringify(shownParts)) return
+            // Kept whole: its zoom pieces again inside what he kept.
+            const parts = file.ownCut ? splitAtPieces(kept, source.keep) : kept
+            void remake('Making it again', { keep: parts, speed: speedOfClip(file) })
           }}
           onCancel={() => setTimeline(null)}
           cutsOnly

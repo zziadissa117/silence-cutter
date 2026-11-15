@@ -377,6 +377,9 @@ export function DropIn({
         replaces: file,
         name: file.name,
         from,
+        // "Cut the clips" off: zoomed and captioned, nothing taken out (his
+        // report, 2026-11-15: it cut them with Cut off).
+        ...(choices.cut ? {} : { asFilmed: true }),
         ...(choices.zoom ? {} : { noZoom: true }),
         ...(choices.captions ? {} : { noCaptions: true }),
         ...(file.mirror ? { mirror: true } : {}),

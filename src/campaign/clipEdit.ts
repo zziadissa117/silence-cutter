@@ -198,3 +198,27 @@ export function oneAtATime<T>(work: () => Promise<T>): Promise<T> {
   line = run.catch(() => {})
   return run
 }
+
+/** A clip kept whole and zoomed between his phrases is made of pieces that
+ *  touch (prepareDrop.phrasePieces): nothing taken out. On its timeline it
+ *  is one part - shown as pieces it looked cut (his report, 2026-11-15). */
+export function joinTouching(keep: readonly Range[]): Range[] {
+  const out: Range[] = []
+  for (const r of keep) {
+    const last = out[out.length - 1]
+    if (last && Math.abs(r.start - last.end) < 1e-3) last.end = r.end
+    else out.push({ start: r.start, end: r.end })
+  }
+  return out
+}
+
+/** The parts he set on the timeline, split again where the clip's zoom
+ *  pieces met - so it keeps moving between his phrases as before. */
+export function splitAtPieces(kept: readonly Range[], pieces: readonly Range[]): Range[] {
+  const cuts = pieces.slice(1).map((p) => p.start)
+  return kept.flatMap((r) => {
+    const inside = cuts.filter((t) => t > r.start + 0.05 && t < r.end - 0.05)
+    const edges = [r.start, ...inside, r.end]
+    return edges.slice(1).map((end, i) => ({ start: edges[i], end }))
+  })
+}

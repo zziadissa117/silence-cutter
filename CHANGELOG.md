@@ -3,6 +3,19 @@
 Newest first. Every change says what it does, how to use it, and how it works
 underneath. Kept up to date with each commit.
 
+## Batch clips with "Cut the clips" off are never cut
+- His question (2026-11-15): "I feel like the cutter itself is cutting those videos, even when the cut clips is off.
+  Let me know if that's true or not."
+- Dropping clips in with Cut off was right (nothing taken out, on the phone or the server). Three other places did trim
+  or looked like it:
+  - "Edit the N clips added as filmed" always cut them, whatever Cut said. Now it follows the checklist.
+  - With "Edit my hooks" off, the hook was still trimmed to just before his first word and just after his last when
+    the batch video was made. Now it plays exactly as filmed.
+  - The Length timeline showed an uncut clip as several pieces (where its zooms move between phrases), like cuts.
+    Now it is one part; made longer or shorter, it keeps its zooms.
+- Underneath: `DropIn.editOld` passes `asFilmed`; `CampaignApp` `asGiven[0]` with `rawHook`; `clipEdit.joinTouching`/
+  `splitAtPieces` in `ClipEditor` and `DropCheck` timelines. Test: `clipEdit.test.ts`.
+
 ## Batch: every format gets its share of each day again
 - His report (2026-11-15): "right now it's only making one batch for Godaddy. It's only making talking head. It's not
   making the reaction. Both need to be made, and both need to be made equally ... The ones that perform best are the

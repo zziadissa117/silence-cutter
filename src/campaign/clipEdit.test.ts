@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 
 import type { BankFile, BatchBank } from './batch'
-import { atSpeed, captionsAtSpeed, clipsToSpeed, filesOfClip, leftBehind, swapClip, wantedSpeed } from './clipEdit'
+import { atSpeed, joinTouching, splitAtPieces, captionsAtSpeed, clipsToSpeed, filesOfClip, leftBehind, swapClip, wantedSpeed } from './clipEdit'
 
 const file = (id: string, more: Partial<BankFile> = {}): BankFile => ({ id, name: `${id}.mp4`, type: 'video/mp4', size: 1, ...more })
 
@@ -51,5 +51,12 @@ describe("a talking head's clips changed after they are in the batch (his ask, 2
     expect(filesOfClip(file('a'))).toEqual(['a'])
     expect(leftBehind(file('a'), file('a2', { source: { ...recording, fileId: 'a', self: true } }))).toEqual([])
     expect(leftBehind(file('a', { source: recording }), file('a2', { source: recording }))).toEqual(['a'])
+  })
+
+  it("a clip kept whole shows as one part, and keeps its zoom pieces when made longer", () => {
+    const pieces = [{ start: 0, end: 1.2 }, { start: 1.2, end: 2.5 }, { start: 2.5, end: 4 }]
+    expect(joinTouching(pieces)).toEqual([{ start: 0, end: 4 }])
+    expect(joinTouching([{ start: 0, end: 1 }, { start: 2, end: 3 }])).toEqual([{ start: 0, end: 1 }, { start: 2, end: 3 }])
+    expect(splitAtPieces([{ start: 0.5, end: 4.6 }], pieces)).toEqual([{ start: 0.5, end: 1.2 }, { start: 1.2, end: 2.5 }, { start: 2.5, end: 4.6 }])
   })
 })

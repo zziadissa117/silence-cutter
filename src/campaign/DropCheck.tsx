@@ -27,7 +27,7 @@ import type { Campaign } from './look'
 import { ChevronLeft } from './icons'
 import { postingHere, recheckCaptions } from './posting'
 import { CutsEditor } from './CutsEditor'
-import { filesOfClip } from './clipEdit'
+import { filesOfClip, joinTouching, splitAtPieces } from './clipEdit'
 import { filmingOf } from './filming'
 import { fingerprint } from './fingerprint'
 import { cutName, dropSettings, recut } from './prepareDrop'
@@ -366,9 +366,10 @@ export function DropCheck({
             file={timeline.recording instanceof Blob ? timeline.recording : null}
             missing={timeline.recording === 'missing'}
             duration={item.source!.duration}
-            initial={item.source!.keep}
+            initial={item.file.ownCut ? joinTouching(item.source!.keep) : item.source!.keep}
             words={item.source!.words}
-            onDone={(keep) => void remake(keep)}
+            // A clip he didn't have cut is one part there; its zoom pieces come back inside what he kept.
+            onDone={(keep) => void remake(item.file.ownCut ? splitAtPieces(keep, item.source!.keep) : keep)}
             onCancel={() => setTimeline(null)}
             cutsOnly
           />
