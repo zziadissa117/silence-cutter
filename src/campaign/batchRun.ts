@@ -406,9 +406,10 @@ function planFormats(bank: BatchBank, slots: BatchSlot[], { id, now, rand }: { i
   const left = lefts.reduce((n, l) => n + l, 0)
   const taking = Number.isFinite(left) ? slots.slice(0, left) : slots
   if (taking.length === 0) return { videos: [], slots: [], bank, retire: [] }
+  const prior = recentDone(bank.formatDone, formats.map(({ format }) => format.id))
   const order = turnsFor(
     taking.length,
-    formats.map(({ format }, i) => ({ id: format.id, weight: formatShare(bank, format.id), done: bank.formatDone?.[format.id] ?? 0, room: room(lefts[i]) })),
+    formats.map(({ format }, i) => ({ id: format.id, weight: formatShare(bank, format.id), done: prior[format.id], room: room(lefts[i]) })),
   )
   let state = { used: bank.used, lastPair: bank.lastPair, made: bank.made ?? [] }
   const picksOf = new Map<string, BatchPick[]>()
@@ -425,7 +426,7 @@ function planFormats(bank: BatchBank, slots: BatchSlot[], { id, now, rand }: { i
   }
   const ending = Number.isFinite(left) && taking.length >= left
   const videos: BatchVideo[] = []
-  const done = { ...(bank.formatDone ?? {}) }
+  const done = { ...prior }
   order.forEach((formatId, i) => {
     const pick = picksOf.get(formatId)?.shift()
     const sub = formats.find((f) => f.format.id === formatId)!.sub
@@ -441,6 +442,20 @@ function planFormats(bank: BatchBank, slots: BatchSlot[], { id, now, rand }: { i
     next = { ...next, running: false }
   }
   return { videos, slots: used, bank: next, retire }
+}
+
+/** How far one format may be behind the others and still catch up. */
+export const CATCH_UP = 2
+
+/** What each format made before, counted only from the one furthest
+ *  behind and never more than CATCH_UP ahead of it: a format added to a
+ *  batch that had made 150 reactions got every turn for a month (his report,
+ *  2026-11-15: "It's only making talking head. It's not making the
+ *  reaction"). Formats share each day from the start. */
+export function recentDone(done: Record<string, number> | undefined, ids: readonly string[]): Record<string, number> {
+  const counts = ids.map((id) => Math.max(0, done?.[id] ?? 0))
+  const least = counts.length > 0 ? Math.min(...counts) : 0
+  return Object.fromEntries(ids.map((id, i) => [id, Math.min(CATCH_UP, counts[i] - least)]))
 }
 
 /** How much of the day a format gets: the same for each (by results comes

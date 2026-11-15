@@ -658,3 +658,25 @@ describe('Claude + X with headlines, or nothing, under the logos', () => {
     }
   })
 })
+
+describe('formats share each day (his report, 2026-11-15: "It\'s only making talking head")', () => {
+  it('a format added next to one that made 150 videos gets about half of the next day, not all of it', async () => {
+    const { recentDone } = await import('./batchRun')
+    const { turnsFor } = await import('./batch')
+    const prior = recentDone({ reaction: 150, talking: 0 }, ['reaction', 'talking'])
+    expect(prior).toEqual({ reaction: 2, talking: 0 })
+    const order = turnsFor(10, [
+      { id: 'reaction', weight: 1, done: prior.reaction, room: 99 },
+      { id: 'talking', weight: 1, done: prior.talking, room: 99 },
+    ])
+    expect(order.filter((f) => f === 'reaction').length).toBe(4)
+    expect(order.filter((f) => f === 'talking').length).toBe(6)
+    // The next five: both, evenly.
+    const after = recentDone({ reaction: 4, talking: 6 }, ['reaction', 'talking'])
+    const next = turnsFor(5, [
+      { id: 'reaction', weight: 1, done: after.reaction, room: 99 },
+      { id: 'talking', weight: 1, done: after.talking, room: 99 },
+    ])
+    expect(next.filter((f) => f === 'reaction').length).toBeGreaterThanOrEqual(3)
+  })
+})

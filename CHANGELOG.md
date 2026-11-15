@@ -3,6 +3,18 @@
 Newest first. Every change says what it does, how to use it, and how it works
 underneath. Kept up to date with each commit.
 
+## Batch: every format gets its share of each day again
+- His report (2026-11-15): "right now it's only making one batch for Godaddy. It's only making talking head. It's not
+  making the reaction. Both need to be made, and both need to be made equally ... The ones that perform best are the
+  ones that later on we're going to focus on."
+- What happened: formats take turns by how many videos each made before. GoDaddy's reaction format had made about 150,
+  the new talking head format none - so the talking head got every turn until it caught up, about a month at 5 a day.
+- Now a format behind the others catches up by 2 videos at most, then they take turns evenly. Later, once each format
+  has 5 posted videos with views, the one doing better gets more of the day (up to twice an even share), as before.
+- Videos already made for the days ahead stay as they are; the next top-up mixes both.
+- Underneath: `batchRun.recentDone` (`CATCH_UP`) feeds `turnsFor` in `planFormats`; `formatDone` is kept small from
+  now on. Test: `batchRun.test.ts`.
+
 ## Clip screen: a big X and big arrows; sped-up clips keep 30 fps
 - His report (2026-11-15): "when I'm looking at all the videos individually, I cannot go to the next one, and I cannot
   leave it ... I have to close the cutter completely. Make a big X button at the top right, and make it so I can see
