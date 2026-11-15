@@ -852,7 +852,8 @@ export function batchCaptionLook(
 ): { style: CaptionStyle; size: CaptionSize } {
   const cutter = bank?.cutterCaptions ?? here
   return {
-    style: format?.captionStyle ?? (format?.kind === 'talking' ? 'phrase' : cutter.style),
+    // Classic unless he picked another look for the format (2026-11-15).
+    style: format?.captionStyle ?? (format?.kind === 'talking' ? 'line' : cutter.style),
     size: format?.captionSize ?? cutter.size,
   }
 }

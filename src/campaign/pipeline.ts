@@ -495,6 +495,7 @@ export async function makeMontage(
     /** A Trial loop's video: a touch faster, framed a little tighter (trialLoop.TrialLook). */
     speed?: number
     reframe?: Parameters<typeof renderMontage>[0]['reframe']
+    tint?: number
     /** A talking head's hook kept as filmed: nothing over it, no music
      *  under it (montageRender). */
     rawFirst?: boolean
@@ -528,6 +529,7 @@ export async function makeMontage(
       shorterBy: extra.shorterBy,
       speed: extra.speed,
       reframe: extra.reframe ?? null,
+      tint: extra.tint ?? null,
       rawFirst: extra.rawFirst,
       joinTight: extra.joinTight,
       asGiven: extra.asGiven,

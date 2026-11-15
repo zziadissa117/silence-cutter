@@ -145,13 +145,13 @@ describe('a format with no headline (his ask, 2026-11-13: the clip of him is the
 
 describe("a batch video's captions look (his report, 2026-11-14: one word at a time on his server)", () => {
   const here = { style: 'word', size: 'large' } as const
-  it('a talking head: full phrases unless he picked another, at his Cutter size', () => {
-    expect(batchCaptionLook({ kind: 'talking' }, null, here)).toEqual({ style: 'phrase', size: 'large' })
+  it('a talking head: Classic unless he picked another (2026-11-15), at his Cutter size', () => {
+    expect(batchCaptionLook({ kind: 'talking' }, null, here)).toEqual({ style: 'line', size: 'large' })
     expect(batchCaptionLook({ kind: 'talking', captionStyle: 'highlight', captionSize: 'small' }, null, here)).toEqual({ style: 'highlight', size: 'small' })
   })
   it('on the Cutter server, the phone that sent the batch decides - not that computer', () => {
     const bank = { cutterCaptions: { style: 'highlight', size: 'small' } } as const
-    expect(batchCaptionLook({ kind: 'talking' }, bank, here)).toEqual({ style: 'phrase', size: 'small' })
+    expect(batchCaptionLook({ kind: 'talking' }, bank, here)).toEqual({ style: 'line', size: 'small' })
     expect(batchCaptionLook({ kind: 'reaction' }, bank, here)).toEqual({ style: 'highlight', size: 'small' })
     expect(batchCaptionLook(undefined, null, here)).toEqual(here)
   })

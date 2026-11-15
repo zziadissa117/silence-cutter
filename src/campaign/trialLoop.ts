@@ -93,6 +93,9 @@ export interface TrialLook {
   /** A little tighter and moved within that (his pick, 2026-11-15: "Slight
    *  zoom / reframe"): absent most of the time. */
   reframe?: { scale: number; x: number; y: number }
+  /** A touch warmer (above 0) or cooler (below 0) (his pick, 2026-11-15:
+   *  "Colour / exposure"; with `brightness`, the exposure): absent half the time. */
+  tint?: number
 }
 
 /** How a copy's length changes: mostly whole, sometimes a little shorter. */
@@ -128,6 +131,15 @@ function pick<T extends { share: number }>(list: readonly T[], r: number): T {
 /** A copy's speed, from a number 0..1. */
 export function speedFor(r: number): number {
   return pick(SPEEDS, r).speed
+}
+
+/** A copy's colour, from a number 0..1: half as it is, a quarter warmer, a
+ *  quarter cooler - 0.06 to 0.14 strong. */
+export function tintFor(r: number): number | undefined {
+  if (r < 0.5) return undefined
+  const warm = r < 0.75
+  const strength = Math.round((0.06 + ((r - (warm ? 0.5 : 0.75)) / 0.25) * 0.08) * 100) / 100
+  return warm ? strength : -strength
 }
 
 /** A copy's framing, from three numbers 0..1: mostly none; else 2-6%
@@ -509,8 +521,9 @@ export function trialDays(
 
 /** A copy's speed and framing, each only some of the time (his ask,
  *  2026-11-15: Meta took copies for not original). */
-function variedMore(rand: () => number): Pick<TrialLook, 'speed' | 'reframe'> {
+function variedMore(rand: () => number): Pick<TrialLook, 'speed' | 'reframe' | 'tint'> {
   const speed = speedFor(rand())
   const reframe = reframeFor(rand(), rand(), rand())
-  return { ...(speed !== 1 ? { speed } : {}), ...(reframe ? { reframe } : {}) }
+  const tint = tintFor(rand())
+  return { ...(speed !== 1 ? { speed } : {}), ...(reframe ? { reframe } : {}), ...(tint ? { tint } : {}) }
 }

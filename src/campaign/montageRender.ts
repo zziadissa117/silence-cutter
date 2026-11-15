@@ -251,6 +251,9 @@ export interface MontageRenderInput {
    *  that leaves (`x`, `y` from -1 to 1) - a Trial reel copy
    *  (trialLoop.TrialLook.reframe). None when absent. */
   reframe?: { scale: number; x: number; y: number } | null
+  /** A slightly warmer (above 0) or cooler (below 0) picture, -1..1 - a Trial
+   *  reel copy (trialLoop.TrialLook.tint). None when absent. */
+  tint?: number | null
   /** The clips shown flipped left to right (BankFile.mirror): flipped as each
    *  frame is drawn - no extra encode, no quality lost. Words and pictures
    *  over them are not flipped. */
@@ -384,7 +387,7 @@ export function liftMusic(channels: Float32Array[], gain: number, sampleRate: nu
 }
 
 export async function renderMontage(
-  { clips: files, look, headlineText, music, seed = '', formula = null, windows = [], reactionFirst = false, titles = [], stepTexts = [], stepOverlays = [], voice = false, voiceAll = false, brightness = 0, keepLines = false, keepShape = false, shorterBy = 0, rawFirst = false, joinTight, asGiven = [], mirrored = [], captions = null, speed = 1, reframe = null }: MontageRenderInput,
+  { clips: files, look, headlineText, music, seed = '', formula = null, windows = [], reactionFirst = false, titles = [], stepTexts = [], stepOverlays = [], voice = false, voiceAll = false, brightness = 0, keepLines = false, keepShape = false, shorterBy = 0, rawFirst = false, joinTight, asGiven = [], mirrored = [], captions = null, speed = 1, reframe = null, tint = null }: MontageRenderInput,
   onProgress?: (fraction: number) => void,
 ): Promise<MontageRenderResult> {
   if (files.length === 0) throw new SilenceCutError('Add at least one clip.')
@@ -643,6 +646,17 @@ export async function renderMontage(
         ctx.fillStyle = brightness > 0 ? `rgba(255,255,255,${Math.min(1, brightness)})` : `rgba(0,0,0,${Math.min(1, -brightness)})`
         if (whole) ctx.fillRect(fill.x, fill.y, fill.width, fill.height)
         else ctx.fillRect(0, 0, width, height)
+      }
+      // Warmer or cooler: a light orange or blue laid over the picture in
+      // soft light - blend modes draw the same on every browser it runs in.
+      if (tint) {
+        ctx.save()
+        ctx.globalCompositeOperation = 'soft-light'
+        const a = Math.min(0.3, Math.abs(tint) * 1.6)
+        ctx.fillStyle = tint > 0 ? `rgba(255,150,60,${a})` : `rgba(60,140,255,${a})`
+        if (whole) ctx.fillRect(fill.x, fill.y, fill.width, fill.height)
+        else ctx.fillRect(0, 0, width, height)
+        ctx.restore()
       }
       // His pictures and videos on the step, under its words.
       if (!raw) for (const overlay of overlays[i] ?? []) await drawOverlay(ctx, overlay, t - start, start + length - t)

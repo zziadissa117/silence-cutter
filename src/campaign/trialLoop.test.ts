@@ -13,6 +13,7 @@ import {
   trimFor,
   speedFor,
   reframeFor,
+  tintFor,
   songFor,
   talkRead,
   trialAngle,
@@ -336,6 +337,14 @@ describe('copies of different lengths (his ask, 2026-11-11: "mostly keep it at 8
     }
     expect(framed).toBe(350)
     expect(reframeFor(0.1, 0, 1)).toMatchObject({ x: -1, y: 1 })
+  })
+
+  it('half the copies as they are, a quarter a touch warmer, a quarter a touch cooler (his pick, 2026-11-15)', () => {
+    const tints = Array.from({ length: 1000 }, (_, i) => tintFor(i / 1000))
+    expect(tints.filter((t) => t === undefined)).toHaveLength(500)
+    expect(tints.filter((t) => (t ?? 0) > 0)).toHaveLength(250)
+    expect(tints.filter((t) => (t ?? 0) < 0)).toHaveLength(250)
+    for (const t of tints) if (t !== undefined) expect(Math.abs(t)).toBeLessThanOrEqual(0.14)
   })
 
   it('a viral reel copy gets one; a talking clip copy never - it would cut his last words', () => {

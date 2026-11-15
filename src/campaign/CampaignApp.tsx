@@ -2241,6 +2241,7 @@ export function CampaignApp() {
               // A touch faster or framed a little tighter, now and then (trialLoop).
               ...(trialLook?.speed ? { speed: trialLook.speed } : {}),
               ...(trialLook?.reframe ? { reframe: trialLook.reframe } : {}),
+              ...(trialLook?.tint ? { tint: trialLook.tint } : {}),
               keepLines: Boolean(trialLook),
               rawFirst: rawHook,
               // A talking head: no long pause where one clip meets the next -

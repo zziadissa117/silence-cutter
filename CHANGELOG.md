@@ -3,6 +3,23 @@
 Newest first. Every change says what it does, how to use it, and how it works
 underneath. Kept up to date with each commit.
 
+## Classic captions, the new default; Trial reel copies a touch warmer or cooler
+- From his call with a MediaMaxxing coach (2026-11-15): captions "3-4 words per line, one line only ... one consistent
+  spot ... Remove animations and presets; use classic font with white or black outline"; to vary reposts, "adjust
+  color/exposure". His picks: a Classic caption look, made the default; colour/exposure for Trial reels.
+- Captions: a new look, Classic - 3 or 4 words at a time on one line (a long phrase is made smaller, never put on a
+  second line), bold white with a black outline, no pop, at the same height every time. First in the list and the
+  default: every new video and every talking head format starts on it. His other looks (One word, Highlight, Phrase)
+  are still there; a format where he picked one keeps it.
+- Trial reels: half the copies keep their colour, a quarter come out a touch warmer, a quarter a touch cooler (with
+  the brightness change they already had, that is the exposure). Measured on a skin-coloured clip: warm moves red up
+  and blue down about 10 levels of 255, cool the other way.
+- Checked with real renders in Chrome for Testing.
+- Underneath: `captions.ts` `CaptionStyle 'line'`, `LINE_WORDS`, `drawLine`, `defaultCaptionStyle` (Classic once,
+  then his pick); `batch.batchCaptionLook` talking default; `montageRender` `tint`, `trialLoop.tintFor`,
+  `TrialLook.tint`. Caption word timing untouched. Tests: `captions.test.ts`, `trialLoop.test.ts`,
+  `batchFormats.test.ts`, `batchView.test.tsx`.
+
 ## Trial reels: copies trimmed, sped up and reframed now and then; the trim really works
 - His report and ask (2026-11-15): Meta takes the copies for not original ("it looks similar to what I've shared
   before"). "Most of the time, you're going to keep the full length, but sometimes ... trim it a little bit ... 0.5,

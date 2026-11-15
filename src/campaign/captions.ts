@@ -600,9 +600,13 @@ export function drawCaption(
 // word is up still comes from captionAt, so the lead, the hold, words taken
 // out and the hook all work exactly as for one word at a time.
 
-export type CaptionStyle = 'word' | 'highlight' | 'phrase'
+/** 'line' (Classic): 3-4 words on one line, no animation, white with a black
+ *  outline, the same spot every time (his coach's rules, 2026-11-15) - the
+ *  default. */
+export type CaptionStyle = 'line' | 'word' | 'highlight' | 'phrase'
 
 export const CAPTION_STYLES: { id: CaptionStyle; label: string }[] = [
+  { id: 'line', label: 'Classic' },
   { id: 'word', label: 'One word' },
   { id: 'highlight', label: 'Highlight' },
   { id: 'phrase', label: 'Phrase' },
@@ -610,15 +614,23 @@ export const CAPTION_STYLES: { id: CaptionStyle; label: string }[] = [
 
 const STYLE_KEY = 'cutter-caption-style'
 
-/** The style new videos start with: the last one he picked, else one word. */
+/** Set once Classic became the default (2026-11-15): a look picked before
+ *  then gives way to it once; one picked after is kept. */
+const CLASSIC_KEY = 'cutter-caption-classic'
+
+/** The style new videos start with: the last one he picked, else Classic. */
 export function defaultCaptionStyle(): CaptionStyle {
   try {
+    if (!localStorage.getItem(CLASSIC_KEY)) {
+      localStorage.setItem(CLASSIC_KEY, '1')
+      localStorage.setItem(STYLE_KEY, 'line')
+    }
     const saved = localStorage.getItem(STYLE_KEY)
     if (CAPTION_STYLES.some((s) => s.id === saved)) return saved as CaptionStyle
   } catch {
-    // Storage blocked: one word.
+    // Storage blocked: Classic.
   }
-  return 'word'
+  return 'line'
 }
 
 export function setDefaultCaptionStyle(style: CaptionStyle): void {
@@ -651,8 +663,11 @@ export const PLAIN_PHRASE_WORDS = 7
  *  short ones, the plain style's longer ones. One word at a time uses none,
  *  but gets the highlight's so the review can switch styles freely. */
 export function captionRanges(words: CaptionWord[], style: CaptionStyle): [number, number][] {
-  return phraseRanges(words, style === 'phrase' ? PLAIN_PHRASE_WORDS : HIGHLIGHT_WORDS)
+  return phraseRanges(words, style === 'phrase' ? PLAIN_PHRASE_WORDS : style === 'line' ? LINE_WORDS : HIGHLIGHT_WORDS)
 }
+
+/** Classic: at most this many words on screen - split evenly, so 3 or 4. */
+export const LINE_WORDS = 4
 
 /** The phrase word `index` is in, or null. */
 export function phraseAt(ranges: readonly [number, number][], index: number): [number, number] | null {
@@ -879,6 +894,11 @@ export function drawStyledCaption(
   size: CaptionSize,
   style: CaptionStyle,
 ): void {
+  if (style === 'line') {
+    const range = phraseAt(ranges, index)
+    if (range) drawLine(ctx, width, height, words.slice(range[0], range[1]), bare, position, size)
+    return
+  }
   if (style === 'phrase') {
     const range = phraseAt(ranges, index)
     if (range) drawPlainPhrase(ctx, width, height, words.slice(range[0], range[1]), bare, position, size)
@@ -892,3 +912,50 @@ export function drawStyledCaption(
   drawCaption(ctx, width, height, words[index].text, since, bare, position, size)
 }
 
+
+/** Classic (his coach's rules, 2026-11-15: "3-4 words per line, one line
+ *  only ... one consistent spot ... no animations ... classic font with
+ *  white or black outline"): the phrase on one line, bold white with a
+ *  black outline, made smaller only when it would not fit across - never
+ *  a second line, never a pop. */
+export function drawLine(
+  ctx: Ctx,
+  width: number,
+  height: number,
+  phrase: CaptionWord[],
+  bare = false,
+  position: CaptionSpot = 'usual',
+  size: CaptionSize = 'normal',
+): void {
+  const text = phrase
+    .map((w) => (bare ? bareWord(w.text) : cleanWord(w.text)))
+    .filter(Boolean)
+    .join(' ')
+  if (!text) return
+  const base = Math.min(width, height * (9 / 16))
+  let fontPx = Math.round(base * LINE_SIZE * captionScale(size))
+  const font = (px: number) => `${LINE_WEIGHT} ${px}px ${HEADLINE_FAMILY}`
+  ctx.save()
+  ctx.font = font(fontPx)
+  const maxWidth = width * 0.88
+  const measured = ctx.measureText(text).width
+  if (measured > maxWidth) {
+    fontPx = Math.floor(fontPx * (maxWidth / measured))
+    ctx.font = font(fontPx)
+  }
+  ctx.textAlign = 'center'
+  ctx.textBaseline = 'middle'
+  ctx.lineJoin = 'round'
+  ctx.miterLimit = 2
+  ctx.lineWidth = fontPx * LINE_STROKE
+  ctx.strokeStyle = '#000000'
+  ctx.fillStyle = '#ffffff'
+  const y = height * captionY(position)
+  ctx.strokeText(text, width / 2, y)
+  ctx.fillText(text, width / 2, y)
+  ctx.restore()
+}
+
+const LINE_WEIGHT = 800
+const LINE_STROKE = 0.16
+const LINE_SIZE = 0.066

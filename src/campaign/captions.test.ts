@@ -500,8 +500,8 @@ describe('the Phrase style', () => {
   const said = (text: string, start: number) => text.split(' ').map((t, i) => ({ text: t, start: start + i * 0.3, end: start + i * 0.3 + 0.25 }))
   const measure = (text: string, px: number) => text.length * px * 0.55
 
-  it('is offered as the third style', () => {
-    expect(CAPTION_STYLES.map((s) => s.label)).toEqual(['One word', 'Highlight', 'Phrase'])
+  it('is offered after Classic, One word and Highlight', () => {
+    expect(CAPTION_STYLES.map((s) => s.label)).toEqual(['Classic', 'One word', 'Highlight', 'Phrase'])
   })
 
   it('takes longer phrases than Highlight, breaking at a full stop or a pause, never past seven words', () => {
@@ -558,5 +558,47 @@ describe('withRestored', () => {
   it('changes nothing when no part came back', () => {
     const fixed = [{ text: 'So,', start: 0.2, end: 0.5 }]
     expect(withRestored(fixed, heard, [{ start: 0, end: 3 }], [{ start: 0, end: 0.9 }])).toBe(fixed)
+  })
+})
+
+import { defaultCaptionStyle, drawLine, setDefaultCaptionStyle } from './captions'
+
+describe("Classic captions (his coach's rules, 2026-11-15)", () => {
+  const said = (text: string, start: number) => text.split(' ').map((w, i) => ({ text: w, start: start + i * 0.3, end: start + i * 0.3 + 0.25 }))
+  it('3 or 4 words at a time, never more', () => {
+    const words = said('so I tried this new app and it made me four hundred dollars in one day', 0)
+    const ranges = captionRanges(words, 'line')
+    for (const [from, to] of ranges) {
+      expect(to - from).toBeLessThanOrEqual(4)
+      expect(to - from).toBeGreaterThanOrEqual(2)
+    }
+  })
+
+  it('is the default for new videos, once, even over a look picked before', () => {
+    localStorage.clear()
+    localStorage.setItem('cutter-caption-style', 'word')
+    expect(defaultCaptionStyle()).toBe('line')
+    // Picked again after: kept.
+    setDefaultCaptionStyle('highlight')
+    expect(defaultCaptionStyle()).toBe('highlight')
+  })
+
+  it('one line: a long phrase is made smaller, never broken onto a second line', () => {
+    const calls: { text: string; font: string }[] = []
+    const ctx = {
+      font: '',
+      save() {},
+      restore() {},
+      measureText(t: string) {
+        return { width: t.length * 60 }
+      },
+      strokeText() {},
+      fillText(this: { font: string }, text: string) {
+        calls.push({ text, font: this.font })
+      },
+    } as unknown as CanvasRenderingContext2D
+    drawLine(ctx, 1080, 1920, said('unbelievably extraordinary transformation happening', 0))
+    expect(calls).toHaveLength(1)
+    expect(calls[0].text.split('\n')).toHaveLength(1)
   })
 })

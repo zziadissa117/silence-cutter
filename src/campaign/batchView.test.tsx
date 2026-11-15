@@ -796,12 +796,12 @@ describe('one batch for the account, in formats', () => {
     expect(host.textContent).toContain('Over your first product step')
   })
 
-  it("a talking format's captions are full phrases unless he picks another look (his report, 2026-11-14)", async () => {
+  it("a talking format's captions are Classic unless he picks another look (2026-11-15)", async () => {
     storedBank = { ...bank, formats: [{ id: 't', kind: 'talking', name: 'Talk' }], reactions: bank.reactions.map((r) => ({ ...r, formats: ['t'] })), products: [] }
     await show({})
     await openFirstFormat()
     const look = host.querySelector('[aria-label="Captions look"]') as HTMLElement
-    expect(look.querySelector('[aria-checked="true"]')?.textContent).toBe('Phrase')
+    expect(look.querySelector('[aria-checked="true"]')?.textContent).toBe('Classic')
     await act(async () => ([...look.querySelectorAll('button')].find((b) => b.textContent === 'Highlight') as HTMLButtonElement).click())
     expect((await savedBank()).formats?.[0].captionStyle).toBe('highlight')
   })
