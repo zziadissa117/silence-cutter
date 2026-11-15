@@ -6,6 +6,9 @@ Read `AGENTS.md` (above) and the parts of `ARCHITECTURE.md` you touch before
 changing anything; the newest entries of `CHANGELOG.md` say what changed last
 and why. These notes are what earlier sessions learned the hard way.
 
+**First rule: never change how the Cutter cuts or captions** ("Rule zero" in
+AGENTS.md). Batches and other features get their own version in their own file.
+
 ## Branch, deploy, how he tests
 
 - Work on `claude/cutter-lockdown-and-map`: `./deploy.sh` on his Mac pulls that

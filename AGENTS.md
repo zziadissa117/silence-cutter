@@ -37,6 +37,35 @@ only, no Supabase); `./deploy-server.sh` ships the `postiz` and `cutter` functio
 (`--no-verify-jwt`), and `deploy.sh` says when it is needed. When a change touches
 `supabase/functions`, say "Needs deploying: run ./deploy-server.sh" in the CHANGELOG.
 
+## Rule zero: the Cutter's cut is frozen
+
+This file (with `CLAUDE.md`) is the single source of truth: when anything else -
+an old commit, a comment, a plan - disagrees with it, this file wins.
+
+The way the Cutter cuts and captions his talking videos works as he wants it.
+**Never change it unless he asks for that exact change in his own words.** A
+request about batches, drop-ins, the server or any other feature is never
+permission to touch it. (2026-11-15: a "small" change to the silence line made
+for his voice setup made every video cut and caption worse; he had to ask for
+it back.)
+
+- Frozen: `campaign/plan.ts` (`planCampaignCut`), `campaign/pipeline.ts`
+  (`listen`), `cuts.ts`, `noiseCuts.ts`, `umFind.ts`, `voiceProfile.withProfile`,
+  `timedWords.ts`, `heardLoops.ts`, `captions.ts` word timing, `media/audio.ts`,
+  `media/silenceMath.ts`, `media/fillerWords.ts`, `media/transcribe*.ts`,
+  `media/speechLanguage.ts`, and the plain cutter (`media/silenceCut.ts`,
+  `App.tsx`). Their settings and numbers too: thresholds, gaps, padding,
+  models, prompts.
+- Batches (and any other feature) that need to cut differently get **their own
+  version** in their own file - e.g. `voiceSpan.ts`, `montageRender.ts`,
+  `prepareDrop.ts`, `talkCaptions.ts` - which may call the Cutter's code but
+  never edits it or passes it a new option that changes what it does.
+- A real bug in the frozen code (a crash, a hang): fix only that, the smallest
+  change, and say in the CHANGELOG exactly what could cut or caption
+  differently. Anything bigger: ask him first.
+- When he says cutting or captions got worse, look in `git log` on the files
+  above first and put back what changed.
+
 ## Hard rules
 
 1. **Security first.** The login gate (`campaign/LoginGate.tsx`) is the front

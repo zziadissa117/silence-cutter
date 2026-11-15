@@ -3,6 +3,13 @@
 Newest first. Every change says what it does, how to use it, and how it works
 underneath. Kept up to date with each commit.
 
+## AGENTS.md: the Cutter's cut is frozen
+- His ask (2026-11-15): make the instructions the single source of truth - "do not change the way the original cutter
+  actually cuts, for batches make a new version specific to it".
+- "Rule zero" at the top of AGENTS.md (pointed to from CLAUDE.md): the files that decide how talking videos are cut
+  and captioned are named and frozen; batches and other features cut in files of their own; only a crash or hang is
+  fixed there without asking.
+
 ## Cutting back on his preset, as before the voice setup
 - His report (2026-11-15): "the cutter is not cutting as well as it used to be ... It's not making captions as well."
 - Since 2026-11-11 a measured voice ("Your voice") moved the silence line down by up to 15 dB and refused to cut any
