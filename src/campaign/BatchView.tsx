@@ -66,7 +66,9 @@ import { CAPTION_STYLES, defaultCaptionSize, defaultCaptionStyle } from './capti
 import { DropCheck } from './DropCheck'
 import { DropIn, HOOK, dropInto } from './DropIn'
 import { choicesOf, queueRecheck, withChoices } from './dropQueue'
-import { QuickCheck } from './QuickCheck'
+import { ClipEditor } from './ClipEditor'
+import { SpeedRow, SpeedRunner, TalkClips } from './TalkClips'
+import { filesOfClip } from './clipEdit'
 import { defaultEffects, effectsFor } from './defaultEffects'
 import { StepTexts } from './StepTexts'
 import { BatchStatus } from './BatchStatus'
@@ -370,8 +372,10 @@ export function BatchView({
   const [checking, setChecking] = useState<string | null>(null)
   /** The clip the check opens on (the quick look's Re-edit). */
   const [checkFirst, setCheckFirst] = useState<string | null>(null)
-  /** A format's clips in the quick look (QuickCheck.tsx). */
+  /** A format's clips open in the clip editor (ClipEditor.tsx). */
   const [viewing, setViewing] = useState<string | null>(null)
+  /** The clip the editor opens on (ClipEditor.tsx). */
+  const [viewFirst, setViewFirst] = useState<string | null>(null)
   const [choosingKind, setChoosingKind] = useState(false)
   /** The batch the engine is making for this campaign, as it last said. */
   const [engineState, setEngineState] = useState<EngineJob | null>(null)
@@ -711,13 +715,13 @@ export function BatchView({
       return
     }
     if (!window.confirm(`Take ${file.name} out of the bank?`)) return
-    void deleteBankFile(file.id).catch(() => {})
+    for (const id of filesOfClip(file)) void deleteBankFile(id).catch(() => {})
     const next = { ...bank, [kind]: bank[kind].filter((f) => f.id !== file.id) }
     keep(kind === 'music' ? next : rememberUsed(next, [file]))
   }
   const takeOutOfStep = (stepId: string, file: BankFile) => {
     if (!bank || !window.confirm(`Take ${file.name} out of the bank?`)) return
-    void deleteBankFile(file.id).catch(() => {})
+    for (const id of filesOfClip(file)) void deleteBankFile(id).catch(() => {})
     keep(rememberUsed({ ...bank, steps: (bank.steps ?? []).map((s) => (s.id === stepId ? { ...s, files: s.files.filter((f) => f.id !== file.id) } : s)) }, [file]))
   }
   /** "3 videos, 3 rejected": what the videos made with a clip came to. */
@@ -735,7 +739,7 @@ export function BatchView({
     const gone = all.filter((st) => mine(st) && !kept.has(st.id))
     const stillShared = gone.filter((st) => (st.formats?.length ?? 0) > 1).map((st) => ({ ...st, formats: st.formats!.filter((x) => x !== formatId) }))
     const goneFiles = gone.filter((st) => (st.formats?.length ?? 0) <= 1).flatMap((st) => st.files)
-    for (const f of goneFiles) void deleteBankFile(f.id).catch(() => {})
+    for (const id of goneFiles.flatMap(filesOfClip)) void deleteBankFile(id).catch(() => {})
     const next = [...all.filter((st) => !mine(st)), ...stillShared, ...steps.map((st) => (st.formats?.length ? st : { ...st, formats: [formatId] }))]
     keep(rememberUsed({ ...bank, steps: next.length > 0 ? next : undefined }, goneFiles))
   }
@@ -768,7 +772,7 @@ export function BatchView({
     const only = (x: { formats?: string[] }) => mine(x) && (x.formats?.length ?? 0) <= 1
     const drop = <T extends { formats?: string[] }>(list: T[]) => list.filter((x) => !only(x)).map((x) => (mine(x) ? { ...x, formats: x.formats!.filter((id) => id !== format.id) } : x))
     const goneFiles = [...bank.reactions.filter(only), ...bank.products.filter(only), ...(bank.steps ?? []).filter(only).flatMap((st) => st.files)]
-    for (const f of goneFiles) void deleteBankFile(f.id).catch(() => {})
+    for (const id of goneFiles.flatMap(filesOfClip)) void deleteBankFile(id).catch(() => {})
     const { [format.id]: _done, ...formatDone } = bank.formatDone ?? {}
     const steps = drop(bank.steps ?? [])
     keep(
@@ -1392,6 +1396,206 @@ export function BatchView({
     )
   }
 
+  /** A talking head format, open (his ask, 2026-11-15: "rework the whole UI
+   *  for the talking head batch ... it's very, very hard to understand"):
+   *  drop clips in, the speed, every clip in the order it plays (a tap opens
+   *  it), and the rest folded away - how its videos look, and the steps. */
+  const talkBody = (f: BatchFormat, sub: ReturnType<typeof formatBank>, steps: BatchStep[], others: BatchFormat[]) => {
+    if (!bank) return null
+    const hooks = sub.reactions
+    const clips = [...(f.rawHooks ? [] : hooks), ...steps.flatMap((st) => st.files)]
+    const captionLook = batchCaptionLook(f, null, { style: defaultCaptionStyle(), size: defaultCaptionSize() }).style
+    const open = (id: string) => {
+      setViewFirst(id)
+      setViewing(f.id)
+    }
+    const switchRow = (name: string, line: string, on: boolean, change: (on: boolean) => void) => (
+      <div className="setting">
+        <div className="setting-text">
+          <span className="row-name">{name}</span>
+          <span className="row-line">{line}</span>
+        </div>
+        <input type="checkbox" className="switch" checked={on} aria-label={name} onChange={(e) => change(e.target.checked)} />
+      </div>
+    )
+    return (
+      <div className="format-body talk-body">
+        <div className="format-box drop-box">
+          <DropIn
+            formatId={f.id}
+            steps={steps}
+            hookFiles={hooks}
+            hooks={Boolean(f.dropHooks)}
+            rawHooks={Boolean(f.rawHooks)}
+            names={campaign.brandWords ?? []}
+            effects={angle.effects ? effectsFor(angle.effects, defaultEffects()) : defaultEffects()}
+            brandWords={campaign.brandWords ?? []}
+            getBank={() => bankRef.current}
+            onCheck={() => setChecking(f.id)}
+            choices={choicesOf(f)}
+            onChoices={(picked) => changeFormat(f.id, withChoices(picked))}
+          />
+        </div>
+
+        <div className="format-box">
+          <SpeedRow format={f} onSpeed={(speed) => changeFormat(f.id, { speed })} />
+          <SpeedRunner format={f} clips={clips} getBank={() => bankRef.current} keep={keep} />
+        </div>
+
+        <div className="format-section">
+          <div className="format-section-title">Your clips - tap one to change it</div>
+          <TalkClips
+            hooks={hooks}
+            steps={steps}
+            rawHooks={Boolean(f.rawHooks)}
+            onOpen={open}
+            onAddHooks={(files) => void (!f.rawHooks && dropInto(f.id, files, HOOK) ? undefined : add({ format: f.id, as: 'reactions' }, files))}
+            onAddToStep={(stepId, files) => void (dropInto(f.id, files, stepId) ? undefined : add({ step: stepId }, files))}
+          />
+          {steps.length === 0 ? (
+            <div className="format-actions">
+              <button type="button" className="btn small primary" aria-expanded={ordering === f.id} onClick={() => setOrdering(ordering === f.id ? null : f.id)}>
+                Add product steps
+              </button>
+            </div>
+          ) : null}
+          {steps.length === 0 && others.length > 0 ? (
+            <select className="format-share" value="" aria-label="Use the product of another format" onChange={(e) => e.target.value && shareProduct(f.id, e.target.value)}>
+              <option value="">Same product as…</option>
+              {others.map((o) => (
+                <option key={o.id} value={o.id}>
+                  {o.name}
+                </option>
+              ))}
+            </select>
+          ) : null}
+          {ordering === f.id && steps.length === 0 ? (
+            <StepOrder campaignName={campaign.name} steps={[]} talking onSave={saveOrderFor(f.id)} onClose={() => setOrdering(null)} />
+          ) : null}
+        </div>
+
+        <details className="talk-fold">
+          <summary>
+            <span className="row-name">How the videos look</span>
+            <span className="hint">
+              {[f.noHeadline ? 'no headline' : 'headline', f.noMusic ? 'no music' : 'music', `${CAPTION_STYLES.find((st) => st.id === captionLook)?.label ?? ''} captions`, f.rawHooks ? 'hook as filmed' : null]
+                .filter(Boolean)
+                .join(' · ')}
+            </span>
+          </summary>
+          <div className="format-box">
+            {switchRow('Headline on top', f.noHeadline ? 'Off: no words over the hook.' : f.rawHooks ? 'Over your first product step.' : 'Over your hook.', !f.noHeadline, (on) =>
+              changeFormat(f.id, { noHeadline: on ? undefined : true }),
+            )}
+            {switchRow('Music', f.noMusic ? 'Off: your voice only.' : 'A song from the music bank under your voice.', !f.noMusic, (on) => changeFormat(f.id, { noMusic: on ? undefined : true }))}
+            <div className="format-corner">
+              <span className="row-name">Captions</span>
+              <div className="seg full" role="radiogroup" aria-label="Captions look">
+                {CAPTION_STYLES.map((st) => (
+                  <button key={st.id} type="button" role="radio" aria-checked={captionLook === st.id} className={captionLook === st.id ? 'active' : ''} onClick={() => changeFormat(f.id, { captionStyle: st.id })}>
+                    {st.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+            <CaptionHeight value={f.captionY} onChange={(y) => changeFormat(f.id, { captionY: y })} />
+            {switchRow('Edit my hooks', f.rawHooks ? 'Off: your hook plays exactly as filmed - nothing over it.' : 'On: cut, zoomed and captioned like your talking videos.', !f.rawHooks, (on) =>
+              changeFormat(f.id, { rawHooks: on ? undefined : true }),
+            )}
+            {steps.length > 0
+              ? switchRow('Dropped clips can be hooks', f.dropHooks ? "A clip that names no step becomes a hook." : 'Every dropped clip goes to a product step.', Boolean(f.dropHooks), (on) =>
+                  changeFormat(f.id, { dropHooks: on || undefined }),
+                )
+              : null}
+          </div>
+        </details>
+
+        <details className="talk-fold" open={ordering === f.id || wordsFor !== null ? true : undefined}>
+          <summary>
+            <span className="row-name">Steps and rules</span>
+            <span className="hint">
+              {steps.length} step{steps.length === 1 ? '' : 's'}, names and order, words on screen, use once
+            </span>
+          </summary>
+          <div className="format-box">
+            {steps.length > 0 ? (
+              <div className="format-actions">
+                <button type="button" className="btn small" aria-expanded={ordering === f.id} onClick={() => setOrdering(ordering === f.id ? null : f.id)}>
+                  Names and order
+                </button>
+              </div>
+            ) : null}
+            {ordering === f.id && steps.length > 0 ? (
+              <StepOrder
+                campaignName={campaign.name}
+                steps={(bank.steps ?? []).filter((st) => st.formats?.includes(f.id))}
+                talking
+                onSave={saveOrderFor(f.id)}
+                onClose={() => setOrdering(null)}
+              />
+            ) : null}
+            {onceBox(f.id, 'reactions')}
+            {steps.map((st, i) => (
+              <div key={st.id} className="talk-step-rules">
+                <div className="talk-group-head">
+                  <span className="step-num">{i + 1}</span>
+                  <span className="talk-group-title">{st.name}</span>
+                  <button type="button" className="btn small" aria-expanded={wordsFor === st.id} onClick={() => setWordsFor(wordsFor === st.id ? null : st.id)}>
+                    Words on screen
+                  </button>
+                </div>
+                <label className="toggle once-check">
+                  <input
+                    type="checkbox"
+                    checked={Boolean(st.once)}
+                    aria-label={`Use each clip of ${st.name} once`}
+                    onChange={(e) => {
+                      const latest = bankRef.current ?? bank
+                      keep({ ...latest, steps: (latest.steps ?? []).map((x) => (x.id === st.id ? { ...x, once: e.target.checked || undefined } : x)) })
+                    }}
+                  />
+                  <span className="label">Use each clip once</span>
+                </label>
+                {wordsFor === st.id ? (
+                  <StepTexts
+                    step={st}
+                    look={angle.headline}
+                    talking
+                    onSave={({ texts, overlays }) => {
+                      const latest = bankRef.current ?? bank
+                      keep({
+                        ...latest,
+                        steps: (latest.steps ?? []).map((x) => {
+                          if (x.id !== st.id) return x
+                          const { texts: _old, overlays: _was, ...rest } = x
+                          return { ...rest, ...(texts ? { texts } : {}), ...(overlays.length > 0 ? { overlays } : {}) }
+                        }),
+                      })
+                    }}
+                    onClose={() => setWordsFor(null)}
+                  />
+                ) : null}
+              </div>
+            ))}
+            <label className="field">
+              <span className="label">Format name</span>
+              <input type="text" value={f.name} maxLength={60} aria-label="Format name" onChange={(e) => changeFormat(f.id, { name: e.target.value })} />
+            </label>
+          </div>
+        </details>
+
+        <div className="format-actions format-foot">
+          <button type="button" className="btn small" onClick={() => changeFormat(f.id, { paused: !f.paused || undefined })}>
+            {f.paused ? 'Start it again' : 'Pause'}
+          </button>
+          <button type="button" className="linkbtn danger" onClick={() => removeFormat(f)}>
+            Take out this format
+          </button>
+        </div>
+      </div>
+    )
+  }
+
   /** One format: its card - what it is, how much it has, how many videos it
    *  can still make - and, open, everything it is made of. */
   const formatCard = (f: BatchFormat) => {
@@ -1438,7 +1642,9 @@ export function BatchView({
             </span>
           ) : null}
         </button>
-        {open ? (
+        {open && f.kind === 'talking' ? (
+          talkBody(f, sub, steps, others)
+        ) : open ? (
           <div className="format-body">
             <label className="field">
               <span className="label">Name</span>
@@ -1959,25 +2165,29 @@ export function BatchView({
         }}
       />
     ) : null
-  // Every clip of a format, one after another, playing whole (QuickCheck.tsx, his ask 2026-11-15).
+  // One clip of a format to look at and change, ‹ › through the rest (ClipEditor.tsx, his ask 2026-11-15).
   const viewingFormat = viewing && bank ? formatList.find((f) => f.id === viewing) : undefined
   const viewLayer =
     viewingFormat && bank && !checkLayer ? (
-      <QuickCheck
+      <ClipEditor
         key={viewingFormat.id}
-        formatId={viewingFormat.id}
+        format={viewingFormat}
         steps={formatBank(bank, viewingFormat).steps ?? []}
         hooks={formatBank(bank, viewingFormat).reactions}
+        startWith={viewFirst ?? undefined}
         getBank={() => bankRef.current}
         keep={keep}
-        onReedit={(clip) => {
+        onCaptions={(clip) => {
           queueRecheck(viewingFormat.id, [clip])
           setCheckFirst(clip.file.id)
-          setViewing(null)
+          setViewFirst(clip.file.id)
           setChecking(viewingFormat.id)
         }}
         onReplace={(file, clip) => dropInto(viewingFormat.id, [file], clip.place, clip.file)}
-        onClose={() => setViewing(null)}
+        onClose={() => {
+          setViewing(null)
+          setViewFirst(null)
+        }}
       />
     ) : null
 

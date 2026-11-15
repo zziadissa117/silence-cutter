@@ -3,6 +3,30 @@
 Newest first. Every change says what it does, how to use it, and how it works
 underneath. Kept up to date with each commit.
 
+## Talking head batches: a simpler screen, every clip one tap away, 1.1× speed
+- His ask (2026-11-15): "rework the whole UI for the talking head batch ... it's very, very hard to understand ...
+  make sure I can easily go to any clip and just modify it, meaning I can modify the length ... I feel like I'm
+  speaking too slowly, maybe you can put in 1.1x speed." His picks: one clip list + one editor; the speed for the whole
+  format, changeable per clip; keep the recordings so a clip can always be made longer.
+- An open talking head format, top to bottom:
+  - "+ Drop in clips", with what the Cutter does with them (Change).
+  - Speed: 1× 1.1× 1.2× 1.3× 1.5× - every clip of the format. Clips not at it yet are made again one at a time while
+    the card is open ("Making your clips 1.1×… 12 left", Stop); they play at their old speed until then.
+  - Your clips, in the order a video plays them: Hook, then each step (+ Add on each). Each row: name, length, speed.
+  - Folded away: "How the videos look" (headline, music, captions look and height, Edit my hooks, Dropped clips can be
+    hooks) and "Steps and rules" (names and order, words on screen, use each clip once, the format's name).
+- A tap on a clip opens it: it plays whole; ‹ › go through every clip; Length opens its timeline to make it longer or
+  shorter; Speed for this clip only; In (move it to another step or the hooks); Mirror; Captions (the full caption
+  check); Replace; Remove.
+- Recordings: from now on each clip keeps its recording on the phone (deleted with the clip), so Length can make it
+  longer and speed is made from the original - one encode. Clips from before can be made shorter or faster, not longer.
+- Underneath: `clipEdit.ts` (`remakeClip` through `prepareDrop.recut` with every part at the speed, `swapClip` keeps the
+  videos made with the clip counted; `BankFile.source/speed/speedSet`, `BatchFormat.speed`), `ClipEditor.tsx` (replaces
+  `QuickCheck.tsx`), `TalkClips.tsx`, `BatchView.talkBody`; DropCheck keeps `source` on approve. The Cutter's own cut is
+  untouched (rule zero). Tests: `clipEdit.test.ts`, `batchView.test.tsx`, `dropCheck.test.tsx`.
+- Not checked on an iPhone: making a clip again (speed, length) needs Safari's video encoder - checked here only in
+  tests and at phone width in Chromium.
+
 ## AGENTS.md: the Cutter's cut is frozen
 - His ask (2026-11-15): make the instructions the single source of truth - "do not change the way the original cutter
   actually cuts, for batches make a new version specific to it".

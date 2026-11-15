@@ -791,7 +791,7 @@ describe('one batch for the account, in formats', () => {
     await act(async () => talking.click())
     const saved = await savedBank()
     expect(saved.formats?.map((f) => f.kind)).toEqual(['reaction', 'talking'])
-    expect(host.textContent).toContain('Your hook')
+    expect(host.textContent).toContain('Your clips - tap one to change it')
     // It needs its own clips first.
     expect(host.textContent).toContain('Needs a clip of you and a product showcase')
   })
@@ -801,7 +801,7 @@ describe('one batch for the account, in formats', () => {
     await show({})
     const talk = [...host.querySelectorAll('.format-head')][1] as HTMLButtonElement
     await act(async () => talk.click())
-    const steps = [...host.querySelectorAll('button')].find((b) => b.textContent?.startsWith('Product steps')) as HTMLButtonElement
+    const steps = [...host.querySelectorAll('button')].find((b) => b.textContent?.startsWith('Add product steps')) as HTMLButtonElement
     await act(async () => steps.click())
     const editor = host.querySelector('.step-order') as HTMLElement
     expect(editor).toBeTruthy()
@@ -870,37 +870,39 @@ describe('one batch for the account, in formats', () => {
     expect(saved.products.every((p) => p.formats?.includes('t'))).toBe(true)
   })
 
-  it("a talking format's product steps: each its own card, name on its own line, clips closed until shown", async () => {
+  it("a talking format's clips: every one listed in the order a video plays them, a tap opens it (his ask, 2026-11-15)", async () => {
     const steps = [
-      { id: 's1', name: 'Nope, do this instead', formats: ['t'], files: [{ id: 'c1', name: 'IMG_1.mp4', type: 'video/mp4', size: 1e6, seconds: 4 }] },
+      { id: 's1', name: 'Nope, do this instead', formats: ['t'], files: [{ id: 'c1', name: 'IMG_1.mp4', type: 'video/mp4', size: 1e6, seconds: 4, speed: 1.1 }] },
       { id: 's2', name: 'Open the app', formats: ['t'], files: [], texts: [{ id: 'w', text: 'Link in bio', place: { x: 0.5, y: 0.8, scale: 1 } }] },
     ]
     storedBank = { ...bank, formats: [{ id: 't', kind: 'talking', name: 'Talk' }], steps, reactions: bank.reactions.map((r) => ({ ...r, formats: ['t'] })), products: [] }
     await show({})
     await openFirstFormat()
-    const cards = [...host.querySelectorAll('.step-card')]
-    expect(cards.map((c) => c.querySelector('.step-name')?.textContent)).toEqual(['Nope, do this instead', 'Open the app'])
-    expect(cards[0].textContent).not.toContain('IMG_1.mp4')
-    expect(cards[1].textContent).toContain('No clips yet')
-    expect(cards[1].textContent).toContain('On it: "Link in bio"')
-    await act(async () => (cards[0].querySelector('.clips-toggle') as HTMLButtonElement).click())
-    expect(cards[0].textContent).toContain('IMG_1.mp4')
-    // Its steps edited from the section's own button.
-    expect([...host.querySelectorAll('button')].some((b) => b.textContent === 'Edit steps')).toBe(true)
+    const groups = [...host.querySelectorAll('.talk-group')]
+    expect(groups.map((g) => g.querySelector('.talk-group-title')?.textContent)).toEqual(['Hook', 'Nope, do this instead', 'Open the app'])
+    expect(groups[1].textContent).toContain('IMG_1.mp4')
+    expect(groups[1].textContent).toContain('1.1×')
+    expect(groups[2].textContent).toContain('No clips yet')
+    // The steps' names and order, folded away with the rest.
+    expect([...host.querySelectorAll('button')].some((b) => b.textContent === 'Names and order')).toBe(true)
+    // The format's speed, for every clip.
+    const speed = host.querySelector('[aria-label="Speed of every clip"]') as HTMLElement
+    await act(async () => ([...speed.querySelectorAll('button')].find((b) => b.textContent === '1.1×') as HTMLButtonElement).click())
+    expect((await savedBank()).formats?.[0].speed).toBe(1.1)
   })
 
-  it("a talking format's hooks are edited unless he switches Use edits in hooks off (his ask, 2026-11-13)", async () => {
+  it("a talking format's hooks are edited unless he switches Edit my hooks off (his ask, 2026-11-13)", async () => {
     storedBank = { ...bank, formats: [{ id: 't', kind: 'talking', name: 'Talk' }], reactions: bank.reactions.map((r) => ({ ...r, formats: ['t'] })), products: [] }
     await show({})
     await openFirstFormat()
-    const edits = host.querySelector('input[aria-label="Use edits in hooks"]') as HTMLInputElement
+    const edits = host.querySelector('input[aria-label="Edit my hooks"]') as HTMLInputElement
     expect(edits.checked).toBe(true)
     // Its hooks as filmed can be edited now.
     expect([...host.querySelectorAll('button')].some((b) => b.textContent === 'Edit the 3 clips added as filmed')).toBe(true)
     await act(async () => edits.click())
     expect((await savedBank()).formats?.[0].rawHooks).toBe(true)
     // Off, it says what plays: the hook as filmed, the music from the first step.
-    expect(host.textContent).toContain('your hook plays exactly as you filmed it - no captions, music, headline or zoom')
+    expect(host.textContent).toContain('your hook plays exactly as filmed - nothing over it')
     expect(host.textContent).toContain('Over your first product step')
   })
 

@@ -27,6 +27,7 @@ import type { Campaign } from './look'
 import { ChevronLeft } from './icons'
 import { postingHere, recheckCaptions } from './posting'
 import { CutsEditor } from './CutsEditor'
+import { filesOfClip } from './clipEdit'
 import { filmingOf } from './filming'
 import { fingerprint } from './fingerprint'
 import { cutName, dropSettings, recut } from './prepareDrop'
@@ -168,8 +169,6 @@ export function DropCheck({
 
   /** Done with this clip: out of the check, on to the next. */
   const next = () => {
-    // Its recording, kept for the timeline, goes now.
-    if (item.source) void retireBankFiles([item.source.fileId]).catch(() => {})
     setRemakeProblem(null)
     // Read again: clips the server finished meanwhile come into the check too.
     const rest = loadQueue(format.id).filter((q) => q.file.id !== item.file.id)
@@ -209,21 +208,27 @@ export function DropCheck({
     if (!now) return next()
     if (place === OUT) {
       if (item.recheck) keep(placed(bank, format.id, now, null))
-      void retireBankFiles([item.file.id]).catch(() => {})
+      // The clip and its recording go.
+      void retireBankFiles(filesOfClip(item.source && !now.source ? { ...now, source: item.source } : now)).catch(() => {})
       next()
       return
     }
     // Its captions left as they were when it couldn't be heard.
     const captions = heard === 'failed' ? {} : { captions: words }
     // Flipped or not, as he left it here.
-    const clip = { ...now, ...(item.recheck || now.ownCut ? {} : { edited: true }), ...captions, mirror: mirror || undefined, checked: true }
+    // Its recording stays with it, so it can be made longer or faster later
+    // (clipEdit.ts, his ask 2026-11-15).
+    const source = item.source ?? now.source
+    const clip = { ...now, ...(item.recheck || now.ownCut ? {} : { edited: true }), ...captions, ...(source ? { source } : {}), mirror: mirror || undefined, checked: true }
+    // The clip it takes the place of goes, with its recording.
+    const replaced = item.replaces ? fileIn(bank, item.replaces) : null
     let after = placed(bank, format.id, clip, place, item.replaces)
     // Its step learns how he says it, for the next drop-in.
     if (place !== HOOK && text) {
       after = { ...after, steps: (after.steps ?? []).map((st) => (st.id === place ? { ...st, heard: learned(st.heard, text) } : st)) }
     }
     keep(after)
-    if (item.replaces) void retireBankFiles([item.replaces]).catch(() => {})
+    if (item.replaces) void retireBankFiles(replaced ? filesOfClip(replaced).filter((id) => id !== source?.fileId) : [item.replaces]).catch(() => {})
     next()
   }
 

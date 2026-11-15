@@ -2236,3 +2236,31 @@ html.editor-dark .caption-sheet { --ink: #000000; --text: #ffffff; --dim: #aeaeb
 .clip-viewer-actions { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
 .clip-viewer-actions > * { justify-content: center; text-align: center; }
 .drop-in-watch { align-self: flex-start; }
+
+/* A talking head format, open (TalkClips.tsx, ClipEditor.tsx - 2026-11-15). */
+.talk-body { display: flex; flex-direction: column; gap: 14px; }
+.talk-speed { display: flex; flex-direction: column; gap: 8px; padding: 12px 0; }
+.talk-speeding { display: flex; flex-direction: column; gap: 6px; margin-top: 10px; }
+.talk-speeding .linkbtn { align-self: flex-start; }
+.talk-list { display: flex; flex-direction: column; gap: 12px; }
+.talk-group { display: flex; flex-direction: column; gap: 6px; }
+.talk-group-head { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.talk-group-title { flex: 1; min-width: 0; font-weight: 700; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.talk-empty { margin: 0 0 0 4px; }
+.talk-clips { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 4px; }
+.talk-clip { width: 100%; display: flex; align-items: center; gap: 10px; min-height: 48px; padding: 8px 12px; border-radius: 12px; border: 1px solid var(--hairline); background: color-mix(in srgb, var(--text) 5%, transparent); color: inherit; font: inherit; text-align: left; cursor: pointer; }
+.talk-clip-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.talk-clip-meta { flex: none; font-size: 13px; color: var(--dim); }
+.talk-clip svg { flex: none; width: 18px; height: 18px; opacity: 0.5; }
+.talk-fold { border-radius: 14px; border: 1px solid var(--hairline); padding: 4px 12px; }
+.talk-fold > summary { display: flex; flex-direction: column; align-items: flex-start; gap: 2px; padding: 10px 0; cursor: pointer; list-style: none; text-align: left; }
+.talk-fold > summary::-webkit-details-marker { display: none; }
+.talk-fold > .format-box { margin-bottom: 10px; }
+.talk-step-rules { display: flex; flex-direction: column; gap: 6px; padding: 10px 0; border-top: 1px solid var(--rule); }
+.clip-editor-row { display: flex; align-items: center; gap: 10px; }
+.clip-editor-row > .row-name { flex: none; width: 52px; }
+.clip-editor-row > .seg, .clip-editor-move { flex: 1; min-width: 0; }
+.clip-editor-move { min-height: 40px; border-radius: 10px; padding: 0 10px; font: inherit; color: inherit; background: color-mix(in srgb, var(--text) 8%, transparent); border: 1px solid var(--hairline); }
+.clip-editor-actions { grid-template-columns: repeat(2, 1fr); }
+.clip-editor-busy { display: flex; flex-direction: column; gap: 10px; width: 100%; padding: 24px; }
+.clip-editor .screen.review { overflow-y: auto; }

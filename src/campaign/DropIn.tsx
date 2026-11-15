@@ -163,7 +163,7 @@ export function DropIn({
   choices: DropChoices
   /** His picks, kept on the format - music and the headline are its videos'. */
   onChoices: (choices: DropChoices) => void
-  /** Every clip of the format, playing one after another (QuickCheck.tsx). */
+  /** Every clip of the format (ClipEditor.tsx opens them). */
   onWatch?: () => void
 }) {
   const [running, setRunning] = useState<{ at: number; of: number; name: string; phase: string } | null>(null)
@@ -546,7 +546,7 @@ export function DropIn({
         />
       ) : canDrop ? (
         <VideoPicker
-          className={`btn small${queue.length > 0 ? '' : ' primary'}`}
+          className={`btn wide${queue.length > 0 ? '' : ' primary'}`}
           label="Drop in all videos"
           onFiles={(files) => {
             if (files.length === 0) return
@@ -554,7 +554,7 @@ export function DropIn({
             setPicked(files)
           }}
         >
-          Drop in all videos
+          + Drop in clips
         </VideoPicker>
       ) : null}
       {/* What it will do with them, in sight before he drops anything in (his
@@ -587,12 +587,8 @@ export function DropIn({
           {running ? '' : ' - you can close the app; they wait here for your check'}.
         </p>
       ) : null}
-      {queue.length > 0 && !running ? <p className="hint">Each one: where it goes and its captions. It is in your videos once you approve it.</p> : null}
       {!running && !picked && !setting && queue.length === 0 && cutting === 0 && canDrop ? (
-        <p className="hint">
-          Pick all your clips at once: the Cutter does what is ticked above - you can change it then too. Each goes in the step whose name you say
-          in it{hooks ? ' - one that says no step is a hook' : ''}; one where you don't talk, you place yourself. Then you check every one.
-        </p>
+        <p className="hint">Pick all your clips at once. Each goes in the step you name in it{hooks ? ' (or the hooks)' : ''}; you check every one after.</p>
       ) : null}
       {unchecked.length > 0 && !running ? (
         <div className={`drop-in-recheck${elsewhere > 0 ? ' warn' : ''}`}>

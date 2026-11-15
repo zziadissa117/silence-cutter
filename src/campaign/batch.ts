@@ -10,6 +10,7 @@
 // one left off.
 
 import type { CaptionSize, CaptionStyle, CaptionWord } from './captions'
+import type { ClipSource } from './dropQueue'
 import type { EmojiSprite } from './emojiSprites'
 import type { HeadlineStyle } from './look'
 import type { TrialBank } from './trialLoop'
@@ -79,6 +80,14 @@ export interface BankFile {
    *  the right way (his ask, 2026-11-14: "Make an option to mirror all").
    *  Flipped as the video is drawn, so it costs no quality. */
   mirror?: boolean
+  /** A talking head's clip: its recording and how it was cut, kept on the
+   *  phone so it can be made longer or faster later (clipEdit.ts, his ask
+   *  2026-11-15). */
+  source?: ClipSource
+  /** The speed its file plays at (clipEdit.ts). Absent: as he spoke. */
+  speed?: number
+  /** The speed he set for this clip itself, over the format's. */
+  speedSet?: number
 }
 
 /** What one kind of video in a batch is: his silent reaction then the
@@ -121,6 +130,10 @@ export interface BatchFormat {
    *  centre as a share of the video's height (captions.CaptionSpot). Absent:
    *  the usual place (his ask, 2026-11-13). */
   captionY?: number
+  /** A talking head: every clip played this much faster (his ask,
+   *  2026-11-15: "I feel like I'm speaking too slowly, maybe you can put in
+   *  1.1x speed"), unless a clip has its own (BankFile.speedSet). Absent: 1. */
+  speed?: number
   /** A talking head's hooks kept as he filmed them: not cut, zoomed or
    *  checked (his ask, 2026-11-13: "we might want to just keep the raw hooks
    *  sometimes"). Absent: his hooks are edited like the steps' clips. */

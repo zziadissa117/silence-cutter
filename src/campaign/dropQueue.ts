@@ -73,6 +73,12 @@ export interface ClipSource {
   brandWords: string[]
   voice: boolean
   seed: string
+  /** The clip itself, kept as its own source (a clip from before its
+   *  recording was kept - clipEdit.ts): it can be made shorter or faster,
+   *  not longer. */
+  self?: boolean
+  /** With `self`: the speed that clip already played at. */
+  baseSpeed?: number
 }
 
 const KEY = 'batch.toCheck:'

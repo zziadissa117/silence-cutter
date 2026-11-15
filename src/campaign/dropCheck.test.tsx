@@ -306,7 +306,7 @@ describe('looking again at where the clips of the batch are (his ask, 2026-11-14
     expect(bank.steps![0].files.at(-1)).toMatchObject({ id: 'b', mirror: true })
   })
 
-  it('Timeline (his ask, 2026-11-14): the parts kept from its recording; Done makes the clip again in its place - its recording goes once the clip is checked', async () => {
+  it('Timeline (his ask, 2026-11-14): the parts kept from its recording; Done makes the clip again in its place - its recording stays with the clip once checked (2026-11-15)', async () => {
     const source = {
       fileId: 'src-1',
       size: 5,
@@ -334,11 +334,13 @@ describe('looking again at where the clips of the batch are (his ask, 2026-11-14
     expect(q).toMatchObject({ text: 'longer', file: { name: 'a.mp4', fp: 'fp-again', seconds: 2.5 }, source: { keep: [{ start: 0.5, end: 2 }] } })
     // The clip made before was only in the check: let go.
     expect(retired).toContainEqual(['a'])
-    // Back on the check, with the new clip: approved into the batch, its recording let go.
+    // Back on the check, with the new clip: approved into the batch, its
+    // recording kept with it - to make it longer or faster later.
     expect(host.querySelector('.timeline-stub')).toBeNull()
     await click('Approve')
     expect(bank.steps![0].files.at(-1)!.id).toBe(q.file.id)
-    expect(retired).toContainEqual(['src-1'])
+    expect(bank.steps![0].files.at(-1)!.source).toMatchObject({ fileId: 'src-1', keep: [{ start: 0.5, end: 2 }] })
+    expect(retired.flat()).not.toContain('src-1')
   })
 
   it('no recording kept (a clip already in the batch, or from before): no Timeline', async () => {
