@@ -770,7 +770,15 @@ export function dayVideos(posts: readonly ServerPost[], jobs: readonly Job[], ca
   const sent = new Set<string>()
   for (const post of posts) {
     if (post.campaignId !== campaignId || !post.batch || post.batch.date < today) continue
-    if (post.status === 'rejected' || post.status === 'failed') continue
+    // Taken out: neither it nor the copy the phone keeps of it (until its
+    // time, to edit again) holds its day - that kept copy counted, and a
+    // batch started over left Saturday and Sunday empty (his report,
+    // 2026-11-15: "Why did my Pumpfun batch not post anything today").
+    if (post.status === 'rejected') {
+      sent.add(post.key)
+      continue
+    }
+    if (post.status === 'failed') continue
     sent.add(post.key)
     const removable = stoppable([post], now.getTime()).length > 0
     out.push({ kind: 'post', id: post.id, date: post.batch.date, time: post.batch.time, removable, post })

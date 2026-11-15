@@ -3,6 +3,17 @@
 Newest first. Every change says what it does, how to use it, and how it works
 underneath. Kept up to date with each commit.
 
+## Batch: a day emptied by Start over is filled again
+- His report (2026-11-15): "Why did my Pumpfun batch not post anything today or create anything inside of the batch
+  today? For today and Sunday, it did for Monday."
+- What happened: the Pumpfun batch was started over 4 times on Friday evening. Each time its videos for Saturday and
+  Sunday were taken out (18 in all), but the phone keeps its own copy of each video until its time (for Edit again),
+  and those copies still counted as Saturday's and Sunday's videos. So the next Start saw both days as full and only
+  made Monday.
+- Now a video taken out never holds its day, copy or not: the next Start or top-up fills the day again.
+- Underneath: `batchRun.dayVideos` - a rejected post's key marks its phone job as accounted for. Test:
+  `batchRun.test.ts`.
+
 ## Talking head batches: a simpler screen, every clip one tap away, 1.1× speed
 - His ask (2026-11-15): "rework the whole UI for the talking head batch ... it's very, very hard to understand ...
   make sure I can easily go to any clip and just modify it, meaning I can modify the length ... I feel like I'm

@@ -228,6 +228,18 @@ describe('lowering the number', () => {
     expect(videos[0].kind).toBe('post')
   })
 
+  it("a video taken out doesn't hold its day through the copy the phone keeps of it (his report, 2026-11-15)", () => {
+    // Started over: its posts rejected, their jobs still kept on the phone until their time.
+    const videos = dayVideos(
+      [post('a', '2026-10-01', '12:00', 'rejected'), post('b', '2026-10-02', '12:00', 'rejected')],
+      [{ ...job('k-a', '2026-10-01', '12:00'), status: 'done' } as Job, { ...job('k-b', '2026-10-02', '12:00'), status: 'done' } as Job],
+      'c1',
+      NOW,
+    )
+    expect(videos).toEqual([])
+    expect(countedDays(videos, NOW)['2026-10-01']).toBe(0)
+  })
+
   it('leaves days gone by and other campaigns alone', () => {
     const videos = dayVideos([post('old', '2026-09-29', '12:00'), { ...post('x', '2026-10-01', '12:00'), campaignId: 'c2' }], [], 'c1', NOW)
     expect(videos).toEqual([])
