@@ -2,6 +2,7 @@
 // product, a hook before a talking head, a showcase after it: its picture
 // track, and its sound brought to the finished video's rate and channels.
 
+import { stretch } from './timeStretch'
 import {
   ALL_FORMATS,
   AudioSample,
@@ -345,6 +346,7 @@ export async function writeWhole(
     onFrame,
     onSound,
     window,
+    speed,
   }: {
     rate: number
     channels: number
@@ -358,8 +360,13 @@ export async function writeWhole(
     /** Only this part of the clip (a batch step's few seconds); all of it
      *  when absent. */
     window?: Range
+    /** Played this much faster (a Trial reel copy, his ask 2026-11-15: "maybe
+     *  speed it up a little bit"): its frames land sooner, its sound is
+     *  stretched with its pitch kept (timeStretch.ts). 1 when absent. */
+    speed?: number
   },
 ): Promise<number> {
+  const sp = speed && speed > 0 ? speed : 1
   const all = wholeOf(clip)
   const whole = window ? { start: Math.max(all.start, window.start), end: Math.min(all.end, window.end) } : all
   const packets = new EncodedPacketSink(clip.video)
@@ -394,7 +401,7 @@ export async function writeWhole(
                 continue
               }
               origin ??= !onSound && sample.timestamp - whole.start > LATE_FIRST ? sample.timestamp : whole.start
-              const timestamp = videoClock(at + Math.max(0, sample.timestamp - origin))
+              const timestamp = videoClock(at + Math.max(0, sample.timestamp - origin) / sp)
               const sourceTime = sample.timestamp
               const sourceDuration = sample.duration
               try {
@@ -404,7 +411,7 @@ export async function writeWhole(
               }
               // Marked done only once it is written, so a frame the encoder
               // refused is tried again rather than skipped.
-              videoEnd = timestamp + sourceDuration
+              videoEnd = timestamp + sourceDuration / sp
               done = sourceTime
             }
             // The frames ran out before the clip's end, with no error: the
@@ -418,13 +425,24 @@ export async function writeWhole(
       }
     })(),
     onSound
-      ? eachSound(clip, [whole], rate, channels, async (planes) => {
-          const length = planes[0].length
-          const timestamp = audioClock(at + written / rate, length / rate)
-          written += length
-          audioEnd = timestamp + length / rate
-          await onSound(planes, timestamp)
-        })
+      ? (async () => {
+          const write = async (planes: Float32Array[]) => {
+            const length = planes[0].length
+            const timestamp = audioClock(at + written / rate, length / rate)
+            written += length
+            audioEnd = timestamp + length / rate
+            await onSound(planes, timestamp)
+          }
+          if (sp === 1) return eachSound(clip, [whole], rate, channels, write)
+          // Faster: the sound read whole, stretched once, then written in
+          // pieces on the video's clock.
+          const pieces: Float32Array[][] = []
+          await eachSound(clip, [whole], rate, channels, async (planes) => void pieces.push(planes.map((p) => p.slice())))
+          if (pieces.length === 0) return
+          const stretched = stretch(joinPieces(pieces), rate, sp)
+          const step = Math.round(rate / 10)
+          for (let from = 0; from < (stretched[0]?.length ?? 0); from += step) await write(stretched.map((p) => p.subarray(from, from + step)))
+        })()
       : null,
   ])
   if (!onSound) return videoEnd
@@ -439,4 +457,19 @@ export async function writeWhole(
     await onSound(Array.from({ length: channels }, () => new Float32Array(short)), timestamp)
   }
   return Math.max(videoEnd, audioEnd)
+}
+
+/** Sound read in pieces, as one run per channel. */
+function joinPieces(pieces: readonly Float32Array[][]): Float32Array[] {
+  const channels = pieces[0]?.length ?? 0
+  const length = pieces.reduce((n, p) => n + (p[0]?.length ?? 0), 0)
+  return Array.from({ length: channels }, (_, c) => {
+    const plane = new Float32Array(length)
+    let at = 0
+    for (const piece of pieces) {
+      plane.set(piece[c] ?? piece[0], at)
+      at += piece[0].length
+    }
+    return plane
+  })
 }

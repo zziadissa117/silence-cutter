@@ -81,19 +81,62 @@ export interface TrialLook {
   place: HeadlinePlace
   /** -1..1: how much white (above 0) or black (below 0) goes over the frame. */
   brightness: number
-  /** Seconds off the end (0, 1 or 2): mostly the whole reel, sometimes a
-   *  second or two shorter (his ask, 2026-11-11: "mostly keep it at 8, but
-   *  sometimes make it 7 or 6"). A talking clip is never shortened - that
-   *  would cut his last words. */
+  /** Seconds off the end: mostly the whole reel, sometimes 0.5 to 1.5 s
+   *  shorter (his asks, 2026-11-11 and 2026-11-15: "Most of the time, you're
+   *  going to keep the full length, but sometimes just vary it a little bit
+   *  ... 1 second, 0.5 seconds, or 1.5 seconds"). A talking clip is never
+   *  shortened - that would cut his last words. */
   trimSec?: number
+  /** A touch faster, pitch kept (his ask, 2026-11-15: "Maybe speed it up a
+   *  little bit, like 1.1x"): absent most of the time. */
+  speed?: number
+  /** A little tighter and moved within that (his pick, 2026-11-15: "Slight
+   *  zoom / reframe"): absent most of the time. */
+  reframe?: { scale: number; x: number; y: number }
 }
 
-/** How a copy's length changes: mostly whole, sometimes 1 or 2 s shorter. */
+/** How a copy's length changes: mostly whole, sometimes a little shorter. */
 export const TRIMS: readonly { sec: number; share: number }[] = [
-  { sec: 0, share: 0.6 },
-  { sec: 1, share: 0.25 },
-  { sec: 2, share: 0.15 },
+  { sec: 0, share: 0.65 },
+  { sec: 0.5, share: 0.13 },
+  { sec: 1, share: 0.13 },
+  { sec: 1.5, share: 0.09 },
 ]
+
+/** How a copy's speed changes: mostly as it is, sometimes a touch faster. */
+export const SPEEDS: readonly { speed: number; share: number }[] = [
+  { speed: 1, share: 0.65 },
+  { speed: 1.03, share: 0.1 },
+  { speed: 1.05, share: 0.1 },
+  { speed: 1.08, share: 0.08 },
+  { speed: 1.1, share: 0.07 },
+]
+
+/** Copies framed a little tighter: about one in three. */
+export const REFRAME_SHARE = 0.35
+
+/** One pick from a list of shares, from a number 0..1. */
+function pick<T extends { share: number }>(list: readonly T[], r: number): T {
+  let sum = 0
+  for (const item of list) {
+    sum += item.share
+    if (r < sum) return item
+  }
+  return list[0]
+}
+
+/** A copy's speed, from a number 0..1. */
+export function speedFor(r: number): number {
+  return pick(SPEEDS, r).speed
+}
+
+/** A copy's framing, from three numbers 0..1: mostly none; else 2-6%
+ *  tighter, moved anywhere within what that leaves. */
+export function reframeFor(r: number, a: number, b: number): { scale: number; x: number; y: number } | undefined {
+  if (r >= REFRAME_SHARE) return undefined
+  const round = (n: number) => Math.round(n * 100) / 100
+  return { scale: round(1.02 + (r / REFRAME_SHARE) * 0.04), x: round(a * 2 - 1), y: round(b * 2 - 1) }
+}
 
 /** Seconds off the end of one copy, from a number 0..1. */
 export function trimFor(r: number): number {
@@ -268,6 +311,7 @@ export function planTrial(
         place,
         brightness: BRIGHTNESS[variant.light + 2],
         ...(talk ? {} : { trimSec: trimFor(rand()) }),
+        ...variedMore(rand),
       },
     })
   }
@@ -461,4 +505,12 @@ export function trialDays(
   }
   refused.sort((a, b) => b.at.localeCompare(a.at))
   return { outToday, toGoToday, ahead, refused: [...new Set(refused.map((r) => r.error))].slice(0, 3) }
+}
+
+/** A copy's speed and framing, each only some of the time (his ask,
+ *  2026-11-15: Meta took copies for not original). */
+function variedMore(rand: () => number): Pick<TrialLook, 'speed' | 'reframe'> {
+  const speed = speedFor(rand())
+  const reframe = reframeFor(rand(), rand(), rand())
+  return { ...(speed !== 1 ? { speed } : {}), ...(reframe ? { reframe } : {}) }
 }

@@ -3,6 +3,24 @@
 Newest first. Every change says what it does, how to use it, and how it works
 underneath. Kept up to date with each commit.
 
+## Trial reels: copies trimmed, sped up and reframed now and then; the trim really works
+- His report and ask (2026-11-15): Meta takes the copies for not original ("it looks similar to what I've shared
+  before"). "Most of the time, you're going to keep the full length, but sometimes ... trim it a little bit ... 0.5,
+  1 or 1.5 seconds ... Maybe speed it up a little bit, like 1.1x". His picks: Trial reels only; trim, speed, and a
+  slight zoom / reframe.
+- Each Trial reel copy now, at random and independently:
+  - Length: whole 65% of the time; else 0.5 s (13%), 1 s (13%) or 1.5 s (9%) off the end. Talking clips are never
+    shortened (it would cut his last words).
+  - Speed: as it is 65% of the time; else 1.03x, 1.05x, 1.08x or 1.1x - the voice's pitch kept, 30 fps kept.
+  - Framing: about one in three is 2-6% tighter, moved anywhere within that - no black edge.
+  The brightness and headline changes it already had stay.
+- Found while doing it: the "sometimes 1 or 2 s shorter" from 2026-11-11 never shortened the picture - only the music
+  ran out early. Fixed: a copy made shorter is really shorter.
+- Checked with real renders in Chrome for Testing: an 8 s clip came out 8.0 s, 7.0 s (1 s off), 7.3 s (1.1x) and
+  5.9 s (1.5 s off + 1.1x + reframe), all 30 fps, the sound the same length as the picture.
+- Underneath: `trialLoop` `TRIMS`, `SPEEDS`/`speedFor`, `reframeFor`, `TrialLook.speed/reframe`; `montageRender`
+  `speed`/`reframe` and the trim's `window`; `clipParts.writeWhole` `speed` (sound stretched with `timeStretch`);
+  `pipeline` and `CampaignApp` pass them on. Tests: `trialLoop.test.ts`.
 ## The guide is now a walkthrough: what to tap, numbered on the screens
 - `docs/guide/cutter-guide.pdf` is rewritten as hands-on lessons for a new user: each one says what you will do,
   shows the screen with pink numbers on what to tap, and lists the steps with the same numbers. It no longer explains

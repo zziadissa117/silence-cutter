@@ -11,6 +11,8 @@ import {
   placesFor,
   planTrial,
   trimFor,
+  speedFor,
+  reframeFor,
   songFor,
   talkRead,
   trialAngle,
@@ -305,21 +307,41 @@ describe('a talking clip (2026-11-11)', () => {
 })
 
 describe('copies of different lengths (his ask, 2026-11-11: "mostly keep it at 8, but sometimes make it 7 or 6")', () => {
-  it('mostly whole, sometimes 1 s shorter, now and then 2 s', () => {
+  it('mostly whole, sometimes 0.5, 1 or 1.5 s shorter (his ask, 2026-11-15)', () => {
     const counts = new Map<number, number>()
     for (let i = 0; i < 1000; i++) {
       const t = trimFor(i / 1000)
       counts.set(t, (counts.get(t) ?? 0) + 1)
     }
-    expect(counts.get(0)).toBe(600)
-    expect(counts.get(1)).toBe(250)
-    expect(counts.get(2)).toBe(150)
+    expect(counts.get(0)).toBe(650)
+    expect(counts.get(0.5)).toBe(130)
+    expect(counts.get(1)).toBe(130)
+    expect(counts.get(1.5)).toBe(90)
+    expect(counts.get(2)).toBeUndefined()
+  })
+
+  it('mostly at its own speed, sometimes 1.03x to 1.1x; about one in three framed 2-6% tighter (his asks, 2026-11-15)', () => {
+    const speeds = new Map<number, number>()
+    for (let i = 0; i < 1000; i++) speeds.set(speedFor(i / 1000), (speeds.get(speedFor(i / 1000)) ?? 0) + 1)
+    expect(speeds.get(1)).toBe(650)
+    expect(Math.max(...speeds.keys())).toBe(1.1)
+    expect(Math.min(...speeds.keys())).toBe(1)
+    let framed = 0
+    for (let i = 0; i < 1000; i++) {
+      const r = reframeFor(i / 1000, 0.5, 0.5)
+      if (!r) continue
+      framed++
+      expect(r.scale).toBeGreaterThanOrEqual(1.02)
+      expect(r.scale).toBeLessThanOrEqual(1.06)
+    }
+    expect(framed).toBe(350)
+    expect(reframeFor(0.1, 0, 1)).toMatchObject({ x: -1, y: 1 })
   })
 
   it('a viral reel copy gets one; a talking clip copy never - it would cut his last words', () => {
-    let n = 0
-    const rand = () => [0.1, 0.7, 0.92][n++ % 3]
-    const { plans } = planTrial(bankWith(source('a')), 6, { rand })
+    let seed = 7
+    const rand = () => (seed = (seed * 16807) % 2147483647) / 2147483647
+    const { plans } = planTrial(bankWith(source('a')), 12, { rand })
     expect(plans.every((p) => typeof p.look.trimSec === 'number')).toBe(true)
     expect(new Set(plans.map((p) => p.look.trimSec)).size).toBeGreaterThan(1)
     const talk = { words: [], headlines: ['one'], songs: ['s1'] }

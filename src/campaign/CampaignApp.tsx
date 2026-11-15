@@ -2238,6 +2238,9 @@ export function CampaignApp() {
               brightness: trialLook?.brightness,
               // Sometimes a second or two shorter, so no two copies are alike.
               shorterBy: trialLook?.trimSec,
+              // A touch faster or framed a little tighter, now and then (trialLoop).
+              ...(trialLook?.speed ? { speed: trialLook.speed } : {}),
+              ...(trialLook?.reframe ? { reframe: trialLook.reframe } : {}),
               keepLines: Boolean(trialLook),
               rawFirst: rawHook,
               // A talking head: no long pause where one clip meets the next -

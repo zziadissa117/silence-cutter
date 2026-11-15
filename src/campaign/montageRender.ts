@@ -244,6 +244,13 @@ export interface MontageRenderInput {
    *  played exactly as he gave it - a step he shows after his last word is
    *  never cut off at the join. */
   asGiven?: boolean[]
+  /** Every clip played this much faster, its sound's pitch kept - a Trial
+   *  reel copy (trialLoop.TrialLook.speed). 1 when absent. */
+  speed?: number
+  /** The picture a little tighter (`scale` above 1) and moved within what
+   *  that leaves (`x`, `y` from -1 to 1) - a Trial reel copy
+   *  (trialLoop.TrialLook.reframe). None when absent. */
+  reframe?: { scale: number; x: number; y: number } | null
   /** The clips shown flipped left to right (BankFile.mirror): flipped as each
    *  frame is drawn - no extra encode, no quality lost. Words and pictures
    *  over them are not flipped. */
@@ -377,7 +384,7 @@ export function liftMusic(channels: Float32Array[], gain: number, sampleRate: nu
 }
 
 export async function renderMontage(
-  { clips: files, look, headlineText, music, seed = '', formula = null, windows = [], reactionFirst = false, titles = [], stepTexts = [], stepOverlays = [], voice = false, voiceAll = false, brightness = 0, keepLines = false, keepShape = false, shorterBy = 0, rawFirst = false, joinTight, asGiven = [], mirrored = [], captions = null }: MontageRenderInput,
+  { clips: files, look, headlineText, music, seed = '', formula = null, windows = [], reactionFirst = false, titles = [], stepTexts = [], stepOverlays = [], voice = false, voiceAll = false, brightness = 0, keepLines = false, keepShape = false, shorterBy = 0, rawFirst = false, joinTight, asGiven = [], mirrored = [], captions = null, speed = 1, reframe = null }: MontageRenderInput,
   onProgress?: (fraction: number) => void,
 ): Promise<MontageRenderResult> {
   if (files.length === 0) throw new SilenceCutError('Add at least one clip.')
@@ -435,11 +442,13 @@ export async function renderMontage(
     }
     const stepped = parts.flatMap((_, i) => (windows[i] ? [i] : []))
     fitShowcase(stepped.map((i) => parts[i])).forEach((piece, k) => (parts[stepped[k]] = piece))
-    const total = parts.reduce((sum, p) => sum + (p.end - p.start), 0)
+    // Played faster, every part lasts less on the video's clock.
+    const sp = speed > 0 ? speed : 1
+    const total = parts.reduce((sum, p) => sum + (p.end - p.start) / sp, 0)
     // A hook kept as filmed: the music starts with the first product step -
     // where it is planned to, then where it really does (stepStart).
     const hookOnly = rawFirst && clips.length < 2
-    let stepStart = rawFirst ? parts[0].end - parts[0].start : 0
+    let stepStart = rawFirst ? (parts[0].end - parts[0].start) / sp : 0
     const musicLength = total - stepStart
 
     let bed: MusicBed | null = null
@@ -528,7 +537,7 @@ export async function renderMontage(
     await output.start()
 
     // Zoom effects: each clip is a stretch, so a punch can land at every cut.
-    const motion = planMotion(look.effects, parts.map((p) => Math.max(0.1, p.end - p.start)), seed || 'montage')
+    const motion = planMotion(look.effects, parts.map((p) => Math.max(0.1, (p.end - p.start) / sp)), seed || 'montage')
     const videoClock = forwardOnly()
     // A talking batch: his voice, written here as its clip is read, and the
     // sound written a little behind the picture so his voice is always in
@@ -568,11 +577,21 @@ export async function renderMontage(
     // before his first word).
     const opensAt = parts[0]?.start ?? clips[0].first
     const said = captions?.words.length
-      ? captions.words.filter((w) => w.end > opensAt).map((w) => ({ ...w, start: Math.max(0, w.start - opensAt), end: w.end - opensAt }))
+      ? captions.words.filter((w) => w.end > opensAt).map((w) => ({ ...w, start: Math.max(0, w.start - opensAt) / sp, end: (w.end - opensAt) / sp }))
       : []
     const saidRanges = captions ? captionRanges(said, captions.style) : []
     const saidTimes = said.map((w) => w.start)
     const report = throttled(onProgress)
+    /** The picture's box a little tighter and moved (`reframe`), the move
+     *  never past what the tighter box leaves - no edge shows. */
+    const reframed = (b: { x: number; y: number; width: number; height: number }) => {
+      if (!reframe || reframe.scale <= 1) return b
+      const w = b.width * reframe.scale
+      const h = b.height * reframe.scale
+      const spareX = (w - b.width) / 2
+      const spareY = (h - b.height) / 2
+      return { x: b.x - spareX + reframe.x * spareX, y: b.y - spareY + reframe.y * spareY, width: w, height: h }
+    }
     const frameAt = async (sample: VideoSample, i: number, t: number) => {
       const stretch = stretches[i]
       const { fill, whole, start, length } = stretch
@@ -610,9 +629,10 @@ export async function renderMontage(
         // Drawn exactly as it is: a wide clip whole on black, a clip with its
         // own bands as made - nothing zoomed (a clip still undecided: its
         // first dark frames, not moved either).
-        sample.draw(ctx, fill.x, fill.y, fill.width, fill.height)
+        const box = reframed(fill)
+        sample.draw(ctx, box.x, box.y, box.width, box.height)
       } else {
-        const spot = zoomPlace(fill, framing, width, height)
+        const spot = reframed(zoomPlace(fill, framing, width, height))
         sample.draw(ctx, spot.x, spot.y, spot.width, spot.height)
       }
       if (flip) ctx.restore()
@@ -664,7 +684,7 @@ export async function renderMontage(
           for (const plane of voicePlanes) for (let k = Math.max(0, joinAt - fade); k < Math.min(joinAt, plane.length); k++) plane[k] *= (joinAt - k) / fade
         }
         const placed = clipPlace(clip.width, clip.height, width, height)
-        stretches[i] = { fill: placed.box, whole: placed.whole, still: placed.whole ? true : null, start, length: Math.max(0.1, parts[i].end - parts[i].start) }
+        stretches[i] = { fill: placed.box, whole: placed.whole, still: placed.whole ? true : null, start, length: Math.max(0.1, (parts[i].end - parts[i].start) / sp) }
         // The pictures and videos he put on it; one this browser can't read
         // is left out, never the video.
         const ownOverlays = stepOverlays[i]
@@ -678,11 +698,14 @@ export async function renderMontage(
         const own = i > 0 && !windows[i] ? captions?.steps?.[i - 1] : null
         if (own?.length && captions) {
           const from = parts[i].start
-          const words = own.filter((w) => w.end > from && w.start < parts[i].end).map((w) => ({ ...w, start: w.start - from + start, end: w.end - from + start }))
+          const words = own.filter((w) => w.end > from && w.start < parts[i].end).map((w) => ({ ...w, start: (w.start - from) / sp + start, end: (w.end - from) / sp + start }))
           stepSaid[i] = { words, times: words.map((w) => w.start), ranges: captionRanges(words, captions.style) }
         }
         at = await writeWhole(clip, at, {
-          window: windows[i] || trimmed[i] ? parts[i] : undefined,
+          // A Trial reel copy made shorter (shorterBy): only that much of it -
+          // its picture played whole before (fixed 2026-11-15).
+          window: windows[i] || trimmed[i] || (i === 0 && shorterBy > 0) ? parts[i] : undefined,
+          ...(sp !== 1 ? { speed: sp } : {}),
           rate: RATE,
           channels: CHANNELS,
           videoClock,
