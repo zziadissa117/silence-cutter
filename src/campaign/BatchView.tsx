@@ -54,7 +54,12 @@ import {
   WEEK_ORDER,
   WEEKDAY_NAMES,
   WEEKDAY_WORDS,
+  songsOf,
+  withSongFormat,
 } from './batch'
+
+/** "Talking head", "Reaction" - a format's kind in words. */
+const formatLabel = (kind: FormatKind) => FORMAT_KINDS.find((k) => k.kind === kind)?.label ?? 'Format'
 import { StepOrder } from './StepOrder'
 import { CaptionHeight } from './CaptionHeight'
 import { CAPTION_STYLES, defaultCaptionSize, defaultCaptionStyle } from './captions'
@@ -1649,6 +1654,11 @@ export function BatchView({
     )
   }
 
+  /** The formats a song can be for: the ones with music (green screen keeps
+   *  its own sound). */
+  const songFormats = formatList.filter((f) => f.kind !== 'greenscreen')
+  /** Formats left with no song: their videos would have none. */
+  const songless = bank && bank.music.length > 0 ? songFormats.filter((f) => !f.noMusic && songsOf(bank.music, f.id).length === 0) : []
   /** The files of a list: one format's only, when `formatId` is given. */
   const filesIn = (kind: Kind, formatId?: string): BankFile[] =>
     !bank ? [] : formatId && kind !== 'music' ? bank[kind].filter((f) => f.formats?.includes(formatId)) : bank[kind]
@@ -1719,6 +1729,12 @@ export function BatchView({
         )}
       </div>
       <p className="hint tip bank-hint">{hint}</p>
+      {kind === 'music' && songFormats.length > 1 && bank && bank.music.length > 0 ? (
+        <p className="hint tip">Tap a format under a song to use it there or not.</p>
+      ) : null}
+      {kind === 'music' && songless.length > 0 ? (
+        <p className="hint warn-text">{songless.map((f) => f.name || formatLabel(f.kind)).join(', ')}: no song on - those videos will have no music.</p>
+      ) : null}
       {formatId && (kind === 'reactions' || kind === 'products') ? onceBox(formatId, kind) : null}
       {kind === 'music' && bank && songs.length > 0 ? (
         <label className="field">
@@ -1765,6 +1781,28 @@ export function BatchView({
                 </button>
               )}
               <span className="hint">{[file.seconds ? formatTime(file.seconds) : '', mb(file.size)].filter(Boolean).join(' · ')}</span>
+              {/* Which formats this song is for (his ask, 2026-11-15: a song
+                  for talking heads that doesn't fit reactions). */}
+              {kind === 'music' && bank && songFormats.length > 1 ? (
+                <span className="song-formats" role="group" aria-label={`Formats ${file.name} is for`}>
+                  {songFormats.map((f) => {
+                    const on = songsOf([file], f.id).length > 0
+                    return (
+                      <button
+                        key={f.id}
+                        type="button"
+                        className={`song-format${on ? ' on' : ''}`}
+                        aria-pressed={on}
+                        onClick={() =>
+                          keep({ ...bank, music: bank.music.map((m) => (m.id === file.id ? withSongFormat(m, f.id, !on, songFormats.map((x) => x.id)) : m)) })
+                        }
+                      >
+                        {on ? '✓' : '✕'} {f.name || formatLabel(f.kind)}
+                      </button>
+                    )
+                  })}
+                </span>
+              ) : null}
               {kind === 'reactions' && madeWith(posts, campaign.id, file.name, true).rejected > 0 ? (
                 <span className="hint rejected">{madeNote(file, true)}</span>
               ) : null}

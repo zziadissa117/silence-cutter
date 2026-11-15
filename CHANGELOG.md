@@ -3,6 +3,26 @@
 Newest first. Every change says what it does, how to use it, and how it works
 underneath. Kept up to date with each commit.
 
+## Batch: songs for some formats only
+- His ask (2026-11-15): "Make it so there's music for talking heads and music for reaction-type formats ... I want
+  to add a new one for talking heads, but it doesn't fit for reactions."
+- Batch tab, Music: under each song, one tap per format - "✓ Talk", "✓ Shocked" - to use that song there or not. A
+  song on for every format is everyone's, as before; a new song starts on for all. A format left with no song is
+  pointed out ("no song on - those videos will have no music"). Green screen keeps its own sound, so it isn't listed.
+- Underneath: `BankFile.formats` on a song (absent: every format), `batch.songsOf`, `withSongFormat`; `formatBank`
+  gives each format its songs. Tests: `batchFormats.test.ts`, `batchView.test.tsx`.
+
+## Captions: no more made-up ones on clips with little talking
+- His report (2026-11-15): a batch clip came back with 83 captions, all in French. The Cutter server had taken the clip
+  for French and the speech model heard "C'est bon, je vais vous dire que je vais vous dire que..." over and over -
+  what it makes up over a clip with little or no talking in it.
+- Now a phrase repeated three times in a row (a single word, four) is a loop: its repeats are left out, and when loops
+  are most of what was heard, nothing is kept - the clip has no talking: no captions, kept as filmed (it then goes in
+  like any clip where he doesn't talk, and he picks its step on the check). Real repeats ("no no no", "very very
+  good", a phrase twice) are kept. Applies to every video and clip heard, English or French.
+- Underneath: `heardLoops.withoutLoops`, in `plan.planCampaignCut` after hearing (a `made up` check report says
+  when). Tests: `heardLoops.test.ts`.
+
 ## Batch drop-in: a Timeline on each clip's check
 - His ask (2026-11-14): "Make it so I can still see the timeline of every clip, because sometimes it cuts it too
   short, and I could just manually extend it."

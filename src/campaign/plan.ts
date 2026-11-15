@@ -40,6 +40,7 @@ import { ALIGNED_LATE_SEC, HEARD_LATE_SEC, captionWords, snapToOnsets, spokenWor
 import { LONG_SEC, TINY_SEC, cutNoise, cutOut, loneSounds, peakDbIn, peaksOf, protectWords, type CutCheck, type WordSpan } from './noiseCuts'
 import { partWindows } from './timedWords'
 import { findUms, heardOnlyFiller } from './umFind'
+import { withoutLoops } from './heardLoops'
 import { chosenVoice, loadProfiles, percentile, withProfile, type Voices } from './voiceProfile'
 
 /** How long the letter model may go without a word before it is given up
@@ -284,7 +285,14 @@ export async function planCampaignCut(
       onModelDownload: options.onModelDownload,
       onProgress: (p) => options.onTranscribeProgress?.(p * share),
     })
-    const heard = language === 'fr' ? frenchWords(listened) : listened
+    // One phrase over and over is the model making things up over a clip
+    // with little talking in it (heardLoops.ts): its repeats go, and all of
+    // it when that is most of what was heard.
+    const unlooped = withoutLoops(language === 'fr' ? frenchWords(listened) : listened)
+    const heard = unlooped.words
+    if (unlooped.looped > 0) {
+      report({ page: 'campaign', kind: 'check', phase: 'made up', message: `${unlooped.looped} of ${listened.length} words heard were one phrase looping${heard.length === 0 ? ' - nothing kept' : ''}` })
+    }
     if (language === 'fr') {
       // Which model heard it, and how it came out - to judge French by.
       const said = heard.map((w) => w.text).join('').trim()

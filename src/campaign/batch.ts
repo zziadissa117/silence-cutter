@@ -772,6 +772,23 @@ export function withFormats(bank: BatchBank): BatchBank {
 
 const inFormat = (id: string) => (item: { formats?: string[] }) => Boolean(item.formats?.includes(id))
 
+/** The batch's songs a format's videos are made with: the ones marked for it,
+ *  and the ones marked for no format in particular. */
+export function songsOf(music: readonly BankFile[], formatId: string): BankFile[] {
+  return music.filter((m) => !m.formats || m.formats.includes(formatId))
+}
+
+/** A song's formats with `formatId` turned on or off - none marked once it is
+ *  on for every one of `all`. */
+export function withSongFormat(song: BankFile, formatId: string, on: boolean, all: readonly string[]): BankFile {
+  const now = song.formats ?? [...all]
+  const next = on ? [...new Set([...now, formatId])] : now.filter((id) => id !== formatId)
+  const every = all.every((id) => next.includes(id))
+  const rest = { ...song }
+  delete rest.formats
+  return every ? rest : { ...rest, formats: all.filter((id) => next.includes(id)) }
+}
+
 /** One format as a bank of its own, the way the mixing has always read one:
  *  its own clips of him and product clips (or steps), its layout and sound,
  *  with the batch's headlines, looks, music and progress. */
@@ -791,6 +808,10 @@ export function formatBank(bank: BatchBank, format: BatchFormat): BatchBank {
     // No headline: no words over him at all - not the headlines, not
     // Claude + X - and the videos mixed from his clips, products and songs.
     ...(format.noHeadline ? { headlines: [], looks: undefined, hook: undefined, headlineStyles: undefined, headlineStyle: undefined, formula: undefined } : {}),
+    // Its own songs (his ask, 2026-11-15: "there's music for talking heads
+    // and music for reaction-type formats"): a song marked for some formats
+    // only (BankFile.formats) is theirs; an unmarked one is every format's.
+    music: songsOf(bank.music, format.id),
     // No music: no song picked for its videos.
     ...(format.noMusic && format.kind === 'talking' ? { music: [] } : {}),
     voice: undefined,

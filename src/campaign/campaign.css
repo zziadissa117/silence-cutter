@@ -2217,3 +2217,9 @@ html.editor-dark .caption-sheet { --ink: #000000; --text: #ffffff; --dim: #aeaeb
 .drop-chip { padding: 4px 9px; border-radius: 999px; font-size: 12.5px; font-weight: 650; color: var(--muted);
   background: color-mix(in srgb, var(--text) 6%, transparent); text-decoration: line-through; }
 .drop-chip.on { color: var(--text); text-decoration: none; background: color-mix(in srgb, var(--ok) 18%, transparent); }
+/* Which formats a batch song is for (BatchView Music list). */
+.song-formats { display: flex; flex-wrap: wrap; gap: 6px; flex-basis: 100%; }
+.song-format { padding: 4px 9px; border-radius: 999px; border: 0; font: inherit; font-size: 12.5px; font-weight: 650; cursor: pointer;
+  color: var(--muted); background: color-mix(in srgb, var(--text) 6%, transparent); text-decoration: line-through; }
+.song-format.on { color: var(--text); text-decoration: none; background: color-mix(in srgb, var(--ok) 18%, transparent); }
+.bank-item:has(.song-formats) { flex-wrap: wrap; }

@@ -758,6 +758,30 @@ describe('one batch for the account, in formats', () => {
     expect(host.textContent).toContain('r1.mp4')
   })
 
+  it('a song for some formats only: a tap under it, kept on the song (his ask, 2026-11-15)', async () => {
+    const song = (id: string) => ({ id, name: `${id}.mp3`, type: 'audio/mpeg', size: 1 })
+    storedBank = {
+      ...bank,
+      formats: [
+        { id: 'r', kind: 'reaction', name: 'Shocked' },
+        { id: 't', kind: 'talking', name: 'Talk' },
+      ],
+      products: bank.products.map((p) => ({ ...p, formats: ['r'] })),
+      reactions: bank.reactions.map((r) => ({ ...r, formats: ['r'] })),
+      music: [song('hype'), song('calm')],
+    }
+    await show({})
+    const chip = (songName: string, format: string) =>
+      [...(host.querySelector(`[aria-label="Formats ${songName} is for"]`)?.querySelectorAll('button') ?? [])].find((b) => b.textContent?.includes(format)) as HTMLButtonElement
+    expect(chip('hype.mp3', 'Talk').getAttribute('aria-pressed')).toBe('true')
+    await act(async () => chip('hype.mp3', 'Talk').click())
+    expect((await savedBank()).music.find((m) => m.id === 'hype')!.formats).toEqual(['r'])
+    expect(chip('hype.mp3', 'Talk').getAttribute('aria-pressed')).toBe('false')
+    // Calm only for the talking head: the reaction is left with hype alone.
+    await act(async () => chip('calm.mp3', 'Shocked').click())
+    expect((await savedBank()).music.find((m) => m.id === 'calm')!.formats).toEqual(['t'])
+  })
+
   it('adds a talking head format next to it, open to fill in', async () => {
     storedBank = bank
     await show({})

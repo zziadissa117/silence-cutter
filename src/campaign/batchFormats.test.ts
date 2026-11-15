@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { batchCaptionLook, emptyBank, formatBank, formatSharesFrom, formatsOf, turnsFor, withFormats, type BankFile, type BatchBank, type BatchFormat, type BatchSlot } from './batch'
+import { batchCaptionLook, emptyBank, formatBank, songsOf, withSongFormat, formatSharesFrom, formatsOf, turnsFor, withFormats, type BankFile, type BatchBank, type BatchFormat, type BatchSlot } from './batch'
 import { leftToMake, missingFor, planVideos, variationParts } from './batchRun'
 
 const files = (prefix: string, n: number, formats?: string[]): BankFile[] =>
@@ -165,6 +165,26 @@ describe('a talking head with Music off (the drop-in checklist, his ask 2026-11-
     expect(formatBank(bank, talk).music).toEqual([])
     expect(formatBank(bank, { ...talk, noMusic: undefined }).music).toEqual([song])
     expect(formatBank(bank, { ...talk, kind: 'reaction' }).music).toEqual([song])
+  })
+})
+
+describe('songs for some formats only (his ask, 2026-11-15: "music for talking heads and music for reaction-type formats")', () => {
+  const song = (id: string, formats?: string[]) => ({ id, name: `${id}.mp3`, type: 'audio/mpeg', size: 1, ...(formats ? { formats } : {}) })
+  const bank = { campaignId: 'c', angleId: 'a', reactions: [], products: [], headlines: ['Hi'], music: [song('calm', ['talk']), song('hype', ['react']), song('any')], perDay: 1, days: 1, used: {}, made: [] } as unknown as BatchBank
+
+  it("each format's videos get its own songs and the ones for every format", () => {
+    expect(formatBank(bank, { id: 'talk', kind: 'talking', name: 'Talk' }).music.map((m) => m.id)).toEqual(['calm', 'any'])
+    expect(formatBank(bank, { id: 'react', kind: 'reaction', name: 'React' }).music.map((m) => m.id)).toEqual(['hype', 'any'])
+    expect(songsOf(bank.music, 'other').map((m) => m.id)).toEqual(['any'])
+  })
+
+  it('a format tapped off and on again: marked for the others, then for every format again', () => {
+    const all = ['talk', 'react', 'green']
+    const off = withSongFormat(song('any'), 'react', false, all)
+    expect(off.formats).toEqual(['talk', 'green'])
+    const back = withSongFormat(off, 'react', true, all)
+    expect(back.formats).toBeUndefined()
+    expect(withSongFormat(song('calm', ['talk']), 'talk', false, all).formats).toEqual([])
   })
 })
 
