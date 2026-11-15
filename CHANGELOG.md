@@ -3,6 +3,12 @@
 Newest first. Every change says what it does, how to use it, and how it works
 underneath. Kept up to date with each commit.
 
+## Batch tab: "How each hook is doing" taken out
+- His ask (2026-11-15): "remove the how each hook is doing from the batch section its useless".
+- The section (each hook's views, Stop using it, Change words, Change to…, "Drop a hook that does badly by itself") is
+  gone from the Batch tab. A batch that had "Drop a hook that does badly" on keeps doing it, silently.
+- Underneath: `BatchView` `HookResults` and `runChangeLook` removed; `batchHooks.ts` stays (the batch still uses it).
+
 ## Batch clips: Cut or Raw per clip; the timeline opens as a page of its own
 - His report and ask (2026-11-15): "The timeline editor page in the batch section does not open good. I have an idea
   instead. Make it so i can select clips i want to be edited, meaning cutted by the cutter. because some clips i want
