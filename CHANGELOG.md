@@ -3,6 +3,16 @@
 Newest first. Every change says what it does, how to use it, and how it works
 underneath. Kept up to date with each commit.
 
+## Cutting back on his preset, as before the voice setup
+- His report (2026-11-15): "the cutter is not cutting as well as it used to be ... It's not making captions as well."
+- Since 2026-11-11 a measured voice ("Your voice") moved the silence line down by up to 15 dB and refused to cut any
+  pause shorter than his natural gap (up to 0.6 s); since 2026-11-13 the Cutter server did the same. That left pauses
+  in, and the speech model heard more room noise, so the captions got worse too. The batch start/end changes never
+  touched this (they are in montageRender only), and the English speech model is unchanged.
+- Now silences, word timings and caption windows use his preset alone, as before 2026-11-11 - on the phone and on the
+  Cutter server. His voice is still used to find "um"s by their sound.
+- Underneath: `plan.planCampaignCut` no longer takes `withProfile`'s settings (only its profile, for `findUms`).
+
 ## "ChatGPT" no longer jams the Cutter; Make now on the Batch tab
 - His report (2026-11-15): "the cutter is tweaking the second it hears ChatGPT" - "If you use ChatGPT" came back
   as one caption word, "chagititititi..." hundreds of letters long. And: "I press Start again, and nothing

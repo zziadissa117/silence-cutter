@@ -225,14 +225,16 @@ export async function planCampaignCut(
     }
   }
 
-  // His voice, measured once (voiceProfile.ts): the line under his word
-  // endings, no pause shorter than his natural gap - on his own talking only,
-  // and only when this video sounds like him on that mic.
+  // His voice, measured once (voiceProfile.ts): which mic this is, and how
+  // loud his "um"s are - for finding "um"s only. The silences are cut on his
+  // preset alone, as before 2026-11-11: the voice's lower line and longer
+  // shortest pause left pauses in and fed the speech model room noise (his
+  // report, 2026-11-15: "it's not cutting as well as it used to be ... not
+  // making captions as well").
   const talking = options.listen && !options.keepWhole && !options.quietIsFine
   const voices = talking ? (options.voices?.profiles ?? loadProfiles()) : []
   const tuned = withProfile(settings, levels, voices, options.voices?.chosen ?? chosenVoice())
   const profile = tuned.profile
-  settings = tuned.settings
   const silences = findSilentRanges(levels, settings)
 
   let fillerWords: Range[] = []
