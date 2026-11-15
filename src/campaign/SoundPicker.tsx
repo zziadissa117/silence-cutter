@@ -174,7 +174,7 @@ export function SoundPicker({ at, onPick, onClose }: { at: string; onPick: (pick
       <ul className="sound-list">
         {effects.map((song) => row(song.id, song.name, () => songFile(song), () => void fromBank(song)))}
       </ul>
-      {effects.length === 0 ? <p className="hint">No sound effects yet - tap + Add to the bank, or add them in Music, under Sound effects.</p> : null}
+      {effects.length === 0 ? <p className="hint">No sound effects yet - tap + Add to the bank, or add them in More → Bank, under Sound effects.</p> : null}
       {songs.length > 0 ? (
         <>
           <span className="label">Music bank</span>

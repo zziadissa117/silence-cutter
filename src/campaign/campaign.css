@@ -12,6 +12,7 @@
 .field textarea,
 .field select,
 .sound select,
+.music-after select,
 .sound input.words {
   width: 100%;
   min-height: 44px;
@@ -25,7 +26,7 @@
   font-size: 16px;
 }
 .field textarea { resize: vertical; line-height: 1.35; }
-.field select, .sound select {
+.field select, .sound select, .music-after select {
   /* Safari draws its own slim control and ignores the height without this. */
   appearance: none;
   -webkit-appearance: none;
@@ -676,6 +677,7 @@ input.bank-name { background: transparent; border: 0; border-bottom: 1px solid c
 .field textarea,
 .field select,
 .sound select,
+.music-after select,
 .sound input.words,
 .chooser select,
 .chooser > input[type=text],
@@ -2257,6 +2259,10 @@ html.editor-dark .caption-sheet { --ink: #000000; --text: #ffffff; --dim: #aeaeb
 .talk-fold > summary::-webkit-details-marker { display: none; }
 .talk-fold > .format-box { margin-bottom: 10px; }
 .talk-step-rules { display: flex; flex-direction: column; gap: 6px; padding: 10px 0; border-top: 1px solid var(--rule); }
+/* Beside "Words on screen" on a phone a step's name had room for three letters
+   ("Ope…"): the name is shown whole and the button goes under it (2026-11-15). */
+.talk-step-rules .talk-group-head { flex-wrap: wrap; }
+.talk-step-rules .talk-group-title { flex: 1 1 9em; white-space: normal; }
 .clip-editor-row { display: flex; align-items: center; gap: 10px; }
 .clip-editor-row > .row-name { flex: none; width: 52px; }
 .clip-editor-row > .seg, .clip-editor-move { flex: 1; min-width: 0; }
@@ -2264,6 +2270,10 @@ html.editor-dark .caption-sheet { --ink: #000000; --text: #ffffff; --dim: #aeaeb
 .clip-editor-actions { grid-template-columns: repeat(2, 1fr); }
 .clip-editor-busy { display: flex; flex-direction: column; gap: 10px; width: 100%; padding: 24px; }
 .clip-editor .screen.review { overflow-y: auto; }
+/* The video's box never shrinks: squeezed on a phone, the video spilled over
+   the X and the Length button above and below it (2026-11-15). The screen
+   scrolls instead. */
+.clip-editor .clip-viewer-frame { flex: none; }
 /* The clip screen's way out and its arrows, big and always seen (his report, 2026-11-15). */
 .clip-editor-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
 .clip-editor-title { display: flex; flex-direction: column; gap: 2px; min-width: 0; }

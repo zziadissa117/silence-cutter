@@ -1,7 +1,7 @@
 // New post: a video already sent for the campaign is skipped and named -
 // and Add anyway posts it again, as a post of its own.
 
-import { act } from 'react'
+import { StrictMode, act } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
@@ -100,5 +100,22 @@ describe('a video whose post of today was rejected', () => {
     const sent = vi.mocked(queueSend).mock.calls[0][0] as { key: string }
     expect(sent.key.startsWith(`${first}~anew-`)).toBe(true)
     vi.mocked(listPosts).mockResolvedValue([])
+  })
+})
+
+describe('mounted twice, as React does in development', () => {
+  it('still takes the videos picked (the demo runs on the dev server)', async () => {
+    await act(async () =>
+      root.render(
+        <StrictMode>
+          <NewPost campaigns={[campaign]} profile={profile} onDone={() => {}} onCancel={() => {}} />
+        </StrictMode>,
+      ),
+    )
+    const input = host.querySelector('input[aria-label="Choose the videos"]') as HTMLInputElement
+    Object.defineProperty(input, 'files', { value: [new File(['x'], 'picked.mp4', { type: 'video/mp4' })] })
+    await act(async () => input.dispatchEvent(new Event('change', { bubbles: true })))
+    await wait()
+    expect(host.querySelector('ol[aria-label="Videos to post"]')?.textContent).toContain('picked.mp4')
   })
 })

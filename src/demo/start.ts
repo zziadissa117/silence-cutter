@@ -50,7 +50,7 @@ function cleanAddress(): void {
 
 /** A computer's Chrome on Linux writes no AAC: the same encoder the Cutter
  *  server loads (serverMode.ts), so the demo can make real videos there. */
-async function soundEncoder(): Promise<void> {
+export async function soundEncoder(): Promise<void> {
   const { canEncodeAudio } = await import('mediabunny')
   if (!(await canEncodeAudio('aac').catch(() => false))) (await import('@mediabunny/aac-encoder')).registerAacEncoder()
 }

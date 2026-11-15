@@ -114,7 +114,7 @@ function hourBoost(hour: number): number {
 
 function linksFor(p: ServerPost): Record<string, string> {
   const out: Record<string, string> = {}
-  for (const a of p.accounts) out[a.id] = `https://example.com/demo/${a.platform}/${p.id}`
+  for (const a of p.accounts) out[a.name] = `https://example.com/demo/${a.platform}/${p.id}`
   return out
 }
 

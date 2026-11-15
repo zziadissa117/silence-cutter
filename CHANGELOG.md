@@ -3,6 +3,53 @@
 Newest first. Every change says what it does, how to use it, and how it works
 underneath. Kept up to date with each commit.
 
+## Batch clip screen: Length opens the clip on its timeline (it opened empty)
+- Found testing for the guide (2026-11-15): a clip's Length opened a timeline at 0:00 with nothing on it - on the clip
+  screen for every clip, on the clip check for clips added before recordings were kept. The timeline was opened before
+  the clip had been read, and it only takes its parts when it opens.
+- Now "Getting the clip…" shows for the moment it takes, then the timeline opens with the clip on it.
+- Underneath: `ClipEditor` and `DropCheck` wait for the source before `CutsEditor`. Tests: `clipEditor.test.tsx`;
+  `dropCheck.test.tsx` (its timeline stand-in now takes its parts once, like the real one).
+
+## Batch clip screen: the video no longer covers the X and Length
+- Found testing for the guide (2026-11-15), at iPhone size: the clip screen squeezed the video's box and the video
+  spilled over the big X (a tap there restarted the clip instead of closing) and the Length button.
+- Now the video's box keeps its size and the screen scrolls under it.
+- Underneath: `campaign.css` `.clip-editor .clip-viewer-frame { flex: none }`. Checked at 390×844 in Chrome.
+
+## Batch, Steps and rules: step names shown whole
+- On a phone a step's name beside "Words on screen" had room for three letters ("Ope…"). The name is now shown whole and
+  the button goes under it. Underneath: `campaign.css` `.talk-step-rules`.
+
+## Batch: the "Change a look on the videos not out yet ↓" link is gone
+- It scrolled to "How each hook is doing", which was taken out this morning: it did nothing. Underneath: `BatchView`
+  (`lookRows`). Test: `batchView.test.tsx`.
+
+## Batch, Start over: one video in the singular
+- "Take out the 1 video of this batch that haven't gone out yet, to make them again" now reads "…that hasn't gone out
+  yet, to make it again", and its result "Took out 1 video. Tap Start to make it again." Test: `batchView.test.tsx`.
+
+## Caption check: its cost said once, and Claude only credited when it read them
+- The Claude button read "· about about 2¢ of credits"; now "· about 2¢ of credits" (or "under 1¢").
+- With posting not set up Claude never reads the captions, but the quick check still said "Claude read them all and
+  found nothing to fix." It now says "Nothing in them looks misheard." then.
+- Underneath: `CaptionReview` (`QuickCheck` `read`). Tests: `editScreen.test.tsx`, `captionRecheck.test.tsx`.
+
+## Posts, Add music: the track picker looks like the others
+- It was the browser's plain grey box; now styled like every other picker, in light and dark. Underneath:
+  `campaign.css` `.music-after select`.
+
+## Hints that pointed at "More → Music" point at More → Bank
+- Trial reels' talking clip ("add songs in More → Music"), Motion graphics' and the Sound picker's sound effects
+  ("in Music, under Sound effects") named a screen that doesn't exist: music and sound effects are in More → Bank. The
+  Timeline editor's hint said "+ Overlay, + Text" for the buttons named Overlay and Text.
+- Test: `morePointers.test.ts` - every "More → …" in a hint names a row More has.
+
+## New post (and the Timeline editor's picker) on a computer's dev server
+- Only on `npm run dev` (where React mounts each screen twice): videos picked in New post or the Timeline editor's
+  picker were silently dropped. Nothing changes on the phone. Underneath: `NewPost`, `JoinPicker`, `ClipsMaker` set
+  their "still open" flag on every mount. Test: `newPost.test.tsx`.
+
 ## Demo mode for the guide's screenshots (on a computer only, never in the app)
 - His ask (2026-11-15): a guide for his students with real screenshots, "a demo mode that runs locally only ... never
   active in production ... No real brand names, account names, emails or numbers from my data."

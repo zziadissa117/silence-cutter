@@ -22,6 +22,7 @@ export async function beforePlainPage(): Promise<void> {
     window.location.replace(`/campaign.html?demo=${ask === 'enter' ? '1' : '0'}`)
     await new Promise(() => {})
   }
-  const { keepDemoServer } = await import('./start')
+  const { keepDemoServer, soundEncoder } = await import('./start')
   keepDemoServer()
+  await soundEncoder()
 }

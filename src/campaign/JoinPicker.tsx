@@ -51,12 +51,15 @@ export function JoinPicker({
   const [parts, setParts] = useState<Picked[]>([])
   const [goes, setGoes] = useState<EditGoes>(lastGoes)
   const alive = useRef(true)
-  useEffect(
-    () => () => {
+  // Set on every mount, not only at the start: React mounts a screen twice in
+  // development (StrictMode), and a flag left false by the first unmount made
+  // the picked videos vanish there.
+  useEffect(() => {
+    alive.current = true
+    return () => {
       alive.current = false
-    },
-    [],
-  )
+    }
+  }, [])
 
   const add = (files: File[]) => {
     const problem = pickArrived(files)
@@ -177,8 +180,8 @@ export function JoinPicker({
       </button>
       <p className="hint montage-for">
         {parts.length > 1
-          ? 'They are put together in this order first. Pictures, words and other videos go on in the editor (+ Overlay, + Text).'
-          : 'Pictures, words and other videos go on in the editor (+ Overlay, + Text).'}
+          ? 'They are put together in this order first. Pictures, words and other videos go on in the editor (Overlay, Text).'
+          : 'Pictures, words and other videos go on in the editor (Overlay, Text).'}
       </p>
     </div>
   )

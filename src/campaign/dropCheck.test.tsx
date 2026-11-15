@@ -39,20 +39,27 @@ vi.mock('./prepareDrop', () => ({
 }))
 vi.mock('./filming', () => ({ filmingOf: vi.fn(async () => ({ seconds: 2.5 })) }))
 vi.mock('./fingerprint', () => ({ fingerprint: vi.fn(async () => 'fp-again') }))
-// The timeline itself (tested in its own files): Done with the first part made longer.
-vi.mock('./CutsEditor', () => ({
-  CutsEditor: (p: { initial: { start: number; end: number }[]; missing?: boolean; onDone: (keep: { start: number; end: number }[]) => void; onCancel: () => void }) => (
-    <section className="timeline-stub">
-      <span className="timeline-parts">{p.missing ? 'missing' : JSON.stringify(p.initial)}</span>
-      <button type="button" onClick={() => p.onDone([{ start: p.initial[0].start - 0.5, end: p.initial[0].end }])}>
-        Done
-      </button>
-      <button type="button" onClick={p.onCancel}>
-        Back
-      </button>
-    </section>
-  ),
-}))
+// The timeline itself (tested in its own files): Done with the first part made longer. Like
+// the real one it takes its parts when it opens - later ones are not looked at.
+vi.mock('./CutsEditor', async () => {
+  const { useState } = await vi.importActual<typeof import('react')>('react')
+  return {
+    CutsEditor: (p: { initial: { start: number; end: number }[]; missing?: boolean; onDone: (keep: { start: number; end: number }[]) => void; onCancel: () => void }) => {
+      const [initial] = useState(p.initial)
+      return (
+        <section className="timeline-stub">
+          <span className="timeline-parts">{p.missing ? 'missing' : JSON.stringify(initial)}</span>
+          <button type="button" onClick={() => p.onDone([{ start: initial[0].start - 0.5, end: initial[0].end }])}>
+            Done
+          </button>
+          <button type="button" onClick={p.onCancel}>
+            Back
+          </button>
+        </section>
+      )
+    },
+  }
+})
 // A clip never heard is heard on the check.
 const heardNow = vi.fn(async () => ['nope', 'do', 'this', 'instead'].map((text, i) => ({ text, start: i, end: i + 0.4 })))
 vi.mock('./talkCaptions', () => ({ talkWords: () => heardNow() }))

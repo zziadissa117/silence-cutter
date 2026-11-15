@@ -461,6 +461,15 @@ describe("the batch's hooks: headline looks and Claude + X, in shares", () => {
     expect((await savedBank()).looks?.find((l) => l.look === 'snap')?.parts).toBe(1)
   })
 
+  it('has no link to the hook results taken out of the tab (2026-11-15) - it led nowhere', async () => {
+    storedBank = { ...bank, looks: [{ look: 'box', parts: 1 }, { look: 'outline', parts: 1 }] }
+    const waiting = { id: 'w1', key: 'w1', campaignId: 'inflow', status: 'scheduled', headline: 'one', postAt: null, accounts: [], batch: { id: 'b', date: iso(1), time: '10:00', size: 1, look: 'box' } }
+    localStorage.setItem('cutter.posts', JSON.stringify([waiting]))
+    await show({})
+    await settle()
+    expect(host.textContent).not.toContain('Change a look on the videos not out yet')
+  })
+
   it('takes Claude + X in among the headlines: both are asked for, and the videos come in their shares', async () => {
     await show({})
     await act(async () => look('Claude + X').click())
@@ -592,6 +601,20 @@ describe('starting the batch over', () => {
     expect(saved.made).toEqual(['r2|p2|h:two|'])
     expect(host.textContent).toContain('Took out 2 videos. Tap Start to make them again.')
     expect(makeButton().textContent).toBe('Start · 3 a day')
+    confirm.mockRestore()
+  })
+
+  it('asks about one video in the singular', async () => {
+    const post = { id: 'a', key: 'a', campaignId: 'inflow', status: 'scheduled', fileName: 'r1 + p1.mp4', headline: 'one', postAt: new Date(Date.now() + 86_400_000).toISOString(), batch: { id: 'b1', date: iso(1), time: '12:00', size: 1 } }
+    localStorage.setItem('cutter.posts', JSON.stringify([post]))
+    storedBank = { ...bank, running: true, made: ['r1|p1|h:one|'], filled: { [iso(1)]: 3 } }
+    const confirm = vi.spyOn(window, 'confirm').mockReturnValue(true)
+    await show({})
+    const button = [...host.querySelectorAll('button')].find((b) => b.textContent === 'Start over') as HTMLButtonElement
+    await act(async () => button.click())
+    await settle()
+    expect(confirm.mock.calls[0][0]).toContain("Take out the 1 video of this batch that hasn't gone out yet, to make it again")
+    expect(host.textContent).toContain('Took out 1 video. Tap Start to make it again.')
     confirm.mockRestore()
   })
 })

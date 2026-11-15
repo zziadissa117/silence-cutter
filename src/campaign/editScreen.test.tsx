@@ -162,6 +162,15 @@ describe('the quick check', () => {
     show({ review: { onRecheck: none, recheckKey: 'job1' } })
     await act(async () => {})
     expect(host.textContent).toContain('Every caption looks right')
+    expect(host.textContent).toContain('Claude read them all')
+  })
+
+  it("never says Claude read them when Claude didn't (posting not set up)", async () => {
+    show({ review: { recheckKey: 'job1' } })
+    await act(async () => {})
+    expect(host.textContent).toContain('Every caption looks right')
+    expect(host.textContent).not.toContain('Claude read them all')
+    expect(host.textContent).toContain('Nothing in them looks misheard.')
   })
 })
 

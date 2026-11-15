@@ -242,7 +242,7 @@ export function TrialTalkStart({
         <div className="setting-text">
           <span className="row-name">Songs · {picked.size} picked</span>
           <span className="row-line wrap">They take turns evenly, a different order each round.</span>
-          {songs.length === 0 ? <span className="row-line warn-text wrap">Your music bank is empty: add songs in More → Music first.</span> : null}
+          {songs.length === 0 ? <span className="row-line warn-text wrap">Your music bank is empty: add songs in More → Bank, under Music, first.</span> : null}
           <div className="warmup-chips">
             {songs.map((s) => {
               const on = picked.has(s.id)

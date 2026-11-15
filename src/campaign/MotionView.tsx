@@ -303,7 +303,7 @@ function SoundEffects({ session, onChange, disabled }: { session: MotionSession;
               ? 'Off for this video.'
               : count > 0
                 ? `${count} from your sound effects: ${[...new Set(sounds.map((s) => s.effectName))].join(', ')} - under your voice.`
-                : 'None yet: add yours in Music, under Sound effects, with the kind in the name (whoosh, swish, pop, ding, click, boom, camera).'}
+                : 'None yet: add yours in More → Bank, under Sound effects, with the kind in the name (whoosh, swish, pop, ding, click, boom, camera).'}
           </span>
         </span>
       </label>

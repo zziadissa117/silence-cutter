@@ -418,6 +418,12 @@ export function DropCheck({
               <div style={{ width: `${Math.round(remaking * 100)}%` }} />
             </div>
           </section>
+        ) : !timeline.source && timeline.recording !== 'missing' ? (
+          // The timeline takes its parts when it opens: opened before a clip
+          // with no recording kept was read, it stayed empty (2026-11-15).
+          <section className="screen review">
+            <p className="hint">Getting the clip…</p>
+          </section>
         ) : (
           <CutsEditor
             name={item.name}

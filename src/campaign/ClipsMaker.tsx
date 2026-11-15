@@ -58,12 +58,15 @@ export function ClipsMaker({
   const [song, setSong] = useState<File | null>(null)
   const [songError, setSongError] = useState<string | null>(null)
   const alive = useRef(true)
-  useEffect(
-    () => () => {
+  // Set on every mount, not only at the start: React mounts a screen twice in
+  // development (StrictMode), and a flag left false by the first unmount made
+  // the picked videos vanish there.
+  useEffect(() => {
+    alive.current = true
+    return () => {
       alive.current = false
-    },
-    [],
-  )
+    }
+  }, [])
 
   const add = (files: File[]) => {
     const problem = pickArrived(files)

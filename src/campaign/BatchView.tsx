@@ -1059,10 +1059,6 @@ export function BatchView({
   // early returns, where a hook would change their number and crash the tab.
   const hookStats_ = bank ? hookStats(posts, jobs, bank, looksOf(bank), angle.headline.style) : []
   const hookRows = groupHooks(hookStats_, 'words')
-  // A line per look when the batch takes turns between looks, or when a look
-  // has videos still to go that could be changed to another.
-  const lookRowsAll = groupHooks(hookStats_, 'look')
-  const lookRows = mixedLooks.length > 1 || lookRowsAll.some((r) => r.look && r.waiting > 0) ? lookRowsAll : []
 
   /** Takes one hook's videos not out yet out of the batch and changes the
    *  bank (the hook dropped, or its words changed); a running batch then
@@ -1141,7 +1137,8 @@ export function BatchView({
 
   const runStartOver = () => {
     if (!bank) return
-    const confirmText = `Take out the ${outAhead} video${outAhead === 1 ? '' : 's'} of this batch that haven't gone out yet, to make them again with your latest settings? Your clips, headlines and songs stay - tap Start after to make them.`
+    const one = outAhead === 1
+    const confirmText = `Take out the ${outAhead} video${one ? '' : 's'} of this batch that ${one ? "hasn't" : "haven't"} gone out yet, to make ${one ? 'it' : 'them'} again with your latest settings? Your clips, headlines and songs stay - tap Start after to make ${one ? 'it' : 'them'}.`
     if (!window.confirm(confirmText)) return
     if (onServer) {
       // The server has the batch's videos still to be made: it takes them out.
@@ -1171,7 +1168,7 @@ export function BatchView({
         latest: () => bankRef.current ?? now,
       })
       setPosts(done.posts)
-      setNotice(`Took out ${done.taken} video${done.taken === 1 ? '' : 's'}. Tap Start to make them again.`)
+      setNotice(`Took out ${done.taken} video${done.taken === 1 ? '' : 's'}. Tap Start to make ${done.taken === 1 ? 'it' : 'them'} again.`)
       if (done.failed > 0) setProblem(`${done.failed} couldn't be taken out: ${done.reason}`)
       void listPosts(true).then(setPosts).catch(() => {})
     })
@@ -2195,12 +2192,6 @@ export function BatchView({
               </button>
             ))}
           </div>
-        ) : null}
-        {lookRows.some((r) => r.look && r.waiting > 0) ? (
-          // The card is far down the tab: from here, one tap to it.
-          <button type="button" className="linkbtn" onClick={() => document.getElementById('hook-results')?.scrollIntoView({ behavior: 'smooth', block: 'start' })}>
-            Change a look on the videos not out yet ↓
-          </button>
         ) : null}
       </div>
 

@@ -157,12 +157,15 @@ export function NewPost({
   const [doubles, setDoubles] = useState<File[]>([])
 
   const alive = useRef(true)
-  useEffect(
-    () => () => {
+  // Set on every mount, not only at the start: React mounts a screen twice in
+  // development (StrictMode), and a flag left false by the first unmount made
+  // the picked videos vanish there.
+  useEffect(() => {
+    alive.current = true
+    return () => {
       alive.current = false
-    },
-    [],
-  )
+    }
+  }, [])
   // Read by captions being written, so each uses what is there when it goes
   // - set the moment things change, not when the screen next draws.
   const itemsRef = useRef(items)

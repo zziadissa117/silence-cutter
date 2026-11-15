@@ -6,6 +6,7 @@
 
 import type { CaptionWord } from '../campaign/captions'
 import type { BankFile, BatchBank } from '../campaign/batch'
+import { CLIP_MADE } from '../campaign/clipEdit'
 import { NO_EFFECTS } from '../campaign/effects'
 import { blankAngle, generalAngle, generalCampaign, type Angle, type Campaign } from '../campaign/look'
 import { saveMusicBank, type Song } from '../campaign/musicBank'
@@ -71,6 +72,9 @@ export function planOf(name: string): CampaignPlan {
     cleanSpeech: true,
   }
 }
+
+/** The talking head format's speed, every clip already made at it. */
+const TALK_SPEED = { speed: 1.1, made: CLIP_MADE } as const
 
 const bankFile = async (id: string, name: string, extra: Partial<BankFile> = {}): Promise<BankFile> => {
   const blob = await file(name)
@@ -151,9 +155,17 @@ export async function seedPhone(world: World, now = Date.now()): Promise<void> {
 
   // Moonbrew's batch: a reaction format and a talking head with steps.
   const reacts = [await bankFile('mb-react-1', 'react-1', { formats: ['fmt-react'] }), await bankFile('mb-react-2', 'react-2', { formats: ['fmt-react'] }), await bankFile('mb-react-3', 'react-3', { formats: ['fmt-react'] })]
-  const hooks = [await bankFile('mb-hook-1', 'hook-1', { formats: ['fmt-talk'], talks: true, edited: true, checked: true }), await bankFile('mb-hook-2', 'hook-2', { formats: ['fmt-talk'], talks: true, edited: true, checked: true })]
+  // His hooks with their words already checked, and the steps' clips with no
+  // talking: nothing to listen to, so the demo never needs the speech model.
+  const heardIn = (name: string): CaptionWord[] => (words[`./media/${name}.words.json`]?.words ?? []).map((w) => ({ text: w.text, start: w.start, end: w.end }))
+  const hooks = [
+    await bankFile('mb-hook-1', 'hook-1', { formats: ['fmt-talk'], talks: true, edited: true, checked: true, captions: heardIn('hook-1'), ...TALK_SPEED }),
+    await bankFile('mb-hook-2', 'hook-2', { formats: ['fmt-talk'], talks: true, edited: true, checked: true, captions: heardIn('hook-2'), ...TALK_SPEED }),
+  ]
   const products = [await bankFile('mb-product-1', 'product-1', { formats: ['fmt-react'] }), await bankFile('mb-product-2', 'product-2', { formats: ['fmt-react'] }), await bankFile('mb-product-3', 'product-3', { formats: ['fmt-react'] })]
-  const stepClip = async (id: string, name: string) => bankFile(id, name, { formats: ['fmt-talk'], checked: true })
+  // Already at the format's speed and as each step says (cut, or raw as
+  // filmed), so nothing is made again when the format is opened.
+  const stepClip = async (id: string, name: string, raw = false) => bankFile(id, name, { formats: ['fmt-talk'], checked: true, captions: [], ...TALK_SPEED, ...(raw ? { ownCut: true } : { edited: true }) })
   const filled: Record<string, number> = {}
   for (let d = 0; d < 3; d++) filled[addDays(today, d)] = 4
   const moonBatch: BatchBank = {
@@ -180,7 +192,7 @@ export async function seedPhone(world: World, now = Date.now()): Promise<void> {
     steps: [
       { id: 'st-open', name: 'Open the app', files: [await stepClip('mb-step-1a', 'product-1'), await stepClip('mb-step-1b', 'product-2')], formats: ['fmt-talk'], clips: 'cut' },
       { id: 'st-plan', name: 'Your plan', files: [await stepClip('mb-step-2a', 'product-2')], formats: ['fmt-talk'] },
-      { id: 'st-save', name: 'Savings', files: [await stepClip('mb-step-3a', 'product-3')], formats: ['fmt-talk'], clips: 'raw' },
+      { id: 'st-save', name: 'Savings', files: [await stepClip('mb-step-3a', 'product-3', true)], formats: ['fmt-talk'], clips: 'raw' },
     ],
   }
   await saveBatchBank(moonBatch)

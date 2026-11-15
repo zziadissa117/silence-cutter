@@ -670,6 +670,7 @@ export function CaptionReview({
         before={rechecked?.before}
         checking={checking}
         error={rechecked?.error}
+        read={rechecked !== null && !rechecked.error}
         approveLabel={approveLabel}
         onShow={(k) => {
           const first = firstWordOf(k)
@@ -778,7 +779,7 @@ export function CaptionReview({
                   'Claude is checking…'
                 ) : (
                   <>
-                    {recheckKey && wasChecked(recheckKey) ? 'Check again with Claude' : 'Check captions with Claude'} <span style={{ whiteSpace: 'nowrap', fontWeight: 400 }}>· about {centsLabel(estimateRecheckCents(texts, vocabulary))} of credits</span>
+                    {recheckKey && wasChecked(recheckKey) ? 'Check again with Claude' : 'Check captions with Claude'} <span style={{ whiteSpace: 'nowrap', fontWeight: 400 }}>· {centsLabel(estimateRecheckCents(texts, vocabulary))} of credits</span>
                   </>
                 )}
               </button>
@@ -1062,6 +1063,7 @@ function QuickCheck({
   before,
   checking,
   error,
+  read,
   approveLabel,
   onShow,
   onPlay,
@@ -1081,6 +1083,8 @@ function QuickCheck({
   before?: string[]
   checking: boolean
   error?: string
+  /** Claude read them (posting set up, its check answered). */
+  read: boolean
   approveLabel: string
   onShow: (k: number) => void
   onPlay: (k: number) => void
@@ -1129,7 +1133,7 @@ function QuickCheck({
       ) : queue.length === 0 ? (
         <div className="quick-card quick-done">
           <div className="quick-title">{error ? 'Captions ready to look at' : 'Every caption looks right'}</div>
-          <p className="hint">{error ?? 'Claude read them all and found nothing to fix.'}</p>
+          <p className="hint">{error ?? (read ? 'Claude read them all and found nothing to fix.' : 'Nothing in them looks misheard.')}</p>
           <button type="button" className="linkbtn" onClick={onPlayAll}>
             Watch it once
           </button>

@@ -68,6 +68,9 @@ describe("Claude's check of the captions", () => {
     await show(onRecheck)
     expect(onRecheck).toHaveBeenCalledTimes(1)
     expect(document.body.textContent).toContain('Check again with Claude')
+    // Its cost said once: "about 1¢", never "about about 1¢".
+    expect(document.body.textContent).not.toContain('about about')
+    expect(document.body.textContent).toMatch(/· (about \d+¢|under 1¢) of credits/)
   })
 
   it('leaves a phrase he typed into while it checked', async () => {

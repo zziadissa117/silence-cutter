@@ -215,6 +215,17 @@ export function ClipEditor({
     const { source, recording } = timeline
     // A clip he didn't have cut is one part on its timeline, not its zoom pieces.
     const shownParts = source ? (file.ownCut ? joinTouching(source.keep) : source.keep) : []
+    // The timeline takes its parts when it opens: opened before they were
+    // read, it stayed empty (2026-11-15).
+    if (!source && recording !== 'missing') {
+      return (
+        <FullPage>
+          <section className="screen review">
+            <p className="hint">Getting the clip…</p>
+          </section>
+        </FullPage>
+      )
+    }
     return (
       <FullPage>
         <CutsEditor
