@@ -26,7 +26,12 @@ vi.mock('./prepareDrop', () => ({
     asFilmedHere.push(Boolean(asFilmed))
     zoomsHere.push(cut.effects?.cutPunch !== 'off')
     if (name === 'bad.mov') throw new Error('no talking heard in it')
-    return { file: { id: `cut-${name}`, name, type: 'video/mp4', size: 1, from, edited: true }, words: [{ text: 'hi', start: 0, end: 0.3 }], text: said[name] }
+    return {
+      file: { id: `cut-${name}`, name, type: 'video/mp4', size: 1, from, edited: true },
+      words: [{ text: 'hi', start: 0, end: 0.3 }],
+      text: said[name],
+      plan: { keep: [{ start: 0.4, end: 1.2 }], words: [{ text: 'hi', start: 0.4, end: 0.7 }], duration: 2 },
+    }
   }),
   dropSettings: (zoom: object) => ({ ...settings, ...zoom }),
   hasZooms: (e: { cutPunch: string; hookPush: string; brandHit: string }) => e.cutPunch !== 'off' || e.hookPush !== 'off' || e.brandHit !== 'off',
@@ -83,7 +88,12 @@ function serverCuts(failing: string[] = []) {
           progress: 1,
           error: null,
           at: '',
-          dropped: { file: { id: order.outId, name: order.outName, type: 'video/mp4', size: 3, from: order.from, edited: true }, words: [], text: said[name] },
+          dropped: {
+            file: { id: order.outId, name: order.outName, type: 'video/mp4', size: 3, from: order.from, edited: true },
+            words: [],
+            text: said[name],
+            plan: { keep: [{ start: 0.2, end: 1 }], words: [], duration: 1.5 },
+          },
         }
   }
 }
@@ -288,6 +298,15 @@ describe('his clips, edited and waiting for his check', () => {
     expect(onPhone).not.toHaveBeenCalled()
   })
 
+  it("each clip waits for its check with its recording kept on the phone and how it was cut - for its timeline (his ask, 2026-11-14)", async () => {
+    await render()
+    await drop(['a.mov'])
+    const [q] = loadQueue('t')
+    expect(q.source).toMatchObject({ keep: [{ start: 0.4, end: 1.2 }], duration: 2, seed: 'fp-a.mov', voice: true, effects })
+    expect(q.source!.fileId.startsWith('src-')).toBe(true)
+    expect(savedFiles).toContain(q.source!.fileId)
+  })
+
   it('Cancel: nothing edited', async () => {
     await render()
     const input = host.querySelector('input[aria-label="Drop in all videos"]') as HTMLInputElement
@@ -337,7 +356,9 @@ describe('his clips, edited and waiting for his check', () => {
         [b.outId, 's2'],
       ])
       expect(host.textContent).toContain("bad.mov: couldn't edit it (no talking heard in it)")
-      expect(savedFiles.sort()).toEqual([a.outId, b.outId].sort())
+      // The copies down from the server - and each recording, kept for its timeline.
+      expect(savedFiles.filter((id) => !id.startsWith('src-')).sort()).toEqual([a.outId, b.outId].sort())
+      expect(savedFiles.filter((id) => id.startsWith('src-'))).toHaveLength(3)
       expect(server.dropped.sort()).toEqual(server.orders.map((o) => o.id).sort())
       expect(host.textContent).not.toContain('Your server is editing')
       expect(localStorage.getItem('batch.dropping:t')).toBeNull()
@@ -365,9 +386,14 @@ describe('his clips, edited and waiting for his check', () => {
       expect(server.orders[0]).toMatchObject({ asFilmed: true, inName: 'a.mov', outName: 'a.mp4' })
       // Zoom still on: the campaign's zooms go with it.
       expect(server.orders[0]).toMatchObject({ effects })
+      // Its recording kept here before it went up, for the timeline.
+      const kept = savedFiles.find((id) => id.startsWith('src-'))
+      expect(kept).toBeDefined()
       serverCuts()
       await lookAgain()
       expect(loadQueue('t').map((q) => [q.file.id, q.place, q.noCaptions, q.file.mirror])).toEqual([[server.orders[0].outId, 's1', true, true]])
+      // Zoom on, so the timeline makes it again with the campaign's zooms.
+      expect(loadQueue('t')[0].source).toMatchObject({ fileId: kept, keep: [{ start: 0.2, end: 1 }], effects })
     })
 
     it('the server not taking them: the phone does that one and the rest', async () => {

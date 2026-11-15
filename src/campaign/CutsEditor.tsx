@@ -570,6 +570,7 @@ export function CutsEditor({
   typing = false,
   quick = false,
   muteOwn = false,
+  cutsOnly = false,
 }: {
   name: string
   /** The recording, or null while it is being fetched from storage. */
@@ -633,6 +634,10 @@ export function CutsEditor({
   /** The quick check (EditScreen): only the video, big - the timeline and
    *  its tools stay hidden until he asks for the timeline editor. */
   quick?: boolean
+  /** Only the cuts: no Text, Overlay or Sound to put on - a batch clip's
+   *  timeline on its check (DropCheck.tsx), where the batch video draws
+   *  everything over it. */
+  cutsOnly?: boolean
   /** A reaction (no talking): the finished video has only its music, so
    *  its own sound isn't played here either. */
   muteOwn?: boolean
@@ -1952,7 +1957,7 @@ export function CutsEditor({
                 }}
                 onGrip={onGrip}
               />
-              {soundBars.length === 0 ? (
+              {soundBars.length === 0 && !cutsOnly ? (
                 <button
                   type="button"
                   className="tl-add-sound"
@@ -2051,6 +2056,8 @@ export function CutsEditor({
               <ToolButton label="Delete" onClick={() => removePicture(selectedPic)} icon={<path d="M5 7h14M10 7V5h4v2M7 7l1 12h8l1-12" />} />
             ) : null}
           </>
+        ) : cutsOnly ? (
+          <p className="hint tl-cuts-only">Tap a part, then drag its arrows to make it longer or shorter. The arrow at the top makes the clip again.</p>
         ) : (
           <>
             <ToolButton label="Text" onClick={addText} icon={<text x="3" y="17" fontSize="14" fontWeight="600" fill="currentColor" stroke="none">Aa</text>} />

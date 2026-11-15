@@ -821,6 +821,16 @@ trimmed at the joins (`joinTight` skips it); `mirrored` - drawn through `ctx.sca
 `frameAt`, so it is flipped in the one encode the video gets anyway. Music off: `formatBank` gives a talking format
 no songs and the render drops the track for videos planned before (`jobFormat.noMusic`).
 
+Each clip's Timeline on its check (his ask 2026-11-14): `cutDropped` also returns its `plan` (the keep, every word on
+the recording's clock, the duration; on the server in `DropResult.plan`). DropIn keeps the recording on the phone as a
+bank file `src-<uuid>` (`keepSource` - before the upload on the server path, since the server deletes its copy when
+the order is let go) and puts a `ClipSource` on the queued `ToCheck` (that file, its size and type, the plan, and the
+effects/brand words/voice/seed it was made with). On the check, Timeline opens `CutsEditor` (`cutsOnly`: no Text,
+Overlay, Sound) on the recording with the plan's keep and words; Done runs `prepareDrop.recut` (renderCampaignCut with
+those parts and the same zooms, words mapped with `captionWords` + `cutTime`), saves the new clip under a new id,
+puts it in the queue item in place of the old (retired), keeps the new keep. The recording is retired when the clip
+leaves the check (`next`), or when its server order fails.
+
 ## The engine (`engine/`, on Railway)
 
 ```

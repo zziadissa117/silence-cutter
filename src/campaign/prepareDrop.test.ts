@@ -31,7 +31,7 @@ vi.mock('./captions', () => ({
 }))
 
 import { NO_EFFECTS } from './effects'
-import { cutDropped, phrasePieces, videoType } from './prepareDrop'
+import { cutDropped, phrasePieces, recut, videoType } from './prepareDrop'
 
 const ZOOMS = { cutPunch: 'subtle', hookPush: 'subtle', brandHit: 'off', logoPop: false } as const
 const how = { settings: { thresholdDb: -40, minSilenceSec: 0.3 }, cleanSpeech: true, voice: true, names: [], effects: NO_EFFECTS } as unknown as Parameters<typeof cutDropped>[1]
@@ -106,6 +106,21 @@ describe('a dropped clip', () => {
       { start: 1.5, end: 2.75 },
       { start: 2.75, end: 4 },
     ])
+  })
+
+  it('says how it was cut from the recording - the parts kept and every word on the recording’s clock - for its timeline', async () => {
+    const cut = await cutDropped(recording, how)
+    expect(cut.plan).toEqual({ keep: [{ start: 1, end: 3 }], words: heard, duration: 4 })
+    const whole = await cutDropped(recording, { ...how, asFilmed: true })
+    expect(whole.plan).toEqual({ keep: [{ start: 0, end: 4 }], words: heard, duration: 4 })
+  })
+
+  it('made again with the parts he set on its timeline: his words on the new clip’s clock', async () => {
+    const out = await recut(recording, { keep: [{ start: 1.5, end: 3 }], words: heard, voice: true, seed: 's' })
+    expect(rendered.at(-1)!.keep).toEqual([{ start: 1.5, end: 3 }])
+    // "open" starts before the part now: left out; the rest moved back to its start.
+    expect(out.text).toBe('the app')
+    expect(out.words[0].start).toBeCloseTo(0.1)
   })
 })
 

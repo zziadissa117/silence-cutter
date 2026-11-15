@@ -26,7 +26,11 @@ import { checkOrder, fileIn, HOOK, loadQueue, placed, placeOf, saveQueue, sounds
 import type { Campaign } from './look'
 import { ChevronLeft } from './icons'
 import { postingHere, recheckCaptions } from './posting'
-import { dropSettings } from './prepareDrop'
+import { CutsEditor } from './CutsEditor'
+import { filmingOf } from './filming'
+import { fingerprint } from './fingerprint'
+import { cutName, dropSettings, recut } from './prepareDrop'
+import type { Range } from '../media/silenceMath'
 import { learned } from './stepMatch'
 import { loadBankFile, retireBankFiles, saveBankFile } from './store'
 import { talkWords } from './talkCaptions'
@@ -97,6 +101,13 @@ export function DropCheck({
   const [hint, setHint] = useState<string | null>(item?.hint ?? null)
   /** Flipped left to right (BankFile.mirror) - set by the drop-in checklist, changed here. */
   const [mirror, setMirror] = useState(Boolean(item?.file.mirror))
+  /** Its timeline open (his ask, 2026-11-14: "sometimes it cuts it too
+   *  short, and I could just manually extend it"): the recording, or null
+   *  while it loads; 'missing' when it is no longer on the phone. */
+  const [timeline, setTimeline] = useState<{ recording: Blob | null | 'missing' } | null>(null)
+  /** Being made again from the timeline: how far, or what went wrong. */
+  const [remaking, setRemaking] = useState<number | null>(null)
+  const [remakeProblem, setRemakeProblem] = useState<string | null>(null)
 
   // The ones out of the batch by now are out of the check for good.
   useEffect(() => {
@@ -150,11 +161,25 @@ export function DropCheck({
 
   /** Done with this clip: out of the check, on to the next. */
   const next = () => {
+    // Its recording, kept for the timeline, goes now.
+    if (item.source) void retireBankFiles([item.source.fileId]).catch(() => {})
+    setRemakeProblem(null)
     // Read again: clips the server finished meanwhile come into the check too.
     const rest = loadQueue(format.id).filter((q) => q.file.id !== item.file.id)
     saveQueue(format.id, rest)
     setDone((n) => n + 1)
     setQueue(checkOrder(rest))
+  }
+
+  /** The clip's timeline, from its recording and how it was cut. */
+  const openTimeline = () => {
+    const source = item.source
+    if (!source) return
+    setRemakeProblem(null)
+    setTimeline({ recording: null })
+    void loadBankFile({ id: source.fileId, name: item.name, type: source.type, size: source.size })
+      .catch(() => null)
+      .then((recording) => setTimeline((t) => (t ? { recording: recording ?? 'missing' } : t)))
   }
 
   const listening = Boolean(item.unheard) && heard === null
@@ -208,6 +233,13 @@ export function DropCheck({
         {(!item.sure || hint) && place === item.place && place !== null ? (
           <span className="drop-check-unsure">{hint ? 'Maybe the wrong step' : 'Not sure - check it'}</span>
         ) : null}
+        {/* The parts kept from the recording, to make one longer - kept on the
+            phone until the clip is checked. */}
+        {item.source ? (
+          <button type="button" className="linkbtn drop-check-timeline" onClick={openTimeline}>
+            Timeline
+          </button>
+        ) : null}
         {/* Left and right swapped - a paper he holds up reads the right way. */}
         <button type="button" className={`linkbtn drop-check-mirror${mirror ? ' active' : ''}`} aria-pressed={mirror} onClick={() => setMirror(!mirror)}>
           {mirror ? 'Mirrored' : 'Mirror'}
@@ -232,6 +264,7 @@ export function DropCheck({
         </span>
       ) : null}
       {listening ? <span className="hint">Listening to what you say in it…</span> : null}
+      {remakeProblem ? <span className="hint warn-text">{remakeProblem}</span> : null}
       {/* The step its words sound like, one tap away. */}
       {hint && place !== hint && place !== OUT ? (
         <button type="button" className="drop-check-hint" onClick={() => setPlace(hint)}>
@@ -266,6 +299,71 @@ export function DropCheck({
       </div>
     </div>
   )
+
+  /** Made again with the parts he set on the timeline: in place of the clip
+   *  in the check, with his words on its new clock (his caption changes go
+   *  back to what was heard). */
+  const remake = async (keep: Range[]) => {
+    const source = item.source
+    const recording = timeline?.recording
+    if (!source || !(recording instanceof Blob)) return
+    setRemaking(0)
+    try {
+      const made = await recut(recording, { ...source, keep, onPhase: setRemaking })
+      const id = crypto.randomUUID()
+      await saveBankFile(id, made.blob)
+      const seconds = (await filmingOf(made.blob).catch(() => null))?.seconds
+      const clip: BankFile = {
+        ...item.file,
+        id,
+        name: cutName(item.name),
+        type: 'video/mp4',
+        size: made.blob.size,
+        fp: await fingerprint(made.blob),
+        ...(seconds ? { seconds } : {}),
+      }
+      const changed: ToCheck = { ...item, file: clip, words: made.words, text: made.text, source: { ...source, keep }, unheard: undefined }
+      const list = loadQueue(format.id).map((q) => (q.file.id === item.file.id ? changed : q))
+      saveQueue(format.id, list)
+      // The clip made before: only in the check, so it goes.
+      void retireBankFiles([item.file.id]).catch(() => {})
+      setQueue((now) => now.map((q) => (q.file.id === item.file.id ? changed : q)))
+      setTimeline(null)
+    } catch (error) {
+      setRemakeProblem(`Couldn't make it again (${error instanceof Error ? error.message : String(error)}). The clip is as it was.`)
+    } finally {
+      setRemaking(null)
+    }
+  }
+
+  // The timeline over the whole screen: the recording, the parts kept, the
+  // arrows to make one longer or shorter - Done makes the clip again.
+  if (timeline) {
+    return (
+      <div className="drop-check-screen">
+        {remaking !== null ? (
+          <section className="screen review">
+            <span className="row-name">Making the clip again… {Math.round(remaking * 100)}%</span>
+            <div className="bar">
+              <div style={{ width: `${Math.round(remaking * 100)}%` }} />
+            </div>
+          </section>
+        ) : (
+          <CutsEditor
+            name={item.name}
+            file={timeline.recording instanceof Blob ? timeline.recording : null}
+            missing={timeline.recording === 'missing'}
+            duration={item.source!.duration}
+            initial={item.source!.keep}
+            words={item.source!.words}
+            onDone={(keep) => void remake(keep)}
+            onCancel={() => setTimeline(null)}
+            cutsOnly
+          />
+        )}
+      </div>
+    )
+  }
 
   const approveLabel = place === OUT ? (item.recheck ? 'Take it out' : 'Leave it out') : queue.length > 1 ? 'Approve & next clip' : 'Approve'
   const screen = `drop-check-screen${mirror ? ' mirrored' : ''}`

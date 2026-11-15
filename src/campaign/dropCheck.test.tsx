@@ -19,7 +19,32 @@ vi.mock('./store', () => ({
 }))
 vi.mock('./talkLink', () => ({ downloadFile: vi.fn(async () => new Blob(['clip'])) }))
 vi.mock('./posting', () => ({ postingHere: () => ({}), recheckCaptions: vi.fn() }))
-vi.mock('./prepareDrop', () => ({ dropSettings: () => ({ settings: {} }) }))
+// Made again from the timeline: what it was asked for.
+const recuts: { keep: { start: number; end: number }[]; seed: string }[] = []
+vi.mock('./prepareDrop', () => ({
+  dropSettings: () => ({ settings: {} }),
+  cutName: (name: string) => name.replace(/\.[^./]+$/, '') + '.mp4',
+  recut: vi.fn(async (_file: Blob, { keep, seed }: { keep: { start: number; end: number }[]; seed: string }) => {
+    recuts.push({ keep, seed })
+    return { blob: new Blob(['again']), words: [{ text: 'longer', start: 0, end: 0.5 }], text: 'longer' }
+  }),
+}))
+vi.mock('./filming', () => ({ filmingOf: vi.fn(async () => ({ seconds: 2.5 })) }))
+vi.mock('./fingerprint', () => ({ fingerprint: vi.fn(async () => 'fp-again') }))
+// The timeline itself (tested in its own files): Done with the first part made longer.
+vi.mock('./CutsEditor', () => ({
+  CutsEditor: (p: { initial: { start: number; end: number }[]; missing?: boolean; onDone: (keep: { start: number; end: number }[]) => void; onCancel: () => void }) => (
+    <section className="timeline-stub">
+      <span className="timeline-parts">{p.missing ? 'missing' : JSON.stringify(p.initial)}</span>
+      <button type="button" onClick={() => p.onDone([{ start: p.initial[0].start - 0.5, end: p.initial[0].end }])}>
+        Done
+      </button>
+      <button type="button" onClick={p.onCancel}>
+        Back
+      </button>
+    </section>
+  ),
+}))
 // A clip never heard is heard on the check.
 const heardNow = vi.fn(async () => ['nope', 'do', 'this', 'instead'].map((text, i) => ({ text, start: i, end: i + 0.4 })))
 vi.mock('./talkCaptions', () => ({ talkWords: () => heardNow() }))
@@ -83,6 +108,7 @@ let bank: BatchBank
 let formatNow: BatchFormat
 const onClose = vi.fn()
 beforeEach(() => {
+  recuts.length = 0
   host = document.createElement('div')
   document.body.append(host)
   root = createRoot(host)
@@ -278,6 +304,48 @@ describe('looking again at where the clips of the batch are (his ask, 2026-11-14
     expect(host.querySelector('.drop-check-screen.mirrored')).not.toBeNull()
     await click('Approve')
     expect(bank.steps![0].files.at(-1)).toMatchObject({ id: 'b', mirror: true })
+  })
+
+  it('Timeline (his ask, 2026-11-14): the parts kept from its recording; Done makes the clip again in its place - its recording goes once the clip is checked', async () => {
+    const source = {
+      fileId: 'src-1',
+      size: 5,
+      type: 'video/quicktime',
+      keep: [{ start: 1, end: 2 }],
+      words: [{ text: 'hi', start: 0.6, end: 0.9 }],
+      duration: 3,
+      effects: { cutPunch: 'off', hookPush: 'off', brandHit: 'off', logoPop: false } as const,
+      brandWords: [],
+      voice: true,
+      seed: 'fp-rec',
+    }
+    saveQueue('t', [clip('a', 's1', true, { source })])
+    await render()
+    await settle()
+    await click('Timeline')
+    await settle()
+    expect(host.querySelector('.timeline-parts')?.textContent).toBe('[{"start":1,"end":2}]')
+    await click('Done')
+    await settle()
+    // Made again from the recording, the first part half a second longer, with its own seed.
+    expect(recuts).toEqual([{ keep: [{ start: 0.5, end: 2 }], seed: 'fp-rec' }])
+    const [q] = loadQueue('t')
+    expect(q.file.id).not.toBe('a')
+    expect(q).toMatchObject({ text: 'longer', file: { name: 'a.mp4', fp: 'fp-again', seconds: 2.5 }, source: { keep: [{ start: 0.5, end: 2 }] } })
+    // The clip made before was only in the check: let go.
+    expect(retired).toContainEqual(['a'])
+    // Back on the check, with the new clip: approved into the batch, its recording let go.
+    expect(host.querySelector('.timeline-stub')).toBeNull()
+    await click('Approve')
+    expect(bank.steps![0].files.at(-1)!.id).toBe(q.file.id)
+    expect(retired).toContainEqual(['src-1'])
+  })
+
+  it('no recording kept (a clip already in the batch, or from before): no Timeline', async () => {
+    saveQueue('t', [clip('a', 's1', true)])
+    await render()
+    await settle()
+    expect(button('Timeline')).toBeUndefined()
   })
 })
 

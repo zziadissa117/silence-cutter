@@ -214,6 +214,7 @@ async function runDrop(order: DropOrder): Promise<void> {
     },
     words: cut.words,
     text: cut.text,
+    plan: cut.plan,
   }
   await tell(order.id, 'drop', { state: 'made', progress: 1, dropped })
 }

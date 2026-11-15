@@ -33,6 +33,18 @@ export interface DroppedClip {
   words: CaptionWord[]
   /** What he says in it, as one line. */
   text: string
+  /** How it was cut from the recording, for its timeline on the check. */
+  plan: DropPlan
+}
+
+/** How a clip was cut from its recording (his ask, 2026-11-14: "Make it so I
+ *  can still see the timeline of every clip, because sometimes it cuts it
+ *  too short, and I could just manually extend it"): the stretches kept and
+ *  every word heard, on the recording's own clock. */
+export interface DropPlan {
+  keep: Range[]
+  words: CaptionWord[]
+  duration: number
 }
 
 export type DropPhase = 'model' | 'listening' | 'cutting'
@@ -105,7 +117,7 @@ export async function cutDropped(
     asFilmed = false,
     onPhase,
   }: DropCut & { names: string[]; seed?: string; asFilmed?: boolean; onPhase?: (phase: DropPhase, fraction: number) => void },
-): Promise<{ blob: Blob; words: CaptionWord[]; text: string; cut: boolean; remade: boolean }> {
+): Promise<{ blob: Blob; words: CaptionWord[]; text: string; cut: boolean; remade: boolean; plan: DropPlan }> {
   const callbacks = { onModelDownload: (p: number) => onPhase?.('model', p), onTranscribeProgress: (p: number) => onPhase?.('listening', p) }
   // The Cutter's own zooms, nothing else: no headline, logo, pictures or
   // captions - the batch video draws those over it.
@@ -130,7 +142,16 @@ export async function cutDropped(
       const made = await render(plan.keep, plan)
       // On the cut's own clock, as its captions are drawn.
       const words = heard.map((w) => ({ text: w.text, start: cutTime(w.start, plan.keep), end: cutTime(w.end, plan.keep) }))
-      return { blob: made.blob, words, text: words.map((w) => w.text.trim()).join(' '), cut: true, remade: true }
+      // Every word, cut out or not, for the timeline.
+      const all = captionWords(plan.spoken ?? plan.words, [{ start: 0, end: plan.duration }], { rough: !plan.aligned })
+      return {
+        blob: made.blob,
+        words,
+        text: words.map((w) => w.text.trim()).join(' '),
+        cut: true,
+        remade: true,
+        plan: { keep: plan.keep, words: all, duration: plan.duration },
+      }
     }
   }
   // As filmed: heard on its own clock, the way a clip's captions are
@@ -140,11 +161,39 @@ export async function cutDropped(
   const text = words.map((w) => w.text.trim()).join(' ')
   // With his zooms: made again whole, the shot moving between his phrases.
   // The pieces touch, so its clock - and its words' - stays the recording's.
+  const whole = { keep: [{ start: 0, end: plan.duration }], words, duration: plan.duration }
   if (hasZooms(effects) && plan.duration > 0) {
-    const made = await render(phrasePieces(words, plan.duration), plan)
-    return { blob: made.blob, words, text, cut: false, remade: true }
+    const pieces = phrasePieces(words, plan.duration)
+    const made = await render(pieces, plan)
+    return { blob: made.blob, words, text, cut: false, remade: true, plan: { ...whole, keep: pieces } }
   }
-  return { blob: file, words, text, cut: false, remade: false }
+  return { blob: file, words, text, cut: false, remade: false, plan: whole }
+}
+
+/** A dropped clip made again from its recording with the stretches he set on
+ *  its timeline: the same zooms (`effects`, `seed`), his words on the new
+ *  clip's own clock. */
+export async function recut(
+  file: Blob,
+  {
+    keep,
+    words: heard,
+    effects = NO_EFFECTS,
+    brandWords = [],
+    voice,
+    seed,
+    onPhase,
+  }: { keep: Range[]; words: CaptionWord[]; effects?: AngleEffects; brandWords?: string[]; voice: boolean; seed: string; onPhase?: (fraction: number) => void },
+): Promise<{ blob: Blob; words: CaptionWord[]; text: string }> {
+  const look = { ...videoLook(blankCampaign('drop-in'), blankAngle('drop-in', 'Drop-in')), effects: { ...effects, logoPop: false }, brandWords }
+  const moments = wordMoments({ words: heard }, look)
+  const made = await renderCampaignCut(
+    file,
+    { keep, look, headlineText: '', logoMoments: [], soundMoments: [], brandMoments: moments.brand, pictureMoments: [], bankCues: [], seed, captions: [], voice },
+    (p) => onPhase?.(p),
+  )
+  const words = captionWords(heard, keep).map((w) => ({ text: w.text, start: cutTime(w.start, keep), end: cutTime(w.end, keep) }))
+  return { blob: made.blob, words, text: words.map((w) => w.text.trim()).join(' ') }
 }
 
 /** A video file's type, for a clip kept as he gave it: its own, or from its name. */
@@ -192,5 +241,5 @@ export async function prepareClip(
     ...(made.cut ? { edited: true } : { ownCut: true }),
     ...(seconds ? { seconds } : {}),
   }
-  return { file: kept, words: made.words, text: made.text }
+  return { file: kept, words: made.words, text: made.text, plan: made.plan }
 }

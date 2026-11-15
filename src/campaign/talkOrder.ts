@@ -7,6 +7,7 @@
 // several videos at once (serverTalk.ts), then sends the made video to
 // Postiz exactly as the phone would. Shared by both sides; plain data only.
 
+import type { DropPlan } from './prepareDrop'
 import type { CaptionPosition, CaptionSize, CaptionStyle, CaptionWord } from './captions'
 import type { Voices } from './voiceProfile'
 import type { AngleEffects } from './effects'
@@ -120,6 +121,8 @@ export interface DropResult {
   file: { id: string; name: string; type: string; size: number; fp?: string; from?: string; seconds?: number; edited?: boolean; ownCut?: boolean }
   words: CaptionWord[]
   text: string
+  /** How it was cut from the recording, for its timeline on the check (prepareDrop.DropPlan). */
+  plan?: DropPlan
 }
 
 export type TalkState = 'waiting' | 'listening' | 'listened' | 'making' | 'made' | 'failed'

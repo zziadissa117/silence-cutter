@@ -20,12 +20,12 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 
 import { VideoPicker } from '../VideoPicker'
 import type { BankFile, BatchBank, BatchStep } from './batch'
-import { addToQueue, checkedClip, clipsOfFormat, loadQueue, notEdited, QUEUE_EVENT, queueRecheck, sameRecording, suggestPlace, type DropChoices, type ToCheck } from './dropQueue'
+import { addToQueue, checkedClip, clipsOfFormat, loadQueue, notEdited, QUEUE_EVENT, queueRecheck, sameRecording, suggestPlace, type ClipSource, type DropChoices, type ToCheck } from './dropQueue'
 import type { AngleEffects } from './effects'
 import { fingerprint } from './fingerprint'
 import { NO_EFFECTS } from './effects'
 import { cutName, dropSettings, hasZooms, prepareClip, type DropPhase } from './prepareDrop'
-import { loadBankFile, saveBankFile } from './store'
+import { loadBankFile, retireBankFiles, saveBankFile } from './store'
 import { keptWords } from './talkCaptions'
 import { downloadFile, dropTalk, orderDrop, serverLetDown, talkNow, talkServerUp, upload } from './talkLink'
 import { talkFileId, type DropResult } from './talkOrder'
@@ -42,13 +42,19 @@ interface Waiting {
   /** Where he asked it to go, and the clip it takes the place of. */
   to?: string | null
   replaces?: string
-  /** Dropped in with "Captions" unticked, or "Mirror them" ticked. */
+  /** Dropped in with "Captions" unticked, or "Mirror them" ticked, or "Zoom" unticked. */
   noCaptions?: boolean
   mirror?: boolean
+  noZoom?: boolean
+  /** The recording, kept on the phone for the clip's timeline on the check. */
+  source?: KeptRecording
   back?: boolean
   /** Times the copy for the phone failed to come down. */
   tries?: number
 }
+
+/** A dropped recording kept on the phone for its clip's timeline. */
+type KeptRecording = Pick<ClipSource, 'fileId' | 'size' | 'type'>
 
 /** After this many failed downloads the phone stops asking: the clip waits
  *  for his check all the same, and is fetched again when he opens it. */
@@ -185,7 +191,11 @@ export function DropIn({
 
   /** A clip back, edited: waiting for his check, where it would go worked
    *  out (dropQueue.suggestPlace). */
-  const toCheck = (name: string, clip: DropResult, { to, replaces, noCaptions, mirror }: { to?: string | null; replaces?: string; noCaptions?: boolean; mirror?: boolean }) => {
+  const toCheck = (
+    name: string,
+    clip: DropResult,
+    { to, replaces, noCaptions, mirror, source }: { to?: string | null; replaces?: string; noCaptions?: boolean; mirror?: boolean; source?: ClipSource },
+  ) => {
     const bank = getBank()
     const { place, sure, hint } = suggestPlace(bank, steps, clip.text, { to, replaces, hooks })
     setQueue(
@@ -199,8 +209,33 @@ export function DropIn({
         ...(hint ? { hint } : {}),
         ...(replaces ? { replaces } : {}),
         ...(noCaptions ? { noCaptions: true } : {}),
+        ...(source ? { source } : {}),
       }),
     )
+  }
+
+  /** The recording kept on this phone for the clip's timeline - nothing
+   *  when it can't be (no room): the clip is checked without one. */
+  const keepSource = async (blob: Blob | null): Promise<KeptRecording | undefined> => {
+    if (!blob) return undefined
+    const kept = { fileId: `src-${crypto.randomUUID()}`, size: blob.size, type: blob.type || 'video/quicktime' }
+    return saveBankFile(kept.fileId, blob).then(
+      () => kept,
+      () => undefined,
+    )
+  }
+  /** Its recording and cut, with how it was made, for the check's timeline. */
+  const sourceOf = (kept: KeptRecording | undefined, clip: DropResult, noZoom: boolean | undefined, from: string): ClipSource | undefined => {
+    if (!kept || !clip.plan) return undefined
+    const how = cut()
+    return {
+      ...kept,
+      ...clip.plan,
+      effects: noZoom ? NO_EFFECTS : (how.effects ?? NO_EFFECTS),
+      brandWords: how.brandWords ?? [],
+      voice: how.voice,
+      seed: from,
+    }
   }
 
   /** Already on its way or waiting for his check: not edited twice. */
@@ -219,6 +254,7 @@ export function DropIn({
         // A clip of the batch that isn't on this phone is cut from the
         // server's own copy.
         let fileId = item.replaces?.id ?? ''
+        const source = await keepSource(item.blob)
         if (item.blob) {
           fileId = talkFileId('t', id)
           await upload(fileId, item.blob, item.name, item.blob.type || 'video/quicktime', (p) => say(`Sending to your server ${Math.round(p * 100)}%`))
@@ -245,6 +281,8 @@ export function DropIn({
             ...(item.replaces ? { replaces: item.replaces.id } : {}),
             ...(item.noCaptions ? { noCaptions: true } : {}),
             ...(item.mirror ? { mirror: true } : {}),
+            ...(item.noZoom ? { noZoom: true } : {}),
+            ...(source ? { source } : {}),
           },
         ])
       } catch {
@@ -272,7 +310,14 @@ export function DropIn({
           asFilmed: item.asFilmed,
           onPhase: (phase, p) => setRunning({ at: i + 1, of: items.length, name: item.name, phase: `${PHASE[phase]}${p > 0 && p < 1 ? ` ${Math.round(p * 100)}%` : ''}` }),
         })
-        toCheck(item.name, clip, { to: item.to, replaces: item.replaces?.id, noCaptions: item.noCaptions, mirror: item.mirror })
+        const kept = await keepSource(blob)
+        toCheck(item.name, clip, {
+          to: item.to,
+          replaces: item.replaces?.id,
+          noCaptions: item.noCaptions,
+          mirror: item.mirror,
+          source: sourceOf(kept, clip, item.noZoom, item.from),
+        })
       } catch (error) {
         fail(item.name, error)
       }
@@ -392,13 +437,21 @@ export function DropIn({
         }
         if (!rec) {
           fail(w.name, 'the server lost it - drop it in again')
+          if (w.source) void retireBankFiles([w.source.fileId]).catch(() => {})
           next = next.filter((x) => x.id !== w.id)
         } else if (rec.state === 'made' && rec.dropped) {
-          toCheck(w.name, rec.dropped, { to: w.to, replaces: w.replaces, noCaptions: w.noCaptions, mirror: w.mirror })
+          toCheck(w.name, rec.dropped, {
+            to: w.to,
+            replaces: w.replaces,
+            noCaptions: w.noCaptions,
+            mirror: w.mirror,
+            source: sourceOf(w.source, rec.dropped, w.noZoom, w.from),
+          })
           next = next.map((x) => (x.id === w.id ? { ...x, back: true } : x))
           copies.push([{ ...w, back: true }, rec.dropped.file.id])
         } else if (rec.state === 'failed') {
           fail(w.name, rec.error ?? 'failed on the server')
+          if (w.source) void retireBankFiles([w.source.fileId]).catch(() => {})
           void dropTalk(w.id)
           next = next.filter((x) => x.id !== w.id)
         } else next = next.map((x) => (x.id === w.id ? { ...x, progress: rec.progress } : x))

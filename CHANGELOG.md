@@ -3,6 +3,24 @@
 Newest first. Every change says what it does, how to use it, and how it works
 underneath. Kept up to date with each commit.
 
+## Batch drop-in: a Timeline on each clip's check
+- His ask (2026-11-14): "Make it so I can still see the timeline of every clip, because sometimes it cuts it too
+  short, and I could just manually extend it."
+- Each clip dropped in now has "Timeline" on its check (next to Mirror). It opens the edit screen's timeline on the
+  clip's own recording: the parts the Cutter kept, every word under them, the arrows to make a part longer (or
+  shorter) - only the cuts, no Text/Overlay/Sound there. The arrow at the top makes the clip again from the recording
+  with the parts as he set them, the same zooms, his words on its new clock; it takes its place in the check.
+  (Caption changes made before opening it go back to what was heard.)
+- The recording stays on the phone only until the clip is checked (approved or left out), then it goes - on the
+  Cutter server too, the phone keeps its own copy before sending it up. Clips dropped before this update, and clips
+  already in the batch, have no recording kept: no Timeline on those (drop them in again to get it).
+- Checked in a real browser run: Timeline opened on the recording, the arrow made the clip again, the check showed
+  the new one.
+- Underneath: `prepareDrop.DropPlan` (`cutDropped` returns `plan`: keep, every word, duration) and `recut`;
+  `DropResult.plan` from the server; `dropQueue.ClipSource` on each `ToCheck` (`source`: the kept recording's
+  bank file `src-...`, size, type, plan, effects, seed); DropIn `keepSource`/`sourceOf`; DropCheck `openTimeline`,
+  `remake`, `CutsEditor cutsOnly`. Tests: `prepareDrop.test.ts`, `dropInView.test.tsx`, `dropCheck.test.tsx`.
+
 ## Batch drop-in: the choices in sight
 - His report (2026-11-14): "I'm trying to look for the place where I can choose to include music or not, or choose to
   cut things or not, but I don't find it".

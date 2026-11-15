@@ -19,6 +19,8 @@
 
 import type { BankFile, BatchBank, BatchFormat, BatchStep } from './batch'
 import type { CaptionWord } from './captions'
+import type { AngleEffects } from './effects'
+import type { Range } from '../media/silenceMath'
 import { matchStep } from './stepMatch'
 
 /** Where a clip goes: a step's id, his hooks, or nowhere yet. */
@@ -50,6 +52,27 @@ export interface ToCheck {
   /** Dropped in with "Captions" unticked: it goes in with none, and its
    *  check is only where it goes. */
   noCaptions?: boolean
+  /** Its recording and how it was cut from it - its timeline on the check,
+   *  to make a part longer or shorter (his ask, 2026-11-14). The recording
+   *  is kept on the phone until the clip is checked. */
+  source?: ClipSource
+}
+
+/** A dropped clip's recording (a bank file on this phone) and its cut. */
+export interface ClipSource {
+  fileId: string
+  /** The recording's size and type, to read it back. */
+  size: number
+  type: string
+  keep: Range[]
+  /** Every word heard, on the recording's own clock. */
+  words: CaptionWord[]
+  duration: number
+  /** How it was made, to make it again the same way: its zooms and seed. */
+  effects: AngleEffects
+  brandWords: string[]
+  voice: boolean
+  seed: string
 }
 
 const KEY = 'batch.toCheck:'
