@@ -4480,7 +4480,7 @@ export function CampaignApp() {
     const at = wordMoments(plan, look)
     const items: PictureReview['items'] = [
       ...look.pictures.map((picture, i) => ({ key: `p:${picture.id}`, image: picture.image, at: at.pictures[i] ?? [], seconds: picture.seconds, place: picture })),
-      ...at.bank.map((cue, i) => ({ key: `b:${i}`, image: cue.image, at: cue.moments, seconds: look.bankPlacement.seconds, place: look.bankPlacement, bank: true })),
+      ...at.bank.map((cue, i) => ({ key: `b:${i}`, image: cue.image, at: cue.moments, seconds: look.bankPlacement.seconds, place: cue.position ? { ...look.bankPlacement, position: cue.position } : look.bankPlacement, bank: true })),
       ...(look.logo.image ? [{ key: 'logo', image: look.logo.image, at: at.logo, seconds: look.logo.seconds, place: look.logo }] : []),
     ].filter((item) => item.at.length > 0)
     return items.length > 0 ? { items, pop: look.effects.logoPop } : undefined

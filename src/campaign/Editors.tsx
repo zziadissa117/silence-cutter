@@ -28,6 +28,7 @@ import {
   type LogoPosition,
   type PictureCue,
   HEADLINE_STYLES,
+  PICTURE_SPOTS,
 } from './look'
 import { ClipRow } from './ClipRow'
 import { CLIP_PLACES, type AngleClips, type ClipInfo } from './clips'
@@ -63,15 +64,7 @@ const SWITCH_SOUNDS: { value: BuiltInSound | 'none'; label: string }[] = [
   { value: 'ding', label: 'Ding' },
   { value: 'none', label: 'None' },
 ]
-const LOGO_POSITIONS: { value: LogoPosition; label: string }[] = [
-  { value: 'top-left', label: 'Top left' },
-  { value: 'top-right', label: 'Top right' },
-  { value: 'middle', label: 'Middle' },
-  { value: 'middle-left', label: 'Middle left' },
-  { value: 'middle-right', label: 'Middle right' },
-  { value: 'bottom-left', label: 'Bottom left' },
-  { value: 'bottom-right', label: 'Bottom right' },
-]
+const LOGO_POSITIONS = PICTURE_SPOTS
 
 export function EditorFrame({
   title,

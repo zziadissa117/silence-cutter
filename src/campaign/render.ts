@@ -128,7 +128,7 @@ export interface CampaignRenderInput {
   pictureMoments: number[][]
   /** The bank's pictures that were mentioned, and when. Shown in the
    *  angle's bank placement, one at a time. */
-  bankCues: { image: Blob; moments: number[] }[]
+  bankCues: { image: Blob; position?: LogoPosition; moments: number[] }[]
   /** Makes this video's variations its own; the same seed moves the same
    *  way. */
   seed: string
@@ -514,7 +514,7 @@ export async function renderCampaignCut(
     }))
     const bank = bankCues.map((cue, i) => ({
       image: bankImages[i],
-      layout: layoutLogo(width, height, bankImages[i], look.bankPlacement),
+      layout: layoutLogo(width, height, bankImages[i], cue.position ? { ...look.bankPlacement, position: cue.position } : look.bankPlacement),
       placer: new MomentPlacer(cue.moments, keep),
     }))
     // Pop-up videos: each read already shrunk to its box, so a 4K clip costs

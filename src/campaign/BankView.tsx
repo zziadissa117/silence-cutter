@@ -9,7 +9,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 
 import { squash } from './keywords'
-import { parseWordList, type BankPicture } from './look'
+import { PICTURE_SPOTS, parseWordList, type BankPicture, type LogoPosition } from './look'
 import { shrinkPicture } from './PictureRow'
 import { deleteBankPicture, saveBankPicture } from './store'
 
@@ -147,6 +147,26 @@ function BankRow({
         onChange={(e) => setText(e.target.value)}
         onBlur={save}
       />
+      {/* Its own spot, or the campaign's (Picture bank -> Where). */}
+      <select
+        value={picture.position ?? ''}
+        aria-label="Where it comes up"
+        onChange={(e) => {
+          const position = (e.target.value || undefined) as LogoPosition | undefined
+          const { position: _old, ...rest } = picture
+          void _old
+          const next: BankPicture = position ? { ...rest, position } : rest
+          onChange({ position })
+          void saveBankPicture(next)
+        }}
+      >
+        <option value="">Campaign&rsquo;s spot</option>
+        {[{ value: 'top' as LogoPosition, label: 'Top' }, ...PICTURE_SPOTS].map((p) => (
+          <option key={p.value} value={p.value}>
+            {p.label}
+          </option>
+        ))}
+      </select>
       <button
         type="button"
         className="linkbtn"

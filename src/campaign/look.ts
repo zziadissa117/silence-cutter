@@ -113,11 +113,26 @@ export interface PopCue {
 /** A picture kept in the cutter's bank - a Claude, ChatGPT or Google logo -
  *  shared by every campaign, that comes up in any angle using the bank when
  *  he says its words. */
+/** The spots a picture can take, as he picks them. */
+export const PICTURE_SPOTS: { value: LogoPosition; label: string }[] = [
+  { value: 'top-left', label: 'Top left' },
+  { value: 'top-right', label: 'Top right' },
+  { value: 'middle', label: 'Middle' },
+  { value: 'middle-left', label: 'Middle left' },
+  { value: 'middle-right', label: 'Middle right' },
+  { value: 'bottom-left', label: 'Bottom left' },
+  { value: 'bottom-right', label: 'Bottom right' },
+]
+
 export interface BankPicture {
   id: string
   image: Blob
   words: string[]
   addedAt: number
+  /** Its own spot on the video (his ask, 2026-11-16: "the user can just
+   *  modify where he would want his images to be placed"); unset, the
+   *  campaign's picture bank spot. */
+  position?: LogoPosition
 }
 
 export interface Headline {

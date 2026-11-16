@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { TIKTOK_ZONES, cameUpTogether, drawHeadline, layoutHeadline, layoutLogo, outlineColorOf, outputSize, sideBySide, wrapText } from './overlay'
+import { PICTURE_EDGE, TIKTOK_ZONES, cameUpTogether, drawHeadline, layoutHeadline, layoutLogo, outlineColorOf, outputSize, sideBySide, wrapText } from './overlay'
 
 describe('wrapText', () => {
   const measure = (s: string) => s.length * 10
@@ -47,16 +47,13 @@ describe('layoutLogo', () => {
     expect(box.height).toBe(162)
   })
 
-  it('keeps every position clear of TikTok’s buttons, tabs and caption', () => {
-    for (const position of ['top-left', 'top-right', 'middle', 'bottom-left', 'bottom-right'] as const) {
+  it('keeps every position clear of TikTok’s tabs and caption, close to the edges', () => {
+    for (const position of ['top', 'top-left', 'top-right', 'middle', 'middle-left', 'middle-right', 'bottom-left', 'bottom-right'] as const) {
       const box = layoutLogo(1080, 1920, image, { position, widthPct: 30 })
       expect(box.y).toBeGreaterThanOrEqual(1920 * TIKTOK_ZONES.top)
       expect(box.y + box.height).toBeLessThanOrEqual(1920 * (1 - TIKTOK_ZONES.bottom))
-      expect(box.x).toBeGreaterThanOrEqual(1080 * TIKTOK_ZONES.side - 0.5)
-      if (position.startsWith('bottom') || position === 'middle') {
-        // The button column runs down the lower right.
-        expect(box.x + box.width).toBeLessThanOrEqual(1080 * (1 - TIKTOK_ZONES.right) + 0.5)
-      }
+      if (position.endsWith('left')) expect(box.x).toBeCloseTo(1080 * PICTURE_EDGE)
+      if (position.endsWith('right')) expect(box.x + box.width).toBeCloseTo(1080 * (1 - PICTURE_EDGE))
     }
   })
 })
@@ -215,8 +212,9 @@ describe('pictures that come up together', () => {
     const [a, b] = sideBySide([square, wide], W, H)
     expect(a.height).toBeCloseTo(b.height)
     expect(a.x + a.width).toBeLessThan(b.x)
-    expect(a.x).toBeGreaterThanOrEqual(W * TIKTOK_ZONES.side - 0.5)
-    expect(b.x + b.width).toBeLessThanOrEqual(W * (1 - TIKTOK_ZONES.side) + 0.5)
+    // Middle: spread to both edges, the middle left free.
+    expect(a.x).toBeCloseTo(W * PICTURE_EDGE)
+    expect(b.x + b.width).toBeCloseTo(W * (1 - PICTURE_EDGE))
     // Each keeps its shape.
     expect(a.width / a.height).toBeCloseTo(1)
     expect(b.width / b.height).toBeCloseTo(1600 / 900)
@@ -227,7 +225,20 @@ describe('pictures that come up together', () => {
   it('shrinks a row too wide for the frame to fit', () => {
     const big = layoutLogo(W, H, { width: 1000, height: 1000 }, { position: 'middle', widthPct: 60 })
     const row = sideBySide([big, big, big], W, H)
-    expect(row[2].x + row[2].width - row[0].x).toBeLessThanOrEqual(W * (1 - 2 * TIKTOK_ZONES.side) + 0.5)
+    expect(row[2].x + row[2].width - row[0].x).toBeLessThanOrEqual(W * (1 - 2 * PICTURE_EDGE) + 0.5)
+  })
+
+  it('keeps pictures in different spots in their own spots', () => {
+    const l = layoutLogo(W, H, { width: 1000, height: 1000 }, { position: 'middle-left', widthPct: 25 })
+    const r = layoutLogo(W, H, { width: 1000, height: 1000 }, { position: 'middle-right', widthPct: 25 })
+    expect(sideBySide([l, r], W, H)).toEqual([l, r])
+  })
+
+  it('keeps a row on a side against that edge', () => {
+    const r = layoutLogo(W, H, { width: 1000, height: 1000 }, { position: 'bottom-right', widthPct: 25 })
+    const [a, b] = sideBySide([r, r], W, H)
+    expect(b.x + b.width).toBeCloseTo(W * (1 - PICTURE_EDGE))
+    expect(a.x + a.width).toBeLessThan(b.x)
   })
 
   it('leaves one picture where it was', () => {

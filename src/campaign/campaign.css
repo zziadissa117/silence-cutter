@@ -119,6 +119,18 @@
   font-size: 16px;
 }
 .bank-row input.needs { border-color: var(--warn); }
+.bank-row { flex-wrap: wrap; }
+.bank-row input { flex: 1 1 140px; }
+.bank-row select {
+  flex: 1 1 120px;
+  min-height: 44px;
+  padding: 0 8px;
+  border: 1px solid var(--edge);
+  border-radius: 10px;
+  background: var(--surface);
+  color: var(--text);
+  font: inherit;
+}
 
 /* Something in a finished video to know about - amber, not red: the video
    was made, one part of the look just did not fire. */

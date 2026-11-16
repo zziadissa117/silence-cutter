@@ -3,6 +3,21 @@
 Newest first. Every change says what it does, how to use it, and how it works
 underneath. Kept up to date with each commit.
 
+## Pictures sit near the edges; each bank picture can have its own spot
+- His asks (2026-11-16): "it's too in the middle on the x-axis ... leaves more space in the middle, and there's only
+  a little space in between the edge and the picture" (every spot), and "add the option to modify the position if
+  wanted for the automatic photos".
+- Every picture spot (campaign pictures, the picture bank, the logo, the edit screen's spots) now sits 2.5% of the
+  width from the left or right edge (`overlay.PICTURE_EDGE`; it was 6% on the left and 15% on the right for the
+  right-hand spots, which stopped short of TikTok's buttons - the lower right ones can now sit under them).
+- Pictures that come up together: only those in the same spot share a row. A row on the left or right sits against
+  that edge; a row in the middle is spread out - the first against the left edge, the last against the right, the
+  middle left free. A single Middle picture stays centred. Before, pictures in different spots were pulled into one
+  row in the middle (`overlay.sideBySide`, `rowOf`).
+- Picture bank (More -> Bank): every picture has a "Where" - "Campaign's spot" (the campaign's Picture bank Where,
+  as before) or a spot of its own (`BankPicture.position`, synced with the picture; `moments.ts` bank cues carry it to
+  `render.ts` and the caption check).
+
 ## Headline, text and pictures drag to the end of the video; Middle left / Middle right spots
 - His asks (2026-11-16): "Make sure text/headlines/overlays can drag to the end in the timeline editor. Look like
   mostly for headlines theres a sort of time limit we can't drag it to the end" and "put the images automatically in

@@ -24,6 +24,11 @@ export const TIKTOK_ZONES = {
   side: 0.06,
 } as const
 
+/** How far pictures sit from the left and right edges (his ask, 2026-11-16:
+ *  "too in the middle ... leaves more space in the middle, and there's only
+ *  a little space in between the edge and the picture"). */
+export const PICTURE_EDGE = 0.025
+
 /** TikTok's text is TikTok Sans at a semibold weight. */
 const HEADLINE_WEIGHT = 600
 
@@ -282,9 +287,9 @@ export function layoutLogo(
     const y = Math.min(Math.max(0, logo.center.y * height - h / 2), Math.max(0, height - h))
     return { x, y, width: w, height: h }
   }
-  const left = width * TIKTOK_ZONES.side
-  // Right-hand corners stop short of TikTok's button column.
-  const right = width * (1 - TIKTOK_ZONES.right) - w
+  // Close to the edges, every spot alike, the middle left free.
+  const left = width * PICTURE_EDGE
+  const right = width * (1 - PICTURE_EDGE) - w
   const top = height * (TIKTOK_ZONES.top + 0.03)
   const bottom = height * (1 - TIKTOK_ZONES.bottom - 0.03) - h
   switch (logo.position) {
@@ -293,7 +298,7 @@ export function layoutLogo(
     case 'top-left':
       return { x: left, y: top, width: w, height: h }
     case 'top-right':
-      return { x: width * (1 - TIKTOK_ZONES.side) - w, y: top, width: w, height: h }
+      return { x: right, y: top, width: w, height: h }
     case 'middle-left':
       return { x: left, y: height * 0.42 - h / 2, width: w, height: h }
     case 'middle-right':
@@ -331,11 +336,30 @@ export function cameUpTogether<T>(items: readonly { item: T; start: number }[], 
  *  picture keeps its own place. */
 export function sideBySide(layouts: readonly LogoLayout[], width: number, height: number): LogoLayout[] {
   if (layouts.length < 2) return layouts.map((l) => ({ ...l }))
+  // Pictures in different spots stay in their own spots; only those in the
+  // same spot share a row there.
+  const spotOf = (l: LogoLayout) => `${Math.round(((l.x + l.width / 2) / width) * 8)}:${Math.round(((l.y + l.height / 2) / height) * 8)}`
+  const spots = new Map<string, number[]>()
+  layouts.forEach((l, i) => spots.set(spotOf(l), [...(spots.get(spotOf(l)) ?? []), i]))
+  const out: LogoLayout[] = layouts.map((l) => ({ ...l }))
+  for (const ids of spots.values()) {
+    if (ids.length < 2) continue
+    const row = rowOf(ids.map((i) => layouts[i]), width, height)
+    ids.forEach((i, k) => (out[i] = row[k]))
+  }
+  return out
+}
+
+/** Pictures of one spot in a row: against the left or right edge for a spot
+ *  on that side, and for a spot in the middle spread to both edges, the
+ *  middle left free. */
+function rowOf(layouts: readonly LogoLayout[], width: number, height: number): LogoLayout[] {
   const gap = width * 0.02
   const gaps = gap * (layouts.length - 1)
   const tallest = Math.min(...layouts.map((l) => l.height))
   let widths = layouts.map((l) => (l.width * tallest) / l.height)
-  const room = width * (1 - 2 * TIKTOK_ZONES.side)
+  const edge = width * PICTURE_EDGE
+  const room = width - 2 * edge
   const natural = widths.reduce((a, b) => a + b, 0)
   const scale = natural + gaps > room ? Math.max(0.05, (room - gaps) / natural) : 1
   widths = widths.map((w) => w * scale)
@@ -343,12 +367,15 @@ export function sideBySide(layouts: readonly LogoLayout[], width: number, height
   const row = widths.reduce((a, b) => a + b, 0) + gaps
   const cx = layouts.reduce((sum, l) => sum + l.x + l.width / 2, 0) / layouts.length
   const cy = layouts.reduce((sum, l) => sum + l.y + l.height / 2, 0) / layouts.length
-  const x0 = Math.min(Math.max(width * TIKTOK_ZONES.side, cx - row / 2), width * (1 - TIKTOK_ZONES.side) - row)
   const y = Math.min(Math.max(height * TIKTOK_ZONES.top, cy - h / 2), height * (1 - TIKTOK_ZONES.bottom) - h)
-  let x = x0
+  const side = cx < width * 0.4 ? 'left' : cx > width * 0.6 ? 'right' : 'middle'
+  // In the middle: the first against the left edge, the last against the
+  // right, the rest evenly between.
+  const step = side === 'middle' ? gap + (room - row) / (layouts.length - 1) : gap
+  let x = side === 'right' ? width - edge - row : edge
   return widths.map((w) => {
     const placed = { x, y, width: w, height: h }
-    x += w + gap
+    x += w + step
     return placed
   })
 }
