@@ -107,7 +107,8 @@ async function runMake(order: MakeOrder): Promise<void> {
   const placed = withHeadlinePlace(withHeadlineStyle(own, order.headlineStyle), order.headlinePlace)
   const angle = order.headlineSeconds ? { ...placed, headline: { ...placed.headline, seconds: order.headlineSeconds } } : placed
   const file = await fileOf(order.fileId, order.send.fileName)
-  const bank = await loadBank()
+  // Only the pictures still in his bank on the phone.
+  const bank = (await loadBank()).filter((b) => !order.bankIds || order.bankIds.includes(b.id))
   const clips = {
     ...(order.clips.before ? { before: await fileOf(order.clips.before) } : {}),
     ...(order.clips.after ? { after: await fileOf(order.clips.after) } : {}),

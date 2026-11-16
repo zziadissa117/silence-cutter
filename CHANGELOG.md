@@ -3,6 +3,25 @@
 Newest first. Every change says what it does, how to use it, and how it works
 underneath. Kept up to date with each commit.
 
+## The edit screen shows every picture the video will have; Check never approves a video unseen
+- His report (2026-11-16): "I put in my own overlays, and there were also overlays from previous videos ... what I'm
+  seeing when I approve the video is pictures that I've never put in myself ... The preview from the timeline editor
+  is not real."
+- What it was: the pictures that come up by themselves - the campaign's pictures on their words, the picture bank's,
+  the bank videos - were never on the edit screen's timeline, but were still drawn into the finished video over his
+  own. And the Cutter server read its own copy of the picture bank, which could still hold pictures he had taken out.
+- Now the edit screen's timeline starts with them, where and when they will come up, as ordinary items: move,
+  stretch, resize or delete them like his own. Once he keeps an edit (Done, Captions, approve), the video is exactly
+  the timeline: nothing else comes up by itself on it (`day.picturesByHand`; `CampaignApp.autoOverlaysFor`,
+  `editorOverlays`, `skipOf`, `popsFor`). The logo is unchanged. The caption check no longer draws those pictures
+  separately (they are on the timeline) - only the logo.
+- Server orders carry the phone's bank (`MakeOrder.bankIds`); the server uses only those pictures.
+- His second report: "I did not even have time to approve a video, and it automatically made it ... detected no
+  speech, automatically set it to Vaza, and automatically approved it." The Videos list's Check button approved every
+  video heard as having no talking without opening it (`checkAll`). Now it opens all of them - talking first - and
+  says how many ("Check 3"). Not lag: the phone's reports for the day show no slowdowns.
+- Videos edited before this keep their old way until opened in the edit screen again.
+
 ## Timeline scrolls by itself while dragging near its edge
 - His ask (2026-11-16): "when you slide to drag a picture or a text, make it so it actually slides and moves (so you
   don't have to dezoom, then slide, then swipe, and slide again)".

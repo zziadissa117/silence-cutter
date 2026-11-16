@@ -94,6 +94,12 @@ interface StoredJob {
     noEffects?: boolean
     /** Picture ids left out of this video alone. */
     skipPictures?: string[]
+    /** Its automatic pictures (the campaign's on their words, the picture
+     *  bank's, the bank videos) were put on its edit screen's timeline as
+     *  pictures of his own, to move or take off there: none come up by
+     *  themselves any more - the video shows only what is on the timeline
+     *  (his report, 2026-11-16: pictures he never put in showed up). */
+    picturesByHand?: boolean
     /** Pictures he put on this video himself, in the cuts editor. */
     overlays?: ManualPicture[]
     /** This video's headline look - White box, Outline or Snapchat; absent =

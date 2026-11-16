@@ -61,6 +61,9 @@ export interface MakeOrder {
   }
   defaults: AngleEffects | null
   skipPictures: string[]
+  /** The picture bank as it is on the phone: the server's copy may still
+   *  hold pictures taken out of it there. Absent on orders from before. */
+  bankIds?: string[]
   captionPosition: CaptionPosition
   noCut: boolean
   /** A reaction (no talking): its own sound muted, the music the only sound

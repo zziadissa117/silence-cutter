@@ -51,7 +51,7 @@ import { CloudError, currentSession, signOut, syncNow, type Session, type SyncSt
 import { AngleEditor, CampaignEditor } from './Editors'
 import { ChevronRight, UploadIcon } from './icons'
 import { HeadlineLook, JobRow } from './JobRow'
-import type { PictureReview, PopReview } from './CaptionReview'
+import type { PictureReview } from './CaptionReview'
 import { CutsEditor } from './CutsEditor'
 import { EditScreen, type EditedCuts } from './EditScreen'
 import { VoiceSetup, voiceReminder } from './VoiceSetup'
@@ -129,7 +129,7 @@ import { headlineFor, listen, make, makeCampaignVideo, makeGreenScreen, makeMont
 import { makeCutout } from './cutout'
 import { popCue, posterOf, useVideoBank, videoFile, type BankVideo } from './videoBank'
 import { wordMoments } from './moments'
-import { DEFAULT_POP_POSITION, POP_SIZE, type PopPosition } from './popVideo'
+import { DEFAULT_POP_POSITION, POP_SIZE } from './popVideo'
 import { PostingEditor } from './PostingEditor'
 import { PostingSetup } from './PostingSetup'
 import {
@@ -174,7 +174,7 @@ import {
 import { PostsView } from './PostsView'
 import { pushState, refreshPush, turnOffPush, turnOnPush, type PushState } from './push'
 import { BatchEdit } from './BatchEdit'
-import { isPicture, isSound, isText, isVideo, ownFile, type ManualPicture } from './manualPictures'
+import { VIDEO_SECONDS_MAX, isPicture, isSound, isText, isVideo, ownFile, type ManualPicture } from './manualPictures'
 import { headlinePlaceOf, rememberPlace } from './headlinePlace'
 import { WideAsk } from './WideAsk'
 import { defaultEffects } from './defaultEffects'
@@ -466,7 +466,8 @@ export function CampaignApp() {
   const popsFor = (job: Job): PopSettings => {
     const skipped = new Set(job.day?.skipPops ?? [])
     return {
-      videos: videoBankRef.current.filter((v) => !skipped.has(v.id)).map(popCue),
+      // Put on its timeline as his own: none pop up by themselves.
+      videos: job.day?.picturesByHand ? [] : videoBankRef.current.filter((v) => !skipped.has(v.id)).map(popCue),
       sizePct: job.day?.popSize ?? POP_SIZE.default,
       position: job.day?.popPosition ?? DEFAULT_POP_POSITION,
       load: async (id) => {
@@ -812,7 +813,8 @@ export function CampaignApp() {
       ...(job.day?.noSpeech ? { musicOnly: true } : {}),
       clips,
       defaults: job.day?.noEffects ? null : defaultEffects(),
-      skipPictures: job.day?.skipPictures ?? [],
+      skipPictures: skipOf(job),
+      bankIds: bankRef.current.map((b) => b.id),
       captionPosition: job.day?.captionPosition ?? defaultCaptionPosition(),
       noCut: job.noCut === true,
       manual,
@@ -2329,7 +2331,7 @@ export function CampaignApp() {
               await musicFor(next),
               await clipsFor(next),
               next.day?.noEffects ? null : defaultEffects(),
-              next.day?.skipPictures ?? [],
+              skipOf(next),
               next.day?.captionPosition ?? defaultCaptionPosition(),
               next.noCut === true,
               await manualPicturesFor(next),
@@ -4148,7 +4150,7 @@ export function CampaignApp() {
               {sorted.length > 1 ? (
                 captionsOn && sorted.some(talkingIn) ? (
                   <button type="button" className="btn small primary" onClick={() => checkAll()}>
-                    Check {sorted.filter(talkingIn).length}
+                    Check {sorted.length}
                   </button>
                 ) : (
                   <button type="button" className="btn small primary" onClick={() => approve(sorted.map((j) => j.id))}>
@@ -4476,7 +4478,9 @@ export function CampaignApp() {
     const campaign = campaignsRef.current.find((c) => c.id === job.campaignId)
     const angle = campaign?.angles.find((a) => a.id === job.angleId)
     if (!plan || !campaign || !angle) return undefined
-    const look = videoLook(campaign, angle, bankRef.current, job.day?.noEffects ? null : defaultEffects(), job.day?.skipPictures ?? [])
+    // Only the logo: the pictures that come up by themselves are on the
+    // edit screen's timeline as his own (editorOverlays).
+    const look = videoLook(campaign, angle, bankRef.current, job.day?.noEffects ? null : defaultEffects(), allPictureIds(angle))
     const at = wordMoments(plan, look)
     const items: PictureReview['items'] = [
       ...look.pictures.map((picture, i) => ({ key: `p:${picture.id}`, image: picture.image, at: at.pictures[i] ?? [], seconds: picture.seconds, place: picture })),
@@ -4486,35 +4490,103 @@ export function CampaignApp() {
     return items.length > 0 ? { items, pop: look.effects.logoPop } : undefined
   }
 
-  function popReviewFor(job: Job): PopReview | undefined {
+
+
+  /** Every picture that could come up by itself on a video of this angle:
+   *  the angle's own and the whole bank's - left out together. */
+  function allPictureIds(angle: Angle): string[] {
+    return [...angle.pictures.map((p) => p.id), ...bankRef.current.map((b) => b.id)]
+  }
+
+  /** The pictures left out of a video: all that would come up by themselves
+   *  once they were put on its timeline as his own, else those he took off. */
+  function skipOf(job: Job): string[] {
+    if (job.day?.picturesByHand) {
+      const angle = campaignsRef.current.find((c) => c.id === job.campaignId)?.angles.find((a) => a.id === job.angleId)
+      return angle ? allPictureIds(angle) : [...bankRef.current.map((b) => b.id)]
+    }
+    return job.day?.skipPictures ?? []
+  }
+
+  /** The files of automatic pictures put on a timeline (the angle's own
+   *  pictures, kept with the video once he keeps the edit), by video and id. */
+  const autoFiles = useRef(new Map<string, Blob>())
+
+  /** What comes up by itself on a video - the angle's pictures on their
+   *  words, the picture bank's, the bank videos it says - as pictures of his
+   *  own on the edit screen's timeline, where they will be: each to move,
+   *  change or take off, and the video then showing exactly the timeline
+   *  (his report, 2026-11-16: "pictures that I've never put in myself ...
+   *  The preview from the timeline editor is not real"). */
+  function autoOverlaysFor(job: Job): ManualPicture[] {
     const plan = job.day?.plan
     const campaign = campaignsRef.current.find((c) => c.id === job.campaignId)
     const angle = campaign?.angles.find((a) => a.id === job.angleId)
-    if (!plan || !campaign || !angle) return undefined
-    const bank = videoBankRef.current
-    const said = wordMoments(plan, videoLook(campaign, angle, [], null, [], bank.map(popCue))).videos
-    if (said.length === 0) return undefined
-    return {
-      items: said.map((v) => {
-        const video = bank.find((b) => b.id === v.id)!
-        return { ...v, name: video.name, at: v.moments, loadStill: () => posterOf(video) }
-      }),
-      size: job.day?.popSize ?? POP_SIZE.default,
-      position: job.day?.popPosition ?? DEFAULT_POP_POSITION,
-      skipped: job.day?.skipPops ?? [],
-      onSize: (popSize) => setPops(job.id, { popSize }),
-      onPosition: (popPosition) => setPops(job.id, { popPosition }),
-      onSkip: (id, skip) => {
-        const now = new Set(job.day?.skipPops ?? [])
-        if (skip) now.add(id)
-        else now.delete(id)
-        setPops(job.id, { skipPops: [...now] })
-      },
+    if (!plan || !campaign || !angle || job.day?.picturesByHand) return []
+    const look = videoLook(campaign, angle, bankRef.current, null, job.day?.skipPictures ?? [], popsFor(job).videos)
+    const at = wordMoments(plan, look)
+    const out: ManualPicture[] = []
+    look.pictures.forEach((picture, i) => {
+      for (const [k, moment] of (at.pictures[i] ?? []).entries()) {
+        const id = `auto-p-${picture.id}-${k}`
+        autoFiles.current.set(`${job.id}:${id}`, picture.image)
+        out.push({
+          id,
+          source: { kind: 'phone', name: picture.words[0] ?? 'Picture', type: picture.image.type || 'image/png' },
+          at: Math.max(0, moment),
+          seconds: picture.seconds,
+          position: picture.position,
+          widthPct: picture.widthPct,
+          ...(picture.center ? { center: picture.center } : {}),
+        })
+      }
+    })
+    for (const cue of at.bank) {
+      for (const [k, moment] of cue.moments.entries()) {
+        out.push({
+          id: `auto-b-${cue.id}-${k}`,
+          source: { kind: 'bank', pictureId: cue.id },
+          at: Math.max(0, moment),
+          seconds: look.bankPlacement.seconds,
+          position: cue.position ?? look.bankPlacement.position,
+          widthPct: look.bankPlacement.widthPct,
+        })
+      }
     }
+    const pops = popsFor(job)
+    const popY = { top: 0.3, middle: 0.45, bottom: 0.62 }[pops.position] ?? 0.45
+    for (const cue of at.videos) {
+      for (const [k, moment] of cue.moments.entries()) {
+        out.push({
+          id: `auto-v-${cue.id}-${k}`,
+          source: { kind: 'video', videoId: cue.id },
+          at: Math.max(0, moment),
+          seconds: Math.min(cue.seconds, VIDEO_SECONDS_MAX),
+          length: cue.seconds,
+          position: 'middle',
+          widthPct: pops.sizePct,
+          center: { x: 0.5, y: popY },
+        })
+      }
+    }
+    return out.sort((a, b) => a.at - b.at)
+  }
+
+  /** What the edit screen's timeline starts with: his own, and - until he
+   *  has kept an edit of it - what would come up by itself. */
+  function editorOverlays(job: Job): ManualPicture[] {
+    return [...(job.day?.overlays ?? []), ...autoOverlaysFor(job)]
+  }
+
+  /** An automatic picture's file, while it is only on the timeline. */
+  const autoImage = (job: Job, m: ManualPicture): Promise<Blob | null> | null => {
+    const file = autoFiles.current.get(`${job.id}:${m.id}`)
+    return file ? Promise.resolve(file) : null
   }
 
   /** The pictures a sorted video will show, for leaving any of them out. */
   function picturesFor(job: Job): PictureChoice[] {
+    if (job.day?.picturesByHand) return []
     const plan = job.day?.plan
     const campaign = campaignsRef.current.find((c) => c.id === job.campaignId)
     const angle = campaign?.angles.find((a) => a.id === job.angleId)
@@ -4565,13 +4637,6 @@ export function CampaignApp() {
     void recordDay(id, day, { campaignId: job.campaignId, angleId: job.angleId, headlineText: job.headlineText })
   }
 
-  const setPops = (id: string, fields: { popSize?: number; popPosition?: PopPosition; skipPops?: string[] }) => {
-    const job = jobs.find((j) => j.id === id)
-    if (!job?.day) return
-    const day = { ...job.day, ...fields }
-    setJobs((js) => js.map((j) => (j.id === id ? { ...j, day } : j)))
-    void recordDay(id, day, { campaignId: job.campaignId, angleId: job.angleId, headlineText: job.headlineText })
-  }
 
   /** Moves this video's captions (top, middle, usual, bottom) - and the
    *  next ones start there. */
@@ -4584,6 +4649,17 @@ export function CampaignApp() {
     void recordDay(id, day, { campaignId: job.campaignId, angleId: job.angleId, headlineText: job.headlineText })
   }
 
+  /** The files to keep with a video: the new ones he picked, and the
+   *  automatic pictures' that are still on its timeline. */
+  const withAutoFiles = (jobId: string, overlays: readonly ManualPicture[], files: Map<string, Blob>): Map<string, Blob> => {
+    const all = new Map(files)
+    for (const o of overlays) {
+      const file = autoFiles.current.get(`${jobId}:${o.id}`)
+      if (file && !all.has(o.id)) all.set(o.id, file)
+    }
+    return all
+  }
+
   /** The kept parts as he fixed them, or none when they are the plan's own. */
   const keepCuts = (id: string, fixed: Range[], overlays: ManualPicture[] = [], files: Map<string, Blob> = new Map()) => {
     const job = jobs.find((j) => j.id === id)
@@ -4594,9 +4670,10 @@ export function CampaignApp() {
     // Pictures picked from the phone are kept under this video; ones he took
     // off are let go.
     const kept = new Set(overlays.map((o) => o.id))
-    for (const [pictureId, blob] of files) if (kept.has(pictureId)) void saveOverlayFile(id, pictureId, blob).catch(() => {})
+    for (const [pictureId, blob] of withAutoFiles(id, overlays, files)) if (kept.has(pictureId)) void saveOverlayFile(id, pictureId, blob).catch(() => {})
     for (const old of job.day.overlays ?? []) if (ownFile(old) && !kept.has(old.id)) void deleteOverlayFile(id, old.id).catch(() => {})
-    const day = { ...job.day, keep: same ? undefined : keep, overlays: overlays.length > 0 ? overlays : undefined }
+    // What was on the timeline is the video now: nothing else comes up by itself.
+    const day = { ...job.day, keep: same ? undefined : keep, overlays: overlays.length > 0 ? overlays : undefined, picturesByHand: true }
     setJobs((js) => js.map((j) => (j.id === id ? { ...j, day } : j)))
     void recordDay(id, day, { campaignId: job.campaignId, angleId: job.angleId, headlineText: job.headlineText })
   }
@@ -4622,12 +4699,14 @@ export function CampaignApp() {
     if (!job?.day?.plan) return
     const same = JSON.stringify(cuts.keep) === JSON.stringify(job.day.plan.keep)
     const kept = new Set(cuts.overlays.map((o) => o.id))
-    for (const [pictureId, blob] of cuts.files) if (kept.has(pictureId)) void saveOverlayFile(id, pictureId, blob).catch(() => {})
+    for (const [pictureId, blob] of withAutoFiles(id, cuts.overlays, cuts.files)) if (kept.has(pictureId)) void saveOverlayFile(id, pictureId, blob).catch(() => {})
     for (const old of job.day.overlays ?? []) if (ownFile(old) && !kept.has(old.id)) void deleteOverlayFile(id, old.id).catch(() => {})
     const day = {
       ...job.day,
       keep: same ? undefined : cuts.keep,
       overlays: cuts.overlays.length > 0 ? cuts.overlays : undefined,
+      // What was on the timeline is the video now: nothing else comes up by itself.
+      picturesByHand: true,
       captions: words,
       ...(approved ? { checked: true, approved: true, noCaptions: approved === 'without' } : {}),
       // Approved where its headline is now: a headline moved on a later
@@ -4670,13 +4749,15 @@ export function CampaignApp() {
    *  headline and music, and whether the hook gets captions (CheckQuestions). */
   const startCheck = (ids: string[]) => setAsking(ids)
 
-  /** The summary's Check: the videos with talking in them are checked, the
-   *  rest - reactions he does not talk over - are simply approved. */
+  /** The summary's Check: every video waiting is put in front of him -
+   *  those with talking first, then those heard as having none. Nothing is
+   *  approved without him seeing it (his report, 2026-11-16: a video heard
+   *  as having no talking was put in a reaction campaign and approved by
+   *  this button alone, and made). */
   const checkAll = () => {
     const talking = sorted.filter(talkingIn)
     const quiet = sorted.filter((j) => !talkingIn(j))
-    if (quiet.length > 0) approve(quiet.map((j) => j.id))
-    if (talking.length > 0) startCheck(talking.map((j) => j.id))
+    startCheck([...talking, ...quiet].map((j) => j.id))
   }
 
   /** Keeps the hook answer on each video, when it was asked, then goes on to
@@ -4818,10 +4899,10 @@ export function CampaignApp() {
         peaks={cutsJob.day!.plan!.peaks}
         noiseNote={cutsJob.day!.plan!.noiseNote}
         words={cutsWords}
-        overlays={cutsJob.day!.overlays}
+        overlays={editorOverlays(cutsJob)}
         bank={bankRef.current}
         defaults={angleBankDefaults(cutsJob)}
-        loadImage={(m) => (ownFile(m) ? loadOverlayFile(cutsJob.id, m.id, ownFile(m)!) : Promise.resolve(null))}
+        loadImage={(m) => autoImage(cutsJob, m) ?? (ownFile(m) ? loadOverlayFile(cutsJob.id, m.id, ownFile(m)!) : Promise.resolve(null))}
         loadSound={(m) => soundFileOf(cutsJob.id, m)}
         videoBank={videoBankChoices}
         loadVideo={bankVideoFile}
@@ -4875,10 +4956,10 @@ export function CampaignApp() {
           peaks: reviewJob.day!.plan!.peaks,
           noiseNote: reviewJob.day!.plan!.noiseNote,
           words: captionWords(reviewJob.day!.plan!.spoken ?? reviewJob.day!.plan!.words, [{ start: 0, end: reviewJob.day!.plan!.duration }]),
-          overlays: reviewJob.day!.overlays,
+          overlays: editorOverlays(reviewJob),
           bank: bankRef.current,
           defaults: angleBankDefaults(reviewJob),
-          loadImage: (m) => (ownFile(m) ? loadOverlayFile(reviewJob.id, m.id, ownFile(m)!) : Promise.resolve(null)),
+          loadImage: (m) => autoImage(reviewJob, m) ?? (ownFile(m) ? loadOverlayFile(reviewJob.id, m.id, ownFile(m)!) : Promise.resolve(null)),
           loadSound: (m) => soundFileOf(reviewJob.id, m),
           videoBank: videoBankChoices,
           loadVideo: bankVideoFile,
@@ -4932,7 +5013,8 @@ export function CampaignApp() {
           onSize: (size) => setCaptionSize(reviewJob.id, size),
           captionStyle: reviewJob.day?.captionStyle ?? defaultCaptionStyle(),
           onCaptionStyle: (style) => setCaptionStyle(reviewJob.id, style),
-          pops: popReviewFor(reviewJob),
+          // On the edit screen's timeline as his own (editorOverlays).
+          pops: undefined,
           pictures: pictureReviewFor(reviewJob),
         }}
       />

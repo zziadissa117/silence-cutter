@@ -25,7 +25,7 @@ export interface WordMoments {
   pictures: number[][]
   /** Only the bank's pictures that were said - a big bank costs nothing for
    *  the pictures a video never uses. */
-  bank: { image: Blob; position?: LogoPosition; moments: number[] }[]
+  bank: { id: string; image: Blob; position?: LogoPosition; moments: number[] }[]
   /** The bank's videos that were said, and when - each pops up then. */
   videos: { id: string; seconds: number; width: number; height: number; moments: number[] }[]
   /** One list per sound in `look.sounds`, in order. */
@@ -63,7 +63,7 @@ export function wordMoments(
     return at !== undefined ? [at] : early(heard(picture.words))
   })
   const bank = look.bankPictures
-    .map((picture) => ({ image: picture.image, ...(picture.position ? { position: picture.position } : {}), moments: early(said(picture.words)) }))
+    .map((picture) => ({ id: picture.id, image: picture.image, ...(picture.position ? { position: picture.position } : {}), moments: early(said(picture.words)) }))
     .filter((cue) => cue.moments.length > 0)
   const videos = look.bankVideos
     .map((video) => ({ id: video.id, seconds: video.seconds, width: video.width, height: video.height, moments: early(said(video.words)) }))
