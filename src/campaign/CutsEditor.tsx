@@ -122,6 +122,43 @@ interface Snapshot {
 const CENTER_SNAP = 0.025
 const NO_GUIDES = { x: false, y: false }
 
+/** While a finger drags something on the timeline, holding it near the
+ *  timeline's left or right edge scrolls the timeline on by itself, faster
+ *  the closer it is, and the thing keeps moving with it (his ask,
+ *  2026-11-16: "make it so it actually slides and moves (so you don't have
+ *  to dezoom, then slide, then swipe, and slide again)"). `extra` is how far
+ *  it has scrolled since the drag began, to add to the finger's distance. */
+export function edgeScroll(strip: HTMLElement | null, onScrolled: () => void) {
+  const scroll0 = strip?.scrollLeft ?? 0
+  let x = Number.NaN
+  let frame = 0
+  let stopped = false
+  const tick = () => {
+    frame = 0
+    if (!strip || stopped || Number.isNaN(x)) return
+    const box = strip.getBoundingClientRect()
+    const zone = Math.min(64, box.width * 0.15)
+    const speed = x < box.left + zone ? -(box.left + zone - x) / zone : x > box.right - zone ? (x - (box.right - zone)) / zone : 0
+    if (speed === 0) return
+    const before = strip.scrollLeft
+    strip.scrollLeft = before + Math.max(-1, Math.min(1, speed)) * 16
+    if (strip.scrollLeft === before) return
+    onScrolled()
+    frame = requestAnimationFrame(tick)
+  }
+  return {
+    at(clientX: number) {
+      x = clientX
+      if (!frame) frame = requestAnimationFrame(tick)
+    },
+    extra: () => (strip ? strip.scrollLeft - scroll0 : 0),
+    stop() {
+      stopped = true
+      cancelAnimationFrame(frame)
+    },
+  }
+}
+
 /** The same empty banks every time, so effects that follow them don't run
  *  again on every render. */
 const NO_PICTURES: BankPicture[] = []
@@ -1536,9 +1573,16 @@ export function CutsEditor({
     let drawn = 0
     const x0 = down.clientX
     const at0 = edge === 'start' ? before[i].start : before[i].end
+    let fingerX = x0
+    const auto = edgeScroll(strip.current, () => slide(fingerX))
     const move = (event: PointerEvent) => {
+      fingerX = event.clientX
+      auto.at(fingerX)
+      slide(fingerX)
+    }
+    const slide = (clientX: number) => {
       const scale = pxRef.current
-      const to = snapTo(at0 + (event.clientX - x0) / scale, edges, SNAP_PX / scale)
+      const to = snapTo(at0 + (clientX - x0 + auto.extra()) / scale, edges, SNAP_PX / scale)
       last = trimPart(before, i, edge, to, duration)
       if (!drawn) {
         drawn = requestAnimationFrame(() => {
@@ -1552,6 +1596,7 @@ export function CutsEditor({
       scrub(edge === 'start' ? last[i].start : last[i].end - 0.001)
     }
     const up = () => {
+      auto.stop()
       handle.removeEventListener('pointermove', move)
       handle.removeEventListener('pointerup', up)
       handle.removeEventListener('pointercancel', up)
@@ -1596,14 +1641,22 @@ export function CutsEditor({
     const from = Math.min(total, headlineSecs)
     const x0 = down.clientX
     let secs = from
+    let fingerX = x0
+    const auto = edgeScroll(strip.current, () => slide(fingerX))
     const move = (event: PointerEvent) => {
-      if (Math.abs(event.clientX - x0) < 4 && secs === from) return
-      secs = Math.round(Math.min(total, Math.max(0.5, from + (event.clientX - x0) / pxRef.current)) * 10) / 10
+      fingerX = event.clientX
+      if (Math.abs(fingerX - x0) < 4 && secs === from) return
+      auto.at(fingerX)
+      slide(fingerX)
+    }
+    const slide = (clientX: number) => {
+      secs = Math.round(Math.min(total, Math.max(0.5, from + (clientX - x0 + auto.extra()) / pxRef.current)) * 10) / 10
       // Within a tenth of the end: right to the end.
       if (total - secs < 0.15) secs = Math.round(total * 100) / 100
       setHeadlineSecs(secs)
     }
     const up = () => {
+      auto.stop()
       el.removeEventListener('pointermove', move)
       el.removeEventListener('pointerup', up)
       el.removeEventListener('pointercancel', up)
@@ -1634,10 +1687,17 @@ export function CutsEditor({
     const out0 = outputTime(k, o.at)
     const x0 = down.clientX
     let moved = false
+    let fingerX = x0
+    const auto = edgeScroll(strip.current, () => slide(fingerX))
     const move = (event: PointerEvent) => {
-      const dx = (event.clientX - x0) / pxRef.current
-      if (!moved && Math.abs(event.clientX - x0) < 4) return
+      fingerX = event.clientX
+      if (!moved && Math.abs(fingerX - x0) < 4) return
       moved = true
+      auto.at(fingerX)
+      slide(fingerX)
+    }
+    const slide = (clientX: number) => {
+      const dx = (clientX - x0 + auto.extra()) / pxRef.current
       // Never past the video's end (his ask, 2026-11-16: drag it to the end).
       const longest = Math.max(PICTURE_SECONDS.min, Math.min(longestFor(o), total - (grip === 'end' ? out0 : 0)))
       let out = out0
@@ -1653,6 +1713,7 @@ export function CutsEditor({
       setOverlays((list) => list.map((x) => (x.id === id ? next : x)).sort((a, b) => a.at - b.at))
     }
     const up = () => {
+      auto.stop()
       el.removeEventListener('pointermove', move)
       el.removeEventListener('pointerup', up)
       el.removeEventListener('pointercancel', up)

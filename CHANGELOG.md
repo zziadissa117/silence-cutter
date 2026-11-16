@@ -3,6 +3,15 @@
 Newest first. Every change says what it does, how to use it, and how it works
 underneath. Kept up to date with each commit.
 
+## Timeline scrolls by itself while dragging near its edge
+- His ask (2026-11-16): "when you slide to drag a picture or a text, make it so it actually slides and moves (so you
+  don't have to dezoom, then slide, then swipe, and slide again)".
+- In the edit screen's timeline, dragging a text, picture/video overlay or headline bar - its middle or either end - or
+  a clip's trim arrow, and holding the finger near the timeline's left or right edge, now scrolls the timeline on by
+  itself (faster the closer to the edge) and what is held keeps moving with it, all the way to the video's start or end.
+- Underneath: `CutsEditor.edgeScroll` (a frame loop on the timeline strip; the scrolled distance is added to the
+  finger's), used by `onGrip`, `gripHeadline` and the trim `handleDown`.
+
 ## Pictures sit near the edges; each bank picture can have its own spot
 - His asks (2026-11-16): "it's too in the middle on the x-axis ... leaves more space in the middle, and there's only
   a little space in between the edge and the picture" (every spot), and "add the option to modify the position if
