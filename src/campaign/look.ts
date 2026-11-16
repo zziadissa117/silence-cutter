@@ -56,7 +56,8 @@ export function withHeadlinePlace(angle: Angle, place: HeadlinePlace | null | un
   return place ? { ...angle, headline: { ...angle.headline, place } } : angle
 }
 export type HeadlineSize = 'small' | 'medium' | 'large'
-export type LogoPosition = 'top' | 'top-left' | 'top-right' | 'middle' | 'bottom-left' | 'bottom-right'
+/** Where a logo or picture goes. Middle left / right: his ask, 2026-11-16. */
+export type LogoPosition = 'top' | 'top-left' | 'top-right' | 'middle' | 'middle-left' | 'middle-right' | 'bottom-left' | 'bottom-right'
 
 /** Sounds made on the device, so an angle works before he has found any
  *  sound files. See sounds.ts. */
@@ -480,6 +481,9 @@ export function campaignProblems(campaign: Campaign): string[] {
 /** What is wrong with one angle. A campaign with a problem in any angle is
  *  never rendered: a bad setup should stop at the form, not halfway through
  *  someone's batch. */
+/** The longest a headline can stay up in one video: the whole of it. */
+export const HEADLINE_SECONDS_MOST = 3600
+
 export function angleProblems(campaign: Campaign, angle: Angle): string[] {
   const problems: string[] = []
   if (!angle.name.trim()) problems.push('Give the angle a name.')
@@ -492,8 +496,11 @@ export function angleProblems(campaign: Campaign, angle: Angle): string[] {
   if (headline.text.length > LIMITS.headlineChars) {
     problems.push(`The headline is over ${LIMITS.headlineChars} characters - it won't fit on the screen.`)
   }
-  if (!within(headline.seconds, LIMITS.headlineSeconds)) {
-    problems.push(`The headline has to stay up between ${LIMITS.headlineSeconds.min} and ${LIMITS.headlineSeconds.max} seconds.`)
+  // The campaign's slider goes to LIMITS.headlineSeconds.max; one video's
+  // headline can be dragged to the video's end in its edit screen (his ask,
+  // 2026-11-16), so a made video takes any length.
+  if (!within(headline.seconds, { min: LIMITS.headlineSeconds.min, max: HEADLINE_SECONDS_MOST })) {
+    problems.push(`The headline has to stay up at least ${LIMITS.headlineSeconds.min} seconds.`)
   }
   if (!within(logo.seconds, LIMITS.logoSeconds)) {
     problems.push(`The logo has to stay up between ${LIMITS.logoSeconds.min} and ${LIMITS.logoSeconds.max} seconds.`)

@@ -80,6 +80,9 @@ export type Job = {
      *  angle's spot; absent = where he last moved one of its angle's
      *  (headlinePlace.ts). */
     headlinePlace?: HeadlinePlace | null
+    /** How long this video's headline stays up, dragged on its timeline (his
+     *  ask, 2026-11-16); absent = its angle's. */
+    headlineSeconds?: number
     /** Where this video's captions sit; absent = the Settings default. */
     captionPosition?: CaptionPosition
     /** How big this video's captions are; absent = the Settings default. */

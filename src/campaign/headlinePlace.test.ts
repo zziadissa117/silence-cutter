@@ -99,8 +99,8 @@ describe('what he puts on a video', () => {
     ])
   })
 
-  it('lets a video stay up for its own length, at most a minute', () => {
-    expect(longestFor(picture)).toBe(20)
+  it('lets a video stay up for its own length, at most a minute; a picture to the video\'s end (2026-11-16)', () => {
+    expect(longestFor(picture)).toBe(3600)
     expect(longestFor(phoneVideo)).toBe(8)
     expect(longestFor(bankVideo)).toBe(60)
   })

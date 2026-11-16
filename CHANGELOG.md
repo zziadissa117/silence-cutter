@@ -3,6 +3,19 @@
 Newest first. Every change says what it does, how to use it, and how it works
 underneath. Kept up to date with each commit.
 
+## Headline, text and pictures drag to the end of the video; Middle left / Middle right spots
+- His asks (2026-11-16): "Make sure text/headlines/overlays can drag to the end in the timeline editor. Look like
+  mostly for headlines theres a sort of time limit we can't drag it to the end" and "put the images automatically in
+  middle left and right".
+- Edit screen timeline: the headline's bar now has an end grip - drag it as far as the video's end (snaps to the end
+  when close). The length is kept for that video only (`day.headlineSeconds`); the campaign's headline seconds stay
+  the default. Text and picture/video overlays were capped at 20 s; they now stretch to the video's end.
+- Campaign pictures (and the edit screen's picture spots, and the logo's) gain Middle left and Middle right, at the
+  same height as Middle (`overlay.ts`).
+- Underneath: `CutsEditor` `gripHeadline` (`Bar.endOnly`), `CampaignApp.setHeadlineSeconds`, `look.HEADLINE_SECONDS_MOST`,
+  `manualPictures.PICTURE_SECONDS.max` 3600, `LogoPosition` 'middle-left' / 'middle-right'. Nothing in how the Cutter
+  cuts or captions changed.
+
 ## Batch clips keep his checked captions when they are made again
 - His report (2026-11-15): "when I redo a batch because I see one little thing wrong, I have to redo the whole captions
   again. I edited the captions once, and they were good. Then I redid the batch, and it completely deleted the

@@ -799,7 +799,7 @@ export function CampaignApp() {
       headlinePlace: headlinePlaceOf(job.day, job.angleId),
       ...((): { headlineSeconds?: number } => {
         const own = campaignsRef.current.find((c) => c.id === job.campaignId)?.angles.find((a) => a.id === job.angleId)
-        const seconds = own ? reactionHeadlineSeconds(job, own) : undefined
+        const seconds = job.day?.headlineSeconds ?? (own ? reactionHeadlineSeconds(job, own) : undefined)
         return seconds ? { headlineSeconds: seconds } : {}
       })(),
       headlineText: job.headlineText,
@@ -2315,7 +2315,8 @@ export function CampaignApp() {
             jobCampaign,
             // Where he moved the headline in the edit screen.
             ((placed) => {
-              const seconds = reactionHeadlineSeconds(next, placed)
+              // Its own length, dragged on its timeline; else a reaction's.
+              const seconds = next.day?.headlineSeconds ?? reactionHeadlineSeconds(next, placed)
               return seconds ? { ...placed, headline: { ...placed.headline, seconds } } : placed
             })(withHeadlinePlace(jobAngle, headlinePlaceOf(next.day, next.angleId))),
             bankRef.current,
@@ -4331,6 +4332,16 @@ export function CampaignApp() {
     void recordDay(id, day, { campaignId: job.campaignId, angleId: job.angleId, headlineText: job.headlineText })
   }
 
+  /** How long this video's headline stays up, dragged on its timeline (his
+   *  ask, 2026-11-16). */
+  const setHeadlineSeconds = (id: string, seconds: number) => {
+    const job = jobs.find((j) => j.id === id)
+    if (!job?.day) return
+    const day = { ...job.day, headlineSeconds: seconds }
+    setJobs((js) => js.map((j) => (j.id === id ? { ...j, day } : j)))
+    void recordDay(id, day, { campaignId: job.campaignId, angleId: job.angleId, headlineText: job.headlineText })
+  }
+
   const setMusic = (id: string, choice: string) => {
     const job = jobs.find((j) => j.id === id)
     if (!job?.day) return
@@ -4420,9 +4431,10 @@ export function CampaignApp() {
     const look = withHeadlineStyle(angle, job.day?.headlineStyle).headline
     return {
       look: { text: job.headlineText, position: look.position, style: look.style, size: look.size, outlineColor: look.outlineColor, outlineWidth: look.outlineWidth },
-      seconds: look.seconds,
+      seconds: job.day?.headlineSeconds ?? look.seconds,
       place: headlinePlaceOf(job.day, job.angleId),
       onPlace: (place: HeadlinePlace | null) => setHeadlinePlace(job.id, place),
+      onSeconds: (seconds: number) => setHeadlineSeconds(job.id, seconds),
     }
   }
 

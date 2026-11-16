@@ -55,8 +55,11 @@ export interface SoundSource {
 /** How loud a sound starts: a little under his voice. */
 export const SOUND_DB = { start: -6, min: -30, max: 6 } as const
 
-/** How long a picture or words can stay up, and the step + and - take. */
-export const PICTURE_SECONDS = { min: 0.5, max: 20, step: 0.5 } as const
+/** How long a picture or words can stay up, and the step + and - take. Up
+ *  to the video's end (his ask, 2026-11-16: "make sure text/headlines/
+ *  overlays can drag to the end in the timeline editor") - the edit screen
+ *  stops each at the end of the video. */
+export const PICTURE_SECONDS = { min: 0.5, max: 3600, step: 0.5 } as const
 /** A video plays to its end, up to this long. */
 export const VIDEO_SECONDS_MAX = 60
 /** A sound plays to its end, up to this long: a song under a whole video. */
@@ -111,6 +114,8 @@ export const POSITIONS: { id: LogoPosition; label: string }[] = [
   { id: 'top-left', label: 'Top left' },
   { id: 'top-right', label: 'Top right' },
   { id: 'middle', label: 'Middle' },
+  { id: 'middle-left', label: 'Middle left' },
+  { id: 'middle-right', label: 'Middle right' },
   { id: 'bottom-left', label: 'Bottom left' },
   { id: 'bottom-right', label: 'Bottom right' },
 ]

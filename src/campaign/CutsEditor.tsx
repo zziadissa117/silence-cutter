@@ -354,6 +354,8 @@ export interface Bar {
   kind: 'words' | 'picture' | 'video' | 'headline' | 'sound'
   label: string
   thumb?: string
+  /** Only its end moves (the headline: it starts with the video). */
+  endOnly?: boolean
 }
 
 /** What a finger on a bar does: moves it, or drags one of its ends. */
@@ -390,7 +392,8 @@ function Bars({
     <>
       {bars.map((b) => {
         const on = b.id === selected
-        const movable = b.kind !== 'headline'
+        // The headline always starts with the video: only its end moves.
+        const movable = b.kind !== 'headline' || b.endOnly === true
         return (
           <div
             key={b.id}
@@ -408,7 +411,7 @@ function Bars({
                     // Its ends stretch it, its middle moves it.
                     const box = e.currentTarget.getBoundingClientRect()
                     const edge = Math.min(BAR_EDGE_PX, box.width / 4)
-                    onGrip(b.id, e.clientX - box.left < edge ? 'start' : box.right - e.clientX < edge ? 'end' : 'move', e)
+                    onGrip(b.id, b.endOnly ? 'end' : e.clientX - box.left < edge ? 'start' : box.right - e.clientX < edge ? 'end' : 'move', e)
                   }
                 : undefined
             }
@@ -417,11 +420,11 @@ function Bars({
             <span className="tl-bar-label">{b.label}</span>
             {movable && on ? (
               <>
-                <span className="tl-bar-end start" aria-label="Drag to change when it starts" onPointerDown={(e) => onGrip(b.id, 'start', e)}>
+                {b.endOnly ? null : <span className="tl-bar-end start" aria-label="Drag to change when it starts" onPointerDown={(e) => onGrip(b.id, 'start', e)}>
                   <svg viewBox="0 0 10 16" aria-hidden>
                     <path d="M7 2 2 8l5 6" />
                   </svg>
-                </span>
+                </span>}
                 <span className="tl-bar-end end" aria-label="Drag to change how long it stays" onPointerDown={(e) => onGrip(b.id, 'end', e)}>
                   <svg viewBox="0 0 10 16" aria-hidden>
                     <path d="M3 2l5 6-5 6" />
@@ -610,6 +613,9 @@ export function CutsEditor({
     place: HeadlinePlace | null
     /** Moved or sized (null: back to its spot) - once a finger lets go. */
     onPlace: (place: HeadlinePlace | null) => void
+    /** Made to stay up longer or shorter by dragging its bar's end - once a
+     *  finger lets go. Absent: its length can't be changed here. */
+    onSeconds?: (seconds: number) => void
   }
   onDone: (keep: Range[], overlays: ManualPicture[], newFiles: Map<string, Blob>) => void
   /** Keeps the cuts as they are, like Done, and goes on to the captions.
@@ -674,6 +680,8 @@ export function CutsEditor({
   const [soundPicking, setSoundPicking] = useState(false)
   const soundEls = useRef(new Map<string, HTMLAudioElement>())
   const [selectedPic, setSelectedPic] = useState<string | null>(null)
+  /** How long the headline stays up here, as its bar's end is dragged. */
+  const [headlineSecs, setHeadlineSecs] = useState<number>(headline?.seconds ?? 0)
   const [picNote, setPicNote] = useState<string | null>(null)
   /** Each picture's and video's width over height, once it has loaded - for
    *  the preview to lay it out as the render will. */
@@ -1198,7 +1206,7 @@ export function CutsEditor({
     // Only the words' own fields change their layout.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [textKey, frameSize, fontReady, measure])
-  const headlineOn = headlineLayout !== null && (outT < (headline?.seconds ?? 0) || selectedPic === HEADLINE)
+  const headlineOn = headlineLayout !== null && (outT < headlineSecs || selectedPic === HEADLINE)
   const shownTexts = overlays.filter((o) => textLayouts.has(o.id) && (upAt(o) || o.id === selectedPic))
   drawn.current = {
     layouts: [...shownTexts.map((o) => textLayouts.get(o.id)!), ...(headlineOn && headlineLayout ? [headlineLayout] : [])],
@@ -1573,7 +1581,44 @@ export function CutsEditor({
    *  ends change when it comes up and how long it stays. */
   /** When a bar was last let go of after a drag: that letting go isn't a tap. */
   const gripped = useRef(0)
+  /** The headline bar's end dragged: it stays up longer or shorter, from the
+   *  start up to the video's very end (his ask, 2026-11-16). */
+  const gripHeadline = (down: ReactPointerEvent<HTMLElement>) => {
+    if (!headline?.onSeconds) return
+    down.preventDefault()
+    down.stopPropagation()
+    takeOver()
+    setSelected(null)
+    setSelectedPic(HEADLINE)
+    const el = down.currentTarget
+    el.setPointerCapture?.(down.pointerId)
+    const total = keptLength(keepRef.current)
+    const from = Math.min(total, headlineSecs)
+    const x0 = down.clientX
+    let secs = from
+    const move = (event: PointerEvent) => {
+      if (Math.abs(event.clientX - x0) < 4 && secs === from) return
+      secs = Math.round(Math.min(total, Math.max(0.5, from + (event.clientX - x0) / pxRef.current)) * 10) / 10
+      // Within a tenth of the end: right to the end.
+      if (total - secs < 0.15) secs = Math.round(total * 100) / 100
+      setHeadlineSecs(secs)
+    }
+    const up = () => {
+      el.removeEventListener('pointermove', move)
+      el.removeEventListener('pointerup', up)
+      el.removeEventListener('pointercancel', up)
+      if (secs !== from) {
+        gripped.current = performance.now()
+        headline.onSeconds?.(secs)
+      }
+    }
+    el.addEventListener('pointermove', move)
+    el.addEventListener('pointerup', up)
+    el.addEventListener('pointercancel', up)
+  }
+
   const onGrip = (id: string, grip: BarGrip, down: ReactPointerEvent<HTMLElement>) => {
+    if (id === HEADLINE) return gripHeadline(down)
     const o = overlaysRef.current.find((x) => x.id === id)
     if (!o) return
     down.preventDefault()
@@ -1593,7 +1638,8 @@ export function CutsEditor({
       const dx = (event.clientX - x0) / pxRef.current
       if (!moved && Math.abs(event.clientX - x0) < 4) return
       moved = true
-      const longest = longestFor(o)
+      // Never past the video's end (his ask, 2026-11-16: drag it to the end).
+      const longest = Math.max(PICTURE_SECONDS.min, Math.min(longestFor(o), total - (grip === 'end' ? out0 : 0)))
       let out = out0
       let seconds = o.seconds
       if (grip === 'move') out = Math.min(Math.max(0, out0 + dx), Math.max(0, total - 0.1))
@@ -1690,7 +1736,9 @@ export function CutsEditor({
   const marksTo = Math.min(total, (around + 3) * chunk)
   // The rows: the headline, then each thing he put on, where it comes up.
   const bars: Bar[] = [
-    ...(headlineLayout && headline ? [{ id: HEADLINE, at: 0, seconds: Math.min(total, headline.seconds), kind: 'headline' as const, label: headline.look.text.trim() || 'Headline' }] : []),
+    ...(headlineLayout && headline
+      ? [{ id: HEADLINE, at: 0, seconds: Math.min(total, headlineSecs), kind: 'headline' as const, label: headline.look.text.trim() || 'Headline', ...(headline.onSeconds ? { endOnly: true } : {}) }]
+      : []),
     ...overlays
       .filter((o) => !isSound(o))
       .map((o): Bar => ({

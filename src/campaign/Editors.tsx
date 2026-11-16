@@ -67,6 +67,8 @@ const LOGO_POSITIONS: { value: LogoPosition; label: string }[] = [
   { value: 'top-left', label: 'Top left' },
   { value: 'top-right', label: 'Top right' },
   { value: 'middle', label: 'Middle' },
+  { value: 'middle-left', label: 'Middle left' },
+  { value: 'middle-right', label: 'Middle right' },
   { value: 'bottom-left', label: 'Bottom left' },
   { value: 'bottom-right', label: 'Bottom right' },
 ]

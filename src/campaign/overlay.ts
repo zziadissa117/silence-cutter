@@ -294,6 +294,10 @@ export function layoutLogo(
       return { x: left, y: top, width: w, height: h }
     case 'top-right':
       return { x: width * (1 - TIKTOK_ZONES.side) - w, y: top, width: w, height: h }
+    case 'middle-left':
+      return { x: left, y: height * 0.42 - h / 2, width: w, height: h }
+    case 'middle-right':
+      return { x: right, y: height * 0.42 - h / 2, width: w, height: h }
     case 'bottom-left':
       return { x: left, y: bottom, width: w, height: h }
     case 'bottom-right':
