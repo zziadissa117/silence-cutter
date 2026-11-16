@@ -2341,3 +2341,10 @@ main.full-page > * { max-width: 720px; margin-left: auto; margin-right: auto; }
 .script-check-text { display: flex; flex-direction: column; min-width: 0; }
 .script-check-step { font-size: 13px; color: var(--dim); }
 .script-match-btn { background: var(--ok); }
+
+/* A step's pictures one after another: each one's share of the step. */
+.step-turns { display: flex; flex-direction: column; gap: 8px; margin: 10px 0; }
+.step-turns-bar { display: flex; height: 26px; border-radius: 8px; overflow: hidden; border: 1px solid var(--edge); }
+.step-turns-bar span { display: flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 600; color: var(--text); background: var(--surface); }
+.step-turns-bar span:nth-child(even) { background: color-mix(in srgb, var(--accent, #7c6cf6) 35%, var(--surface)); }
+.step-turn input[type='range'] { width: 100%; }

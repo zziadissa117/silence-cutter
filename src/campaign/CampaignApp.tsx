@@ -44,6 +44,7 @@ import { MotionView } from './MotionView'
 import { afterMixing, daysLine, mixesOf, spreadOver } from './formats'
 import type { ViewsByAccount } from './analytics'
 import { bareName, batchCaptionLook, filesOf, formatOfReaction, formatTalks, formatsOf, stepTexts, stepTitle, styleFor, stylesOf, withoutName, type BankFile, type BatchBank } from './batch'
+import { overlayWindows } from './stepOverlays'
 import { followFavour } from './batchFavour'
 import { playsWhole } from './stepPiece'
 import { CampaignsView } from './CampaignsView'
@@ -2203,10 +2204,13 @@ export function CampaignApp() {
                   stepped.map(async (s) => {
                     const list = stepOf(s)?.overlays ?? []
                     if (list.length === 0) return null
+                    // All at once, or one after another as he split them.
+                    const turns = stepOf(s)?.overlayTurns
+                    const shares = overlayWindows(list.length, turns)
                     const read = await Promise.all(
-                      list.map(async (o) => {
+                      list.map(async (o, k) => {
                         const file = await loadBankFile(o.file).catch(() => null)
-                        return file ? { file, type: o.file.type || file.type, place: o.place } : null
+                        return file ? { file, type: o.file.type || file.type, place: o.place, ...(turns ? { window: shares[k] } : {}) } : null
                       }),
                     )
                     const kept = read.filter((o): o is NonNullable<typeof o> => o !== null)

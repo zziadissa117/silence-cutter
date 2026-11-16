@@ -208,7 +208,7 @@ export interface MontageRenderInput {
   /** Per clip, in order: the pictures and videos he put on a product step
    *  (stepOverlays.ts), each popping in as the step comes on - under the
    *  words. Null or absent for none. */
-  stepOverlays?: ({ file: Blob; type: string; place: OverlayPlace }[] | null)[]
+  stepOverlays?: ({ file: Blob; type: string; place: OverlayPlace; window?: { from: number; to: number } }[] | null)[]
   /** A Trial loop's video (trialLoop.ts): white (above 0) or black (below)
    *  this strong over every frame, under the words - a touch brighter or
    *  darker. 0 or absent: the frame as it is. */
@@ -659,7 +659,16 @@ export async function renderMontage(
         ctx.restore()
       }
       // His pictures and videos on the step, under its words.
-      if (!raw) for (const overlay of overlays[i] ?? []) await drawOverlay(ctx, overlay, t - start, start + length - t)
+      if (!raw) {
+        for (const overlay of overlays[i] ?? []) {
+          // One after another: each only in its share of the step, popping
+          // in as its share starts.
+          const from = overlay.window ? overlay.window.from * length : 0
+          const to = overlay.window ? overlay.window.to * length : length
+          if (t - start < from || t - start >= to) continue
+          await drawOverlay(ctx, overlay, t - start - from, start + to - t)
+        }
+      }
       if (i === headlineOn && headline) drawHeadline(ctx, headline)
       if (!raw) for (const title of titleLayouts[i] ?? []) drawHeadline(ctx, title)
       if (i === headlineOn && formulaLayout && logos) drawFormula(ctx, formulaLayout, logos)
@@ -703,7 +712,13 @@ export async function renderMontage(
         // is left out, never the video.
         const ownOverlays = stepOverlays[i]
         if (ownOverlays?.length) {
-          const ready = await Promise.all(ownOverlays.map((o) => readyOverlay(o.file, o.type, o.place, width, height).catch(() => null)))
+          const ready = await Promise.all(
+            ownOverlays.map((o) =>
+              readyOverlay(o.file, o.type, o.place, width, height)
+                .then((r) => (r && o.window ? { ...r, window: o.window } : r))
+                .catch(() => null),
+            ),
+          )
           overlays[i] = ready.filter((o): o is ReadyOverlay => o !== null)
           if (overlays[i].length < ownOverlays.length) reportProblem({ kind: 'fallback', phase: 'step overlay', message: `${ownOverlays.length - overlays[i].length} of clip ${i + 1}'s overlays couldn't be read` })
         }

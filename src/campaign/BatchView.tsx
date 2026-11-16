@@ -1301,15 +1301,15 @@ export function BatchView({
             step={step}
             look={angle.headline}
             talking={talking}
-            onSave={({ texts, overlays }) => {
+            onSave={({ texts, overlays, overlayTurns }) => {
               const latest = bankRef.current ?? bank
               if (!latest) return
               keep({
                 ...latest,
                 steps: (latest.steps ?? []).map((st) => {
                   if (st.id !== step.id) return st
-                  const { texts: _old, overlays: _was, ...rest } = st
-                  return { ...rest, ...(texts ? { texts } : {}), ...(overlays.length > 0 ? { overlays } : {}) }
+                  const { texts: _old, overlays: _was, overlayTurns: _turns, ...rest } = st
+                  return { ...rest, ...(texts ? { texts } : {}), ...(overlays.length > 0 ? { overlays } : {}), ...(overlayTurns ? { overlayTurns } : {}) }
                 }),
               })
             }}
@@ -1509,14 +1509,14 @@ export function BatchView({
                     step={st}
                     look={angle.headline}
                     talking
-                    onSave={({ texts, overlays }) => {
+                    onSave={({ texts, overlays, overlayTurns }) => {
                       const latest = bankRef.current ?? bank
                       keep({
                         ...latest,
                         steps: (latest.steps ?? []).map((x) => {
                           if (x.id !== st.id) return x
-                          const { texts: _old, overlays: _was, ...rest } = x
-                          return { ...rest, ...(texts ? { texts } : {}), ...(overlays.length > 0 ? { overlays } : {}) }
+                          const { texts: _old, overlays: _was, overlayTurns: _turns, ...rest } = x
+                          return { ...rest, ...(texts ? { texts } : {}), ...(overlays.length > 0 ? { overlays } : {}), ...(overlayTurns ? { overlayTurns } : {}) }
                         }),
                       })
                     }}

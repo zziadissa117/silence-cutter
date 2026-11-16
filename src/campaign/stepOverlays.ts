@@ -23,6 +23,22 @@ export interface OverlayPlace {
 /** How small and big one can be made, as a share of the frame's width. */
 export const OVERLAY_WIDTH = { min: 0.15, max: 1, start: 0.5, step: 0.05 } as const
 
+/** When each of a step's overlays is up, as fractions of the step's clip:
+ *  all of it for each when they show together (no `turns`), else one after
+ *  another, handing over at each turn - evenly when the turns don't fit
+ *  how many there are (one added or taken out since). */
+export function overlayWindows(count: number, turns?: readonly number[]): { from: number; to: number }[] {
+  if (!turns) return Array.from({ length: count }, () => ({ from: 0, to: 1 }))
+  const cuts = turns.length === count - 1 && turns.every((t, k) => t > 0 && t < 1 && (k === 0 || t > turns[k - 1])) ? [...turns] : evenTurns(count)
+  const edges = [0, ...cuts, 1]
+  return Array.from({ length: count }, (_, k) => ({ from: edges[k], to: edges[k + 1] }))
+}
+
+/** The turns that give each of `count` overlays an equal share. */
+export function evenTurns(count: number): number[] {
+  return Array.from({ length: Math.max(0, count - 1) }, (_, k) => Math.round(((k + 1) / count) * 100) / 100)
+}
+
 /** Where it starts when added: the middle, a little above. */
 export const OVERLAY_START: OverlayPlace = { x: 0.5, y: 0.42, width: OVERLAY_WIDTH.start }
 
@@ -49,6 +65,9 @@ export interface ReadyOverlay {
   box: { x: number; y: number; width: number; height: number }
   /** A video's length: it goes when it ends. Infinity for a picture. */
   seconds: number
+  /** When it is up, as fractions of its step's clip (overlayWindows);
+   *  absent: the whole step. */
+  window?: { from: number; to: number }
   /** The picture, or the video frame `local` seconds in. */
   frameAt(local: number): Promise<CanvasImageSource | null>
   close(): Promise<void>

@@ -396,6 +396,12 @@ export interface BatchStep {
    *  phone screen, popping in every time the step plays (his ask,
    *  2026-11-13). Their files are kept with the batch's clips. */
   overlays?: StepOverlay[]
+  /** His pictures and videos one after another instead of all at once (his
+   *  ask, 2026-11-16: "the first image pops up at 0% to 50% of the video,
+   *  and the last one pops up at 50%, and I can choose the ratio"): where
+   *  each hands over to the next, as fractions of the step's clip - one
+   *  fewer than there are (stepOverlays.overlayWindows). Absent: all at once. */
+  overlayTurns?: number[]
   /** What he said in clips he put in this step after a drop-in - so the next
    *  ones saying it the same way go here too (stepMatch.ts). */
   heard?: string[]

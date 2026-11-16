@@ -3,6 +3,18 @@
 Newest first. Every change says what it does, how to use it, and how it works
 underneath. Kept up to date with each commit.
 
+## A product step's pictures one after another, at the split he sets
+- His ask (2026-11-16): "there is one product step, and I want two images in it, but ... I don't want them to overlap
+  ... the first image pops up at 0% to 50% of the video, and the last one pops up at 50%, and I can choose the ratio".
+- Batch tab, a product step's words/pictures screen: with two or more pictures or videos on it, a new choice
+  "Pictures and videos": All at once (as before, the default - running batches unchanged) or One after another. One
+  after another splits the step evenly to start (2: 0-50% / 50-100%); a slider per hand-over moves it ("1 until 50%,
+  then 2"), with a bar showing each one's share. The phone screen there shows each only in its share while the clip
+  plays. Each pops in as its share starts and out as it ends; a video plays from its share's start.
+- Underneath: `BatchStep.overlayTurns`, `stepOverlays.overlayWindows`/`evenTurns`, `ReadyOverlay.window`, drawn in
+  `montageRender` only inside its share; `StepTexts.OverlayTurns`. Batches made on the Cutter server take it with the
+  steps.
+
 ## The edit screen shows every picture the video will have; Check never approves a video unseen
 - His report (2026-11-16): "I put in my own overlays, and there were also overlays from previous videos ... what I'm
   seeing when I approve the video is pictures that I've never put in myself ... The preview from the timeline editor

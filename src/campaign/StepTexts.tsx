@@ -23,7 +23,7 @@ import type { Angle, BankPicture } from './look'
 import { drawHeadline, layoutHeadline, type HeadlineLayout } from './overlay'
 import { loadBank, loadBankFile, retireBankFiles, saveBankFile } from './store'
 import { isUpright } from './framing916'
-import { OVERLAY_START, OVERLAY_WIDTH, overlayBox } from './stepOverlays'
+import { OVERLAY_START, OVERLAY_WIDTH, evenTurns, overlayBox, overlayWindows } from './stepOverlays'
 import { useVideoBank, videoFile } from './videoBank'
 
 /** The frame the words are laid out on: the videos' own size. */
@@ -59,6 +59,8 @@ export function snapToMiddle(x: number, y: number): { x: number; y: number; acro
 export interface StepLook {
   texts: StepText[] | undefined
   overlays: StepOverlay[]
+  /** One after another, handing over at these points; absent: all at once. */
+  overlayTurns?: number[]
 }
 
 /** What he starts from: his words as saved, or the step's name at the top -
@@ -98,6 +100,11 @@ export function StepTexts({
   const [texts, setTexts] = useState<StepText[]>(() => startingTexts(step, talking))
   const [selected, setSelected] = useState<string | null>(texts[0]?.id ?? null)
   const [overlays, setOverlays] = useState<StepOverlay[]>(() => step.overlays ?? [])
+  /** One after another (BatchStep.overlayTurns), or undefined: all at once. */
+  const [turns, setTurns] = useState<number[] | undefined>(() => step.overlayTurns)
+  /** How far through its clip the step's video is, to show each overlay only
+   *  in its share, as the made video will. */
+  const [playedAt, setPlayedAt] = useState(0)
   const [chosen, setChosen] = useState<string | null>(null)
   /** Each overlay's picture or video, and its shape (height over width). */
   const [media, setMedia] = useState<Record<string, { url: string; shape: number }>>({})
@@ -326,7 +333,8 @@ export function StepTexts({
 
   const save = () => {
     letGo(overlays)
-    onSave({ texts: texts.map((t) => ({ ...t, text: t.text.trim() })).filter((t) => t.text), overlays })
+    const inTurn = turns && overlays.length >= 2 ? (turns.length === overlays.length - 1 ? turns : evenTurns(overlays.length)) : undefined
+    onSave({ texts: texts.map((t) => ({ ...t, text: t.text.trim() })).filter((t) => t.text), overlays, ...(inTurn ? { overlayTurns: inTurn } : {}) })
     onClose()
   }
 
@@ -357,13 +365,21 @@ export function StepTexts({
               // A wide clip is shown whole in the made video, as here.
               className={whole ? 'whole' : undefined}
               onLoadedMetadata={(e) => setWhole(!isUpright(e.currentTarget.videoWidth, e.currentTarget.videoHeight))}
+              onTimeUpdate={(e) => {
+                const v = e.currentTarget
+                if (v.duration > 0) setPlayedAt(v.currentTime / v.duration)
+              }}
             />
           ) : (
             <span className="step-phone-empty">{first ? '…' : 'Add a clip to see it here'}</span>
           )}
-          {overlays.map((o) => {
+          {overlays.map((o, k) => {
             const m = media[o.file.id]
             if (!m) return null
+            // One after another: only in its share, as in the video - the
+            // one he is working on always.
+            const share = turns && overlays.length >= 2 ? overlayWindows(overlays.length, turns)[k] : null
+            if (share && o.id !== chosen && (playedAt < share.from || playedAt >= share.to)) return null
             const b = boxOfOverlay(o)
             const style = { left: `${b.x * 100}%`, top: `${b.y * 100}%`, width: `${b.w * 100}%`, height: `${b.h * 100}%` }
             const cls = `step-overlay${o.id === chosen ? ' chosen' : ''}`
@@ -437,6 +453,10 @@ export function StepTexts({
         </div>
       ) : null}
       {problem ? <p className="hint warn-text">{problem}</p> : null}
+
+      {overlays.length >= 2 ? (
+        <OverlayTurns count={overlays.length} turns={turns} onChange={setTurns} />
+      ) : null}
 
       {currentOverlay ? (
         <div className="step-text-edit">
@@ -549,4 +569,61 @@ function BankThumb({ image }: { image: Blob }) {
     return () => URL.revokeObjectURL(made)
   }, [image])
   return url ? <img src={url} alt="" /> : null
+}
+
+/** His pictures and videos on the step all at once, or one after another -
+ *  each with its share of the step, the hand-over points his to move (his
+ *  ask, 2026-11-16). */
+function OverlayTurns({ count, turns, onChange }: { count: number; turns: number[] | undefined; onChange: (turns: number[] | undefined) => void }) {
+  const shown = turns && turns.length === count - 1 ? turns : evenTurns(count)
+  const shares = overlayWindows(count, shown)
+  const pct = (n: number) => `${Math.round(n * 100)}%`
+  return (
+    <div className="step-turns">
+      <span className="label">Pictures and videos</span>
+      <div className="seg" role="radiogroup" aria-label="Pictures and videos">
+        <button type="button" role="radio" aria-checked={!turns} className={!turns ? 'active' : ''} onClick={() => onChange(undefined)}>
+          All at once
+        </button>
+        <button type="button" role="radio" aria-checked={Boolean(turns)} className={turns ? 'active' : ''} onClick={() => onChange(turns ?? evenTurns(count))}>
+          One after another
+        </button>
+      </div>
+      {turns ? (
+        <>
+          <div className="step-turns-bar" aria-hidden="true">
+            {shares.map((sh, k) => (
+              <span key={k} style={{ width: `${(sh.to - sh.from) * 100}%` }}>
+                {k + 1}
+              </span>
+            ))}
+          </div>
+          {shown.slice(0, count - 1).map((at, k) => {
+            const low = (k === 0 ? 0 : shown[k - 1]) + 0.05
+            const high = (k === count - 2 ? 1 : shown[k + 1]) - 0.05
+            return (
+              <label key={k} className="field step-turn">
+                <span className="label">
+                  {k + 1} until {pct(at)}, then {k + 2}
+                </span>
+                <input
+                  type="range"
+                  min={5}
+                  max={95}
+                  step={5}
+                  value={Math.round(at * 100)}
+                  aria-label={`Picture ${k + 1} hands over to ${k + 2} at`}
+                  onChange={(e) => {
+                    const v = Math.min(high, Math.max(low, Number(e.target.value) / 100))
+                    onChange(shown.map((x, j) => (j === k ? Math.round(v * 100) / 100 : x)))
+                  }}
+                />
+              </label>
+            )
+          })}
+          <p className="hint">{shares.map((sh, k) => `${k + 1}: ${pct(sh.from)}–${pct(sh.to)}`).join(' · ')} of the step. Play the clip above to see it.</p>
+        </>
+      ) : null}
+    </div>
+  )
 }
