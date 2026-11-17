@@ -10,8 +10,19 @@
 import { emojiSpritesReady } from './emojiSprites'
 import latin from './fonts/TikTokSans-latin.woff2'
 import latinExt from './fonts/TikTokSans-latin-ext.woff2'
+import interLatin from './fonts/Inter-latin.woff2'
+import interLatinExt from './fonts/Inter-latin-ext.woff2'
 
 export const HEADLINE_FAMILY = '"TikTok Sans", "Apple Color Emoji", "Helvetica Neue", Arial, sans-serif'
+
+/** An Instagram-looking headline: Inter (SIL Open Font License,
+ *  fonts/Inter-OFL.txt), close to Instagram's own clean sans - for Trial reel
+ *  copies, so not every copy reads in TikTok's type (his ask, 2026-11-17:
+ *  "Keep a TikTok, but maybe make an Instagram-type font"). */
+export const INSTAGRAM_FAMILY = '"Inter", "Apple Color Emoji", "Helvetica Neue", Arial, sans-serif'
+
+/** The family of a headline's font. */
+export const familyOf = (font: 'instagram' | undefined): string => (font === 'instagram' ? INSTAGRAM_FAMILY : HEADLINE_FAMILY)
 
 const LATIN =
   'U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD'
@@ -34,6 +45,8 @@ function fontReady(): Promise<void> {
     const faces = [
       new FontFace('TikTok Sans', `url(${latin}) format('woff2')`, { weight: '300 900', unicodeRange: LATIN }),
       new FontFace('TikTok Sans', `url(${latinExt}) format('woff2')`, { weight: '300 900', unicodeRange: LATIN_EXT }),
+      new FontFace('Inter', `url(${interLatin}) format('woff2')`, { weight: '400 900', unicodeRange: LATIN }),
+      new FontFace('Inter', `url(${interLatinExt}) format('woff2')`, { weight: '400 900', unicodeRange: LATIN_EXT }),
     ]
     for (const face of faces) document.fonts.add(face)
     // Both halves: a headline with an ł or an ş laid out before its half

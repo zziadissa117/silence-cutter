@@ -347,6 +347,7 @@ export async function writeWhole(
     onSound,
     window,
     speed,
+    skip,
   }: {
     rate: number
     channels: number
@@ -364,11 +365,18 @@ export async function writeWhole(
      *  speed it up a little bit"): its frames land sooner, its sound is
      *  stretched with its pitch kept (timeStretch.ts). 1 when absent. */
     speed?: number
+    /** A piece left out of the middle, on the clip's own clock (a Trial reel
+     *  copy's micro cut, his ask 2026-11-17): what follows plays on straight
+     *  after what came before it. */
+    skip?: Range
   },
 ): Promise<number> {
   const sp = speed && speed > 0 ? speed : 1
   const all = wholeOf(clip)
   const whole = window ? { start: Math.max(all.start, window.start), end: Math.min(all.end, window.end) } : all
+  const gap = skip && skip.start > whole.start && skip.end < whole.end && skip.end > skip.start ? skip : null
+  const gapLength = gap ? gap.end - gap.start : 0
+  const spans = gap ? [{ start: whole.start, end: gap.start }, { start: gap.end, end: whole.end }] : [whole]
   const packets = new EncodedPacketSink(clip.video)
   // Where the clip's own picture ends - its sound may run on past it.
   const pictureEnd = Promise.resolve()
@@ -400,8 +408,15 @@ export async function writeWhole(
                 sample.close()
                 continue
               }
+              // In the piece left out: never shown.
+              if (gap && sample.timestamp >= gap.start && sample.timestamp < gap.end) {
+                done = sample.timestamp
+                sample.close()
+                continue
+              }
               origin ??= !onSound && sample.timestamp - whole.start > LATE_FIRST ? sample.timestamp : whole.start
-              const timestamp = videoClock(at + Math.max(0, sample.timestamp - origin) / sp)
+              const after = gap && sample.timestamp >= gap.end ? gapLength : 0
+              const timestamp = videoClock(at + Math.max(0, sample.timestamp - origin - after) / sp)
               const sourceTime = sample.timestamp
               const sourceDuration = sample.duration
               try {
@@ -433,13 +448,13 @@ export async function writeWhole(
             audioEnd = timestamp + length / rate
             await onSound(planes, timestamp)
           }
-          if (sp === 1) return eachSound(clip, [whole], rate, channels, write)
+          if (sp === 1) return eachSound(clip, spans, rate, channels, write)
           // Faster: the sound read whole, stretched once, then written in
           // pieces on the video's clock.
-          const pieces: Float32Array[][] = []
-          await eachSound(clip, [whole], rate, channels, async (planes) => void pieces.push(planes.map((p) => p.slice())))
-          if (pieces.length === 0) return
-          const stretched = stretch(joinPieces(pieces), rate, sp)
+          const read: Float32Array[][] = []
+          await eachSound(clip, spans, rate, channels, async (planes) => void read.push(planes.map((p) => p.slice())))
+          if (read.length === 0) return
+          const stretched = stretch(joinPieces(read), rate, sp)
           const step = Math.round(rate / 10)
           for (let from = 0; from < (stretched[0]?.length ?? 0); from += step) await write(stretched.map((p) => p.subarray(from, from + step)))
         })()

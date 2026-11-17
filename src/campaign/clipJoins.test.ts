@@ -77,5 +77,27 @@ describe('clips written one after another', () => {
     // From 0.2 s to the end of the last frame starting before 0.75 s (0.733 s).
     expect(end).toBeCloseTo(1 + (22 / FPS + 1 / FPS - 0.2), 6)
   })
+
+  it('a micro cut: the piece left out is never shown, what follows plays straight after (Trial reels, 2026-11-17)', async () => {
+    clipFrames = Array.from({ length: 2 * FPS }, (_, i) => i / FPS)
+    const clip = { video: {}, audio: null, width: 1080, height: 1920, first: 0, duration: 2 } as unknown as Clip
+    const shown: { own: number; at: number }[] = []
+    const skip = { start: 1, end: 1.3 }
+    const end = await writeWhole(clip, 0, {
+      skip,
+      rate: RATE,
+      channels: 2,
+      videoClock: forwardOnly(),
+      audioClock: contiguousAudio(),
+      maxRecoveries: 0,
+      onFrame: async (sample, at) => void shown.push({ own: sample.timestamp, at }),
+    })
+    // No frame from inside the cut.
+    expect(shown.some((f) => f.own >= skip.start - 1e-9 && f.own < skip.end - 1e-9)).toBe(false)
+    // Every frame a frame after the one before it - no hole, no freeze.
+    for (let i = 1; i < shown.length; i++) expect(shown[i].at - shown[i - 1].at).toBeCloseTo(1 / FPS, 6)
+    // 0.3 s shorter than the whole 2 s.
+    expect(end).toBeCloseTo(2 - 0.3, 2)
+  })
 })
 

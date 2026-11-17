@@ -7,7 +7,7 @@
 // down the right, and the caption across the bottom.
 
 import { checkPictures, drawLine, hasPictures, measureLine } from './emojiSprites'
-import { HEADLINE_FAMILY, headlineFontReady } from './headlineFont'
+import { familyOf, headlineFontReady } from './headlineFont'
 import { HEADLINE_SCALE, type HeadlinePlace, type HeadlinePosition, type HeadlineSize, type HeadlineStyle, type LogoPosition, type OutlineWidth } from './look'
 
 // Start loading TikTok Sans as soon as anything that draws a headline is
@@ -122,6 +122,8 @@ export function layoutHeadline(
     /** Where he dragged it, and how much he pinched it: in place of its
      *  position, kept inside the frame. */
     place?: HeadlinePlace | null
+    /** Instagram's look instead of TikTok's (a Trial reel copy). */
+    font?: 'instagram'
   },
 ): HeadlineLayout | null {
   const text = headline.text.trim()
@@ -132,7 +134,7 @@ export function layoutHeadline(
   const boxed = headline.style === 'box'
   const snap = headline.style === 'snap'
   const lay = (fontPx: number) => {
-    const font = snap ? `${SNAP.weight} ${fontPx}px ${SNAP_FAMILY}` : `${HEADLINE_WEIGHT} ${fontPx}px ${HEADLINE_FAMILY}`
+    const font = snap ? `${SNAP.weight} ${fontPx}px ${SNAP_FAMILY}` : `${HEADLINE_WEIGHT} ${fontPx}px ${familyOf(headline.font)}`
     ctx.font = font
     const maxWidth = snap ? width * (1 - 2 * SNAP.margin) : width * (1 - 2 * TIKTOK_ZONES.side) - (boxed ? fontPx * BOX.padX * 2 : 0)
     // Where the lines break is decided on how wide they are really drawn: an

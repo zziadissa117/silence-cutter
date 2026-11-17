@@ -492,6 +492,8 @@ export async function makeMontage(
     keepShape?: boolean
     /** A Trial loop's video: seconds off its end (trialLoop.TrialLook.trimSec). */
     shorterBy?: number
+    /** A Trial loop's video: a micro cut in its middle (trialLoop.TrialLook.cut). */
+    cutOut?: { at: number; sec: number }
     /** A Trial loop's video: a touch faster, framed a little tighter (trialLoop.TrialLook). */
     speed?: number
     reframe?: Parameters<typeof renderMontage>[0]['reframe']
@@ -527,6 +529,7 @@ export async function makeMontage(
       keepLines: extra.keepLines,
       keepShape: extra.keepShape,
       shorterBy: extra.shorterBy,
+      cutOut: extra.cutOut ?? null,
       speed: extra.speed,
       reframe: extra.reframe ?? null,
       tint: extra.tint ?? null,

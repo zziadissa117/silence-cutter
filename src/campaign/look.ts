@@ -153,6 +153,9 @@ export interface Headline {
   /** Moved by hand on one video (withHeadlinePlace) - never saved on an
    *  angle. */
   place?: HeadlinePlace
+  /** Instagram's look instead of TikTok's: a Trial reel copy only
+   *  (trialLoop.trialAngle) - never saved on an angle. */
+  font?: 'instagram'
 }
 
 export type OutlineWidth = 'thin' | 'normal' | 'thick'

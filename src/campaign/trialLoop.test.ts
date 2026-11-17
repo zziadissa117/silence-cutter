@@ -4,6 +4,8 @@ import { emptyBank, type BankFile, type BatchBank } from './batch'
 import { MOST_A_DAY, missingFor, perDayOn, planVideos, runSlots } from './batchRun'
 import { blankAngle } from './look'
 import {
+  copyKey,
+  cutFor,
   BRIGHTNESS,
   NOT_ALLOWED,
   instagramLimit,
@@ -94,7 +96,7 @@ describe('how each video differs', () => {
     expect(plans).toHaveLength(40)
     const exact = plans.filter((p) => p.variant.wording === 0).length
     expect(exact).toBe(20)
-    expect(new Set(made).size).toBe(40)
+    expect(new Set(made.filter((k) => k.startsWith('t:'))).size).toBe(40)
     for (const p of plans) {
       expect(p.text).toBe(wordsOf(read, p.variant.wording))
       expect(BRIGHTNESS).toContain(p.look.brightness)
@@ -308,17 +310,53 @@ describe('a talking clip (2026-11-11)', () => {
 })
 
 describe('copies of different lengths (his ask, 2026-11-11: "mostly keep it at 8, but sometimes make it 7 or 6")', () => {
-  it('mostly whole, sometimes 0.5, 1 or 1.5 s shorter (his ask, 2026-11-15)', () => {
+  it('whole less than half the time, else 0.3 to 1.5 s shorter (his asks, 2026-11-15 and 2026-11-17)', () => {
     const counts = new Map<number, number>()
     for (let i = 0; i < 1000; i++) {
       const t = trimFor(i / 1000)
       counts.set(t, (counts.get(t) ?? 0) + 1)
     }
-    expect(counts.get(0)).toBe(650)
-    expect(counts.get(0.5)).toBe(130)
-    expect(counts.get(1)).toBe(130)
-    expect(counts.get(1.5)).toBe(90)
-    expect(counts.get(2)).toBeUndefined()
+    expect(counts.get(0)).toBe(400)
+    expect([...counts.keys()].sort((a, b) => a - b)).toEqual([0, 0.3, 0.5, 0.8, 1, 1.2, 1.5])
+  })
+
+  it('never the same words, place, sound and length twice (his rule, 2026-11-17)', () => {
+    const bank = bankWith(source('a'))
+    const { plans } = planTrial(bank, 300, { seed: 'many' })
+    const keys = plans.map((p) => copyKey(p.source.id, p.variant.wording, p.variant.place, p.sound?.id ?? null, p.look))
+    expect(new Set(keys).size).toBe(300)
+    // And not with copies made before, on the next top-up.
+    const first = planTrial(bank, 50, { seed: 'one' })
+    const next = planTrial({ ...bank, made: first.made, used: first.used, lastPair: first.lastPair }, 50, { seed: 'two' })
+    const before = new Set(first.plans.map((p) => copyKey(p.source.id, p.variant.wording, p.variant.place, p.sound?.id ?? null, p.look)))
+    for (const p of next.plans) expect(before.has(copyKey(p.source.id, p.variant.wording, p.variant.place, p.sound?.id ?? null, p.look))).toBe(false)
+  })
+
+  it('most copies have a micro cut in the middle, some the Instagram font, each headline nudged (his ask, 2026-11-17)', () => {
+    const { plans } = planTrial(bankWith(source('a')), 200, { seed: 'mix' })
+    const cut = plans.filter((p) => p.look.cut).length
+    expect(cut).toBeGreaterThan(100)
+    expect(cut).toBeLessThan(170)
+    for (const p of plans) {
+      if (!p.look.cut) continue
+      expect(p.look.cut.at).toBeGreaterThanOrEqual(0.33)
+      expect(p.look.cut.at).toBeLessThanOrEqual(0.67)
+      expect(p.look.cut.sec).toBeGreaterThanOrEqual(0.2)
+      expect(p.look.cut.sec).toBeLessThanOrEqual(0.45)
+    }
+    const insta = plans.filter((p) => p.look.font === 'instagram').length
+    expect(insta).toBeGreaterThan(50)
+    expect(insta).toBeLessThan(110)
+    expect(new Set(plans.map((p) => p.look.place.y)).size).toBeGreaterThan(20)
+    for (const p of plans) expect(p.look.place.scale).toBeGreaterThanOrEqual(0.93)
+    // Its brightness steps as before - nothing else about the light changed.
+    for (const p of plans) expect(BRIGHTNESS).toContain(p.look.brightness)
+  })
+
+  it('a micro cut, from two numbers', () => {
+    expect(cutFor(0.9, 0.5)).toBeUndefined()
+    expect(cutFor(0, 0)).toEqual({ at: 0.33, sec: 0.2 })
+    expect(cutFor(0.64, 1)?.at).toBe(0.67)
   })
 
   it('mostly at its own speed, sometimes 1.03x to 1.1x; about one in three framed 2-6% tighter (his asks, 2026-11-15)', () => {

@@ -223,6 +223,9 @@ export interface MontageRenderInput {
    *  an 8 s reel sometimes 7 or 6, so Instagram doesn't take every copy for
    *  the same video (his ask, 2026-11-11). Never more than a quarter of it. */
   shorterBy?: number
+  /** A Trial reel copy's micro cut: a piece this long taken out of the
+   *  first clip at this share of it (trialLoop.TrialLook.cut). */
+  cutOut?: { at: number; sec: number } | null
   /** A talking head whose hooks are kept as filmed ("Use edits in hooks"
    *  off - BatchFormat.rawHooks): the first clip plays exactly as he filmed
    *  it, his own sound and nothing else - no captions, headline, zoom or
@@ -387,7 +390,7 @@ export function liftMusic(channels: Float32Array[], gain: number, sampleRate: nu
 }
 
 export async function renderMontage(
-  { clips: files, look, headlineText, music, seed = '', formula = null, windows = [], reactionFirst = false, titles = [], stepTexts = [], stepOverlays = [], voice = false, voiceAll = false, brightness = 0, keepLines = false, keepShape = false, shorterBy = 0, rawFirst = false, joinTight, asGiven = [], mirrored = [], captions = null, speed = 1, reframe = null, tint = null }: MontageRenderInput,
+  { clips: files, look, headlineText, music, seed = '', formula = null, windows = [], reactionFirst = false, titles = [], stepTexts = [], stepOverlays = [], voice = false, voiceAll = false, brightness = 0, keepLines = false, keepShape = false, shorterBy = 0, cutOut = null, rawFirst = false, joinTight, asGiven = [], mirrored = [], captions = null, speed = 1, reframe = null, tint = null }: MontageRenderInput,
   onProgress?: (fraction: number) => void,
 ): Promise<MontageRenderResult> {
   if (files.length === 0) throw new SilenceCutError('Add at least one clip.')
@@ -443,15 +446,24 @@ export async function renderMontage(
       const first = parts[0]
       first.end = Math.max(first.start + (first.end - first.start) * 0.75, first.end - shorterBy)
     }
+    // A micro cut in the middle of a Trial reel copy: never more than a
+    // fifth of it, never near either end.
+    let skip: { start: number; end: number } | null = null
+    if (cutOut && cutOut.sec > 0 && parts[0]) {
+      const first = parts[0]
+      const length = first.end - first.start
+      const at = first.start + length * Math.min(0.8, Math.max(0.2, cutOut.at))
+      if (cutOut.sec < length * 0.2) skip = { start: at, end: at + cutOut.sec }
+    }
     const stepped = parts.flatMap((_, i) => (windows[i] ? [i] : []))
     fitShowcase(stepped.map((i) => parts[i])).forEach((piece, k) => (parts[stepped[k]] = piece))
     // Played faster, every part lasts less on the video's clock.
     const sp = speed > 0 ? speed : 1
-    const total = parts.reduce((sum, p) => sum + (p.end - p.start) / sp, 0)
+    const total = parts.reduce((sum, p) => sum + (p.end - p.start) / sp, 0) - (skip ? (skip.end - skip.start) / sp : 0)
     // A hook kept as filmed: the music starts with the first product step -
     // where it is planned to, then where it really does (stepStart).
     const hookOnly = rawFirst && clips.length < 2
-    let stepStart = rawFirst ? (parts[0].end - parts[0].start) / sp : 0
+    let stepStart = rawFirst ? (parts[0].end - parts[0].start - (skip ? skip.end - skip.start : 0)) / sp : 0
     const musicLength = total - stepStart
 
     let bed: MusicBed | null = null
@@ -707,7 +719,7 @@ export async function renderMontage(
           for (const plane of voicePlanes) for (let k = Math.max(0, joinAt - fade); k < Math.min(joinAt, plane.length); k++) plane[k] *= (joinAt - k) / fade
         }
         const placed = clipPlace(clip.width, clip.height, width, height)
-        stretches[i] = { fill: placed.box, whole: placed.whole, still: placed.whole ? true : null, start, length: Math.max(0.1, (parts[i].end - parts[i].start) / sp) }
+        stretches[i] = { fill: placed.box, whole: placed.whole, still: placed.whole ? true : null, start, length: Math.max(0.1, (parts[i].end - parts[i].start - (i === 0 && skip ? skip.end - skip.start : 0)) / sp) }
         // The pictures and videos he put on it; one this browser can't read
         // is left out, never the video.
         const ownOverlays = stepOverlays[i]
@@ -734,6 +746,7 @@ export async function renderMontage(
           // A Trial reel copy made shorter (shorterBy): only that much of it -
           // its picture played whole before (fixed 2026-11-15).
           window: windows[i] || trimmed[i] || (i === 0 && shorterBy > 0) ? parts[i] : undefined,
+          ...(i === 0 && skip ? { skip } : {}),
           ...(sp !== 1 ? { speed: sp } : {}),
           rate: RATE,
           channels: CHANNELS,

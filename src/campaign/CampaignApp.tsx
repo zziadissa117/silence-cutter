@@ -2248,6 +2248,8 @@ export function CampaignApp() {
               ...(trialLook?.speed ? { speed: trialLook.speed } : {}),
               ...(trialLook?.reframe ? { reframe: trialLook.reframe } : {}),
               ...(trialLook?.tint ? { tint: trialLook.tint } : {}),
+              // A small piece out of its middle, most times (trialLoop.cutFor).
+              ...(trialLook?.cut ? { cutOut: trialLook.cut } : {}),
               keepLines: Boolean(trialLook),
               rawFirst: rawHook,
               // A talking head: no long pause where one clip meets the next -

@@ -3,6 +3,24 @@
 Newest first. Every change says what it does, how to use it, and how it works
 underneath. Kept up to date with each commit.
 
+## Trial reels: no copy twice, and every copy more different
+- His ask (2026-11-17): "I don't want the same copy to be done twice. If the text area was already placed at a certain
+  place with the exact same sound and the exact same length, then don't post it again because Meta flags me ... Don't
+  change anything about the opacities ... Maybe change the length. Maybe, per video, make one micro cut in the middle
+  ... change the text height ... the font. Keep a TikTok, but maybe make an Instagram-type font."
+- Never twice: every copy has a key - the source, its words, where they are, its sound, and its length (seconds off
+  the end, speed, micro cut). A copy whose key was made before is picked again (up to 30 times), then made 0.1 s
+  shorter until it is new. Kept with the batch (`made`), so it holds across top-ups (`trialLoop.copyKey`).
+- More lengths: whole 40% of the time (was 65%), else 0.3, 0.5, 0.8, 1, 1.2 or 1.5 s shorter (`TRIMS`).
+- A micro cut on about two copies in three: 0.2 to 0.45 s taken out between a third and two thirds in; never on a
+  talking clip (his words would be cut) (`cutFor`, montageRender `cutOut`, clipParts `writeWhole` `skip`).
+- The headline a touch higher or lower (up to 2% of the height) and 94-106% of its size on every copy, on top of the
+  places it already moves between (`nudgeFor`).
+- About two copies in five have the headline in an Instagram-looking font (Inter, SIL Open Font License, shipped with
+  the app like TikTok Sans: `fonts/Inter-*.woff2`, `headlineFont.INSTAGRAM_FAMILY`, `Headline.font`); the rest keep
+  TikTok Sans. Same look (box or outline) and colours.
+- Brightness, tint, see-through-ness: unchanged.
+
 ## A product step's pictures one after another, at the split he sets
 - His ask (2026-11-16): "there is one product step, and I want two images in it, but ... I don't want them to overlap
   ... the first image pops up at 0% to 50% of the video, and the last one pops up at 50%, and I can choose the ratio".

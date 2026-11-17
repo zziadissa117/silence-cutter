@@ -96,15 +96,56 @@ export interface TrialLook {
   /** A touch warmer (above 0) or cooler (below 0) (his pick, 2026-11-15:
    *  "Colour / exposure"; with `brightness`, the exposure): absent half the time. */
   tint?: number
+  /** A small piece taken out of the middle (his ask, 2026-11-17: "per video,
+   *  make one micro cut in the middle of it"): where, as a share of the
+   *  reel, and how long. Never on a talking clip - it would cut his words. */
+  cut?: { at: number; sec: number }
+  /** The headline in Instagram's look instead of TikTok's (his ask,
+   *  2026-11-17: "Keep a TikTok, but maybe make an Instagram-type font"). */
+  font?: 'instagram'
 }
 
 /** How a copy's length changes: mostly whole, sometimes a little shorter. */
 export const TRIMS: readonly { sec: number; share: number }[] = [
-  { sec: 0, share: 0.65 },
-  { sec: 0.5, share: 0.13 },
-  { sec: 1, share: 0.13 },
-  { sec: 1.5, share: 0.09 },
+  // More lengths, so two copies are rarely the same length (his ask,
+  // 2026-11-17: "Maybe change the length").
+  { sec: 0, share: 0.4 },
+  { sec: 0.3, share: 0.1 },
+  { sec: 0.5, share: 0.12 },
+  { sec: 0.8, share: 0.1 },
+  { sec: 1, share: 0.12 },
+  { sec: 1.2, share: 0.06 },
+  { sec: 1.5, share: 0.1 },
 ]
+
+/** Copies with a micro cut in the middle: about two in three. */
+export const CUT_SHARE = 0.65
+/** Copies with the headline in Instagram's look: about two in five. */
+export const INSTAGRAM_FONT_SHARE = 0.4
+
+/** A copy's micro cut, from two numbers 0..1: mostly one, somewhere from a
+ *  third to two thirds in, 0.2 to 0.45 s long. */
+export function cutFor(r: number, a: number): { at: number; sec: number } | undefined {
+  if (r >= CUT_SHARE) return undefined
+  const round = (n: number, by: number) => Math.round(n / by) * by
+  return { at: Math.round((0.33 + a * 0.34) * 100) / 100, sec: Math.round(round(0.2 + (r / CUT_SHARE) * 0.25, 0.05) * 100) / 100 }
+}
+
+/** A copy's headline a touch higher or lower and bigger or smaller than its
+ *  place (his ask, 2026-11-17: "change the text height"): up to 2% of the
+ *  height either way, and 94% to 106% of its size. */
+export function nudgeFor(place: HeadlinePlace, r: number, s: number): HeadlinePlace {
+  const y = Math.min(BOTTOM, Math.max(TOP, place.y + Math.round((r * 2 - 1) * 0.02 * 1000) / 1000))
+  return { ...place, y, scale: Math.round((place.scale ?? 1) * (0.94 + s * 0.12) * 100) / 100 }
+}
+
+/** What makes two copies the same to Meta (his rule, 2026-11-17: "If the
+ *  text area was already placed at a certain place with the exact same
+ *  sound and the exact same length, then don't post it again"): the words,
+ *  where they are, the sound, and how long it is. */
+export function copyKey(sourceId: string, wording: number, place: number, sound: string | null, look: Pick<TrialLook, 'trimSec' | 'speed' | 'cut'>): string {
+  return `c:${sourceId}:${wording}|${place}|${sound ?? '-'}|${look.trimSec ?? 0}|${look.speed ?? 1}|${look.cut?.sec ?? 0}`
+}
 
 /** How a copy's speed changes: mostly as it is, sometimes a touch faster. */
 export const SPEEDS: readonly { speed: number; share: number }[] = [
@@ -309,6 +350,21 @@ export function planTrial(
     const place = placesFor(source.read)[variant.place] ?? placesFor(source.read)[0]
     const talk = source.talk
     const song = talk ? songFor(talk.songs, (used[source.id] ?? 1) - 1, source.id) : source.sound
+    // Its length and the rest picked again until no copy before it had the
+    // same words, place, sound and length; failing that, a little shorter
+    // each time until none had.
+    let extra: Pick<TrialLook, 'trimSec' | 'speed' | 'reframe' | 'tint' | 'cut' | 'font'> = {}
+    let key = ''
+    for (let tries = 0; tries < 30; tries++) {
+      extra = { ...(talk ? {} : { trimSec: trimFor(rand()) }), ...variedMore(rand, !talk) }
+      key = copyKey(source.id, variant.wording, variant.place, song, extra)
+      if (!made.has(key)) break
+    }
+    for (let k = 1; made.has(key) && !talk && k <= 30; k++) {
+      extra = { ...extra, trimSec: Math.round(((extra.trimSec ?? 0) + 0.1) * 10) / 10 }
+      key = copyKey(source.id, variant.wording, variant.place, song, extra)
+    }
+    made.add(key)
     plans.push({
       source,
       clip: bank.reactions.find((f) => f.id === source.clip)!,
@@ -320,10 +376,9 @@ export function planTrial(
         style: source.read.style,
         outlineColor: source.read.outlineColor,
         size: source.read.size,
-        place,
+        place: nudgeFor(place, rand(), rand()),
         brightness: BRIGHTNESS[variant.light + 2],
-        ...(talk ? {} : { trimSec: trimFor(rand()) }),
-        ...variedMore(rand),
+        ...extra,
       },
     })
   }
@@ -373,6 +428,7 @@ export function trialAngle(angle: Angle, look: TrialLook): Angle {
       outlineColor: look.outlineColor,
       size: look.size,
       place: look.place,
+      ...(look.font ? { font: look.font } : {}),
     },
     effects: NO_EFFECTS,
   }
@@ -519,11 +575,20 @@ export function trialDays(
   return { outToday, toGoToday, ahead, refused: [...new Set(refused.map((r) => r.error))].slice(0, 3) }
 }
 
-/** A copy's speed and framing, each only some of the time (his ask,
- *  2026-11-15: Meta took copies for not original). */
-function variedMore(rand: () => number): Pick<TrialLook, 'speed' | 'reframe' | 'tint'> {
+/** A copy's speed, framing, colour, micro cut and font, each only some of
+ *  the time (his asks, 2026-11-15 and 2026-11-17: Meta took copies for not
+ *  original). No micro cut on a talking clip (`cuttable` false). */
+function variedMore(rand: () => number, cuttable = true): Pick<TrialLook, 'speed' | 'reframe' | 'tint' | 'cut' | 'font'> {
   const speed = speedFor(rand())
   const reframe = reframeFor(rand(), rand(), rand())
   const tint = tintFor(rand())
-  return { ...(speed !== 1 ? { speed } : {}), ...(reframe ? { reframe } : {}), ...(tint ? { tint } : {}) }
+  const cut = cutFor(rand(), rand())
+  const font = rand() < INSTAGRAM_FONT_SHARE ? ('instagram' as const) : undefined
+  return {
+    ...(speed !== 1 ? { speed } : {}),
+    ...(reframe ? { reframe } : {}),
+    ...(tint ? { tint } : {}),
+    ...(cut && cuttable ? { cut } : {}),
+    ...(font ? { font } : {}),
+  }
 }
