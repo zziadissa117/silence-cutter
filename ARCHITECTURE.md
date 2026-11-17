@@ -506,6 +506,17 @@ account to its own channel; `prepare` keeps the server's copy (no Postiz media);
 in Buffer `HAND_AHEAD_MS` before its time via `toBuffer`, full / refused tried again in 10 min; `checkBuffer` marks
 it posted. `refreshAccounts` re-reads the channels; views are not read (`refreshViews` skips it). Trial reels refused.
 
+## Variations of a video (`variations.ts`, `VariationsPanel.tsx`)
+
+More -> Variations: the Batch tab's own screen (`BatchView` with `variations`), so every format, hook, step,
+caption, script, picture and speed setting is the batch's - on a bank of its own (`BatchBank.variations`,
+stored as `variations:<campaignId>`, never handed to the server, no `BATCH_BANK_SAVED`). Make makes every hook
+once with every body (`allVariations`: per live format, its hooks × every combination of one clip per product
+step, or × its products), headlines/looks/songs in turn (`variationVideos` -> `batchRun.videoOf`). Jobs carry
+`JobBatch.variation.combo`; made, they are held like format videos (`holdMade`) and never sent; every batch
+count leaves them out (`takenBy`, `dayVideos`, `batchNow`, `batchHooks`, rush/stop). The grid reads the held
+rows (`heldVideos`), plays one full screen (‹ ›), saves all through the share sheet, deletes (`forgetJob`).
+
 ## Formats (`formats.ts`, `FormatsView.tsx`)
 
 A format is an angle with `isFormat`: its look and the clips joined onto every video (clips.ts,

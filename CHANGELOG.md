@@ -3,6 +3,25 @@
 Newest first. Every change says what it does, how to use it, and how it works
 underneath. Kept up to date with each commit.
 
+## Variations of a video (More -> Variations)
+- His ask (2026-11-17): "a brand asked me for 9 different hooks and 2 different bodies ... put all the hooks with each
+  body ... with the batch it instantly schedules them on Postiz ... it's probably going to mix and match ... What I
+  want is just a section where it doesn't even go through Postiz. It's just local where I can make all the videos and
+  review them inside the cutter, inside a grid ... save them all at once on my phone ... with non-talking posts and
+  talking posts ... the same customization."
+- More -> Variations: the Batch tab's screen, with every one of its settings (formats - reaction, talking head, green
+  screen - their hooks, product steps, Cut/Raw, speed, captions and caption scripts, step words and pictures one after
+  another, headlines, looks, music) on a set of its own per campaign, apart from the campaign's batch. No accounts,
+  posting, Start, days or status there.
+- "Your variations" says what it makes per format ("9 hooks × 2 bodies = 18 videos") and Make all makes each hook once
+  with each body - nothing at random, never twice; a body is one clip of each product step (every combination of
+  them), or one product showcase. Make again later makes only the ones not made yet (e.g. after adding a hook).
+- Made videos stay on the phone in a grid (numbered, length shown); tap one to watch it full screen, ‹ › to the next,
+  Save to my phone or Delete; "Save all N to my phone" opens the share sheet with all of them; Delete all. Nothing goes
+  to Postiz, Posts or the tracker, and the batch's own counts never see them.
+- Checked in demo mode in Chrome for Testing: FitPocket's 3 reactions × 2 products made 6 real videos, shown in the
+  grid and played with the arrows. The demo has that set for the guide.
+
 ## Trial reels: no copy twice, and every copy more different
 - His ask (2026-11-17): "I don't want the same copy to be done twice. If the text area was already placed at a certain
   place with the exact same sound and the exact same length, then don't post it again because Meta flags me ... Don't

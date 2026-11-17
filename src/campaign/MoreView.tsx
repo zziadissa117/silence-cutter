@@ -33,6 +33,7 @@ export function MoreView({
   const rows: Row[] = [
     { tab: 'campaigns', icon: <CampaignsIcon />, hue: 258, name: 'Campaigns', line: `${campaigns} campaign${campaigns === 1 ? '' : 's'} · brands, accounts, times` },
     { tab: 'formats', icon: <FormatsIcon />, hue: 200, name: 'Formats', line: 'One script, mixed into many videos' },
+    { tab: 'variations', icon: <BatchIcon />, hue: 285, name: 'Variations', line: 'Every hook with every body - kept on your phone, never posted' },
     { tab: 'motion', icon: <MotionIcon />, hue: 320, name: 'Motion graphics', line: 'Claude plans graphics around you' },
     ...(trialReels ? [{ tab: 'trial' as const, icon: <BatchIcon />, hue: 25, name: 'Trial reels', line: 'Viral reels for people who don’t follow you' }] : []),
     { tab: 'warmups', icon: <VideosIcon />, hue: 150, name: 'Warm-ups', line: 'Quick posts that keep accounts warm' },

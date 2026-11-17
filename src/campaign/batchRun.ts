@@ -341,7 +341,7 @@ function fill(bank: BatchBank, slots: readonly BatchSlot[], now: Date): BatchBan
  *  was the last of them, the footage goes (batch.spend) and the batch stops.
  *  On the engine it only counts the days - the engine does its own mixing. */
 /** One batch video from a pick, for its day and time. */
-function videoOf(
+export function videoOf(
   bank: BatchBank,
   pick: BatchPick,
   slot: BatchSlot,
@@ -376,7 +376,7 @@ function videoOf(
 }
 
 /** The formats making videos now: not paused, with a clip of him. */
-function liveFormats(bank: BatchBank): BatchFormat[] {
+export function liveFormats(bank: BatchBank): BatchFormat[] {
   const b = withFormats(bank)
   return (b.formats ?? []).filter((f) => !f.paused && b.reactions.some((r) => r.formats?.includes(f.id)))
 }
@@ -661,7 +661,7 @@ export function dislikedBy(posts: readonly ServerPost[], campaignId: string): (d
 export function takenBy(posts: readonly ServerPost[], jobs: readonly Job[], campaignId: string): (date: string) => string[] {
   const taken = takenTimes(posts, campaignId)
   for (const job of jobs) {
-    if (job.campaignId !== campaignId || !job.batch) continue
+    if (job.campaignId !== campaignId || !job.batch || job.batch.variation) continue
     const day = taken.get(job.batch.date) ?? []
     if (!day.includes(job.batch.time)) taken.set(job.batch.date, [...day, job.batch.time])
   }
@@ -799,7 +799,7 @@ export function dayVideos(posts: readonly ServerPost[], jobs: readonly Job[], ca
     out.push({ kind: 'post', id: post.id, date: post.batch.date, time: post.batch.time, removable, post })
   }
   for (const job of jobs) {
-    if (job.campaignId !== campaignId || !job.batch || job.batch.date < today || sent.has(job.id)) continue
+    if (job.campaignId !== campaignId || !job.batch || job.batch.variation || job.batch.date < today || sent.has(job.id)) continue
     out.push({ kind: 'job', id: job.id, date: job.batch.date, time: job.batch.time, removable: UNSTARTED.has(job.status) })
   }
   return out

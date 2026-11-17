@@ -129,7 +129,7 @@ export function hookStats(
   }
   const sent = new Set(posts.map((p) => p.key))
   for (const job of jobs) {
-    if (job.campaignId !== bank.campaignId || !job.batch || sent.has(job.id) || job.status === 'done') continue
+    if (job.campaignId !== bank.campaignId || !job.batch || job.batch.variation || sent.has(job.id) || job.status === 'done') continue
     const hook = hookOfJob(job, assumed)
     if (hook) row(hook).waiting++
   }

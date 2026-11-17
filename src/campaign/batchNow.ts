@@ -41,7 +41,7 @@ export function statusDays(
   const mine = batchPosts(posts, bank.campaignId).filter((p) => !GONE.has(p.status))
   const sent = new Set(batchPosts(posts, bank.campaignId).map((p) => p.key))
   const coming = (jobs ?? []).filter(
-    (j) => j.campaignId === bank.campaignId && j.batch && !sent.has(j.id) && j.status !== 'failed' && j.status !== 'held',
+    (j) => j.campaignId === bank.campaignId && j.batch && !j.batch.variation && !sent.has(j.id) && j.status !== 'failed' && j.status !== 'held',
   )
   return Array.from({ length: AHEAD_DAYS }, (_, i) => {
     const date = addDays(today, i)

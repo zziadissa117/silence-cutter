@@ -316,6 +316,12 @@ export interface BatchBank {
   /** The most a day whatever his number: a Trial loop's accounts' daily trial
    *  limit as Instagram showed it (postiz/trial.ts), set by the app. */
   most?: number
+  /** Variations of a video (More -> Variations, his ask 2026-11-17): set up
+   *  like a batch, kept apart from it (store.loadBatchBank `variations`),
+   *  every hook made once with every body (variations.ts), and the videos
+   *  kept on the phone to look through and save - never scheduled, never
+   *  posted. */
+  variations?: true
 }
 
 /** What "Use the best hooks" makes more of: headlines by their words in

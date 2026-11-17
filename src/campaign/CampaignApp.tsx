@@ -255,6 +255,7 @@ import { clipTexts, clipsOf, headlineSeconds, noSpeechIn, songForReaction } from
 import { reportMaking, SERVER_BANKS_EVENT, SERVER_COMMAND_EVENT, SERVER_STOP_EVENT, serverLog, type ServerCommand, type ServerMaking } from './serverMode'
 import { TabBar, type Tab } from './TabBar'
 import { BackToMore, MoreView } from './MoreView'
+import { VariationsPanel } from './VariationsPanel'
 import { Recorder } from './Recorder'
 import { keepScreenOn } from './wakeLock'
 
@@ -2024,7 +2025,7 @@ export function CampaignApp() {
         // The headline look picked for this video, or for its batch (the one
         // it was mixed with, while he still has it picked), in place of the
         // angle's.
-        const batchBank = next.batch ? await loadBatchBank(next.campaignId).catch(() => null) : null
+        const batchBank = next.batch ? await loadBatchBank(next.campaignId, Boolean(next.batch.variation)).catch(() => null) : null
         // Its format set to no headline: no words over him - reaching videos
         // planned before he switched it (BatchFormat.noHeadline).
         const jobFormat = next.batch?.format && batchBank ? formatsOf(batchBank).find((f) => f.id === next.batch!.format) : undefined
@@ -2173,7 +2174,7 @@ export function CampaignApp() {
           // kept with them take it from the campaign's steps as they are now -
           // as does whether a step holds a single clip, which then plays whole.
           const stepped = next.montage.bank?.steps
-          const known = stepped ? (batchBank ?? (await loadBatchBank(next.campaignId).catch(() => null))) : null
+          const known = stepped ? (batchBank ?? (await loadBatchBank(next.campaignId, Boolean(next.batch?.variation)).catch(() => null))) : null
           const stepOf = (s: NonNullable<typeof stepped>[number]) => known?.steps?.find((k) => k.files.some((f) => f.id === s.file.id))
           // A talking head never has its steps' names over them (his rule,
           // 2026-11-13: "I don't want a headline every single time there's a
@@ -2387,6 +2388,14 @@ export function CampaignApp() {
         patch({ status: 'done', result, url: next.batch ? undefined : URL.createObjectURL(result.blob) })
         if (next.forFormat) {
           await holdFormat(next, result, plan ?? result.plan ?? null)
+          return
+        }
+        // A variation (More -> Variations): kept on the phone for his grid,
+        // never sent anywhere.
+        if (next.batch?.variation) {
+          await holdFormat(next, result, plan ?? result.plan ?? null)
+          // In his grid now (VariationsPanel reads the kept ones).
+          setJobs((js) => js.filter((j) => j.id !== next.id))
           return
         }
         // Edited by hand to keep (TimelinePicker): made, not posted.
@@ -3212,7 +3221,9 @@ export function CampaignApp() {
   const reactionCampaigns = reactionChoices(campaigns ?? [])
   // Batch videos are followed on the Batch tab, format takes on Formats.
   const listed = useMemo(() => jobs.filter((j) => j.status !== 'joined' && !j.batch && !j.forFormat), [jobs])
-  const batchJobs = useMemo(() => jobs.filter((j) => j.batch), [jobs])
+  // Variations (More -> Variations) are on their own screen, never the batch's.
+  const batchJobs = useMemo(() => jobs.filter((j) => j.batch && !j.batch.variation), [jobs])
+  const variationJobs = useMemo(() => jobs.filter((j) => j.batch?.variation), [jobs])
   // What the phone is busy with that isn't a batch video - the batch's
   // videos wait their turn behind it (the line above), and the Batch tab
   // says so rather than looking stuck.
@@ -3222,7 +3233,7 @@ export function CampaignApp() {
     if (rush.length === 0) return
     const now = Date.now()
     const next = rush.flatMap((r) => {
-      if (jobs.some((j) => j.campaignId === r.id && j.batch && j.status === 'queued')) return [r.seen ? r : { ...r, seen: true }]
+      if (jobs.some((j) => j.campaignId === r.id && j.batch && !j.batch.variation && j.status === 'queued')) return [r.seen ? r : { ...r, seen: true }]
       // All of them started - or none ever came (nothing was due).
       return r.seen || now - r.at > RUSH_WAIT_MS ? [] : [r]
     })
@@ -3561,7 +3572,7 @@ export function CampaignApp() {
           }
         }
         if (bank && command === 'back-to-phone') {
-          for (const job of jobsRef.current) if (job.campaignId === campaignId && job.batch && job.status === 'queued') removeJob(job.id)
+          for (const job of jobsRef.current) if (job.campaignId === campaignId && job.batch && !job.batch.variation && job.status === 'queued') removeJob(job.id)
           await saveBatchBank({ ...bank, running: false })
         }
       })()
@@ -3573,7 +3584,7 @@ export function CampaignApp() {
     // (batchRun.stopBatch), as Stop does on the phone.
     const onStop = (event: Event) => {
       const campaignId = (event as CustomEvent<string>).detail
-      const queued = () => jobsRef.current.some((j) => j.campaignId === campaignId && j.batch && j.status === 'queued')
+      const queued = () => jobsRef.current.some((j) => j.campaignId === campaignId && j.batch && !j.batch.variation && j.status === 'queued')
       if (!queued()) return
       void nextInLine(campaignId, async () => {
         const bank = await loadBatchBank(campaignId)
@@ -3588,7 +3599,7 @@ export function CampaignApp() {
     reportMaking(() => {
       const making: Record<string, ServerMaking> = {}
       for (const job of jobsRef.current) {
-        if (!job.batch) continue
+        if (!job.batch || job.batch.variation) continue
         const one = (making[job.campaignId] ??= { queued: 0, now: null, failed: 0 })
         if (job.status === 'queued') one.queued++
         else if (job.status === 'failed' || job.status === 'held') one.failed = (one.failed ?? 0) + 1
@@ -5152,6 +5163,22 @@ export function CampaignApp() {
         onAddHeadline={(campaignId, headline) => addHeadline(campaignId, headline).then(() => setBankVersion((v) => v + 1))}
         onPauseAccount={(accountId, paused) => pauseAccount(accountId, paused).then(() => setPosting(postingHere()))}
       />
+    ) : tab === 'variations' ? (
+      <>
+        <BackToMore onBack={() => setTab('more')} />
+        <BatchView
+          campaigns={campaigns}
+          posting={posting}
+          jobs={variationJobs}
+          busyWith={busyWith ? { name: busyWith.name, phase: busyWith.phase } : null}
+          onMake={addBatch}
+          onRetry={startHeld}
+          onRemove={removeJob}
+          variations={{
+            make: (at) => <VariationsPanel {...at} heldVersion={heldVersion} onMake={(c, a, videos) => addBatch(c, a, videos)} />,
+          }}
+        />
+      </>
     ) : tab === 'batch' ? (
       <BatchView
         campaigns={campaigns}

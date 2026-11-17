@@ -231,6 +231,17 @@ export async function seedPhone(world: World, now = Date.now()): Promise<void> {
   }
   await saveBatchBank(fitBatch)
 
+  // FitPocket's Variations (More -> Variations): its reactions with each of
+  // its product showcases, once each - kept on the phone, never posted.
+  await saveBatchBank({
+    ...fitBatch,
+    variations: true,
+    perDay: 0,
+    running: false,
+    startedAt: undefined,
+    filled: {},
+  })
+
   // The Trial reels loop: one reel that went well, made again and again.
   const trialClip = await bankFile('tr-clip-1', 'react-2', { name: 'viral-coffee-clean.mp4' })
   const trialSound = await bankFile('tr-sound-1', 'song-sunny', { name: 'viral-coffee-sound.m4a' })

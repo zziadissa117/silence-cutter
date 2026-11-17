@@ -273,6 +273,11 @@ export interface JobBatch {
   /** The batch format it was made in (batch.BatchFormat id), for how each
    *  format does. */
   format?: string
+  /** One of the variations of a video (More -> Variations): made from the
+   *  variations bank, kept on the phone, never sent; `combo` names which
+   *  clips it is made of (variations.comboKey). Its date and time are only
+   *  when it was asked for. */
+  variation?: { combo: string }
 }
 
 /** A clips-and-music video's other files, by name and type: the clips after
@@ -1215,11 +1220,13 @@ export async function sweepRetiredBankFiles(inUse: string[] = []): Promise<void>
   }
 }
 
-const bankKey = (campaignId: string) => `batch:${campaignId}`
+const bankKey = (campaignId: string, variations = false) => `${variations ? 'variations' : 'batch'}:${campaignId}`
 
-export async function loadBatchBank(campaignId: string): Promise<BatchBank | null> {
+/** A campaign's batch - or, with `variations`, its Variations (More ->
+ *  Variations), kept apart from it. */
+export async function loadBatchBank(campaignId: string, variations = false): Promise<BatchBank | null> {
   try {
-    const raw = await getMeta(bankKey(campaignId))
+    const raw = await getMeta(bankKey(campaignId, variations))
     return raw ? (JSON.parse(raw) as BatchBank) : null
   } catch {
     return null
@@ -1230,7 +1237,9 @@ export async function loadBatchBank(campaignId: string): Promise<BatchBank | nul
 export const BATCH_BANK_SAVED = 'cutter:batch-bank-saved'
 
 export async function saveBatchBank(bank: BatchBank): Promise<void> {
-  await setMeta(bankKey(bank.campaignId), JSON.stringify(bank))
+  await setMeta(bankKey(bank.campaignId, bank.variations === true), JSON.stringify(bank))
+  // Variations are nobody else's business: no tracker, no top-up, no server.
+  if (bank.variations) return
   if (typeof window !== 'undefined') window.dispatchEvent(new CustomEvent(BATCH_BANK_SAVED, { detail: bank.campaignId }))
 }
 

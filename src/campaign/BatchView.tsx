@@ -221,17 +221,17 @@ function rememberLeft(file: BankFile): void {
   }
 }
 
-function remembered(): string | null {
+function remembered(vary = false): string | null {
   try {
-    return localStorage.getItem(LAST_KEY)
+    return localStorage.getItem(vary ? `${LAST_KEY}:variations` : LAST_KEY)
   } catch {
     return null
   }
 }
 
-function remember(id: string): void {
+function remember(id: string, vary = false): void {
   try {
-    localStorage.setItem(LAST_KEY, id)
+    localStorage.setItem(vary ? `${LAST_KEY}:variations` : LAST_KEY, id)
   } catch {
     // Just won't be picked first next time.
   }
@@ -265,6 +265,12 @@ const mb = (bytes: number) => `${Math.max(1, Math.round(bytes / 1e6))} MB`
 const MAX_GROWTH = 25
 
 /** "2 min ago", "at 14:05": when the server last said something. */
+/** The Variations screen's own part, in place of a batch's posting, Start
+ *  and progress (VariationsPanel.tsx): what to make, and what was made. */
+export interface VariationsMode {
+  make: (at: { campaign: Campaign; angle: Angle; bank: BatchBank; missing: string[]; jobs: Job[]; onRetry: (id: string) => void; onRemove: (id: string) => void }) => React.ReactNode
+}
+
 export function BatchView({
   campaigns,
   posting,
@@ -274,6 +280,7 @@ export function BatchView({
   onRetry,
   onRemove,
   onRush = () => {},
+  variations = null,
 }: {
   campaigns: Campaign[]
   posting: LocalPosting | null
@@ -288,11 +295,17 @@ export function BatchView({
   onRemove: (id: string) => void
   /** Puts the campaign's batch videos first in the phone's line (Make now). */
   onRush?: (campaignId: string) => void
+  /** Variations of a video (More -> Variations, variations.ts): the same
+   *  screen and every setting, on a bank of its own - every hook made once
+   *  with every body, kept on the phone, never scheduled or posted. */
+  variations?: VariationsMode | null
 }) {
   const profile = posting?.profile ?? null
-  // The Trial reels campaign has its own screen (TrialView).
-  const choices = profile ? campaigns.filter((c) => !c.trial && placeFor(profile, c.id).accounts.length > 0) : []
-  const [campaignId, setCampaignId] = useState(() => choices.find((c) => c.id === remembered())?.id ?? choices[0]?.id ?? '')
+  const vary = variations !== null
+  // The Trial reels campaign has its own screen (TrialView). Variations need
+  // no accounts: nothing is posted.
+  const choices = vary ? campaigns.filter((c) => !c.trial) : profile ? campaigns.filter((c) => !c.trial && placeFor(profile, c.id).accounts.length > 0) : []
+  const [campaignId, setCampaignId] = useState(() => choices.find((c) => c.id === remembered(vary))?.id ?? choices[0]?.id ?? '')
   const campaign = choices.find((c) => c.id === campaignId) ?? null
   const [bank, setBank] = useState<BatchBank | null>(null)
   const [headlineText, setHeadlineText] = useState('')
@@ -405,11 +418,12 @@ export function BatchView({
     // After the app's own top-up of this campaign, if one is running, so the
     // bank shown is the one it saved.
     void settled(campaign.id)
-      .then(() => loadBatchBank(campaign.id))
+      .then(() => loadBatchBank(campaign.id, vary))
       .then((stored) => {
         if (cancelled) return
         // A batch from before gets its formats (batch.withFormats).
-        const loaded = withFormats(stored ?? emptyBank(campaign.id, campaign.angles[0].id))
+        const start = stored ?? emptyBank(campaign.id, campaign.angles[0].id)
+        const loaded = withFormats(vary ? { ...start, variations: true } : start)
         setBank(loaded)
         setHeadlineText(loaded.headlines.join('\n'))
       })
@@ -425,7 +439,7 @@ export function BatchView({
     const onLink = (event: Event) => {
       const { campaignId: id, changed } = (event as CustomEvent<LinkEvent>).detail
       setLinkTick((n) => n + 1)
-      if (!changed || id !== campaign?.id) return
+      if (!changed || id !== campaign?.id || vary) return
       void loadBatchBank(id).then((stored) => {
         if (!stored || stored.campaignId !== bankRef.current?.campaignId) return
         const withThem = withFormats(stored)
@@ -483,13 +497,13 @@ export function BatchView({
   const formatKey = bank?.formats?.map((f) => f.id).join(',') ?? ''
   useEffect(() => {
     const current = bankRef.current
-    if (!current?.formats?.length) return
+    if (!current?.formats?.length || vary) return
     const shares = formatSharesFrom(posts, current.campaignId, current.formats)
     if (JSON.stringify(shares ?? null) === JSON.stringify(current.formatShares ?? null)) return
     keep({ ...current, formatShares: shares })
   }, [posts, formatKey]) // eslint-disable-line react-hooks/exhaustive-deps
 
-  if (!profile) {
+  if (!profile && !vary) {
     return (
       <section className="screen batch">
         <div className="screen-head">
@@ -503,15 +517,15 @@ export function BatchView({
     return (
       <section className="screen batch">
         <div className="screen-head">
-          <h1>Batch</h1>
+          <h1>{vary ? 'Variations' : 'Batch'}</h1>
         </div>
-        <p className="empty">No campaign posts anywhere yet. Pick its accounts first: Campaigns, open the campaign, then Posting.</p>
+        <p className="empty">{vary ? 'Make a campaign first: More, then Campaigns.' : 'No campaign posts anywhere yet. Pick its accounts first: Campaigns, open the campaign, then Posting.'}</p>
       </section>
     )
   }
 
-  const place = placeFor(profile, campaign.id)
-  const accounts = place.accounts.map((id) => profile.accounts.find((a) => a.id === id)).filter((a) => a !== undefined)
+  const place = placeFor(profile ?? undefined, campaign.id)
+  const accounts = place.accounts.map((id) => profile?.accounts.find((a) => a.id === id)).filter((a) => a !== undefined)
   // As many times a day as he picked, spread over the whole day - or his own
   // (with more spread over the rest of the day when he wants more than he has).
   const today = todayHere()
@@ -2165,17 +2179,23 @@ export function BatchView({
     {scriptLayer}
     <section className="screen batch">
       <div className="screen-head">
-        <h1>Batch</h1>
+        <h1>{vary ? 'Variations' : 'Batch'}</h1>
       </div>
+      {vary ? (
+        <p className="hint tip">
+          Every hook made once with every body - 9 hooks and 2 bodies make 18 videos. Set it up like a batch; the videos stay on this phone to look
+          through and save. Nothing is scheduled or posted.
+        </p>
+      ) : null}
 
       <div className="chooser">
         {/* The campaign as a card with its badge; the picker is the whole card. */}
         <label className="batch-hero">
           <BrandBadge campaign={campaign} />
           <span className="batch-hero-text">
-            <span className="eyebrow">Batch for</span>
+            <span className="eyebrow">{vary ? 'Variations for' : 'Batch for'}</span>
             <span className="batch-hero-name">{campaign.name}</span>
-            <span className="hint new-post-to">
+            <span className="hint new-post-to" hidden={vary}>
               To {accounts.map(accountLabel).join(', ')}
               {random
                 ? ' · around the clock'
@@ -2191,7 +2211,7 @@ export function BatchView({
           value={campaign.id}
           onChange={(e) => {
             setCampaignId(e.target.value)
-            remember(e.target.value)
+            remember(e.target.value, vary)
             setProblem(null)
             setOrdering(null)
             setOpenFormat(null)
@@ -2222,7 +2242,7 @@ export function BatchView({
         ) : null}
       </div>
 
-      {bank && showStatus ? (
+      {bank && showStatus && !vary ? (
         <BatchStatus
           state={status}
           where={where}
@@ -2248,7 +2268,7 @@ export function BatchView({
         />
       ) : null}
 
-      {bank && spentShown && bank.spent ? (
+      {bank && spentShown && bank.spent && !vary ? (
         <div className="callout batch-spent">
           <div>
             <div className="label">Time to film new ones</div>
@@ -2288,7 +2308,7 @@ export function BatchView({
                   <Mark kind="formats" />
                   Formats <span className="bank-count">{formatList.length}</span>
                 </span>
-                {engineUrl() ? (
+                {engineUrl() && !vary ? (
                   <button type="button" className="linkbtn" onClick={() => keep({ ...bank, layout: 'engine' })}>
                     On the engine
                   </button>
@@ -2494,10 +2514,16 @@ export function BatchView({
                   )}
                 </>
               )}
-          {green || onEngine ? null : <CopiesCard bank={bank} busy={saving !== null} onAdd={(files, count) => void addCopies(files, count)} onChange={changeCopies} />}
+          {green || onEngine || vary ? null : <CopiesCard bank={bank} busy={saving !== null} onAdd={(files, count) => void addCopies(files, count)} onChange={changeCopies} />}
           {saving ? <p className="hint">{saving}</p> : null}
           {bankSize > 0 ? <p className="hint">The bank keeps {mb(bankSize)} on this phone.</p> : null}
 
+          {vary ? (
+            <>
+              {variations?.make({ campaign, angle, bank, missing, jobs: jobs.filter((j) => j.campaignId === campaign.id), onRetry, onRemove })}
+            </>
+          ) : (
+            <>
           <div className="group">
             <div className="group-title">
               <Mark kind="posting" />
@@ -2815,6 +2841,8 @@ export function BatchView({
               ) : null}
             </div>
           ) : null}
+            </>
+          )}
           <p className="hint new-post-to">For {labelOf(campaign, angle)}</p>
         </>
       ) : null}
