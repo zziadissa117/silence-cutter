@@ -1,7 +1,8 @@
 import react from '@vitejs/plugin-react'
-import { defineConfig } from 'vitest/config'
+import { configDefaults, defineConfig } from 'vitest/config'
 
 export default defineConfig({
   plugins: [react()],
-  test: { environment: 'jsdom' },
+  // The Discord bot has its own packages and tests: run them from payout-bot/.
+  test: { environment: 'jsdom', exclude: [...configDefaults.exclude, 'payout-bot/**'] },
 })

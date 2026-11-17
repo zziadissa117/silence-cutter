@@ -37,3 +37,9 @@ npm run dev
 ```
 
 `npm test` runs the cutting logic's tests; `npm run build` produces `dist/`.
+
+## Also in this repository
+
+`payout-bot/` is a separate Discord bot for the coaching server: students post
+payout screenshots, mods approve them, names show each student's running total,
+and a top-10 leaderboard posts every midnight. See `payout-bot/README.md`.
