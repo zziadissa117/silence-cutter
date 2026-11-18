@@ -4,6 +4,7 @@
 // playing to move to, stopping by itself at its length. Each is made at once
 // (warmupMake.ts) and kept until it goes out (warmups.ts keepMade).
 
+import { LinesInput } from './LinesInput'
 import { useEffect, useState } from 'react'
 
 import { Recorder } from './Recorder'
@@ -125,7 +126,7 @@ export function WarmupFilm({ ideas, onClose }: { ideas: WarmupIdea[]; onClose: (
           {idea.script ? <p className="warmup-script">{idea.script}</p> : null}
           <label className="field">
             <span className="label">Headline</span>
-            <input type="text" value={headline} maxLength={120} onChange={(e) => setHeadline(e.target.value)} />
+            <LinesInput value={headline} maxLength={120} onChange={setHeadline} />
             <span className="hint">Change it to fit you, or leave it.</span>
           </label>
           <p className="hint">

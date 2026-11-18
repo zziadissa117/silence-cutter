@@ -3,6 +3,7 @@
 // that has not gone out. (The reaction and product clips are the bank's; a
 // different pair is a different video.)
 
+import { LinesInput } from './LinesInput'
 import { useState } from 'react'
 
 import type { BankFile } from './batch'
@@ -50,7 +51,7 @@ export function BatchEdit({
       {posted ? <p className="hint warn-text">It already posted, so the edited one goes out as a new post.</p> : null}
       <label className="field">
         <span className="label">Headline</span>
-        <input type="text" value={text} maxLength={LIMITS.headlineChars} placeholder="No headline" onChange={(e) => setText(e.target.value)} />
+        <LinesInput value={text} maxLength={LIMITS.headlineChars} placeholder="No headline" onChange={setText} />
       </label>
       <label className="field">
         <span className="label">Music</span>

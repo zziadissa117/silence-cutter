@@ -70,7 +70,7 @@ describe('the questions Captions asks', () => {
   it('has where it goes, the headline and its look, the music and the hook, then goes on', async () => {
     const calls = await ask([sorted()])
     expect(host.textContent).toContain('Goes to')
-    expect(host.querySelector('input[type=text]')).not.toBeNull()
+    expect(host.querySelector('textarea.lines-input')).not.toBeNull()
     expect(host.querySelector('[aria-label="Headline style"]')).not.toBeNull()
     expect(host.textContent).toContain('Music')
     expect(host.textContent).not.toContain('Effects')
@@ -131,11 +131,11 @@ describe('the questions Captions asks', () => {
     const calls = await ask([sorted('j1'), sorted('j2')])
     expect(host.querySelectorAll('.check-video')).toHaveLength(2)
     expect(host.textContent).toContain('This goes for all 2 videos')
-    const headlines = host.querySelectorAll('input[type=text]')
+    const headlines = host.querySelectorAll('textarea.lines-input')
     expect(headlines).toHaveLength(2)
     await act(async () => {
-      const input = headlines[1] as HTMLInputElement
-      const set = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!
+      const input = headlines[1] as HTMLTextAreaElement
+      const set = Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value')!.set!
       set.call(input, 'new one')
       input.dispatchEvent(new Event('input', { bubbles: true }))
     })

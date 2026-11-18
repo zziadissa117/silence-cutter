@@ -5,6 +5,7 @@
 // talking video), and crosses out the headlines Claude wrote that he doesn't
 // like; then the loop makes the copies (trialLoop.ts TrialTalk).
 
+import { LinesInput } from './LinesInput'
 import { useState } from 'react'
 
 import { VideoPicker } from '../VideoPicker'
@@ -191,7 +192,7 @@ export function TrialTalkStart({
         ))}
         <div className="setting">
           <div className="setting-text">
-            <input type="text" value={own} maxLength={140} aria-label="Your own headline" placeholder="Add your own" onChange={(e) => setOwn(e.target.value)} />
+            <LinesInput value={own} maxLength={140} aria-label="Your own headline" placeholder="Add your own" onChange={setOwn} />
           </div>
           <button
             type="button"

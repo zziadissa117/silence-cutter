@@ -76,8 +76,9 @@ async function open({ overlays = [] as ManualPicture[], place = null as Headline
 
 const button = (label: string) =>
   [...host.querySelectorAll('button')].find((b) => b.textContent?.trim() === label || b.getAttribute('aria-label') === label) as HTMLButtonElement
-const set = (input: HTMLInputElement, value: string) => {
-  Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!.call(input, value)
+const set = (input: HTMLInputElement | HTMLTextAreaElement, value: string) => {
+  const proto = input instanceof HTMLTextAreaElement ? HTMLTextAreaElement.prototype : HTMLInputElement.prototype
+  Object.getOwnPropertyDescriptor(proto, 'value')!.set!.call(input, value)
   input.dispatchEvent(new Event('input', { bubbles: true }))
 }
 const done = (onDone: ReturnType<typeof vi.fn>) => {
@@ -94,7 +95,7 @@ describe('words of his own', () => {
   it('go on at the playhead in the middle, in the headline look, as he types them', async () => {
     const { onDone } = await open()
     await act(async () => button('Text').click())
-    const box = host.querySelector('.pic-edit input[aria-label="Your words"]') as HTMLInputElement
+    const box = host.querySelector('.pic-edit textarea[aria-label="Your words"]') as HTMLTextAreaElement
     expect(box).not.toBeNull()
     expect(document.activeElement).toBe(box)
     await act(async () => set(box, 'link in bio'))

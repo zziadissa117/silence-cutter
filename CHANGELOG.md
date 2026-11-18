@@ -3,6 +3,17 @@
 Newest first. Every change says what it does, how to use it, and how it works
 underneath. Kept up to date with each commit.
 
+## Enter makes a new line in the headline
+- His ask (2026-11-18): "whenever we enter the headline ourselves ... we can press Enter on it so we can do our line
+  breaks ourselves. We type what we want to type, then we press Enter. It does a line break."
+- Every box where he types a headline or words on the video is now a box where Enter starts a new line, growing a line
+  at a time (`LinesInput.tsx`): the video's headline on its row and in its check, the caption check's headline, Text in
+  the edit screen (Enter used to close the keyboard there; Done does), a reaction's words on its later clips, the
+  headline for videos added together, Clips' first-clip headline, a batch video's Edit, warm-ups' headlines and a
+  Trial talking clip's own headline. The campaign's headline box already took Enter.
+- The video keeps his line breaks exactly where he put them (overlay.wrapText already did); a line too wide for the
+  screen still wraps by itself.
+
 ## Variations of a video (More -> Variations)
 - His ask (2026-11-17): "a brand asked me for 9 different hooks and 2 different bodies ... put all the hooks with each
   body ... with the batch it instantly schedules them on Postiz ... it's probably going to mix and match ... What I

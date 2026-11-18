@@ -15,6 +15,7 @@
 // nothing is made while this is open - see CampaignApp - so the two never
 // compete for the phone's video hardware.
 
+import { LinesInput } from './LinesInput'
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 
 import {
@@ -871,14 +872,7 @@ export function CaptionReview({
         {onHeadline ? (
           <label className="field review-headline">
             <span className="label">Headline</span>
-            <input
-              type="text"
-              value={headline}
-              maxLength={LIMITS.headlineChars}
-              placeholder="No headline"
-              onChange={(e) => onHeadline(e.target.value)}
-              onBlur={onHeadlineDone}
-            />
+            <LinesInput value={headline} maxLength={LIMITS.headlineChars} placeholder="No headline" onChange={onHeadline} onBlur={onHeadlineDone} />
           </label>
         ) : null}
         {onPosition ? (

@@ -4,6 +4,7 @@
 // thing heard. Make it, and it joins the list like any other video: made in
 // turn, then sent to Postiz for that campaign.
 
+import { LinesInput } from './LinesInput'
 import { useEffect, useRef, useState } from 'react'
 
 import { VideoPicker } from '../VideoPicker'
@@ -179,14 +180,7 @@ export function ClipsMaker({
         {clips.length > 0 ? '+ Add another clip' : '+ Add clips, in order'}
       </VideoPicker>
 
-      <input
-        type="text"
-        aria-label="Headline on the first clip"
-        value={headline}
-        maxLength={LIMITS.headlineChars}
-        placeholder="Headline on the first clip, if any"
-        onChange={(e) => onHeadline(e.target.value)}
-      />
+      <LinesInput aria-label="Headline on the first clip" value={headline} maxLength={LIMITS.headlineChars} placeholder="Headline on the first clip, if any" onChange={onHeadline} />
 
       <label className="field">
         <span className="label">Background music</span>

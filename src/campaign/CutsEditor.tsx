@@ -28,6 +28,7 @@
 // frame; and the video is asked for one frame at a time - always the latest
 // place - instead of a new jump on every scroll event.
 
+import { LinesInput } from './LinesInput'
 import {
   memo,
   useCallback,
@@ -2270,8 +2271,7 @@ export function CutsEditor({
           </div>
           {selectedPicture.source.kind === 'text' ? (
             <>
-              <input
-                type="text"
+              <LinesInput
                 className="words-input"
                 value={selectedPicture.source.text}
                 maxLength={LIMITS.headlineChars}
@@ -2279,10 +2279,7 @@ export function CutsEditor({
                 aria-label="Your words"
                 autoFocus={newText === selectedPicture.id}
                 onFocus={() => setNewText(null)}
-                onChange={(e) => setWords(selectedPicture.id, { text: e.target.value })}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter') e.currentTarget.blur()
-                }}
+                onChange={(text) => setWords(selectedPicture.id, { text })}
               />
               <HeadlineLook value={selectedPicture.source.style} onPick={(style) => setWords(selectedPicture.id, { style })} />
             </>

@@ -5,6 +5,7 @@
 // go up at once, anyone else's wait for his OK - he can change them first.
 // The same for a new category. See warmups.ts.
 
+import { LinesInput } from './LinesInput'
 import { useEffect, useMemo, useRef, useState } from 'react'
 
 import { VideoPicker } from '../VideoPicker'
@@ -500,7 +501,7 @@ function IdeaForm({
       </label>
       <label className="field">
         <span className="label">Headline</span>
-        <input type="text" value={headline} maxLength={120} placeholder="POV: you started training" onChange={(e) => setHeadline(e.target.value)} />
+        <LinesInput value={headline} maxLength={120} placeholder="POV: you started training" onChange={setHeadline} />
         <span className="hint">Whoever films it can change it for their video.</span>
       </label>
       <HeadlineLook value={style} onPick={setStyle} />

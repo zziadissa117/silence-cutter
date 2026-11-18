@@ -8,6 +8,7 @@
 // Rows never move: the list stays in the order the videos were added, so
 // approving one does not slide the next under his thumb.
 
+import { LinesInput } from './LinesInput'
 import { useEffect, useMemo, useState, type ReactNode } from 'react'
 
 import { keptLength } from './cuts'
@@ -621,13 +622,12 @@ function ReactionFields({ job, onReaction }: { job: Job; onReaction: (fields: { 
               <span className="label">
                 Words on clip {i + 2} <span className="hint">({formatTime(clip.start)} on)</span>
               </span>
-              <input
-                type="text"
+              <LinesInput
                 value={texts[i] ?? ''}
                 maxLength={LIMITS.headlineChars}
                 placeholder="None"
-                onChange={(e) => {
-                  const next = clips.slice(1).map((_, k) => (k === i ? e.target.value : (texts[k] ?? '')))
+                onChange={(value) => {
+                  const next = clips.slice(1).map((_, k) => (k === i ? value : (texts[k] ?? '')))
                   onReaction({ clipTexts: next })
                 }}
               />
@@ -715,14 +715,7 @@ export function VideoFields({
       </label>
       <label className="field">
         <span className="label">Headline</span>
-        <input
-          type="text"
-          value={job.headlineText}
-          maxLength={LIMITS.headlineChars}
-          placeholder="No headline"
-          onChange={(e) => onHeadline(e.target.value)}
-          onBlur={onHeadlineDone}
-        />
+        <LinesInput value={job.headlineText} maxLength={LIMITS.headlineChars} placeholder="No headline" onChange={onHeadline} onBlur={onHeadlineDone} />
         {angle?.headline.fromFirstLine && !job.day?.noSpeech ? <span className="hint">{job.headlineMine ? 'Yours.' : 'Written from the video.'}</span> : null}
       </label>
       {onHeadlineStyle ? <HeadlineLook value={job.day?.headlineStyle ?? angle?.headline.style ?? 'box'} onPick={onHeadlineStyle} /> : null}

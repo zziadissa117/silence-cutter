@@ -10,6 +10,7 @@
 // Its own page, its own queue, its own storage. The plain cutter is not
 // touched by any of this; see ModeNav.tsx for why the two are separate pages.
 
+import { LinesInput } from './LinesInput'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
 import { forgetCut } from '../media/outputSink'
@@ -4121,13 +4122,12 @@ export function CampaignApp() {
             </div>
           ) : null}
           {angle.headline.fromFirstLine && !isReaction(campaign) ? null : (
-            <input
-              type="text"
+            <LinesInput
               aria-label="Headline for these videos"
               value={headlineText}
               maxLength={LIMITS.headlineChars}
               placeholder={isReaction(campaign) ? 'Headline on the reaction, if any' : 'Headline for these videos, if any'}
-              onChange={(e) => setHeadlineText(e.target.value)}
+              onChange={setHeadlineText}
             />
           )}
           {isReaction(campaign) && headlineText.trim() ? (
