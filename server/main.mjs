@@ -183,7 +183,8 @@ setInterval(async () => {
 
 // --- Files from the phone ---------------------------------------------------
 
-const safeId = (id) => (typeof id === 'string' && /^[A-Za-z0-9_-]{1,80}$/.test(id) ? id : null)
+const safeId = (id) =>
+  typeof id === 'string' && /^[A-Za-z0-9_-]{1,80}$/.test(id) && !['__proto__', 'constructor', 'prototype'].includes(id) ? id : null
 
 async function filesHere() {
   const names = await fsp.readdir(dir('files')).catch(() => [])

@@ -3,6 +3,23 @@
 Newest first. Every change says what it does, how to use it, and how it works
 underneath. Kept up to date with each commit.
 
+## Security check: 4 holes closed
+- His ask (2026-11-18): check the Cutter against 20 known ways strangers break into apps. Most don't apply (no SAML,
+  GraphQL, Redis, websockets, XML, 2FA, email sending or JWT login) or were already handled (passwords hashed with
+  PBKDF2; HMAC-signed tokens checked in constant time; the same answer for every wrong login; invite links random,
+  single-use, atomic; every `cutter_*` table RLS on with no policies and no public grants, no views, private storage;
+  sealed keys AES-GCM; the Cutter server's every route behind a login, its file ids cleaned, its app port on
+  127.0.0.1 only).
+- Fixed: the 5-wrong-passwords lock could be slipped past by sending many guesses at once - each read the count
+  before any wrote it, so a burst counted as one. Every guess now takes its turn first with a compare-and-set on the
+  login's row, before the password is looked at; a right one clears the count (`cutter/index.ts` `takeAttempt`).
+- Fixed: reports from signed-out phones were limited per address, taken from a header the sender can fake; there is
+  now also a cap for all of them together (60 a minute per instance).
+- Fixed: the scheduler's secret is compared in constant time (`postiz/index.ts` `sameText`).
+- Fixed: ids from the phone used as object keys can't be `__proto__` / `constructor` / `prototype` (postiz
+  `plainKey`, server `safeId`).
+- Needs deploying: run ./deploy-server.sh (the Cutter server updates by itself from the push).
+
 ## Enter makes a new line in the headline
 - His ask (2026-11-18): "whenever we enter the headline ourselves ... we can press Enter on it so we can do our line
   breaks ourselves. We type what we want to type, then we press Enter. It does a line break."

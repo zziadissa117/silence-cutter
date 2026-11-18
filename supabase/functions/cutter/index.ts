@@ -259,6 +259,32 @@ async function adminLogin(name: string, password: string): Promise<{ id: string;
   return data ?? null
 }
 
+/** One password guess at a login, counted before it is checked: true when
+ *  it may be tried. The count goes up with a compare-and-set on the row, so
+ *  guesses sent all at once are each counted (it was read, then written:
+ *  hundreds sent together were counted as one). The MAX_FAILS-th locks the
+ *  login for LOCK_MINUTES; a right password clears the count. */
+async function takeAttempt(space: { id: string; failed_count: number; locked_until: string | null }): Promise<boolean> {
+  let row = space
+  for (let tries = 0; tries < 25; tries++) {
+    if (row.locked_until && new Date(row.locked_until) > new Date()) return false
+    const next = row.failed_count + 1
+    const lock = next >= MAX_FAILS
+    const { data } = await db
+      .from('cutter_spaces')
+      .update({ failed_count: lock ? 0 : next, locked_until: lock ? new Date(Date.now() + LOCK_MINUTES * 60_000).toISOString() : null })
+      .eq('id', row.id)
+      .eq('failed_count', row.failed_count)
+      .select('id')
+    if (data && data.length > 0) return true
+    // Another guess got there first: read it again and count this one after it.
+    const { data: fresh } = await db.from('cutter_spaces').select('id, failed_count, locked_until').eq('id', row.id).maybeSingle()
+    if (!fresh) return false
+    row = fresh
+  }
+  return false
+}
+
 async function login(body: Record<string, unknown>): Promise<Response> {
   const name = typeof body.name === 'string' ? body.name.trim().toLowerCase() : ''
   const password = typeof body.password === 'string' ? body.password : ''
@@ -276,22 +302,15 @@ async function login(body: Record<string, unknown>): Promise<Response> {
     return reply(WRONG, 401)
   }
   if (space) {
-    if (space.locked_until && new Date(space.locked_until) > new Date()) {
+    // The guess counts before the password is even looked at, so a burst of
+    // guesses sent at the same moment can't all slip past the lock.
+    if (!(await takeAttempt(space))) {
       return reply({ error: `Too many wrong passwords. Try again in ${LOCK_MINUTES} minutes.` }, 429)
     }
     const hash = await hashPassword(password, space.pass_salt)
-    if (!same(hash, space.pass_hash)) {
-      const failed = space.failed_count + 1
-      await db
-        .from('cutter_spaces')
-        .update({
-          failed_count: failed >= MAX_FAILS ? 0 : failed,
-          locked_until: failed >= MAX_FAILS ? new Date(Date.now() + LOCK_MINUTES * 60_000).toISOString() : null,
-        })
-        .eq('id', space.id)
-      return reply(WRONG, 401)
-    }
-    if (space.failed_count > 0) await db.from('cutter_spaces').update({ failed_count: 0 }).eq('id', space.id)
+    if (!same(hash, space.pass_hash)) return reply(WRONG, 401)
+    // Right: the attempts it counted are forgiven.
+    await db.from('cutter_spaces').update({ failed_count: 0, locked_until: null }).eq('id', space.id)
     if (space.id === (await ownerSpace())) return reply({ token: await makeToken(space.id, space.pass_hash), name })
     const device = deviceFrom(body.device)
     if (!device) return reply({ error: 'Close the Cutter and open it again to update it, then sign in.' }, 400)
@@ -839,7 +858,12 @@ const MAX_REPORTS = 20
  *  address, counted in this instance alone - instances are short-lived, and
  *  that is as much memory as it needs. A login's reports are not counted. */
 const UNSIGNED_REPORTS_PER_MINUTE = 10
+/** ...and this many a minute from all of them together: the address comes
+ *  from a header the sender can write himself, so one sender making up a new
+ *  address each time could otherwise fill the error log. */
+const UNSIGNED_REPORTS_ALL_PER_MINUTE = 60
 const unsignedReports = new Map<string, { minute: number; count: number }>()
+let unsignedAll = { minute: 0, count: 0 }
 
 /** Takes `wanted` reports from a signed-out phone's address this minute, or
  *  none of them: all or nothing, so the phone keeps what it has for a later
@@ -850,6 +874,9 @@ function unsignedRoom(req: Request, wanted: number): boolean {
   const seen = unsignedReports.get(address)
   const used = seen?.minute === minute ? seen.count : 0
   if (used + wanted > UNSIGNED_REPORTS_PER_MINUTE) return false
+  const allUsed = unsignedAll.minute === minute ? unsignedAll.count : 0
+  if (allUsed + wanted > UNSIGNED_REPORTS_ALL_PER_MINUTE) return false
+  unsignedAll = { minute, count: allUsed + wanted }
   // Earlier minutes go, so this never holds more than a minute's addresses.
   if (unsignedReports.size >= 1000) for (const [key, entry] of unsignedReports) if (entry.minute !== minute) unsignedReports.delete(key)
   unsignedReports.set(address, { minute, count: used + wanted })

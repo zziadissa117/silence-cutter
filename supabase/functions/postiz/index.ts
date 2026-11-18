@@ -1569,7 +1569,7 @@ async function refreshAccounts(profile: Profile): Promise<Profile> {
 
 async function saveCampaign(profile: Profile, body: Record<string, unknown>): Promise<Response> {
   const campaignId = typeof body.campaignId === 'string' ? body.campaignId : ''
-  if (!campaignId || campaignId.length > 200) throw new Problem('Which campaign?')
+  if (!campaignId || campaignId.length > 200 || !plainKey(campaignId)) throw new Problem('Which campaign?')
   const known = new Set(profile.accounts.map((a) => a.id))
   const accounts = (Array.isArray(body.accounts) ? body.accounts : []).filter((a): a is string => typeof a === 'string' && known.has(a))
   const times = normalTimes((Array.isArray(body.times) ? body.times : []).filter((t): t is string => typeof t === 'string'))
@@ -1733,7 +1733,7 @@ async function releaseHeld(now: number): Promise<void> {
  *  there are never touched, so nothing goes out twice. */
 async function attachAccounts(profile: Profile, body: Record<string, unknown>): Promise<Response> {
   const campaignId = typeof body.campaignId === 'string' ? body.campaignId : ''
-  if (!campaignId || campaignId.length > 200) throw new Problem('Which campaign?')
+  if (!campaignId || campaignId.length > 200 || !plainKey(campaignId)) throw new Problem('Which campaign?')
   const chosen = new Set(profile.settings.campaigns?.[campaignId]?.accounts ?? [])
   const accounts = (Array.isArray(body.accounts) ? body.accounts : [])
     .filter((id): id is string => typeof id === 'string' && chosen.has(id))
@@ -3755,7 +3755,7 @@ const REWRITE_BATCH = 12
  *  time, happen after the answer (rewriteMarked), a dozen at a time. */
 async function recaption(profile: Profile, body: Record<string, unknown>): Promise<Response> {
   const campaignId = typeof body.campaignId === 'string' ? body.campaignId : ''
-  if (!campaignId || campaignId.length > 200) throw new Problem('Which campaign?')
+  if (!campaignId || campaignId.length > 200 || !plainKey(campaignId)) throw new Problem('Which campaign?')
   const rules = cleanRules(body.posting)
   const mode = cleanMode(body.mode)
   const only = Array.isArray(body.ids) ? body.ids.filter((id): id is string => typeof id === 'string' && /^[0-9a-f-]{36}$/.test(id)) : null
@@ -3870,7 +3870,7 @@ const UNPOST_BATCH = 20
  *  waiting, approved and scheduled posts. */
 async function stopCampaign(profile: Profile, body: Record<string, unknown>): Promise<Response> {
   const campaignId = typeof body.campaignId === 'string' ? body.campaignId : ''
-  if (!campaignId || campaignId.length > 200) throw new Problem('Which campaign?')
+  if (!campaignId || campaignId.length > 200 || !plainKey(campaignId)) throw new Problem('Which campaign?')
   const { data, error } = await db
     .from('cutter_posts')
     .select('*')
@@ -4048,7 +4048,7 @@ function cleanNames(value: unknown): Record<string, string> {
   if (!value || typeof value !== 'object') return {}
   const out: Record<string, string> = {}
   for (const [id, name] of Object.entries(value as Record<string, unknown>).slice(0, 300)) {
-    if (typeof name === 'string' && id.length <= 200) out[id] = name.slice(0, 120)
+    if (typeof name === 'string' && id.length <= 200 && plainKey(id)) out[id] = name.slice(0, 120)
   }
   return out
 }
@@ -4099,7 +4099,7 @@ async function patchSettings(profileId: string, change: (settings: Profile['sett
 
 async function endCampaign(profile: Profile, body: Record<string, unknown>): Promise<Response> {
   const campaignId = typeof body.campaignId === 'string' ? body.campaignId : ''
-  if (!campaignId || campaignId.length > 200) throw new Problem('Which campaign?')
+  if (!campaignId || campaignId.length > 200 || !plainKey(campaignId)) throw new Problem('Which campaign?')
   const names = cleanNames(body.names)
   const accountIds = [...new Set(profile.settings.campaigns?.[campaignId]?.accounts ?? [])]
   const { postiz: key } = await keysFor(profile.id)
@@ -5056,8 +5056,21 @@ async function channels(body: Record<string, unknown>): Promise<Response> {
 async function tickAllowed(secret: unknown): Promise<boolean> {
   if (typeof secret !== 'string' || secret.length < 20) return false
   const { data } = await db.from('cutter_config').select('value').eq('key', 'tick_secret').maybeSingle()
-  return Boolean(data?.value) && data!.value === secret
+  return Boolean(data?.value) && sameText(data!.value, secret)
 }
+
+/** Two strings compared in the same time wherever they differ, so how long
+ *  the answer takes says nothing about how much of a guess was right. */
+function sameText(a: string, b: string): boolean {
+  if (a.length !== b.length) return false
+  let diff = 0
+  for (let i = 0; i < a.length; i++) diff |= a.charCodeAt(i) ^ b.charCodeAt(i)
+  return diff === 0
+}
+
+/** An id from the phone used as a key in an object: never one of the names
+ *  that reach into JavaScript's own objects. */
+const plainKey = (id: string): boolean => id !== '__proto__' && id !== 'constructor' && id !== 'prototype'
 
 // --- The door -----------------------------------------------------------------
 
