@@ -3,6 +3,17 @@
 Newest first. Every change says what it does, how to use it, and how it works
 underneath. Kept up to date with each commit.
 
+## Each batch format can have its own headlines
+- His ask (2026-11-21): "The headlines are shared across these two formats, and that's not good ... headline for
+  format number two and headline for format number one, so I can write my own headlines for format one and ... for
+  format number two, so that it's all separated and not mixed up together."
+- Batch tab, a format's card, under "Headline on top": "Its own headlines", one a line. With some there, only that
+  format's videos use them, one per video in turn; empty, the format uses the batch's headlines as before (now titled
+  "Headlines for every format" when there are several formats). "No headline" still means none.
+- Underneath: `BatchFormat.headlines`, used by `batch.formatBank` (so the mixing, the counts of different videos, the
+  Cutter server and Variations all follow it); their emoji drawn for the server too (`emojiSprites`). Tested: two
+  formats with their own headlines and one with the shared ones - no headline crosses over.
+
 ## Security check: 4 holes closed
 - His ask (2026-11-18): check the Cutter against 20 known ways strangers break into apps. Most don't apply (no SAML,
   GraphQL, Redis, websockets, XML, 2FA, email sending or JWT login) or were already handled (passwords hashed with

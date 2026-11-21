@@ -1449,6 +1449,7 @@ export function BatchView({
             {switchRow('Headline on top', f.noHeadline ? 'Off: no words over the hook.' : f.rawHooks ? 'Over your first product step.' : 'Over your hook.', !f.noHeadline, (on) =>
               changeFormat(f.id, { noHeadline: on ? undefined : true }),
             )}
+            {f.noHeadline ? null : <FormatHeadlines format={f} shared={bank?.headlines.length ?? 0} onSave={(headlines) => changeFormat(f.id, { headlines })} />}
             {switchRow('Music', f.noMusic ? 'Off: your voice only.' : 'A song from the music bank under your voice.', !f.noMusic, (on) => changeFormat(f.id, { noMusic: on ? undefined : true }))}
             <div className="format-corner">
               <span className="row-name">Captions</span>
@@ -1680,6 +1681,7 @@ export function BatchView({
                     onChange={(e) => changeFormat(f.id, { noHeadline: e.target.checked ? undefined : true })}
                   />
                 </div>
+                {f.noHeadline ? null : <FormatHeadlines format={f} shared={bank.headlines.length} onSave={(headlines) => changeFormat(f.id, { headlines })} />}
                 {/* A song under a talking head's videos, or none (the drop-in
                     checklist sets it too - his ask, 2026-11-14). */}
                 {f.kind === 'talking' ? (
@@ -2466,9 +2468,12 @@ export function BatchView({
             <div className="bank-head">
               <span className="group-title">
                 <Mark kind="headlines" />
-                Headlines <span className="bank-count">{bank.headlines.length}</span>
+                {formatList.length > 1 ? 'Headlines for every format' : 'Headlines'} <span className="bank-count">{bank.headlines.length}</span>
               </span>
             </div>
+            {formatList.length > 1 ? (
+              <p className="hint tip bank-hint">For the formats without headlines of their own - a format's own are on its card.</p>
+            ) : null}
             <p className="hint tip bank-hint">
               {green
                 ? 'Optional - none and the videos have no headline. One a line.'
@@ -2849,6 +2854,42 @@ export function BatchView({
       {watching ? <ClipViewer file={watching.file} note={watching.note} onClose={() => setWatching(null)} onTakeOut={watching.out} /> : null}
     </section>
     </>
+  )
+}
+
+/** A format's own headlines, one a line (his ask, 2026-11-21: "headline for
+ *  format number two and headline for format number one ... so that it's all
+ *  separated"). Empty: it takes the batch's headlines, shared with every
+ *  format without its own. Kept when he leaves the box. */
+function FormatHeadlines({ format, shared, onSave }: { format: BatchFormat; shared: number; onSave: (headlines: string[] | undefined) => void }) {
+  const [text, setText] = useState((format.headlines ?? []).join('\n'))
+  const own = format.headlines?.length ?? 0
+  return (
+    <div className="field format-headlines">
+      <span className="row-name">
+        Its own headlines <span className="bank-count">{own}</span>
+      </span>
+      <span className="hint">
+        {own > 0
+          ? 'Only this format uses these - one per video, in turn.'
+          : shared > 0
+            ? `None yet: it uses the ${shared} headline${shared === 1 ? '' : 's'} for every format, below. Type some here and only these go on its videos.`
+            : 'One a line - only this format uses them.'}
+      </span>
+      <textarea
+        className="post-caption bank-headlines"
+        rows={Math.min(8, Math.max(3, own + 1))}
+        value={text}
+        aria-label={`${format.name}: its own headlines, one a line`}
+        placeholder={'POV: you finally found it\nwait for it…'}
+        onChange={(e) => setText(e.target.value)}
+        onBlur={() => {
+          const headlines = headlinesFrom(text)
+          setText(headlines.join('\n'))
+          onSave(headlines.length > 0 ? headlines : undefined)
+        }}
+      />
+    </div>
   )
 }
 

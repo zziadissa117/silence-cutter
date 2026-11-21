@@ -115,6 +115,11 @@ export interface BatchFormat {
    *  it so I can choose if I want one or not"). Absent: a headline, as
    *  always. */
   noHeadline?: boolean
+  /** Its own headlines, one per video in turn (his ask, 2026-11-21: "write my
+   *  own headlines for format one and ... for format number two, so that it's
+   *  all separated and not mixed up together"). Absent or empty: the batch's
+   *  headlines (BatchBank.headlines), shared by every format without its own. */
+  headlines?: string[]
   /** A talking head with no song under it - his voice and the clips' own
    *  sound only (the drop-in checklist, his ask 2026-11-14: "we choose
    *  what's being edited or not"). Absent: a song from the music bank. */
@@ -850,6 +855,8 @@ export function formatBank(bank: BatchBank, format: BatchFormat): BatchBank {
     // and music for reaction-type formats"): a song marked for some formats
     // only (BankFile.formats) is theirs; an unmarked one is every format's.
     music: songsOf(bank.music, format.id),
+    // Its own headlines, when it has them - else the batch's.
+    ...(format.headlines?.length && !format.noHeadline ? { headlines: format.headlines } : {}),
     // No music: no song picked for its videos.
     ...(format.noMusic && format.kind === 'talking' ? { music: [] } : {}),
     voice: undefined,

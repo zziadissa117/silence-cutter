@@ -188,3 +188,36 @@ describe('songs for some formats only (his ask, 2026-11-15: "music for talking h
   })
 })
 
+
+describe("each format's own headlines (his ask, 2026-11-21)", () => {
+  const two: BatchFormat[] = [
+    { id: 'a', kind: 'reaction', name: 'Covered - shocked', headlines: ['A one', 'A two'] },
+    { id: 'b', kind: 'reaction', name: 'Covered - calm', headlines: ['B one'] },
+    { id: 'c', kind: 'reaction', name: 'Covered - shared' },
+  ]
+  const covered = (): BatchBank => ({
+    ...emptyBank('covered', 'a1'),
+    formats: two,
+    reactions: [...files('ra', 3, ['a']), ...files('rb', 3, ['b']), ...files('rc', 2, ['c'])],
+    products: [...files('pa', 1, ['a']), ...files('pb', 1, ['b']), ...files('pc', 1, ['c'])],
+    headlines: ['Shared one', 'Shared two'],
+    music: files('song', 2),
+  })
+
+  it('a format with its own headlines uses only them; one without takes the batch’s', () => {
+    expect(formatBank(covered(), two[0]).headlines).toEqual(['A one', 'A two'])
+    expect(formatBank(covered(), two[2]).headlines).toEqual(['Shared one', 'Shared two'])
+    // No headline still means none, own headlines or not.
+    expect(formatBank(covered(), { ...two[0], noHeadline: true }).headlines).toEqual([])
+  })
+
+  it('never puts one format’s headline on another format’s video', () => {
+    const plan = planVideos(covered(), slots(18), { id: 'h', rand: () => 0.3 })
+    expect(plan.videos.length).toBeGreaterThan(0)
+    for (const v of plan.videos) {
+      if (v.batch.format === 'a') expect(['A one', 'A two']).toContain(v.headline)
+      if (v.batch.format === 'b') expect(v.headline).toBe('B one')
+      if (v.batch.format === 'c') expect(['Shared one', 'Shared two']).toContain(v.headline)
+    }
+  })
+})

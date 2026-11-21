@@ -28,6 +28,8 @@ export interface EmojiSprite extends BankFile {
 /** The texts of a bank that are drawn on its videos. */
 interface Texts {
   headlines: readonly string[]
+  /** Formats with headlines of their own (BatchFormat.headlines). */
+  formats?: readonly { headlines?: readonly string[] }[]
   steps?: readonly { name: string }[]
 }
 
@@ -247,7 +249,7 @@ export async function emojiSpritesFor(
   draw: typeof drawEmoji = drawEmoji,
 ): Promise<EmojiSprite[] | null> {
   const have = bank.emojis ?? []
-  const missing = emojisIn([...bank.headlines, ...(bank.steps ?? []).map((s) => s.name)]).filter((t) => !have.some((s) => s.text === t))
+  const missing = emojisIn([...bank.headlines, ...(bank.formats ?? []).flatMap((f) => f.headlines ?? []), ...(bank.steps ?? []).map((s) => s.name)]).filter((t) => !have.some((s) => s.text === t))
   if (missing.length === 0) return null
   const made: EmojiSprite[] = []
   for (const text of missing) {
