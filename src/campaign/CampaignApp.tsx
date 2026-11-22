@@ -46,6 +46,7 @@ import { afterMixing, daysLine, mixesOf, spreadOver } from './formats'
 import type { ViewsByAccount } from './analytics'
 import { bareName, batchCaptionLook, filesOf, formatOfReaction, formatTalks, formatsOf, stepTexts, stepTitle, styleFor, stylesOf, withoutName, type BankFile, type BatchBank } from './batch'
 import { overlayWindows } from './stepOverlays'
+import { dropFor } from './beatDrop'
 import { followFavour } from './batchFavour'
 import { playsWhole } from './stepPiece'
 import { CampaignsView } from './CampaignsView'
@@ -2252,6 +2253,11 @@ export function CampaignApp() {
               ...(trialLook?.tint ? { tint: trialLook.tint } : {}),
               // A small piece out of its middle, most times (trialLoop.cutFor).
               ...(trialLook?.cut ? { cutOut: trialLook.cut } : {}),
+              // Synced to its song's beat drop: the switch lands on the drop.
+              ...((): { beatDrop?: number } => {
+                const drop = dropFor(batchBank, jobFormat, next.montage?.bank?.music?.id)
+                return drop ? { beatDrop: drop } : {}
+              })(),
               keepLines: Boolean(trialLook),
               rawFirst: rawHook,
               // A talking head: no long pause where one clip meets the next -

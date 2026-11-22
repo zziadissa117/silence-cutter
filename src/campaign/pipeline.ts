@@ -494,6 +494,8 @@ export async function makeMontage(
     shorterBy?: number
     /** A Trial loop's video: a micro cut in its middle (trialLoop.TrialLook.cut). */
     cutOut?: { at: number; sec: number }
+    /** A batch synced to its song's beat drop (beatDrop.ts): the drop, in seconds into the song. */
+    beatDrop?: number | null
     /** A Trial loop's video: a touch faster, framed a little tighter (trialLoop.TrialLook). */
     speed?: number
     reframe?: Parameters<typeof renderMontage>[0]['reframe']
@@ -530,6 +532,7 @@ export async function makeMontage(
       keepShape: extra.keepShape,
       shorterBy: extra.shorterBy,
       cutOut: extra.cutOut ?? null,
+      beatDrop: extra.beatDrop ?? null,
       speed: extra.speed,
       reframe: extra.reframe ?? null,
       tint: extra.tint ?? null,

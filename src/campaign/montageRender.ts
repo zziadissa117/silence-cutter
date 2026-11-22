@@ -13,6 +13,7 @@
 // partway is picked up again from the last frame, as everywhere else
 // (clipParts.ts).
 
+import { songStart } from './beatDrop'
 import {
   AudioSample,
   AudioSampleSource,
@@ -228,6 +229,9 @@ export interface MontageRenderInput {
   /** A Trial reel copy's micro cut: a piece this long taken out of the
    *  first clip at this share of it (trialLoop.TrialLook.cut). */
   cutOut?: { at: number; sec: number } | null
+  /** The song's beat drop, in seconds into it: the music starts so it lands
+   *  as the video switches from its first clip (beatDrop.songStart). */
+  beatDrop?: number | null
   /** A talking head whose hooks are kept as filmed ("Use edits in hooks"
    *  off - BatchFormat.rawHooks): the first clip plays exactly as he filmed
    *  it, his own sound and nothing else - no captions, headline, zoom or
@@ -392,7 +396,7 @@ export function liftMusic(channels: Float32Array[], gain: number, sampleRate: nu
 }
 
 export async function renderMontage(
-  { clips: files, look, headlineText, music, seed = '', formula = null, windows = [], reactionFirst = false, titles = [], stepTexts = [], stepOverlays = [], voice = false, voiceAll = false, brightness = 0, keepLines = false, keepShape = false, shorterBy = 0, cutOut = null, rawFirst = false, joinTight, asGiven = [], mirrored = [], captions = null, speed = 1, reframe = null, tint = null }: MontageRenderInput,
+  { clips: files, look, headlineText, music, seed = '', formula = null, windows = [], reactionFirst = false, titles = [], stepTexts = [], stepOverlays = [], voice = false, voiceAll = false, brightness = 0, keepLines = false, keepShape = false, shorterBy = 0, cutOut = null, beatDrop = null, rawFirst = false, joinTight, asGiven = [], mirrored = [], captions = null, speed = 1, reframe = null, tint = null }: MontageRenderInput,
   onProgress?: (fraction: number) => void,
 ): Promise<MontageRenderResult> {
   if (files.length === 0) throw new SilenceCutError('Add at least one clip.')
@@ -473,7 +477,10 @@ export async function renderMontage(
     if (music && !hookOnly) {
       try {
         // Only as much of the song as the video uses is decoded (sounds.ts).
-        const { channels } = await prepareMusic(music.audio, music.name, musicLength, RATE)
+        // Synced to its beat drop: the drop on the switch from the first clip.
+        const switchAt = (parts[0].end - parts[0].start - (skip ? skip.end - skip.start : 0)) / sp
+        const from = beatDrop && clips.length > 1 ? songStart(beatDrop, switchAt, rawFirst) : 0
+        const { channels } = await prepareMusic(music.audio, music.name, musicLength, RATE, from)
         const loudness = trackLoudness(channels, RATE)
         if (voice) {
           // Under his voice, as in a talking video, dipping while he talks -

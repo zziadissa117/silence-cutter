@@ -140,7 +140,7 @@ export function mixInto(planes: Float32Array[], firstFrame: number, sounds: read
 
 /** The first `seconds` of a song, as decoded planes at its own rate, or
  *  null when this phone can't read it this way. */
-async function decodeStart(audio: Blob, seconds: number): Promise<{ planes: Float32Array[]; rate: number } | null> {
+async function decodeStart(audio: Blob, seconds: number, from = 0): Promise<{ planes: Float32Array[]; rate: number } | null> {
   const input = new Input({ source: new BlobSource(audio), formats: ALL_FORMATS })
   try {
     const track = await input.getPrimaryAudioTrack()
@@ -149,11 +149,20 @@ async function decodeStart(audio: Blob, seconds: number): Promise<{ planes: Floa
     const wanted = Math.ceil(seconds * rate)
     const planes = Array.from({ length: count }, () => new Float32Array(wanted))
     let at = 0
-    for await (const sample of new AudioSampleSink(track).samples(0, seconds)) {
+    for await (const sample of new AudioSampleSink(track).samples(from, from + seconds)) {
       try {
-        const frames = Math.min(sample.numberOfFrames, wanted - at)
+        // A piece that starts before `from` (the decoder's own steps): only
+        // what comes after it.
+        const skip = Math.min(sample.numberOfFrames, Math.max(0, Math.round((from - sample.timestamp) * rate)))
+        const frames = Math.min(sample.numberOfFrames - skip, wanted - at)
         for (let c = 0; c < count && frames > 0; c++) {
-          sample.copyTo(planes[c].subarray(at, at + frames), { planeIndex: Math.min(c, sample.numberOfChannels - 1), format: 'f32-planar', frameCount: frames })
+          if (skip === 0) {
+            sample.copyTo(planes[c].subarray(at, at + frames), { planeIndex: Math.min(c, sample.numberOfChannels - 1), format: 'f32-planar', frameCount: frames })
+          } else {
+            const all = new Float32Array(sample.numberOfFrames)
+            sample.copyTo(all, { planeIndex: Math.min(c, sample.numberOfChannels - 1), format: 'f32-planar' })
+            planes[c].set(all.subarray(skip, skip + frames), at)
+          }
         }
         at += Math.max(0, frames)
       } finally {
@@ -191,16 +200,19 @@ async function resample(planes: Float32Array[], from: number, to: number): Promi
  *  batch, with 4K frames in memory too, some songs then failed to decode and
  *  their videos went out silent. Now only the part that is heard is decoded.
  *  A song this phone can't read that way is decoded whole, as before. */
-export async function prepareMusic(audio: Blob, name: string, seconds: number, sampleRate: number): Promise<PreparedSound> {
+export async function prepareMusic(audio: Blob, name: string, seconds: number, sampleRate: number, from = 0): Promise<PreparedSound> {
   const needed = Math.ceil(seconds * sampleRate) + sampleRate
+  // From `from` seconds into the song (a batch synced to its beat drop,
+  // beatDrop.ts); its start otherwise.
+  const skip = Math.max(0, Math.round(from * sampleRate))
   try {
-    const start = await decodeStart(audio, seconds + 1)
+    const start = await decodeStart(audio, seconds + 1, Math.max(0, from))
     if (start) return { channels: await resample(start.planes, start.rate, sampleRate) }
   } catch {
     // Decoded whole below.
   }
   const whole = await prepareSound({ kind: 'file', name, audio }, sampleRate)
-  return { channels: whole.channels.map((c) => (c.length > needed ? c.slice(0, needed) : c)) }
+  return { channels: whole.channels.map((c) => c.slice(Math.min(skip, c.length), Math.min(c.length, skip + needed))) }
 }
 
 /** What went wrong with a song, for a report: the reason, and the file's

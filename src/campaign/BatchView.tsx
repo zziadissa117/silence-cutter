@@ -6,6 +6,7 @@
 // made one after another on this phone or on the engine, and sent up - each
 // for one of the campaign's posting times - to wait for his approval.
 
+import { BeatDropPicker } from './BeatDropPicker'
 import { TrackName, TrackPlayer } from './TrackPlayer'
 import { useEffect, useRef, useState } from 'react'
 
@@ -320,6 +321,8 @@ export function BatchView({
   const [posts, setPosts] = useState<ServerPost[]>(() => lastPosts())
   // The clip being watched full screen, and how to take it out from there.
   const [watching, setWatching] = useState<{ file: BankFile; note: string; out: () => void } | null>(null)
+  /** The song whose beat drop is being marked (BeatDropPicker). */
+  const [dropFor, setDropFor] = useState<BankFile | null>(null)
   useEffect(() => {
     if (!posting) return
     let alive = true
@@ -1450,6 +1453,9 @@ export function BatchView({
               changeFormat(f.id, { noHeadline: on ? undefined : true }),
             )}
             {f.noHeadline ? null : <FormatHeadlines format={f} shared={bank?.headlines.length ?? 0} onSave={(headlines) => changeFormat(f.id, { headlines })} />}
+            {bank && !f.noMusic ? (
+              <SyncDropRow format={f} marked={songsOf(bank.music, f.id).filter((m) => bank.beatDrops?.[m.id]).length} songs={songsOf(bank.music, f.id).length} onChange={(on) => changeFormat(f.id, { syncDrop: on || undefined })} />
+            ) : null}
             {switchRow('Music', f.noMusic ? 'Off: your voice only.' : 'A song from the music bank under your voice.', !f.noMusic, (on) => changeFormat(f.id, { noMusic: on ? undefined : true }))}
             <div className="format-corner">
               <span className="row-name">Captions</span>
@@ -1682,6 +1688,7 @@ export function BatchView({
                   />
                 </div>
                 {f.noHeadline ? null : <FormatHeadlines format={f} shared={bank.headlines.length} onSave={(headlines) => changeFormat(f.id, { headlines })} />}
+                <SyncDropRow format={f} marked={songsOf(bank.music, f.id).filter((m) => bank.beatDrops?.[m.id]).length} songs={songsOf(bank.music, f.id).length} onChange={(on) => changeFormat(f.id, { syncDrop: on || undefined })} />
                 {/* A song under a talking head's videos, or none (the drop-in
                     checklist sets it too - his ask, 2026-11-14). */}
                 {f.kind === 'talking' ? (
@@ -2008,6 +2015,10 @@ export function BatchView({
                     name={file.name}
                     onRename={(name) => keep({ ...bank, music: bank.music.map((m) => (m.id === file.id ? { ...m, name } : m)) })}
                   />
+                  {/* Its beat drop in this batch, for the formats synced to it (beatDrop.ts). */}
+                  <button type="button" className="btn small" onClick={() => setDropFor(file)}>
+                    {bank.beatDrops?.[file.id] ? `Drop ${Math.floor(bank.beatDrops[file.id] / 60)}:${(bank.beatDrops[file.id] % 60).toFixed(1).padStart(4, '0')}` : 'Set beat drop'}
+                  </button>
                 </>
               ) : (
                 <button
@@ -2852,8 +2863,41 @@ export function BatchView({
         </>
       ) : null}
       {watching ? <ClipViewer file={watching.file} note={watching.note} onClose={() => setWatching(null)} onTakeOut={watching.out} /> : null}
+      {dropFor && bank ? (
+        <BeatDropPicker
+          file={dropFor}
+          drop={bank.beatDrops?.[dropFor.id] ?? null}
+          onClose={() => setDropFor(null)}
+          onSave={(drop) => {
+            const latest = bankRef.current ?? bank
+            const { [dropFor.id]: _was, ...rest } = latest.beatDrops ?? {}
+            const beatDrops = drop === null ? rest : { ...rest, [dropFor.id]: drop }
+            keep({ ...latest, beatDrops: Object.keys(beatDrops).length > 0 ? beatDrops : undefined })
+          }}
+        />
+      ) : null}
     </section>
     </>
+  )
+}
+
+/** A format's videos synced to their song's beat drop (beatDrop.ts): the
+ *  switch from him to the product lands on the drop marked on the song. */
+function SyncDropRow({ format, marked, songs, onChange }: { format: BatchFormat; marked: number; songs: number; onChange: (on: boolean) => void }) {
+  return (
+    <div className="setting">
+      <div className="setting-text">
+        <span className="row-name">Switch on the beat drop</span>
+        <span className="row-line">
+          {format.syncDrop
+            ? marked > 0
+              ? `On: the switch to the product lands on the drop - ${marked} of ${songs} song${songs === 1 ? '' : 's'} marked. Songs without one start from the beginning.`
+              : 'On - mark the drop on a song: Music, Set beat drop.'
+            : 'Off: the song from its start.'}
+        </span>
+      </div>
+      <input type="checkbox" className="switch" checked={Boolean(format.syncDrop)} aria-label="Switch on the beat drop" onChange={(e) => onChange(e.target.checked)} />
+    </div>
   )
 }
 

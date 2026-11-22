@@ -3,6 +3,22 @@
 Newest first. Every change says what it does, how to use it, and how it works
 underneath. Kept up to date with each commit.
 
+## Batch videos switch on the song's beat drop
+- His ask (2026-11-23): "when you create a batch, you can just look at the song, and you select the point where it's
+  like, 'This is the beat drop.' ... the reaction video cuts exactly at the same time as the beat drop ... not make
+  it automatic, but ... for some batches". His picks: a reaction is never cut short; per batch.
+- Batch tab, Music: each song has "Set beat drop". The song plays; tap the big button on the drop; the tap is moved
+  onto the hit in the sound (a finger is a little late - the biggest jump in loudness within 0.35 s before to 0.12 s
+  after the tap); nudge ±0.02 / ±0.1 s; Hear it plays 3 s before to 2 s after; Save. The song then shows its drop.
+- Each format: "Switch on the beat drop". On, every video of it starts its song early by as long as its first clip
+  (the reaction, or his hook) plays, so the drop lands exactly as it switches to the product. A song with no drop
+  marked starts at its beginning as before; a reaction longer than the song before its drop starts the song at its
+  beginning (the drop a little after the switch). A talking hook kept as filmed (music from the first step): the song
+  starts on the drop.
+- Underneath: `BatchBank.beatDrops` (song file id -> seconds), `BatchFormat.syncDrop`, `beatDrop.ts` (`songStart`,
+  `dropFor`, `snapToHit`, `loudness`), `BeatDropPicker.tsx`, montageRender `beatDrop`, `sounds.prepareMusic(..., from)`
+  (reads the song from that point; checked in Chrome for Testing: 0 ms off). On the Cutter server too, with the bank.
+
 ## The dead zone: nothing the Cutter draws goes where TikTok or Reels cover the video
 - His ask (2026-11-23): "respect the dead zone for content ... never put the caption ... way too much at the bottom
   where there is the caption. Way too high, too. Same thing for the hook text ... Even the overlays cannot go too

@@ -120,6 +120,10 @@ export interface BatchFormat {
    *  all separated and not mixed up together"). Absent or empty: the batch's
    *  headlines (BatchBank.headlines), shared by every format without its own. */
   headlines?: string[]
+  /** Its videos synced to their song's beat drop, where the song has one
+   *  marked (BatchBank.beatDrops, beatDrop.ts): the switch from the clip of
+   *  him to the product lands on the drop. Off: the song from its start. */
+  syncDrop?: boolean
   /** A talking head with no song under it - his voice and the clips' own
    *  sound only (the drop-in checklist, his ask 2026-11-14: "we choose
    *  what's being edited or not"). Absent: a song from the music bank. */
@@ -327,6 +331,10 @@ export interface BatchBank {
    *  kept on the phone to look through and save - never scheduled, never
    *  posted. */
   variations?: true
+  /** Each song's beat drop in this batch, in seconds into the song, by its
+   *  file id - marked by ear (BeatDropPicker.tsx), used by the formats synced
+   *  to it (BatchFormat.syncDrop). */
+  beatDrops?: Record<string, number>
 }
 
 /** What "Use the best hooks" makes more of: headlines by their words in
