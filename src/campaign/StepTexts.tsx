@@ -13,6 +13,7 @@
 // every time the step plays (stepOverlays.ts). Dragging anything near the
 // middle snaps it there and shows a line, so he knows it is centred.
 
+import { DeadZone } from './DeadZone'
 import { useEffect, useMemo, useRef, useState } from 'react'
 
 import type { BankFile, BatchStep, StepOverlay, StepText } from './batch'
@@ -111,6 +112,8 @@ export function StepTexts({
   /** Files kept on this phone while he was here - let go if he cancels. */
   const added = useRef<string[]>([])
   const [guides, setGuides] = useState({ across: false, down: false })
+  /** The dead zone on the screen while something is being moved (DeadZone). */
+  const [zoneShown, setZoneShown] = useState(false)
   const [picking, setPicking] = useState(false)
   const [keeping, setKeeping] = useState<string | null>(null)
   const [problem, setProblem] = useState<string | null>(null)
@@ -287,6 +290,7 @@ export function StepTexts({
       setSelected(t.id)
       setChosen(null)
       drag.current = { id: t.id, overlay: false, dx: p.x - t.place.x, dy: p.y - t.place.y }
+      setZoneShown(true)
       e.currentTarget.setPointerCapture(e.pointerId)
       return
     }
@@ -298,6 +302,7 @@ export function StepTexts({
     setChosen(over.id)
     setSelected(null)
     drag.current = { id: over.id, overlay: true, dx: p.x - over.place.x, dy: p.y - over.place.y }
+    setZoneShown(true)
     e.currentTarget.setPointerCapture(e.pointerId)
   }
 
@@ -319,6 +324,7 @@ export function StepTexts({
   const up = () => {
     drag.current = null
     setGuides({ across: false, down: false })
+    setZoneShown(false)
   }
 
   const resize = (by: number) => current && change(current.id, { place: { ...current.place, scale: clamp(Math.round((current.place.scale + by) * 100) / 100, SCALE.min, SCALE.max) } })
@@ -355,6 +361,7 @@ export function StepTexts({
           onPointerUp={up}
           onPointerCancel={up}
         >
+          {zoneShown ? <DeadZone /> : null}
           {url ? (
             <video
               src={url}

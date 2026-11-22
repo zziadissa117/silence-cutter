@@ -470,7 +470,10 @@ export const CAPTION_POSITIONS: { id: CaptionPosition; label: string; y: number 
   { id: 'top', label: 'Top', y: 0.2 },
   { id: 'middle', label: 'Middle', y: 0.5 },
   { id: 'usual', label: 'Usual', y: CAPTION_Y },
-  { id: 'bottom', label: 'Bottom', y: 0.8 },
+  // As low as it goes clear of the post's caption and name at the bottom
+  // (overlay.TIKTOK_ZONES - the dead zone, his ask 2026-11-23). Was 0.8,
+  // inside it.
+  { id: 'bottom', label: 'Bottom', y: 0.69 },
 ]
 
 /** A caption's place: one of the named heights, or any height he dragged it
@@ -478,9 +481,10 @@ export const CAPTION_POSITIONS: { id: CaptionPosition; label: string; y: number 
  *  his ask 2026-11-13: "let me change it manually and not in a set space"). */
 export type CaptionSpot = CaptionPosition | number
 
-/** The most and least a dragged caption's centre can be: clear of the very
- *  top and of TikTok's buttons at the bottom. */
-export const CAPTION_SPOT = { min: 0.12, max: 0.85 } as const
+/** The most and least a dragged caption's centre can be: a caption's lines
+ *  clear of the dead zone's top tabs and of the post's caption at the
+ *  bottom (overlay.TIKTOK_ZONES, his ask 2026-11-23). Were 0.12 and 0.85. */
+export const CAPTION_SPOT = { min: 0.2, max: 0.69 } as const
 
 export function captionY(position: CaptionSpot): number {
   if (typeof position === 'number') return Number.isFinite(position) ? Math.min(CAPTION_SPOT.max, Math.max(CAPTION_SPOT.min, position)) : CAPTION_Y

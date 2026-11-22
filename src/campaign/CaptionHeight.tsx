@@ -4,6 +4,7 @@
 // a set space"). Set once per format; every video of it puts them there.
 // Near the middle it snaps there and shows the line, like the step words.
 
+import { DeadZone } from './DeadZone'
 import { useRef, useState } from 'react'
 
 import { CAPTION_SPOT, captionY } from './captions'
@@ -54,6 +55,8 @@ export function CaptionHeight({ value, onChange }: { value: number | undefined; 
           }
         }}
       >
+        {/* Where captions can't go, always: it is a screen only for placing them. */}
+        <DeadZone label={false} />
         {y === 0.5 && dragging !== null ? <span className="caption-height-middle" /> : null}
         <span className="caption-height-sample" style={{ top: `${y * 100}%` }}>
           your captions

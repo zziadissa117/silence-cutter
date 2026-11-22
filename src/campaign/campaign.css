@@ -2375,3 +2375,12 @@ main.full-page > * { max-width: 720px; margin-left: auto; margin-right: auto; }
    one-line boxes it replaced and grows a line at a time. */
 :where(textarea.lines-input) { display: block; width: 100%; box-sizing: border-box; min-height: 44px; padding: 10px 12px; border: 1px solid var(--edge); border-radius: 10px; background: var(--surface); color: var(--text); font: inherit; font-size: 16px; }
 textarea.lines-input { resize: none; line-height: 1.35; overflow: hidden; }
+
+/* The dead zone (DeadZone.tsx), shown while something is moved on the video. */
+.dead-zone { position: absolute; inset: 0; pointer-events: none; z-index: 6; }
+.dz-band {
+  position: absolute; display: flex; align-items: center; justify-content: center;
+  background: repeating-linear-gradient(135deg, rgb(255 59 48 / 0.28) 0 8px, rgb(255 59 48 / 0.12) 8px 16px);
+  outline: 1px dashed rgb(255 120 110 / 0.85); outline-offset: -1px;
+}
+.dz-label { font-size: 11px; font-weight: 700; color: #fff; text-shadow: 0 1px 2px rgb(0 0 0 / 0.8); padding: 0 6px; text-align: center; }

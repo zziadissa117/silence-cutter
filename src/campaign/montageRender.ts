@@ -139,8 +139,10 @@ export function openingProblem(opening: readonly { own: number; at: number }[], 
 /** A headline moved BATCH_LOWER down, never into the caption at the bottom. */
 export function lowered(layout: HeadlineLayout | null, height: number): HeadlineLayout | null {
   if (!layout) return null
-  const room = height * (1 - TIKTOK_ZONES.bottom) - (layout.top + layout.lines.length * layout.lineHeight)
-  return { ...layout, top: layout.top + Math.max(0, Math.min(height * BATCH_LOWER, room)) }
+  const block = layout.lines.length * layout.lineHeight
+  const room = height * (1 - TIKTOK_ZONES.bottom) - (layout.top + block)
+  // ...and lifted out of the dead zone at the bottom if it was already in it.
+  return { ...layout, top: Math.min(layout.top + Math.max(0, Math.min(height * BATCH_LOWER, room)), Math.max(height * TIKTOK_ZONES.top, height * (1 - TIKTOK_ZONES.bottom) - block)) }
 }
 
 /** Claude + X's logos and money line moved BATCH_LOWER down together. */

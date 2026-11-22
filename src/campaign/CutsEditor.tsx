@@ -28,6 +28,7 @@
 // frame; and the video is asked for one frame at a time - always the latest
 // place - instead of a new jump on every scroll event.
 
+import { DeadZone } from './DeadZone'
 import { LinesInput } from './LinesInput'
 import {
   memo,
@@ -1344,6 +1345,8 @@ export function CutsEditor({
     }
     setOverlays((list) => list.map((x) => (x.id === id ? { ...x, center, widthPct: Math.round(size) } : x)))
   }
+  /** The dead zone on the video while something is being moved (DeadZone). */
+  const [zoneShown, setZoneShown] = useState(false)
   /** A finger down on something on the video: it is picked, one finger
    *  moves it, two pinch it bigger or smaller. */
   const onItemDown = (id: string, e: ReactPointerEvent) => {
@@ -1378,6 +1381,7 @@ export function CutsEditor({
     const rect = frameEl.getBoundingClientRect()
     const { mid, spread } = fingers(g.pointers)
     if (!g.moved && Math.hypot(mid.x - g.from.mid.x, mid.y - g.from.mid.y) < 3 && Math.abs(spread - g.from.spread) < 3) return
+    if (!g.moved) setZoneShown(true)
     g.moved = true
     const center = {
       x: Math.min(1, Math.max(0, g.from.center.x + (mid.x - g.from.mid.x) / rect.width)),
@@ -1398,6 +1402,7 @@ export function CutsEditor({
     if (!g || !g.pointers.has(e.pointerId)) return
     e.stopPropagation()
     g.pointers.delete(e.pointerId)
+    if (g.pointers.size === 0) setZoneShown(false)
     lastGesture.current = performance.now()
     if (g.pointers.size === 0) {
       gesture.current = null
@@ -1881,6 +1886,7 @@ export function CutsEditor({
           onPointerUp={onItemUp}
           onPointerCancel={onItemUp}
         >
+          {zoneShown ? <DeadZone /> : null}
           {url ? (
             <video
               ref={video}

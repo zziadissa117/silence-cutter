@@ -209,7 +209,7 @@ export const BRIGHTNESS = [-0.08, -0.04, 0, 0.04, 0.08] as const
 const MOVES = [0, -0.07, 0.07, -0.14, 0.14, 0.21, -0.21] as const
 /** Never higher than this or lower than that: clear of Instagram's top bar
  *  and of the caption and buttons at the bottom. */
-const TOP = 0.12
+const TOP = 0.16
 const BOTTOM = 0.68
 /** Two places closer than this are the same place. */
 const APART = 0.04

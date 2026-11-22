@@ -63,9 +63,10 @@ describe("a batch video's words", () => {
     expect(lowered(layout(300), 1920)?.top).toBeCloseTo(300 + 1920 * BATCH_LOWER)
   })
   it('never into the caption at the bottom', () => {
-    // Two lines of 70 px; the caption starts at 80% of 1920 = 1536.
-    expect(lowered(layout(1380), 1920)?.top).toBeCloseTo(1536 - 140)
-    expect(lowered(layout(1450), 1920)?.top).toBe(1450)
+    // Two lines of 70 px; the dead zone (the post's caption) starts at 75% of 1920 = 1440.
+    expect(lowered(layout(1380), 1920)?.top).toBeCloseTo(1440 - 140)
+    // Already in it: lifted out.
+    expect(lowered(layout(1450), 1920)?.top).toBe(1440 - 140)
     expect(lowered(null, 1920)).toBeNull()
   })
 })

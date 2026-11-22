@@ -11,6 +11,7 @@ import { ALL_FORMATS, BlobSource, CanvasSink, Input, type WrappedCanvas } from '
 
 import { firstShown } from './clipParts'
 import { logoPop } from './effects'
+import { keepSafe } from './overlay'
 
 /** Where one sits: its middle, as fractions of the frame, and its width as a
  *  share of the frame's width. */
@@ -53,7 +54,9 @@ export function overlayBox(place: OverlayPlace, shape: number, width: number, he
     w = h / s
   }
   const even = (n: number) => Math.max(2, Math.round(n / 2) * 2)
-  return { x: Math.round(place.x * width - w / 2), y: Math.round(place.y * height - h / 2), width: even(w), height: even(h) }
+  // Never in the dead zone (overlay.keepSafe).
+  const safe = keepSafe({ x: place.x * width - w / 2, y: place.y * height - h / 2, width: w, height: h }, width, height)
+  return { x: Math.round(safe.x), y: Math.round(safe.y), width: even(w), height: even(h) }
 }
 
 /** How an overlay looks `since` seconds after its step came on, with `left`

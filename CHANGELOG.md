@@ -3,6 +3,23 @@
 Newest first. Every change says what it does, how to use it, and how it works
 underneath. Kept up to date with each commit.
 
+## The dead zone: nothing the Cutter draws goes where TikTok or Reels cover the video
+- His ask (2026-11-23): "respect the dead zone for content ... never put the caption ... way too much at the bottom
+  where there is the caption. Way too high, too. Same thing for the hook text ... Even the overlays cannot go too
+  much on the sides ... Do your research on the aspect ratio of it."
+- The zone, from TikTok's and Instagram Reels' safe-zone guides for 1080x1920, the stricter at each edge: top 13%
+  (Reels' tabs ~220-250 px), bottom 25% (TikTok's caption, name and sound ~450-480 px), the right-hand button column
+  13% from 40% of the height down, a 6% strip on the left (`overlay.TIKTOK_ZONES`, `safeArea`, `keepSafe`).
+- Kept out of it, in the preview and the video alike: headlines and his own words wherever dragged (`layoutHeadline`),
+  pictures and videos on a spot or dragged (`layoutLogo`, side-by-side rows `rowOf` - right-hand spots clear of the
+  button column, so they sit a little further in than last week's), a batch step's pictures (`stepOverlays.overlayBox`)
+  and words, a batch's lowered headline (`montageRender.lowered`, now also lifted out of the bottom), Trial reel words
+  (top 16%). Captions: Bottom moved up from 80% to 69% of the height; a dragged caption between 20% and 69%
+  (`captions.CAPTION_SPOT`).
+- Shown while moving something in the edit screen and on a batch step's screen, and always on Captions height:
+  striped red where nothing can go, with what covers it (`DeadZone.tsx`).
+- Videos already made are as they were; the next ones keep out of the zone.
+
 ## The voice test isn't asked for again and again
 - His report (2026-11-23): "Some accounts have to re-do the mic test every time I add an update, Stef told me he has
   to re-do it".

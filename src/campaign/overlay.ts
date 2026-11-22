@@ -16,18 +16,55 @@ void headlineFontReady()
 
 type Ctx = CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D
 
-/** Fractions of the frame TikTok covers, for a 9:16 video. */
+/** The dead zone: fractions of a 9:16 frame that TikTok or Instagram Reels
+ *  cover with their own things - whichever covers more at each edge (his
+ *  ask, 2026-11-23: "respect the dead zone for the caption, for everything.
+ *  Even the overlays cannot go too much on the sides"). From the platforms'
+ *  safe-zone guides for 1080x1920: the top tabs (TikTok ~150 px, Reels
+ *  ~220-250 px -> 13%), the caption, name and sound at the bottom (TikTok
+ *  ~450-480 px, Reels ~420 px -> 25%), the like/comment/share column on the
+ *  right (~120-140 px -> 13%) - which runs only down the lower part of the
+ *  screen, from about `rightFrom` of the height - and a strip on the left
+ *  (~60 px -> 6%). Nothing the Cutter draws goes in it: headlines, words,
+ *  captions, pictures and videos are kept inside (keepSafe). */
 export const TIKTOK_ZONES = {
-  top: 0.1,
-  bottom: 0.2,
-  right: 0.15,
+  top: 0.13,
+  bottom: 0.25,
+  right: 0.13,
+  /** Where the right-hand column starts, down the frame. */
+  rightFrom: 0.4,
   side: 0.06,
 } as const
 
-/** How far pictures sit from the left and right edges (his ask, 2026-11-16:
- *  "too in the middle ... leaves more space in the middle, and there's only
- *  a little space in between the edge and the picture"). */
-export const PICTURE_EDGE = 0.025
+/** How far pictures sit from the left edge (his ask, 2026-11-16: close to
+ *  the edges) - the dead zone's own edge now; on the right, the button
+ *  column's (keepSafe). */
+export const PICTURE_EDGE = TIKTOK_ZONES.side
+
+/** The safe area for a box `h` tall whose top is at `y` on a
+ *  `width`x`height` frame: left, right, top, bottom in pixels. The right
+ *  edge is the button column's for a box reaching down past where it
+ *  starts, else the side strip's. */
+export function safeArea(width: number, height: number, y: number, h: number): { left: number; right: number; top: number; bottom: number } {
+  const reachesColumn = y + h > height * TIKTOK_ZONES.rightFrom
+  return {
+    left: width * TIKTOK_ZONES.side,
+    right: width * (1 - (reachesColumn ? TIKTOK_ZONES.right : TIKTOK_ZONES.side)),
+    top: height * TIKTOK_ZONES.top,
+    bottom: height * (1 - TIKTOK_ZONES.bottom),
+  }
+}
+
+/** A box moved, as little as it takes, inside the safe area - centred in it
+ *  where it is too big to fit. */
+export function keepSafe(box: { x: number; y: number; width: number; height: number }, width: number, height: number): { x: number; y: number; width: number; height: number } {
+  const fit = (at: number, size: number, low: number, high: number) => (size > high - low ? low + (high - low - size) / 2 : Math.min(Math.max(low, at), high - size))
+  const top = height * TIKTOK_ZONES.top
+  const bottom = height * (1 - TIKTOK_ZONES.bottom)
+  const y = fit(box.y, box.height, top, bottom)
+  const area = safeArea(width, height, y, box.height)
+  return { ...box, x: fit(box.x, box.width, area.left, area.right), y }
+}
 
 /** TikTok's text is TikTok Sans at a semibold weight. */
 const HEADLINE_WEIGHT = 600
@@ -187,14 +224,13 @@ export function layoutHeadline(
   let top = Math.max(height * TIKTOK_ZONES.top + above, height * HEADLINE_Y[headline.position] - blockHeight / 2)
   let centerX = width / 2
   if (place) {
-    // Where he put it, all of it inside the frame - TikTok's bars are his call.
+    // Where he put it, all of it outside the dead zone (keepSafe).
     const below = snap ? fontPx * SNAP.padY : 0
-    top = Math.min(Math.max(above, place.y * height - blockHeight / 2), Math.max(above, height - blockHeight - below))
+    const half = snap ? width / 2 : Math.max(...lines.map((l) => l.width)) / 2 + (boxed ? fontPx * BOX.padX : 0)
+    const safe = keepSafe({ x: place.x * width - half, y: place.y * height - blockHeight / 2 - above, width: half * 2, height: blockHeight + above + below }, width, height)
+    top = safe.y + above
     // Snapchat's band is the frame's width: only up and down.
-    if (!snap) {
-      const half = Math.max(...lines.map((l) => l.width)) / 2 + (boxed ? fontPx * BOX.padX : 0)
-      centerX = Math.min(Math.max(half, place.x * width), Math.max(half, width - half))
-    }
+    if (!snap) centerX = safe.x + half
   }
   // Each line's text centred on the font's own height, top of the tallest
   // letter to the bottom of a "g", as TikTok lays its text out - so a line
@@ -284,31 +320,29 @@ export function layoutLogo(
   const h = Math.round(w * (image.height / image.width))
   // Dragged to a spot of his own (a picture in the cuts editor): its middle
   // there, kept inside the frame.
-  if (logo.center) {
-    const x = Math.min(Math.max(0, logo.center.x * width - w / 2), Math.max(0, width - w))
-    const y = Math.min(Math.max(0, logo.center.y * height - h / 2), Math.max(0, height - h))
-    return { x, y, width: w, height: h }
-  }
-  // Close to the edges, every spot alike, the middle left free.
+  if (logo.center) return keepSafe({ x: logo.center.x * width - w / 2, y: logo.center.y * height - h / 2, width: w, height: h }, width, height)
+  // Close to the edges of the safe area, every spot alike, the middle left
+  // free: on the right, clear of the button column where it reaches it.
   const left = width * PICTURE_EDGE
-  const right = width * (1 - PICTURE_EDGE) - w
   const top = height * (TIKTOK_ZONES.top + 0.03)
   const bottom = height * (1 - TIKTOK_ZONES.bottom - 0.03) - h
+  // The right edge at this height: the button column's where it reaches it.
+  const rightAt = (y: number) => safeArea(width, height, y, h).right - w
   switch (logo.position) {
     case 'top':
       return { x: (width - w) / 2, y: top, width: w, height: h }
     case 'top-left':
       return { x: left, y: top, width: w, height: h }
     case 'top-right':
-      return { x: right, y: top, width: w, height: h }
+      return { x: rightAt(top), y: top, width: w, height: h }
     case 'middle-left':
       return { x: left, y: height * 0.42 - h / 2, width: w, height: h }
     case 'middle-right':
-      return { x: right, y: height * 0.42 - h / 2, width: w, height: h }
+      return { x: rightAt(height * 0.42 - h / 2), y: height * 0.42 - h / 2, width: w, height: h }
     case 'bottom-left':
       return { x: left, y: bottom, width: w, height: h }
     case 'bottom-right':
-      return { x: right, y: bottom, width: w, height: h }
+      return { x: rightAt(bottom), y: bottom, width: w, height: h }
     default:
       return { x: (width - w) / 2, y: height * 0.42 - h / 2, width: w, height: h }
   }
@@ -360,21 +394,23 @@ function rowOf(layouts: readonly LogoLayout[], width: number, height: number): L
   const gaps = gap * (layouts.length - 1)
   const tallest = Math.min(...layouts.map((l) => l.height))
   let widths = layouts.map((l) => (l.width * tallest) / l.height)
-  const edge = width * PICTURE_EDGE
-  const room = width - 2 * edge
+  // Between the dead zone's edges at the row's height.
+  const cy0 = layouts.reduce((sum, l) => sum + l.y + l.height / 2, 0) / layouts.length
+  const area0 = safeArea(width, height, cy0 - tallest / 2, tallest)
   const natural = widths.reduce((a, b) => a + b, 0)
-  const scale = natural + gaps > room ? Math.max(0.05, (room - gaps) / natural) : 1
+  const scale = natural + gaps > area0.right - area0.left ? Math.max(0.05, (area0.right - area0.left - gaps) / natural) : 1
   widths = widths.map((w) => w * scale)
   const h = tallest * scale
   const row = widths.reduce((a, b) => a + b, 0) + gaps
   const cx = layouts.reduce((sum, l) => sum + l.x + l.width / 2, 0) / layouts.length
-  const cy = layouts.reduce((sum, l) => sum + l.y + l.height / 2, 0) / layouts.length
-  const y = Math.min(Math.max(height * TIKTOK_ZONES.top, cy - h / 2), height * (1 - TIKTOK_ZONES.bottom) - h)
+  const y = Math.min(Math.max(height * TIKTOK_ZONES.top, cy0 - h / 2), height * (1 - TIKTOK_ZONES.bottom) - h)
+  const { left, right } = safeArea(width, height, y, h)
+  const room = right - left
   const side = cx < width * 0.4 ? 'left' : cx > width * 0.6 ? 'right' : 'middle'
   // In the middle: the first against the left edge, the last against the
   // right, the rest evenly between.
-  const step = side === 'middle' ? gap + (room - row) / (layouts.length - 1) : gap
-  let x = side === 'right' ? width - edge - row : edge
+  const step = side === 'middle' ? gap + Math.max(0, room - row) / (layouts.length - 1) : gap
+  let x = side === 'right' ? right - row : left
   return widths.map((w) => {
     const placed = { x, y, width: w, height: h }
     x += w + step

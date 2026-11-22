@@ -53,7 +53,23 @@ describe('layoutLogo', () => {
       expect(box.y).toBeGreaterThanOrEqual(1920 * TIKTOK_ZONES.top)
       expect(box.y + box.height).toBeLessThanOrEqual(1920 * (1 - TIKTOK_ZONES.bottom))
       if (position.endsWith('left')) expect(box.x).toBeCloseTo(1080 * PICTURE_EDGE)
-      if (position.endsWith('right')) expect(box.x + box.width).toBeCloseTo(1080 * (1 - PICTURE_EDGE))
+      // Right: clear of the button column where the picture reaches down to
+      // it, else the side strip.
+      const column = box.y + box.height > 1920 * TIKTOK_ZONES.rightFrom
+      if (position.endsWith('right')) expect(box.x + box.width).toBeCloseTo(1080 * (1 - (column ? TIKTOK_ZONES.right : TIKTOK_ZONES.side)))
+    }
+  })
+
+  it('never puts anything in the dead zone, wherever it is dragged (his ask, 2026-11-23)', () => {
+    for (const x of [0, 0.5, 1]) {
+      for (const y of [0, 0.5, 1]) {
+        const box = layoutLogo(1080, 1920, image, { position: 'top', widthPct: 30, center: { x, y } })
+        expect(box.y).toBeGreaterThanOrEqual(1920 * TIKTOK_ZONES.top - 0.01)
+        expect(box.y + box.height).toBeLessThanOrEqual(1920 * (1 - TIKTOK_ZONES.bottom) + 0.01)
+        expect(box.x).toBeGreaterThanOrEqual(1080 * TIKTOK_ZONES.side - 0.01)
+        const column = box.y + box.height > 1920 * TIKTOK_ZONES.rightFrom
+        expect(box.x + box.width).toBeLessThanOrEqual(1080 * (1 - (column ? TIKTOK_ZONES.right : TIKTOK_ZONES.side)) + 0.01)
+      }
     }
   })
 })
@@ -214,7 +230,7 @@ describe('pictures that come up together', () => {
     expect(a.x + a.width).toBeLessThan(b.x)
     // Middle: spread to both edges, the middle left free.
     expect(a.x).toBeCloseTo(W * PICTURE_EDGE)
-    expect(b.x + b.width).toBeCloseTo(W * (1 - PICTURE_EDGE))
+    expect(b.x + b.width).toBeCloseTo(W * (1 - TIKTOK_ZONES.right))
     // Each keeps its shape.
     expect(a.width / a.height).toBeCloseTo(1)
     expect(b.width / b.height).toBeCloseTo(1600 / 900)
@@ -237,7 +253,7 @@ describe('pictures that come up together', () => {
   it('keeps a row on a side against that edge', () => {
     const r = layoutLogo(W, H, { width: 1000, height: 1000 }, { position: 'bottom-right', widthPct: 25 })
     const [a, b] = sideBySide([r, r], W, H)
-    expect(b.x + b.width).toBeCloseTo(W * (1 - PICTURE_EDGE))
+    expect(b.x + b.width).toBeCloseTo(W * (1 - TIKTOK_ZONES.right))
     expect(a.x + a.width).toBeLessThan(b.x)
   })
 
@@ -246,12 +262,13 @@ describe('pictures that come up together', () => {
     expect(sideBySide([one], W, H)).toEqual([one])
   })
 
-  it('puts a picture he dragged where he dropped it, inside the frame', () => {
-    const at = layoutLogo(W, H, { width: 1000, height: 1000 }, { position: 'top', widthPct: 20, center: { x: 0.25, y: 0.75 } })
+  it('puts a picture he dragged where he dropped it, outside the dead zone', () => {
+    const at = layoutLogo(W, H, { width: 1000, height: 1000 }, { position: 'top', widthPct: 20, center: { x: 0.25, y: 0.5 } })
     expect(at.x + at.width / 2).toBeCloseTo(270)
-    expect(at.y + at.height / 2).toBeCloseTo(1440)
+    expect(at.y + at.height / 2).toBeCloseTo(960)
+    // Dropped in the top corner: pushed out of the tabs and the side strip.
     const edge = layoutLogo(W, H, { width: 1000, height: 1000 }, { position: 'top', widthPct: 40, center: { x: 1, y: 0 } })
-    expect(edge.x + edge.width).toBeLessThanOrEqual(W)
-    expect(edge.y).toBe(0)
+    expect(edge.x + edge.width).toBeCloseTo(W * (1 - TIKTOK_ZONES.side))
+    expect(edge.y).toBeCloseTo(H * TIKTOK_ZONES.top)
   })
 })
