@@ -22,6 +22,7 @@ import { hasShareSheet, shareVideo, useSharable } from './shareFile'
 import { ChevronDown, ChevronLeft, PlusIcon } from './icons'
 import type { Campaign } from './look'
 import { NewPost } from './NewPost'
+import { SavePicker } from './SavePicker'
 import { StopPicker } from './StopPicker'
 import { jobOfPostKey, EDIT_WINDOW_MS } from './store'
 import { MusicAfter, useCanChangeMusic } from './MusicAfter'
@@ -852,6 +853,8 @@ export function PostsView({
   const [approvingAll, setApprovingAll] = useState(false)
   // Ticking posts to stop - a whole campaign, or one by one.
   const [stopping, setStopping] = useState(false)
+  /** Saving videos waiting for approval to the phone, many at once (SavePicker). */
+  const [savingMany, setSavingMany] = useState(false)
   // One campaign at a time, or all of them - remembered on this phone.
   const [shown, setShown] = useState<string | null>(shownCampaign)
   // Day blocks he opened or closed; by itself Today and Tomorrow are open,
@@ -1075,9 +1078,11 @@ export function PostsView({
         />
       ) : null}
 
+      {savingMany && !stopping ? <SavePicker posts={order.toApprove} onClose={() => setSavingMany(false)} /> : null}
+
       {/* While picking, only the picker: the lists below would be the same
           posts twice. */}
-      {stopping ? null : (
+      {stopping || savingMany ? null : (
       <>
       {profile && making ? (
         <NewPost campaigns={campaigns} profile={profile} onDone={() => setMaking(false)} onCancel={() => setMaking(false)} />
@@ -1151,6 +1156,12 @@ export function PostsView({
           <div className="group-head">
             <span className="group-name">To approve</span>
             <span className="group-count">{order.toApprove.length}</span>
+            {/* Save them all to the phone at once, or the ones he picks. */}
+            {order.toApprove.length > 1 && !stopping ? (
+              <button type="button" className="btn small" onClick={() => setSavingMany(true)}>
+                Save
+              </button>
+            ) : null}
             {approvable.length > 1 && !stopping ? (
               <button type="button" className="btn small primary" disabled={approvingAll} onClick={() => void approveAll()}>
                 {approvingAll ? 'Approving…' : `Approve all ${approvable.length}`}

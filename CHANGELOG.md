@@ -3,6 +3,17 @@
 Newest first. Every change says what it does, how to use it, and how it works
 underneath. Kept up to date with each commit.
 
+## Save many videos waiting for approval at once
+- His ask (2026-11-22): "a way to save all videos that are up for approval at the same time ... 16 posts for one
+  campaign ... Or I can just click Select ... select all the videos I want to save, and then save them all".
+- Posts, To approve: a Save button beside Approve all. Every video waiting is ticked (the campaign picked at the top
+  of Posts, or all of them; "All N" and each campaign tick or untick at once); untick any, then Save. The iPhone's
+  share sheet only opens straight from a tap with the videos already in memory, so they come 8 at a time: a tap
+  reads them in ("Getting video 3 of 8"), a tap hands them to the share sheet (Save 8 Videos), then the next 8. On a
+  computer they download. Nothing is approved or changed - they stay waiting.
+- Underneath: `SavePicker.tsx` (the phone's own copy, else Postiz's), shown from `PostsView`; tests in
+  `savePicker.test.tsx`.
+
 ## Each batch format can have its own headlines
 - His ask (2026-11-21): "The headlines are shared across these two formats, and that's not good ... headline for
   format number two and headline for format number one, so I can write my own headlines for format one and ... for
