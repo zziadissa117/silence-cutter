@@ -13,6 +13,7 @@
 // without it, and he is asked to record it again.
 
 import type { Level, SilenceSettings } from '../media/silenceMath'
+import { report } from '../report'
 
 export interface VoiceProfile {
   /** Which of his voices this is ("With my mic", "Phone mic"). */
@@ -236,6 +237,24 @@ export function soundsLike(levels: readonly Level[], profile: VoiceProfile): boo
   return Math.abs(speech - profile.speechDb) <= 10 && room <= profile.tailDb + 3
 }
 
+/** A video that sounds like none of his voices: its voice and room levels
+ *  against each voice's, and which test each failed. */
+function reportUnlike(levels: readonly Level[], profiles: readonly VoiceProfile[]): void {
+  const heard = finite(levels)
+  if (heard.length < 100) return
+  const speech = Math.round(percentile(heard, 0.9))
+  const room = Math.round(percentile(heard, 0.1))
+  const each = profiles
+    .map((p) => {
+      const why = [Math.abs(speech - p.speechDb) > 10 ? `voice ${Math.round(speech - p.speechDb)} dB off` : '', room > p.tailDb + 3 ? `room ${Math.round(room - p.tailDb)} dB over its word ends` : '']
+        .filter(Boolean)
+        .join(', ')
+      return `${p.name ?? micName(p.mic)} (speech ${Math.round(p.speechDb)}, room ${Math.round(p.roomDb)}, word ends ${Math.round(p.tailDb)}, set up ${new Date(p.at ?? 0).toISOString().slice(0, 10)}): ${why}`
+    })
+    .join(' · ')
+  report({ kind: 'check', phase: 'voice unlike', message: `video speech ${speech} dB, room ${room} dB · ${each}` })
+}
+
 /** How far a video is from a voice: how much louder or quieter his voice and
  *  his room are. */
 function distance(levels: readonly Level[], profile: VoiceProfile): number {
@@ -251,6 +270,10 @@ export function pickProfile(levels: readonly Level[], profiles: readonly VoicePr
     if (pinned) return { profile: pinned, pinned: true }
   }
   const like = profiles.filter((p) => soundsLike(levels, p)).sort((a, b) => distance(levels, a) - distance(levels, b))
+  // None: why, in numbers - his voice and room in this video next to each
+  // voice he set up - so it can be seen what makes his videos unlike them.
+  // Only says; picks nothing differently.
+  if (like.length === 0 && profiles.length > 0) reportUnlike(levels, profiles)
   return { profile: like[0] ?? null, pinned: false }
 }
 

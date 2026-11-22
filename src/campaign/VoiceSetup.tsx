@@ -62,10 +62,18 @@ function phoneSpeaksFrench(): boolean {
 
 type Step = 'intro' | 'quiet' | 'read' | 'um' | 'breath' | 'measuring' | 'done' | 'failed'
 
-/** Shown on the Videos tab: no voice set up yet, or his videos sound unlike it. */
-export function voiceReminder(): 'none' | 'changed' | null {
+/** A voice set up this recently is never asked for again: doing the test
+ *  once more would give the same voice, and his videos would still sound
+ *  unlike it (Stefan, 2026-11-23: "he has to re-do it ... everytime"). */
+export const ASK_AGAIN_AFTER_MS = 14 * 24 * 60 * 60 * 1000
+
+/** Shown on the Videos tab: no voice set up yet, or his videos sound unlike
+ *  every voice - and none was set up in the last two weeks. */
+export function voiceReminder(now = Date.now()): 'none' | 'changed' | null {
   if (!loadProfile()) return 'none'
-  return offCount() >= 2 ? 'changed' : null
+  if (offCount() < 2) return null
+  const newest = Math.max(0, ...loadProfiles().map((p) => p.at ?? 0))
+  return now - newest >= ASK_AGAIN_AFTER_MS ? 'changed' : null
 }
 
 export function VoiceSetup({ onClose }: { onClose: () => void }) {

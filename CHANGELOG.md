@@ -3,6 +3,18 @@
 Newest first. Every change says what it does, how to use it, and how it works
 underneath. Kept up to date with each commit.
 
+## The voice test isn't asked for again and again
+- His report (2026-11-23): "Some accounts have to re-do the mic test every time I add an update, Stef told me he has
+  to re-do it".
+- What it was: nothing is lost on an update - Stefan's voice is kept (his reports say "voice none matching this mic",
+  not "not set up"). The Videos tab asked to "Add a voice" after 2 videos in a row that sounded unlike every voice;
+  his videos never match his voice, so redoing the test changed nothing and it asked again two videos later.
+- Now it never asks again within 14 days of a voice being set up (`VoiceSetup.voiceReminder`,
+  `ASK_AGAIN_AFTER_MS`); Settings -> Your voice is always there to add one.
+- To see why his videos don't match: a video that sounds like none of his voices sends a `check` / `voice unlike`
+  report - its voice and room levels next to each voice's, and which test failed (`voiceProfile.pickProfile`
+  `reportUnlike`). It only reports: which voice a video is cut with is unchanged, and so is the cut.
+
 ## Save many videos waiting for approval at once
 - His ask (2026-11-22): "a way to save all videos that are up for approval at the same time ... 16 posts for one
   campaign ... Or I can just click Select ... select all the videos I want to save, and then save them all".
