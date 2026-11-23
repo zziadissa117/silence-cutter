@@ -8,6 +8,7 @@
 // What he does in the demo (approve, reject, a video sent) changes the
 // made-up world, kept in this browser's storage so a reload keeps it.
 
+import { nextAlarms } from '../../supabase/functions/postiz/lowViews.ts'
 import { FUNCTIONS_URL } from '../config'
 import type { Person } from '../campaign/cloud'
 import type { Profile, ServerPost } from '../campaign/posting'
@@ -113,7 +114,28 @@ export function makeServer(world: World, now: () => number = Date.now): DemoServ
       world.history.map((p) => ({ post_at: p.postAt, accounts: p.accounts, views: p.views ?? null })),
       now(),
     ),
+    formatAlarms: formatAlarms(),
   })
+
+  /** "Change the format now" (postiz/lowViews.ts) on the made-up history. */
+  const changedFormats = new Set<string>()
+  const formatAlarms = () =>
+    nextAlarms(
+      { alarms: [], judged: {} },
+      world.history.map((p) => ({
+        id: p.id,
+        campaign_id: p.campaignId,
+        campaign_name: p.campaignName,
+        headline: p.headline ?? null,
+        post_at: p.postAt,
+        views_at: p.postAt && p.views ? new Date(Date.parse(p.postAt) + 25 * 3_600_000).toISOString() : null,
+        accounts: p.accounts,
+        views: p.views ?? null,
+      })),
+      // In the demo, every video it holds counts.
+      Object.fromEntries(Object.keys(world.profile.settings.formatAlarm ?? {}).map((id) => [id, '2000-01-01T00:00:00Z'])),
+      now(),
+    ).state.alarms.filter((a) => !changedFormats.has(a.accountId))
 
   const week = (weeks: number) =>
     trackerWeek(
@@ -182,6 +204,15 @@ export function makeServer(world: World, now: () => number = Date.now): DemoServ
         return json(profile({ instagramPlace: (body.place as never) ?? undefined }))
       case 'save-limits':
         return json(profile({ limits: body.limits as never }))
+      case 'format-alarm': {
+        const formatAlarm = { ...(world.profile.settings.formatAlarm ?? {}) }
+        if (body.on === true) formatAlarm[String(body.campaignId)] = new Date(now()).toISOString()
+        else delete formatAlarm[String(body.campaignId)]
+        return json(profile({ formatAlarm }))
+      }
+      case 'format-changed':
+        for (const id of (body.accountIds as string[]) ?? []) changedFormats.add(id)
+        return json({ formatAlarms: formatAlarms() })
       case 'best-hours':
         world.profile.bestHours = world.profile.bestHours ? { ...world.profile.bestHours, off: Boolean(body.off) } : null
         save()

@@ -2391,3 +2391,12 @@ textarea.lines-input { resize: none; line-height: 1.35; overflow: hidden; }
 .beat-drop-seek { width: 100%; }
 .beat-drop-tap { min-height: 96px; font-size: 20px; border-radius: 20px; }
 .beat-drop-mark { display: flex; flex-direction: column; gap: 8px; align-items: center; }
+
+/* "Change the format now" (FormatAlarm.tsx): red, on top, until he changes it. */
+.format-alarm { background: color-mix(in srgb, var(--bad) 10%, var(--surface)); border-width: 2px; }
+.format-alarm .group-title { color: var(--bad); }
+.alarm-views { color: var(--bad); font-weight: 700; white-space: nowrap; }
+.format-alarm-line { display: block; width: 100%; text-align: left; margin: 0 0 12px; padding: 12px 14px; border-radius: 14px; border: 2px solid var(--bad); background: color-mix(in srgb, var(--bad) 12%, transparent); color: inherit; font: inherit; cursor: pointer; }
+.format-alarm-line .label { display: block; color: var(--bad); font-weight: 700; }
+.format-alarm-line .hint { display: block; }
+.format-watch .chips { flex-wrap: wrap; }

@@ -25,6 +25,7 @@ import { placeFor, type Insights, type Profile } from './posting'
 import { loadBatchBank, saveBatchBank } from './store'
 import { Overview } from './Overview'
 import { BestHoursCard, TroubleCard, WhatWorks } from './WhatWorks'
+import { FormatAlarmCard, FormatAlarmPicker } from './FormatAlarm'
 
 export interface CampaignRow {
   campaign: Campaign
@@ -95,8 +96,17 @@ export function AnalyticsView({
   onIdeas,
   onAddHeadline,
   onPauseAccount,
+  postingCampaigns = [],
+  onFormatAlarm,
+  onFormatChanged,
 }: {
   rows: CampaignRow[]
+  /** Every campaign that posts somewhere, for the under-1k alarm. */
+  postingCampaigns?: readonly Campaign[]
+  /** A campaign watched for "Change the format now", or not. */
+  onFormatAlarm?: (campaignId: string, on: boolean) => Promise<void>
+  /** He changed the format on these accounts. */
+  onFormatChanged?: (accountIds: string[]) => Promise<void>
   profile: Profile | null
   loading: boolean
   /** What works in each campaign, and when to post (WhatWorks.tsx). */
@@ -131,6 +141,8 @@ export function AnalyticsView({
         <h1>Analytics</h1>
       </div>
 
+      {onFormatChanged ? <FormatAlarmCard alarms={insights.formatAlarms ?? []} onChanged={onFormatChanged} /> : null}
+
       <Overview />
 
       {onPauseAccount ? (
@@ -143,6 +155,7 @@ export function AnalyticsView({
         />
       ) : null}
       <BestHoursCard best={profile.bestHours ?? insights.bestHours} onOff={onBestHoursOff} />
+      {onFormatAlarm ? <FormatAlarmPicker campaigns={postingCampaigns} watched={profile.settings.formatAlarm ?? {}} onSet={onFormatAlarm} /> : null}
 
       {rows.length === 0 ? (
         <p className="empty">Your batch campaigns show up here - like Lovable and OpenArt - once their batch is running.</p>

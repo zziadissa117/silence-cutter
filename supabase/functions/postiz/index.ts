@@ -111,6 +111,7 @@ import { planRespread, type RespreadRow } from './respread.ts'
 import { MIN_AGE_DAYS as HOURS_MIN_AGE_DAYS, LOOK_BACK_DAYS as HOURS_LOOK_BACK_DAYS, hoursOn, learnHours, parseHours, type BestHours } from './bestHours.ts'
 import { LOOK_BACK_DAYS as HOOKS_LOOK_BACK_DAYS, hookInsights } from './hookInsights.ts'
 import { TELL_AGAIN_DAYS, USUAL_TO, deadAccounts, deadNote, userName, type DeadAccount } from './deadAccounts.ts'
+import { LOOK_BACK_DAYS as ALARM_LOOK_BACK_DAYS, alarmNote, changedFormat, nextAlarms, type AlarmState, type WatchedPost } from './lowViews.ts'
 import { IDEAS_SCHEMA, IDEAS_SYSTEM, cleanIdeas, ideasMessage } from './headlineIdeas.ts'
 import { NOTE_SCHEMA, NOTE_SYSTEM, cleanNote, noteMessage } from './handNote.ts'
 import { MOTION_ANSWER, MOTION_SYSTEM, cleanReply, parseMotionAnswer, cleanStoryboard, fakeStoryboard, motionMessage, numberedWords, type ChatTurn, type FormatAsk, type Storyboard } from './motion.ts'
@@ -594,6 +595,9 @@ interface Profile {
     /** Trial reels (trial.ts): each Instagram account's daily trial limit
      *  as Instagram showed it, and the accounts it won't take trials on. */
     trial?: TrialAccounts
+    /** "Change the format now" (lowViews.ts): the campaigns he watches, each
+     *  with when he turned it on - only videos posted since count. */
+    formatAlarm?: Record<string, string>
   }
   timezone: string
 }
@@ -812,6 +816,71 @@ async function watchAccounts(now: number): Promise<void> {
     await db.from('cutter_config').upsert({ key: `dead:${profile.id}`, value: JSON.stringify({ date: today, accounts, told }) }, { onConflict: 'key' })
     for (const a of fresh) await notify(profile.id, { ...deadNote(a), tag: `dead-${a.id}` })
   }
+}
+
+/** The accounts told to change their format (lowViews.ts), as last worked out. */
+async function alarmsFor(profileId: string): Promise<AlarmState> {
+  const { data } = await db.from('cutter_config').select('value').eq('key', `lowviews:${profileId}`).maybeSingle()
+  try {
+    const v = JSON.parse((data as { value: string } | null)?.value ?? '') as AlarmState
+    return { alarms: Array.isArray(v?.alarms) ? v.alarms : [], judged: v?.judged && typeof v.judged === 'object' ? v.judged : {} }
+  } catch {
+    return { alarms: [], judged: {} }
+  }
+}
+
+const saveAlarms = (profileId: string, state: AlarmState) =>
+  db.from('cutter_config').upsert({ key: `lowviews:${profileId}`, value: JSON.stringify(state) }, { onConflict: 'key' })
+
+/** Each tick: videos of the campaigns he watches whose views have been read
+ *  since - one under 1k a day in tells him to change the format, at once
+ *  (lowViews.ts). Only profiles watching a campaign are read. */
+async function watchFormats(now: number): Promise<void> {
+  const { data: profiles } = await db.from('cutter_profiles').select('id, settings')
+  for (const profile of (profiles ?? []) as Pick<Profile, 'id' | 'settings'>[]) {
+    const watched = profile.settings?.formatAlarm ?? {}
+    const ids = Object.keys(watched)
+    if (ids.length === 0) continue
+    const { data } = await db
+      .from('cutter_posts')
+      .select('id, campaign_id, campaign_name, headline, post_at, views_at, accounts, views')
+      .eq('profile_id', profile.id)
+      .in('campaign_id', ids)
+      .in('status', ['posted', 'error'])
+      .not('views', 'is', null)
+      .gte('post_at', new Date(now - ALARM_LOOK_BACK_DAYS * 86_400_000).toISOString())
+      .limit(5000)
+    const before = await alarmsFor(profile.id)
+    const { state, fresh } = nextAlarms(before, (data ?? []) as WatchedPost[], watched, now)
+    if (JSON.stringify(state) !== JSON.stringify(before)) await saveAlarms(profile.id, state)
+    if (fresh.length > 0) await notify(profile.id, { ...alarmNote(fresh), tag: `format-${now}`, url: '/campaign.html#analytics' })
+  }
+}
+
+/** A campaign watched for "Change the format now", or not any more. */
+async function setFormatAlarm(profile: Profile, body: Record<string, unknown>): Promise<Response> {
+  const campaignId = typeof body.campaignId === 'string' ? body.campaignId : ''
+  if (!campaignId || campaignId.length > 200 || !plainKey(campaignId)) throw new Problem('Which campaign?')
+  const formatAlarm = { ...(profile.settings.formatAlarm ?? {}) }
+  if (body.on === true) formatAlarm[campaignId] ??= new Date().toISOString()
+  else delete formatAlarm[campaignId]
+  const { data, error } = await db
+    .from('cutter_profiles')
+    .update({ settings: { ...profile.settings, formatAlarm }, updated_at: new Date().toISOString() })
+    .eq('id', profile.id)
+    .select('*')
+    .single()
+  if (error || !data) throw new Problem('It could not be saved. Try again.', true, 500)
+  return reply(await profileView(data as Profile))
+}
+
+/** He changed the format on these accounts: their alarms go. */
+async function formatChanged(profile: Profile, body: Record<string, unknown>): Promise<Response> {
+  const known = new Set(profile.accounts.map((a) => a.id))
+  const ids = (Array.isArray(body.accountIds) ? body.accountIds : []).filter((a): a is string => typeof a === 'string' && known.has(a))
+  const state = changedFormat(await alarmsFor(profile.id), ids)
+  await saveAlarms(profile.id, state)
+  return reply({ formatAlarms: state.alarms })
 }
 
 /** New headlines in the style of the campaign's best, for him to pick from
@@ -1334,8 +1403,13 @@ async function insights(profile: Profile): Promise<Response> {
     .gte('post_at', new Date(now - HOOKS_LOOK_BACK_DAYS * 86_400_000).toISOString())
     .limit(10000)
   if (error) throw new Problem('The numbers could not be read. Try again.', true, 500)
-  const [bestHours, trouble] = await Promise.all([bestHoursFor(profile.id), troubleFor(profile.id)])
-  return reply({ campaigns: hookInsights((data ?? []) as Parameters<typeof hookInsights>[0], now), bestHours, trouble: trouble?.accounts ?? [] })
+  const [bestHours, trouble, alarms] = await Promise.all([bestHoursFor(profile.id), troubleFor(profile.id), alarmsFor(profile.id)])
+  return reply({
+    campaigns: hookInsights((data ?? []) as Parameters<typeof hookInsights>[0], now),
+    bestHours,
+    trouble: trouble?.accounts ?? [],
+    formatAlarms: alarms.alarms,
+  })
 }
 
 /** Like update, but only while the post is still in `status` - null when it
@@ -4348,6 +4422,7 @@ async function tick(): Promise<void> {
   await watchServers(now).catch((error) => console.error('watching the Cutter servers failed', error))
   await learnBestHours(now).catch((error) => console.error('working out the best hours failed', error))
   await watchAccounts(now).catch((error) => console.error('watching the accounts failed', error))
+  await watchFormats(now).catch((error) => console.error('watching the formats failed', error))
   await releaseHeld(now)
   // Stopped posts Postiz still holds - a stop's own run may have been cut off.
   await unpostStopped()
@@ -5157,6 +5232,10 @@ Deno.serve(async (req) => {
         return await week(profile, body)
       case 'insights':
         return await insights(profile)
+      case 'format-alarm':
+        return await setFormatAlarm(profile, body)
+      case 'format-changed':
+        return await formatChanged(profile, body)
       case 'best-hours':
         return await saveBestHours(profile, body)
       case 'headline-ideas':

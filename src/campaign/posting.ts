@@ -16,6 +16,7 @@ import { timesFor, timesOn } from '../../supabase/functions/postiz/slots.ts'
 import { hoursOn, type BestHours } from '../../supabase/functions/postiz/bestHours.ts'
 import type { CampaignHooks } from '../../supabase/functions/postiz/hookInsights.ts'
 import type { DeadAccount } from '../../supabase/functions/postiz/deadAccounts.ts'
+import type { FormatAlarm } from '../../supabase/functions/postiz/lowViews.ts'
 import type { TrialAccounts, TrialRead } from '../../supabase/functions/postiz/trial.ts'
 import { FUNCTIONS_URL, PUBLISHABLE_KEY } from '../config'
 import { currentSession } from './cloud'
@@ -79,6 +80,9 @@ export interface Profile {
     /** 'buffer': this login posts through Buffer only, no Postiz - its
      *  accounts are its Buffer channels. */
     via?: 'buffer'
+    /** "Change the format now" (postiz/lowViews.ts): the campaigns watched,
+     *  each with when it was turned on. */
+    formatAlarm?: Record<string, string>
   }
   timezone: string
   hasAnthropic: boolean
@@ -706,6 +710,9 @@ export interface Insights {
   bestHours: BestHours | null
   /** Accounts whose videos suddenly stopped getting views (postiz/deadAccounts.ts). */
   trouble?: DeadAccount[]
+  /** Accounts whose last video of a watched campaign got under 1k: change
+   *  the format (postiz/lowViews.ts). */
+  formatAlarms?: FormatAlarm[]
 }
 
 /** New post's note read by Claude: when the videos go (`plan`), and the
@@ -821,7 +828,7 @@ export function lastInsights(): Insights {
  *  (postiz/hookInsights.ts, bestHours.ts). */
 export const listInsights = shared(async (): Promise<Insights> => {
   const got = await call<Insights>('insights', { profile: profileId() })
-  const insights = { campaigns: got.campaigns ?? [], bestHours: got.bestHours ?? null, trouble: got.trouble ?? [] }
+  const insights = { campaigns: got.campaigns ?? [], bestHours: got.bestHours ?? null, trouble: got.trouble ?? [], formatAlarms: got.formatAlarms ?? [] }
   try {
     localStorage.setItem(INSIGHTS_KEY, JSON.stringify(insights))
   } catch {
@@ -829,6 +836,23 @@ export const listInsights = shared(async (): Promise<Insights> => {
   }
   return insights
 }, 60_000)
+
+/** A campaign watched for "Change the format now", or not any more. */
+export async function setFormatAlarm(campaignId: string, on: boolean): Promise<Profile> {
+  return remember(await call<Profile>('format-alarm', { profile: profileId(), campaignId, on }))
+}
+
+/** He changed the format on these accounts: their alarms go. */
+export async function formatChanged(accountIds: string[]): Promise<FormatAlarm[]> {
+  const got = await call<{ formatAlarms: FormatAlarm[] }>('format-changed', { profile: profileId(), accountIds })
+  try {
+    const kept = lastInsights()
+    localStorage.setItem(INSIGHTS_KEY, JSON.stringify({ ...kept, formatAlarms: got.formatAlarms }))
+  } catch {
+    // Just won't be there offline.
+  }
+  return got.formatAlarms ?? []
+}
 
 export type PostAction = 'edit' | 'approve' | 'ready' | 'reject' | 'unschedule' | 'retry' | 'retry-accounts' | 'self' | 'later'
 

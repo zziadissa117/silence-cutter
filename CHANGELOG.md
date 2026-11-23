@@ -3,6 +3,26 @@
 Newest first. Every change says what it does, how to use it, and how it works
 underneath. Kept up to date with each commit.
 
+## "Change the format now": told the moment a video gets under 1k
+- His ask (2026-11-23): "whenever we post something for campaigns that we select, if we get under 1k views, notify
+  us, saying, 'Hey, your account got under 1k views. Change the format now.' Try to really force the fact that we
+  have to change the format".
+- Analytics, "Under-1k alarm": tap the campaigns to watch. From then on, each of their videos is judged when its
+  views are first read, a day after it went out (the reading already made for Analytics, nothing extra from
+  Postiz's allowance). Under 1,000 on an account: a notification ("Change the format now - @account: its Lovable
+  video got 640 views on TikTok - under 1k. Post a different format next."), tapping it opens Analytics.
+- Until he acts, it stays in his face: a red card on top of Analytics (each account, its views, the video's
+  campaign, day and headline) and a red line on top of the Videos tab, and a dot on the Analytics tab. "I changed
+  it" (or "I changed all of them") takes it away. It goes by itself when a newer video on that account gets 1k, or
+  the same video catches up by its 3-day reading.
+- Judged per account (a video on 3 accounts can set off 1 of them), once per video, only videos posted after the
+  campaign was turned on; one notification for all the accounts found at once.
+- Underneath: server `postiz/lowViews.ts` (`nextAlarms`, `changedFormat`, `alarmNote`; tests), `watchFormats` on
+  every tick, kept in `cutter_config` `lowviews:<profile>`, the watched campaigns in the profile's
+  `settings.formatAlarm` (campaign -> when turned on); actions `format-alarm`, `format-changed`; `insights` returns
+  `formatAlarms`. Phone `FormatAlarm.tsx`. No new table, no migration.
+- Needs deploying: run ./deploy-server.sh
+
 ## His voice on his lips at every cut; the sound's decoder picks up again
 - His report (2026-11-23): "when there are too many cuts, too many captions, and it's a pretty long video ... it
   desyncs our voice with the video".

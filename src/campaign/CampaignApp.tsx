@@ -36,6 +36,7 @@ import { BatchView } from './BatchView'
 import { copiesToMake, dislikedBy, keepStopped, nextInLine, oneAtATime, overfull, settled, startOver, stopBatch, takenBy, topUp, trimDown, type BatchVideo } from './batchRun'
 import { NOT_ALLOWED, trialAngle, trialFileName, withAccounts } from './trialLoop'
 import { AnalyticsView, addHeadline, answerSuggestion, saveTarget, useCampaignRows } from './AnalyticsView'
+import { FormatAlarmLine } from './FormatAlarm'
 import { FormatsView, type FormatClips } from './FormatsView'
 import { WarmupView } from './WarmupView'
 import { sendDueWarmups } from './warmupSend'
@@ -147,6 +148,8 @@ import {
   saveBestHoursOff,
   headlineIdeas,
   pauseAccount,
+  setFormatAlarm,
+  formatChanged,
   attachAccounts,
   attachSummary,
   listPosts,
@@ -1233,7 +1236,7 @@ export function CampaignApp() {
   // Caption fixes are written to disk a moment after each change - see the
   // caption check below.
   const captionSaveTimer = useRef(0)
-  const [tab, setTab] = useState<Tab>(() => (window.location.hash.startsWith('#posts') ? 'posts' : 'videos'))
+  const [tab, setTab] = useState<Tab>(() => (window.location.hash.startsWith('#posts') ? 'posts' : window.location.hash === '#analytics' ? 'analytics' : 'videos'))
   const voiceAsk = useMemo(() => voiceReminder(), [voiceOpen, tab]) // eslint-disable-line react-hooks/exhaustive-deps
   // Posts is a tab of its own now (TabBar): opening it is going to it.
   const showPosts = tab === 'posts'
@@ -1446,6 +1449,11 @@ export function CampaignApp() {
     const onMessage = (event: MessageEvent) => {
       const data = event.data as { type?: string; hash?: string } | null
       if (data?.type !== 'open') return
+      // "Change the format now" opens Analytics, where the accounts are.
+      if (data.hash === '#analytics') {
+        setTab('analytics')
+        return
+      }
       setShowPosts(true)
       // A notification about one post ("didn't go out") opens it there.
       if (data.hash && data.hash.startsWith('#posts/')) {
@@ -3986,6 +3994,7 @@ export function CampaignApp() {
 
       {notices}
 
+      {posting ? <FormatAlarmLine alarms={insights.formatAlarms ?? []} onOpen={() => setTab('analytics')} /> : null}
       {posting && mode === 'day' ? <TodayCard toApprove={toApprove} onPosts={() => setTab('posts')} /> : null}
 
       {/* Posts has its own tab, with how many wait to be approved on it: here
@@ -5168,6 +5177,9 @@ export function CampaignApp() {
         onIdeas={(campaign, have) => headlineIdeas(campaign.id, campaign.name, have)}
         onAddHeadline={(campaignId, headline) => addHeadline(campaignId, headline).then(() => setBankVersion((v) => v + 1))}
         onPauseAccount={(accountId, paused) => pauseAccount(accountId, paused).then(() => setPosting(postingHere()))}
+        postingCampaigns={posting?.profile && campaigns ? campaigns.filter((c) => placeFor(posting.profile, c.id).accounts.length > 0) : []}
+        onFormatAlarm={(campaignId, on) => setFormatAlarm(campaignId, on).then(() => setPosting(postingHere()))}
+        onFormatChanged={(accountIds) => formatChanged(accountIds).then((formatAlarms) => setInsights((i) => ({ ...i, formatAlarms })))}
       />
     ) : tab === 'variations' ? (
       <>
@@ -5337,7 +5349,7 @@ export function CampaignApp() {
             setTab(next)
             if (next !== 'posts' && window.location.hash.startsWith('#posts')) history.replaceState(null, '', window.location.pathname)
           }}
-          dots={{ analytics: analyticsRows.some((r) => r.suggestion) }}
+          dots={{ analytics: analyticsRows.some((r) => r.suggestion) || (insights.formatAlarms ?? []).length > 0 }}
           counts={{ posts: posting ? toApprove : 0 }}
         />
       )}
