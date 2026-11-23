@@ -3,6 +3,28 @@
 Newest first. Every change says what it does, how to use it, and how it works
 underneath. Kept up to date with each commit.
 
+## His voice on his lips at every cut; the sound's decoder picks up again
+- His report (2026-11-23): "when there are too many cuts, too many captions, and it's a pretty long video ... it
+  desyncs our voice with the video".
+- Measured on a real render (Chrome for Testing, 90 s, 58 cuts, a flash and a beep together every half second):
+  the sound never slides further and further off - it is lined up again at every cut - but at each cut the picture
+  was lined up on its first frame, which can start up to a frame before or after the cut. So at every cut his voice
+  landed a different amount off his lips: -6 to +32 ms, slowed-down parts about +40 ms. Now each part's picture
+  starts exactly where its sound does (`render.ts`: `videoShift = cursor - start`, a frame already up at the cut
+  shows from it): every cut the same, 20-32 ms, slowed and sped-up parts too.
+- That 20-32 ms left is the same on every cut and every part: the computer's AAC encoder (the Cutter server's and
+  the demo's) adds its warm-up at the front with nothing telling players to skip it. Not changed - what the
+  iPhone's own encoder does could not be measured here.
+- The sound's decoder giving up partway (a long, heavy video on an iPhone) failed the whole video; now a fresh one
+  carries on from the last sound taken, as the picture's already did - checked with the decoder made to fail
+  mid-render: the same video, 0 ms different.
+- New report `check` / `sound short`: a part whose picture ran more than 0.25 s past its sound (some of his voice
+  never came), with where and how many decoder restarts - so a phone's video that comes out off can be found.
+- What could change in a video: at each cut the picture now starts up to one frame earlier or later than before;
+  the captions, pictures and zooms timed in it move with it (by the same under-a-frame). How the Cutter cuts and
+  what it keeps is not touched.
+- Not changed: a quiet stretch sometimes left in (see the reply) is the Cutter's cut itself - waiting for his OK.
+
 ## Batch videos switch on the song's beat drop
 - His ask (2026-11-23): "when you create a batch, you can just look at the song, and you select the point where it's
   like, 'This is the beat drop.' ... the reaction video cuts exactly at the same time as the beat drop ... not make

@@ -222,6 +222,11 @@ export interface CampaignRenderResult {
   musicFailed?: string
 }
 
+/** A part's picture running past its sound by more than this means some of
+ *  his voice never came from the decoder (a frame and the cut's overlap are
+ *  the most it ever runs on). */
+const SOUND_SHORT_SEC = 0.25
+
 export async function renderCampaignCut(
   file: Blob,
   {
@@ -662,7 +667,6 @@ export async function renderCampaignCut(
     traceStep('making the frames')
     videoFrames = new RangeReader(inTimestampOrder(new VideoSampleSink(videoTrack).samples(spanStart, spanEnd)))
     audioFrames = new RangeReader(inTimestampOrder(new AudioSampleSink(audioTrack).samples(spanStart, spanEnd)))
-    const audioReader = audioFrames
     // On an iPhone the video decoder can give up partway through a long 4K
     // video ("Decoder failure") - drawing every frame onto the canvas keeps
     // it far busier than the plain cutter does. Starting the whole video
@@ -670,9 +674,14 @@ export async function renderCampaignCut(
     // after the last frame written, and nothing already made is lost.
     let lastWritten = -Infinity
     let recovered = 0
+    /** The same for his sound, and how far into the recording it was taken. */
+    let soundRecovered = 0
+    let soundTaken = -Infinity
+    /** The worst part whose sound came short of its picture (SOUND_SHORT_SEC). */
+    let soundShort = { by: 0, at: 0, part: 0 }
     // Where the video's own frames end: frames stopping before it are the
     // decoder having stopped (StoppedEarly), not the video.
-    const videoLength = await videoTrack.computeDuration()
+    const [videoLength, audioLength] = await Promise.all([videoTrack.computeDuration(), audioTrack.computeDuration()])
 
     const total = allSec
     let doneSoFar = 0
@@ -813,7 +822,14 @@ export async function renderCampaignCut(
                 traceRead()
                 report((doneSoFar + (sample.timestamp - start) / speed) / total)
                 if (videoShift === null) {
-                  videoShift = cursor - sample.timestamp
+                  // The part's own start lands on the cursor - exactly where
+                  // its sound starts (audioShift) - not its first frame: that
+                  // one can start up to a frame before or after the cut, and
+                  // lining the picture up on it put his voice up to a frame
+                  // off his lips at every cut, a different amount each time
+                  // (measured 2026-11-23: -6 to +32 ms over 58 cuts, slowed
+                  // parts +40 ms).
+                  videoShift = cursor - start
                   logoPlacer.enterRange(index, videoShift)
                   captionPlacer.enterRange(index, videoShift)
                   brandPlacer.enterRange(index, videoShift)
@@ -828,8 +844,9 @@ export async function renderCampaignCut(
                 // At its part's speed: where the frame now falls - dropped when
                 // sped up past the source's own frame rate, held over several
                 // frames when slowed down (cuts.frameSlots). At 1x, once, as it is.
+                // A frame already up when the part starts shows from its start.
                 const slots = frameSlots(
-                  start + videoShift + (sample.timestamp - start) / speed,
+                  Math.max(cursor, start + videoShift + (sample.timestamp - start) / speed),
                   sample.duration,
                   speed,
                   nextOut,
@@ -1025,14 +1042,43 @@ export async function renderCampaignCut(
           // A part at another speed: its sound read whole, then stretched to
           // the new length with his pitch kept (timeStretch.ts).
           const held: Float32Array[][] = []
-          for await (const sample of audioReader.range(start, end, audioFrom)) {
-            const planes = planesOf(sample)
-            const [first, last] = insidePart(sample.timestamp, sample.numberOfFrames, sample.sampleRate, start, end)
-            sample.close()
-            if (last <= first) continue
-            const part = planes.map((plane) => plane.subarray(first, last))
-            if (speed !== 1) held.push(part)
-            else for (const block of join.push(part)) await writeVoice(block)
+          // The sound's decoder can give up partway too (an iPhone under a
+          // long, heavy video). Unnoticed, the rest of his voice went missing
+          // and every picture after it was squeezed against the sound's end -
+          // so a fresh one carries on from the last sound taken, as the
+          // picture's does, and nothing is read twice.
+          let from = start
+          let decodeFrom = audioFrom
+          for (;;) {
+            try {
+              let seen = -Infinity
+              for await (const sample of audioFrames!.range(from, end, decodeFrom)) {
+                seen = Math.max(seen, sample.timestamp)
+                const planes = planesOf(sample)
+                const [first, last] = insidePart(sample.timestamp, sample.numberOfFrames, sample.sampleRate, from, end)
+                const takenTo = sample.timestamp + last / sample.sampleRate
+                sample.close()
+                if (last <= first) continue
+                soundTaken = Math.max(soundTaken, takenTo)
+                const part = planes.map((plane) => plane.subarray(first, last))
+                if (speed !== 1) held.push(part)
+                else for (const block of join.push(part)) await writeVoice(block)
+              }
+              if (stoppedEarly(seen, from, end, audioLength)) throw new StoppedEarly(Math.max(seen, from))
+              break
+            } catch (error) {
+              if (!decoderGaveUp(error)) throw asRenderError(error)
+              await audioFrames?.dispose().catch(() => {})
+              if (document.visibilityState !== 'visible') await visibleAgain()
+              else {
+                if (soundRecovered >= MAX_RECOVERIES) throw error instanceof StoppedEarly ? stalledProblem(error.at) : error
+                soundRecovered++
+                await pause(500)
+              }
+              from = Math.max(from, Math.min(end, soundTaken))
+              audioFrames = new RangeReader(inTimestampOrder(new AudioSampleSink(audioTrack).samples(from, spanEnd)))
+              decodeFrom = await keyAt(audioPackets, from)
+            }
           }
           if (speed === 1 || held.length === 0) return
           const stretched = stretch(joinPlanes(held), sampleRate, speed)
@@ -1046,6 +1092,10 @@ export async function renderCampaignCut(
       // out and is filled with silence up to the end of the picture.
       const joinsNext = index < keep.length - 1 && !middle.some((m) => m.after === index)
       for (const block of join.end(edges[index].fadeOut, joinsNext)) await writeVoice(block)
+      // The picture ran on past his sound by more than a frame and the cut's
+      // overlap: some of his voice never came. Told once, at the end.
+      const short = videoEnd - join.position
+      if (short > SOUND_SHORT_SEC && short > soundShort.by) soundShort = { by: short, at: cursor, part: index }
       if (joinsNext) cursor = join.position
       else {
         cursor = Math.max(videoEnd, join.position)
@@ -1065,6 +1115,13 @@ export async function renderCampaignCut(
 
     const afterStart = cursor
     if (afterClip) cursor = await writeClip(afterClip, afterStart, afterGain)
+    if (soundShort.by > 0) {
+      reportProblem({
+        kind: 'check',
+        phase: 'sound short',
+        message: `His sound came ${Math.round(soundShort.by * 1000)} ms short of the picture in part ${soundShort.part + 1} of ${keep.length} (at ${soundShort.at.toFixed(1)} s of ${cursor.toFixed(1)} s); sound decoder restarted ${soundRecovered} time(s), picture ${recovered}`,
+      })
+    }
 
     traceStep('finishing the file')
     await output.finalize()
@@ -1083,7 +1140,7 @@ export async function renderCampaignCut(
       logoAt: shown(logoPlacer.times),
       picturesAt: pictures.map((p) => shown(p.placer.times)),
       bankAt: shown(bank.flatMap((b) => [...b.placer.times])).sort((a, b) => a - b),
-      recovered,
+      recovered: recovered + soundRecovered,
       clips: { beforeSec: talkStart, afterSec: afterClip ? cursor - afterStart : 0, leftOut, middleSec, middleLeftOut },
       popsAt: shown(popClips.flatMap((p) => [...p.placer.times])).sort((a, b) => a - b),
       ...(musicFailed ? { musicFailed } : {}),
