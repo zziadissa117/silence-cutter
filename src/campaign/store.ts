@@ -53,6 +53,9 @@ interface StoredJob {
    *  listened to there (its recording is there), or being made there. */
   onServer?: 'listen' | 'listened' | 'make'
   ownEdit?: 'post' | 'keep'
+  /** Timeline editor, raw: opened as filmed - not listened to, no cuts,
+   *  captions or checks - and kept, not posted (rawEdit.ts). */
+  raw?: true
   settings: SilenceSettings
   cleanSpeech: boolean
   attempts: number

@@ -3,6 +3,22 @@
 Newest first. Every change says what it does, how to use it, and how it works
 underneath. Kept up to date with each commit.
 
+## Videos tab: Join clips and a raw Timeline editor
+- His ask (2026-11-24): "You can remove reaction videos ... I just want 'Join clips together' or 'timeline editor'"
+  - Join clips: "just add the videos in order ... I click join ... those clips are joined, and then they're on the
+  main page ... Then it does a summary with Claude of the name of it, the headline"; Timeline editor: "it should
+  just open the timeline editor without any edits, any cuts, any captions, or any verifications ... I don't need
+  to post it".
+- Under "More ways to make one": Join clips and Timeline editor. Reaction video is gone from Videos (reactions are
+  made in batches; a video with no talking added with Add videos is still kept whole as a reaction).
+- Join clips: add the videos, in order (↑ ↓ ✕), tap Join - put together, then cut, captioned and given its
+  headline by Claude like any video, on the list to approve. Nothing else to choose.
+- Timeline editor: add the videos in order, tap Open - put together if several, then opened in the editor as
+  filmed: not listened to, nothing cut, no captions, no questions first. Made with none of the campaign's look
+  (only what he puts on by hand), kept on the phone, not posted. Checked here: two clips (20 s) joined and open in
+  the editor 7 s after the tap; one clip opens at once (`rawEdit.ts` `rawDay`, `Job.raw`, `startCheck`).
+- The old "Then it: Post it / Cut the silences / Just keep it" choice is gone (`JoinPicker` `kind`).
+
 ## Campaigns newest first; "Still posting for it?"
 - His asks (2026-11-24): "make sure that campaign names are sorted into which one was the most recently made" and,
   sharing one Postiz with Ilyan, "if none of us have posted in one campaign in a long time, alert it ... 'Hey, are

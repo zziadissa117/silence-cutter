@@ -139,6 +139,8 @@ it back.)
 - The dead zone (TikTok + Reels UI): `overlay.TIKTOK_ZONES` / `safeArea` / `keepSafe` keep every headline, word, caption (`captions.CAPTION_SPOT`), picture and video out of it; shown while dragging (`DeadZone.tsx`)
 - Wide clips -> 9:16: `framing916.ts` (Settings: Fit - whole on black, the default - / Fill / Off); a 9:16 clip with black bands already in it is never zoomed: `blackBands.ts` (render.ts and montageRender.ts)
 - Edit again: `store.ts` (markMade/reopenJob/expireMade, `stillKept`: until the post goes out, and 2 h after; server-made talking videos too), `PostsView.EditAgain`, `CampaignApp.editAgain/retireOld` (see ARCHITECTURE.md)
+- Videos tab "More ways to make one": Join clips (in order, then cut and captioned like any video) and Timeline editor (raw: opened as filmed, not listened to, kept not posted - `rawEdit.ts`, `Job.raw`): `JoinPicker.tsx` (`kind`), `CampaignApp.addJoinClips`/`addOwnEdit`
+- Campaigns newest first (`campaignOrder.newestFirst`, `Campaign.createdAt`, server `insights.campaignDates`); "Still posting for it?" after 14 days with nothing out (`StillPosting.tsx`)
 - Recording in the Cutter (camera, flip, light, takes): `Recorder.tsx` (Videos -> Record a video); the back camera's takes steadied after Done, only when it helps: `stabilize.ts`
 - Tabs: `TabBar.tsx` (Videos, Posts, Batch, Analytics, More), `MoreView.tsx` (Campaigns, Formats, Bank, Settings, Cut only - each with `BackToMore`)
 - Queue/storage: `store.ts`, `outbox.ts`; sync + login: `cloud.ts`, `SignIn.tsx`, `LoginGate.tsx`

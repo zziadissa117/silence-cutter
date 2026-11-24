@@ -102,6 +102,7 @@ import { ClipsField, clipName } from './ClipsField'
 import { findPhrase } from './cueClips'
 import { ClipsMaker, type Montage } from './ClipsMaker'
 import { JoinPicker, type EditGoes } from './JoinPicker'
+import { rawDay } from './rawEdit'
 import { filmingOf, joinSuggestions, type Filming } from './filming'
 import { joinRecordings } from './joinRender'
 import { joinCaptions, joinPlans, type CampaignPlan } from './plan'
@@ -114,6 +115,7 @@ import {
   wordsToHear,
   LIMITS,
   NO_POSTING,
+  blankAngle,
   blankCampaign,
   isReaction,
   reactionChoices,
@@ -337,14 +339,16 @@ function keepLastHeadlineWhole(whole: boolean): void {
   }
 }
 
-type Mode = 'one' | 'day' | 'clips' | 'join'
+type Mode = 'one' | 'day' | 'clips' | 'join' | 'together'
 
 /** Sorting the day is where it starts; picking the campaign by hand is the
  *  exception, remembered only when he chose it. */
 function rememberedMode(): Mode {
   try {
-    const stored = localStorage.getItem(MODE_KEY)
-    return stored === 'one' ? 'one' : 'day'
+    // Reaction videos are no longer made from here (his ask, 2026-11-24):
+    // the day's videos it is.
+    localStorage.removeItem(MODE_KEY)
+    return 'day'
   } catch {
     return 'day'
   }
@@ -1820,6 +1824,7 @@ export function CampaignApp() {
         ...(p.videoHeadline ? { videoHeadline: p.videoHeadline } : {}),
         ...(p.onServer ? { onServer: p.onServer } : {}),
         ...(p.ownEdit ? { ownEdit: p.ownEdit } : {}),
+        ...(p.raw ? { raw: true as const } : {}),
         settings: p.settings,
         cleanSpeech: p.cleanSpeech,
         status: p.joinedInto
@@ -1991,6 +1996,14 @@ export function CampaignApp() {
         }
         kept = file
 
+        if (listening && next.raw) {
+          // The timeline editor, raw: nothing listened to - straight into
+          // the editor as filmed (rawEdit.ts).
+          setPhase('reading', 0)
+          patch(await rawDay(next, file, campaignsRef.current))
+          await resetAttempts(next.id)
+          return
+        }
         if (listening) {
           // Heard once, with every campaign's names told to the model, and
           // kept - the video itself too - until he approves where it goes.
@@ -2048,7 +2061,13 @@ export function CampaignApp() {
         // A Trial loop's video: the viral reel's words, in its look, at this
         // video's place (trialLoop.ts).
         const trialLook = next.montage?.bank?.trial
-        const jobAngle = trialLook ? trialAngle(ownAngle, trialLook) : withHeadlineStyle(ownAngle, next.day?.headlineStyle ?? batchStyle)
+        // The timeline editor, raw: only what he put on it by hand - none of
+        // the campaign's look (rawEdit.ts).
+        const jobAngle = next.raw
+          ? { ...blankAngle(ownAngle.id, ownAngle.name), general: ownAngle.general }
+          : trialLook
+            ? trialAngle(ownAngle, trialLook)
+            : withHeadlineStyle(ownAngle, next.day?.headlineStyle ?? batchStyle)
         // A talking head with "Use edits in hooks" off: its hook plays as he
         // filmed it - nothing over it, no music under it; the music and the
         // headline start with the first product step (his ask, 2026-11-14).
@@ -3757,7 +3776,17 @@ export function CampaignApp() {
   /** From the timeline editor's picker (JoinPicker): one video or several put
    *  together, opened in the timeline editor once heard. Through the silence
    *  cutter as usual, or nothing cut by itself - then posted, or kept. */
-  const addOwnEdit = (files: File[], goes: EditGoes) => {
+  /** Join clips: put together in this order, then cut, captioned and named
+   *  like any of his videos, on the list to approve. */
+  const addJoinClips = (files: File[]) => {
+    if (files.length === 0) return
+    if (files.length === 1) addFiles(files, true, true)
+    else addJoined(files)
+  }
+
+  /** Timeline editor: opened raw, as filmed (rawEdit.ts) - several put
+   *  together first - and kept, not posted. */
+  const addOwnEdit = (files: File[], goes: EditGoes = 'keep') => {
     if (files.length === 0) return
     setEditorWanted(files.length === 1 ? files[0].name : files.map((f) => f.name).join(' + '))
     if (goes === 'cut') {
@@ -3765,7 +3794,7 @@ export function CampaignApp() {
       else addJoined(files)
       return
     }
-    const own = { noCut: true as const, ownEdit: goes }
+    const own = { noCut: true as const, ownEdit: goes, ...(goes === 'keep' ? { raw: true as const } : {}) }
     if (files.length > 1) {
       addJoined(files, own)
       return
@@ -3806,7 +3835,7 @@ export function CampaignApp() {
     persisting.current.set(job.id, saved)
   }
 
-  const addJoined = (files: File[], own?: { noCut: true; ownEdit: 'post' | 'keep' }) => {
+  const addJoined = (files: File[], own?: { noCut: true; ownEdit: 'post' | 'keep'; raw?: true }) => {
     if (files.length < 2) return
     const [first, ...rest] = files
     const settings = { ...PRESETS[preset] }
@@ -4049,10 +4078,13 @@ export function CampaignApp() {
         </div>
       ) : null}
 
-      {mode === 'join' ? (
+      {mode === 'join' || mode === 'together' ? (
         <JoinPicker
-          onJoin={(files, goes) => {
-            addOwnEdit(files, goes)
+          key={mode}
+          kind={mode === 'together' ? 'join' : 'editor'}
+          onJoin={(files) => {
+            if (mode === 'together') addJoinClips(files)
+            else addOwnEdit(files, 'keep')
             setMode('day')
           }}
           onBack={() => setMode('day')}
@@ -4106,18 +4138,9 @@ export function CampaignApp() {
           {campaign && angle ? (
             <div className="under-drop-links">
               <span className="under-drop-title">More ways to make one</span>
-              {reactionCampaigns.length > 0 ? (
-                <button
-                  type="button"
-                  className="btn small"
-                  onClick={() => {
-                    if (!isReaction(campaign)) select(reactionCampaigns[0])
-                    setMode('one')
-                  }}
-                >
-                  Reaction video
-                </button>
-              ) : null}
+              <button type="button" className="btn small" onClick={() => setMode('together')}>
+                Join clips
+              </button>
               <button type="button" className="btn small" onClick={() => setMode('join')}>
                 Timeline editor
               </button>
@@ -4798,7 +4821,16 @@ export function CampaignApp() {
 
   /** Checks these videos' captions - first asking where each goes, its
    *  headline and music, and whether the hook gets captions (CheckQuestions). */
-  const startCheck = (ids: string[]) => setAsking(ids)
+  const startCheck = (ids: string[]) => {
+    // The timeline editor, raw: no questions - straight to the timeline.
+    const raw = jobs.filter((j) => ids.includes(j.id) && j.raw)
+    if (raw.length === ids.length && ids.length > 0) {
+      setOpenFull((all) => new Set([...all, ...ids]))
+      setReviewing(ids)
+      return
+    }
+    setAsking(ids)
+  }
 
   /** The summary's Check: every video waiting is put in front of him -
    *  those with talking first, then those heard as having none. Nothing is

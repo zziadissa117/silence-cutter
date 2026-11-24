@@ -1,10 +1,10 @@
-// The timeline editor, straight away (his ask, 2026-11-06: "just open the
-// timeline editor ... we click on the videos we want to put in, and we can
-// just edit them ourselves ... then we can choose where it goes"): he picks
-// one or more videos, in the order they go - put together first when there
-// are several - and says where it goes: through the silence cutter as usual,
-// edited by hand then posted, or edited by hand and kept to look at. Pictures
-// go on in the editor itself (+ Overlay), from the bank or the phone.
+// Two ways in from the Videos tab, both "add the videos in order" (his ask,
+// 2026-11-24):
+//  - Join clips: the videos put together in this order, then cut, captioned
+//    and named like any of his videos - on the list, nothing else to choose.
+//  - Timeline editor: the videos (put together first) opened in the editor as
+//    filmed, straight away - not listened to, nothing cut, no captions, not
+//    posted (rawEdit.ts). He edits; it is kept on the phone.
 
 import { useEffect, useRef, useState } from 'react'
 
@@ -21,35 +21,21 @@ interface Picked {
 
 let nextKey = 0
 
-/** Where a video edited by hand goes. */
+/** Where a video edited by hand goes (older rows: 'post'). */
 export type EditGoes = 'cut' | 'post' | 'keep'
 
-const GOES: { id: EditGoes; label: string; line: string }[] = [
-  { id: 'post', label: 'Post it', line: 'Nothing cut by itself: you edit it, then approve and it goes to its campaign like any video.' },
-  { id: 'cut', label: 'Cut the silences', line: 'Through the silence cutter as usual - the pauses cut - then the editor for the rest.' },
-  { id: 'keep', label: 'Just keep it', line: 'You edit it and it is made, but not posted: save it or send it to Postiz from its row when you like.' },
-]
-const GOES_KEY = 'campaign.editGoes'
-function lastGoes(): EditGoes {
-  try {
-    const v = localStorage.getItem(GOES_KEY)
-    return v === 'cut' || v === 'keep' ? v : 'post'
-  } catch {
-    return 'post'
-  }
-}
-
 export function JoinPicker({
+  kind,
   onJoin,
   onBack,
   onNotice,
 }: {
-  onJoin: (files: File[], goes: EditGoes) => void
+  kind: 'join' | 'editor'
+  onJoin: (files: File[]) => void
   onBack: () => void
   onNotice: (message: string) => void
 }) {
   const [parts, setParts] = useState<Picked[]>([])
-  const [goes, setGoes] = useState<EditGoes>(lastGoes)
   const alive = useRef(true)
   // Set on every mount, not only at the start: React mounts a screen twice in
   // development (StrictMode), and a flag left false by the first unmount made
@@ -93,7 +79,7 @@ export function JoinPicker({
   return (
     <div className="chooser montage">
       <div className="chooser-head">
-        <span className="label">Timeline editor</span>
+        <span className="label">{kind === 'join' ? 'Join clips' : 'Timeline editor'}</span>
         <button type="button" className="linkbtn" onClick={onBack}>
           Back
         </button>
@@ -136,52 +122,27 @@ export function JoinPicker({
         {parts.length > 0 ? '+ Add another video' : '+ Add the videos, in order'}
       </VideoPicker>
 
-      <div className="field">
-        <span className="label">Then it</span>
-        <div className="seg full" role="radiogroup" aria-label="Where it goes">
-          {GOES.map((g) => (
-            <button
-              key={g.id}
-              type="button"
-              role="radio"
-              aria-checked={goes === g.id}
-              className={goes === g.id ? 'active' : ''}
-              onClick={() => {
-                setGoes(g.id)
-                try {
-                  localStorage.setItem(GOES_KEY, g.id)
-                } catch {
-                  // Asked again next time.
-                }
-              }}
-            >
-              {g.label}
-            </button>
-          ))}
-        </div>
-        <span className="hint">{GOES.find((g) => g.id === goes)!.line}</span>
-      </div>
-
       <button
         type="button"
         className="btn primary"
         disabled={parts.length === 0}
         onClick={() => {
-          onJoin(
-            parts.map((p) => p.file),
-            goes,
-          )
+          onJoin(parts.map((p) => p.file))
           setParts([])
         }}
       >
-        {parts.length === 0
-          ? 'Open the timeline editor'
-          : `Open the timeline editor${parts.length > 1 ? ` · ${parts.length} videos` : ''}${known ? ` · ${formatTime(total)}` : ''}`}
+        {kind === 'join'
+          ? parts.length < 2
+            ? 'Join'
+            : `Join ${parts.length} clips${known ? ` · ${formatTime(total)}` : ''}`
+          : parts.length === 0
+            ? 'Open in the timeline editor'
+            : `Open in the timeline editor${parts.length > 1 ? ` · ${parts.length} videos` : ''}${known ? ` · ${formatTime(total)}` : ''}`}
       </button>
       <p className="hint montage-for">
-        {parts.length > 1
-          ? 'They are put together in this order first. Pictures, words and other videos go on in the editor (Overlay, Text).'
-          : 'Pictures, words and other videos go on in the editor (Overlay, Text).'}
+        {kind === 'join'
+          ? 'Put together in this order, then the pauses cut, captioned and named like any video - it shows up in your list to approve.'
+          : 'Opens as filmed, straight away: nothing listened to, cut or captioned. Edit it your way - cuts, text, pictures, sounds. It is kept on your phone, not posted.'}
       </p>
     </div>
   )

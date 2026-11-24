@@ -35,6 +35,8 @@ export type Job = {
   /** Opened in the timeline editor to edit by hand (TimelinePicker): nothing
    *  cut by itself; then posted as usual ('post') or kept to look at ('keep'). */
   ownEdit?: 'post' | 'keep'
+  /** Timeline editor, raw: opened as filmed, nothing listened to (rawEdit.ts). */
+  raw?: true
   settings: SilenceSettings
   cleanSpeech: boolean
   /** A day's video goes queued → working (listening) → sorted → approved →
