@@ -87,7 +87,8 @@ AGENTS.md). Batches and other features get their own version in their own file.
 ## How he works
 
 - Anything for UGC Roadmap (his students' guides, PDFs, decks, pages): the exact look of his sales-call
-  PowerPoint, every time - `docs/UGC_ROADMAP_STYLE.md`. He asked to have it remembered.
+  deck, every time - `docs/UGC_ROADMAP_STYLE.md`, template `docs/ugc-roadmap/railway_guide.py` with the
+  deck's own backgrounds and logo in `docs/ugc-roadmap/assets/`. He asked to have it remembered.
 - Plain words, no jargon; he reads replies on his phone. Lead with what changed
   for him and the deploy command, then caveats.
 - Ask before anything that changes how a feature behaves for him; fix bugs
