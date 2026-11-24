@@ -2404,3 +2404,10 @@ textarea.lines-input { resize: none; line-height: 1.35; overflow: hidden; }
 /* "Stop using what doesn't work" (dropWorst.ts). */
 .drop-list { list-style: none; margin: 6px 0 8px; padding: 0; display: grid; gap: 4px; }
 .drop-list li { overflow-wrap: anywhere; }
+
+/* Variations: its own colour and numbered steps, so it never reads as the Batch screen. */
+.screen.batch.vary { --accent: #2ec4b6; --accent-grad: linear-gradient(180deg, #4fd8cb 0%, #2ec4b6 50%, #1f9e93 100%); --on-accent: #04201d; }
+.vary-steps { margin: 0 0 14px; padding: 12px 14px 12px 34px; border-radius: 14px; background: color-mix(in srgb, #2ec4b6 12%, var(--surface)); border: 1px solid color-mix(in srgb, #2ec4b6 40%, transparent); display: grid; gap: 6px; font-size: 15px; }
+.vary-steps li::marker { color: #2ec4b6; font-weight: 700; }
+.vary-num { display: inline-grid; place-items: center; width: 22px; height: 22px; margin-right: 6px; border-radius: 50%; background: #2ec4b6; color: #04201d; font-size: 13px; font-weight: 800; vertical-align: middle; }
+.vary .variations { border: 2px solid color-mix(in srgb, #2ec4b6 55%, transparent); }

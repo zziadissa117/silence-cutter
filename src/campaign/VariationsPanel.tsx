@@ -127,7 +127,9 @@ export function VariationsPanel({
 
   return (
     <div className="group variations">
-      <div className="group-title">Your variations</div>
+      <div className="group-title">
+        <span className="vary-num">5</span> Make them
+      </div>
       {counts.length > 0 ? (
         <ul className="var-counts">
           {counts.map((c) => (

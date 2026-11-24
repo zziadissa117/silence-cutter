@@ -1585,8 +1585,11 @@ export function BatchView({
           ? `${n} video${n === 1 ? '' : 's'} behind you`
           : `${n} product clip${n === 1 ? '' : 's'}`
     const others = formatList.filter((o) => o.id !== f.id && ((bank.steps ?? []).some((st) => st.formats?.includes(o.id)) || bank.products.some((p) => p.formats?.includes(o.id))))
+    const bodies = steps.length > 0 ? steps.reduce((m, st) => m * Math.max(1, st.files.length), 1) : n
     const status = f.paused
       ? 'Paused'
+      : vary && missingHere.length === 0
+        ? `${sub.reactions.length * bodies} variation${sub.reactions.length * bodies === 1 ? '' : 's'}`
       : missingHere.length > 0
         ? `Needs ${missingHere.join(' and ')}`
         : Number.isFinite(leftHere)
@@ -1598,7 +1601,9 @@ export function BatchView({
           <span className={`format-badge ${f.kind}`}>{kind.label}</span>
           <span className="row-name">{f.name}</span>
           <span className="hint">
-            {sub.reactions.length} clip{sub.reactions.length === 1 ? '' : 's'} of you · {products}
+            {vary
+              ? `${sub.reactions.length} hook${sub.reactions.length === 1 ? '' : 's'} × ${bodies} bod${bodies === 1 ? 'y' : 'ies'}`
+              : `${sub.reactions.length} clip${sub.reactions.length === 1 ? '' : 's'} of you · ${products}`}
             {f.kind === 'greenscreen' && f.voice ? ' · your voice' : ''}
             {f.noHeadline ? ' · no headline' : ''}
           </span>
@@ -1945,6 +1950,7 @@ export function BatchView({
       <div className="bank-head">
         <span className="group-title">
           {formatId ? null : <Mark kind={kind === 'music' ? 'music' : 'clips'} />}
+          {vary && kind === 'music' && !formatId ? <span className="vary-num">4</span> : null}
           {title} {formatId ? null : <span className="bank-count">{filesIn(kind, formatId).length}</span>}
         </span>
         {kind === 'music' ? (
@@ -2190,15 +2196,16 @@ export function BatchView({
     {checkLayer}
     {viewLayer}
     {scriptLayer}
-    <section className="screen batch">
+    <section className={`screen batch${vary ? ' vary' : ''}`}>
       <div className="screen-head">
         <h1>{vary ? 'Variations' : 'Batch'}</h1>
       </div>
       {vary ? (
-        <p className="hint tip">
-          Every hook made once with every body - 9 hooks and 2 bodies make 18 videos. Set it up like a batch; the videos stay on this phone to look
-          through and save. Nothing is scheduled or posted.
-        </p>
+        <ol className="vary-steps" aria-label="How it works">
+          <li>Add your hooks and what follows them (the bodies)</li>
+          <li>Pick the headline look, headlines and music</li>
+          <li>Make them: every hook once with every body - 9 hooks × 2 bodies = 18 videos, kept on this phone, never posted</li>
+        </ol>
       ) : null}
 
       <div className="chooser">
@@ -2319,7 +2326,15 @@ export function BatchView({
               <div className="bank-head">
                 <span className="group-title">
                   <Mark kind="formats" />
-                  Formats <span className="bank-count">{formatList.length}</span>
+                  {vary ? (
+                    <>
+                      <span className="vary-num">1</span> Hooks &amp; bodies
+                    </>
+                  ) : (
+                    <>
+                      Formats <span className="bank-count">{formatList.length}</span>
+                    </>
+                  )}
                 </span>
                 {engineUrl() && !vary ? (
                   <button type="button" className="linkbtn" onClick={() => keep({ ...bank, layout: 'engine' })}>
@@ -2327,10 +2342,14 @@ export function BatchView({
                   </button>
                 ) : null}
               </div>
-              <p className="hint tip">
-                Every kind of video this account posts, in this one batch. They take turns in your {planned > 0 ? rate : 'videos'}, each from its own
-                clips - evenly at first, then more of the ones whose videos get more views. The headlines and music below are for all of them.
-              </p>
+              {vary ? (
+                <p className="hint tip">Open a card to add its hooks (clips of you) and bodies (the product clips that follow). Another kind of video: + Add a format.</p>
+              ) : (
+                <p className="hint tip">
+                  Every kind of video this account posts, in this one batch. They take turns in your {planned > 0 ? rate : 'videos'}, each from its own
+                  clips - evenly at first, then more of the ones whose videos get more views. The headlines and music below are for all of them.
+                </p>
+              )}
               <ul className="format-cards">
                 {formatList.map((f) => formatCard(f))}
               </ul>
@@ -2357,7 +2376,13 @@ export function BatchView({
           <div className="group">
             <div className="group-title">
               <Mark kind="hook" />
-              Hook
+              {vary ? (
+                <>
+                  <span className="vary-num">2</span> Headline look
+                </>
+              ) : (
+                'Hook'
+              )}
             </div>
             <HookLooks looks={shownLooks} withFormula stepped={stepped} onChange={saveLooks} />
           </div>
@@ -2479,6 +2504,7 @@ export function BatchView({
             <div className="bank-head">
               <span className="group-title">
                 <Mark kind="headlines" />
+                {vary ? <span className="vary-num">3</span> : null}
                 {formatList.length > 1 ? 'Headlines for every format' : 'Headlines'} <span className="bank-count">{bank.headlines.length}</span>
               </span>
             </div>
@@ -2532,7 +2558,7 @@ export function BatchView({
               )}
           {green || onEngine || vary ? null : <CopiesCard bank={bank} busy={saving !== null} onAdd={(files, count) => void addCopies(files, count)} onChange={changeCopies} />}
           {saving ? <p className="hint">{saving}</p> : null}
-          {bankSize > 0 ? <p className="hint">The bank keeps {mb(bankSize)} on this phone.</p> : null}
+          {bankSize > 0 && !vary ? <p className="hint">The bank keeps {mb(bankSize)} on this phone.</p> : null}
 
           {vary ? (
             <>
@@ -2859,7 +2885,7 @@ export function BatchView({
           ) : null}
             </>
           )}
-          <p className="hint new-post-to">For {labelOf(campaign, angle)}</p>
+          {vary ? null : <p className="hint new-post-to">For {labelOf(campaign, angle)}</p>}
         </>
       ) : null}
       {watching ? <ClipViewer file={watching.file} note={watching.note} onClose={() => setWatching(null)} onTakeOut={watching.out} /> : null}

@@ -3,6 +3,14 @@
 Newest first. Every change says what it does, how to use it, and how it works
 underneath. Kept up to date with each commit.
 
+## Formats off the More screen; Variations its own screen
+- His ask (2026-11-24): "You can remove the formats section. We don't really use this. You need to fix the UI for
+  the variation section. It looks a little too similar to the badge section, and it's kind of complicated to use."
+- More no longer lists Formats (`MoreView`); its videos already made or scheduled are untouched.
+- Variations: its own teal colour, three plain steps on top, and numbered sections - 1 Hooks & bodies, 2 Headline
+  look, 3 Headlines, 4 Music, 5 Make them. Each card reads "3 hooks × 2 bodies · 6 variations" instead of the
+  batch's clip counts; no posting, bank size or batch wording (`BatchView` `vary`, `VariationsPanel`).
+
 ## Analytics asks to stop using what doesn't work
 - His ask (2026-11-24): "after a certain amount of time, it asks me to only use certain songs or only use certain
   headlines because some really don't work".
