@@ -35,7 +35,7 @@ import { findSong, loadMusicBank, songFile, syncSongs } from './musicBank'
 import { BatchView } from './BatchView'
 import { copiesToMake, dislikedBy, keepStopped, nextInLine, oneAtATime, overfull, settled, startOver, stopBatch, takenBy, topUp, trimDown, type BatchVideo } from './batchRun'
 import { NOT_ALLOWED, trialAngle, trialFileName, withAccounts } from './trialLoop'
-import { AnalyticsView, addHeadline, answerSuggestion, saveTarget, useCampaignRows } from './AnalyticsView'
+import { AnalyticsView, addHeadline, answerSuggestion, dropWorst, saveTarget, useCampaignRows } from './AnalyticsView'
 import { FormatAlarmLine } from './FormatAlarm'
 import { FormatsView, type FormatClips } from './FormatsView'
 import { WarmupView } from './WarmupView'
@@ -5176,6 +5176,7 @@ export function CampaignApp() {
         onBestHoursOff={setBestHoursOff}
         onIdeas={(campaign, have) => headlineIdeas(campaign.id, campaign.name, have)}
         onAddHeadline={(campaignId, headline) => addHeadline(campaignId, headline).then(() => setBankVersion((v) => v + 1))}
+        onDropWorst={(campaignId, drop) => dropWorst(campaignId, drop).then(() => setBankVersion((v) => v + 1))}
         onPauseAccount={(accountId, paused) => pauseAccount(accountId, paused).then(() => setPosting(postingHere()))}
         postingCampaigns={posting?.profile && campaigns ? campaigns.filter((c) => placeFor(posting.profile, c.id).accounts.length > 0) : []}
         onFormatAlarm={(campaignId, on) => setFormatAlarm(campaignId, on).then(() => setPosting(postingHere()))}

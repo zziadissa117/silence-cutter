@@ -3,6 +3,16 @@
 Newest first. Every change says what it does, how to use it, and how it works
 underneath. Kept up to date with each commit.
 
+## Analytics asks to stop using what doesn't work
+- His ask (2026-11-24): "after a certain amount of time, it asks me to only use certain songs or only use certain
+  headlines because some really don't work".
+- In each batch campaign's What works: once a headline, song or headline look has been in at least 6 videos with
+  their views read and still sits under three quarters of the campaign's views a video (marked Worst), a card asks
+  "Stop using what doesn't work?" with each one and its numbers. "Stop using these" takes them out of the batch -
+  its headlines (and each format's own), its songs, its looks - so no new video uses them; videos already made
+  still go. "Keep them" hides that list (asked again only when the list changes). Never the last of a kind.
+- Underneath: `dropWorst.ts` (`worstToDrop`, `withoutWorst`; tests), `WhatWorks.DropWorst`, `AnalyticsView.dropWorst`.
+
 ## The day on videos to approve; every account linked; batches of 10+ a day go without approval
 - To approve: each video says its day with its time - "Saturday, November 28 · 10:27 AM" ("Today, ..." today)
   (`PostsView.dayAndTime`). His ask, 2026-11-24.

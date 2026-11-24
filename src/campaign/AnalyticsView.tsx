@@ -26,6 +26,7 @@ import { loadBatchBank, saveBatchBank } from './store'
 import { Overview } from './Overview'
 import { BestHoursCard, TroubleCard, WhatWorks } from './WhatWorks'
 import { FormatAlarmCard, FormatAlarmPicker } from './FormatAlarm'
+import { withoutWorst, type ToDrop } from './dropWorst'
 
 export interface CampaignRow {
   campaign: Campaign
@@ -97,10 +98,13 @@ export function AnalyticsView({
   onAddHeadline,
   onPauseAccount,
   postingCampaigns = [],
+  onDropWorst,
   onFormatAlarm,
   onFormatChanged,
 }: {
   rows: CampaignRow[]
+  /** The worst headlines, songs and looks out of a campaign's batch. */
+  onDropWorst?: (campaignId: string, drop: ToDrop) => Promise<void>
   /** Every campaign that posts somewhere, for the under-1k alarm. */
   postingCampaigns?: readonly Campaign[]
   /** A campaign watched for "Change the format now", or not. */
@@ -204,6 +208,7 @@ export function AnalyticsView({
             onUseBest={(on) => onUseBest(campaign.id, on)}
             onIdeas={onIdeas ? () => onIdeas(campaign, bank.headlines) : undefined}
             onAddHeadline={onAddHeadline ? (headline) => onAddHeadline(campaign.id, headline) : undefined}
+            onDropWorst={onDropWorst ? (drop) => onDropWorst(campaign.id, drop) : undefined}
           />
           <TargetField value={bank.viewTarget ?? null} onSave={(target) => onTarget(campaign.id, target)} />
         </div>
@@ -262,6 +267,13 @@ export async function saveTarget(campaignId: string, target: number | null): Pro
 
 /** One of Claude's new headlines added to the campaign's batch, unless it
  *  is there already. */
+/** The worst out of the batch (dropWorst.ts): new videos never use them. */
+export async function dropWorst(campaignId: string, drop: ToDrop): Promise<void> {
+  const bank = await loadBatchBank(campaignId)
+  if (!bank) throw new Error('This campaign has no batch.')
+  await saveBatchBank(withoutWorst(bank, drop))
+}
+
 export async function addHeadline(campaignId: string, headline: string): Promise<void> {
   const bank = await loadBatchBank(campaignId)
   if (!bank) throw new Error('This campaign has no batch.')

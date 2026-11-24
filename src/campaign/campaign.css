@@ -2400,3 +2400,7 @@ textarea.lines-input { resize: none; line-height: 1.35; overflow: hidden; }
 .format-alarm-line .label { display: block; color: var(--bad); font-weight: 700; }
 .format-alarm-line .hint { display: block; }
 .format-watch .chips { flex-wrap: wrap; }
+
+/* "Stop using what doesn't work" (dropWorst.ts). */
+.drop-list { list-style: none; margin: 6px 0 8px; padding: 0; display: grid; gap: 4px; }
+.drop-list li { overflow-wrap: anywhere; }

@@ -17,6 +17,7 @@ import type { CampaignHooks, HookKind, HookRow } from '../../supabase/functions/
 import { shortNumber } from './analytics'
 import { todayHere, type BatchBank } from './batch'
 import { anyFavour, favourFrom } from './batchFavour'
+import { anyToDrop, answeredDrop, dropSignature, rememberDrop, worstToDrop, type ToDrop } from './dropWorst'
 
 const DAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
 const DAY_NAMES = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday']
@@ -201,6 +202,66 @@ export function TroubleCard({
   )
 }
 
+/** Asks once to drop what really doesn't work (dropWorst.ts). */
+function DropWorst({ hooks, bank, onDrop }: { hooks: CampaignHooks; bank: BatchBank; onDrop: (drop: ToDrop) => Promise<void> }) {
+  const drop = worstToDrop(hooks, bank)
+  const signature = dropSignature(drop)
+  const [answered, setAnswered] = useState(() => answeredDrop(hooks.id))
+  const [busy, setBusy] = useState(false)
+  const [problem, setProblem] = useState<string | null>(null)
+  if (!anyToDrop(drop) || answered === signature) return null
+  const lines: [string, HookRow[]][] = [
+    ['Headlines', drop.headlines],
+    ['Songs', drop.songs],
+    ['Headline looks', drop.looks],
+  ]
+  const yes = () => {
+    setBusy(true)
+    setProblem(null)
+    void onDrop(drop)
+      .catch((error: unknown) => setProblem(error instanceof Error ? error.message : String(error)))
+      .finally(() => setBusy(false))
+  }
+  return (
+    <div className="analytics-suggestion drop-worst">
+      <div className="label">Stop using what doesn&rsquo;t work?</div>
+      <div className="hint">
+        These keep getting under three quarters of this campaign&rsquo;s {shortNumber(hooks.views)} views a video. Take them out of the batch and no new video
+        uses them; videos already made still go.
+      </div>
+      <ul className="drop-list">
+        {lines.flatMap(([title, rows]) =>
+          rows.map((r) => (
+            <li key={`${title}:${r.key}`}>
+              <span className="hint">{title.replace(/s$/, '')}</span> <span className="bar-name">{r.label}</span>{' '}
+              <span className="hint">
+                · {shortNumber(r.views)} a video over {r.videos}
+              </span>
+            </li>
+          )),
+        )}
+      </ul>
+      <div className="actions-row">
+        <button type="button" className="btn small primary" disabled={busy} onClick={yes}>
+          {busy ? 'Taking them out…' : 'Stop using these'}
+        </button>
+        <button
+          type="button"
+          className="btn small"
+          disabled={busy}
+          onClick={() => {
+            rememberDrop(hooks.id, signature)
+            setAnswered(signature)
+          }}
+        >
+          Keep them
+        </button>
+      </div>
+      {problem ? <p className="hint warn-text">{problem}</p> : null}
+    </div>
+  )
+}
+
 /** "Write more like the best": Claude's new headlines in the style of the
  *  campaign's best (postiz/headlineIdeas.ts), each added with a tap. */
 function HeadlineIdeas({ onIdeas, onAdd }: { onIdeas: () => Promise<{ headlines: string[]; error?: string }>; onAdd: (headline: string) => Promise<void> }) {
@@ -261,10 +322,13 @@ export function WhatWorks({
   onUseBest,
   onIdeas,
   onAddHeadline,
+  onDropWorst,
 }: {
   hooks: CampaignHooks | undefined
   bank: BatchBank
   onUseBest: (on: boolean) => void
+  /** The worst headlines, songs and looks out of the batch (dropWorst.ts). */
+  onDropWorst?: (drop: ToDrop) => Promise<void>
   /** Claude's new headlines like the best, and one of them added to the batch. */
   onIdeas?: () => Promise<{ headlines: string[]; error?: string }>
   onAddHeadline?: (headline: string) => Promise<void>
@@ -280,6 +344,7 @@ export function WhatWorks({
       <p className="hint">
         From {hooks.videos} videos in the last 30 days, at least 3 days old. Average {shortNumber(hooks.views)}.
       </p>
+      {onDropWorst ? <DropWorst hooks={hooks} bank={bank} onDrop={onDropWorst} /> : null}
       {bank.useBest ? (
         <div className="analytics-suggestion">
           <div className="label">Using the best hooks</div>
