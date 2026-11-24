@@ -200,6 +200,9 @@ export interface Campaign {
   id: string
   /** As he typed it. */
   name: string
+  /** When it was made (ms), for listing campaigns newest first. Absent on
+   *  campaigns made before 2026-11-24: their first video's date stands in. */
+  createdAt?: number
   /** Null means no logo. */
   logo: Blob | null
   /** The brand's name as he says it, e.g. "Vertus". Brings the logo up, and

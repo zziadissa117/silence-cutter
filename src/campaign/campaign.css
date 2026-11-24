@@ -2411,3 +2411,8 @@ textarea.lines-input { resize: none; line-height: 1.35; overflow: hidden; }
 .vary-steps li::marker { color: #2ec4b6; font-weight: 700; }
 .vary-num { display: inline-grid; place-items: center; width: 22px; height: 22px; margin-right: 6px; border-radius: 50%; background: #2ec4b6; color: #04201d; font-size: 13px; font-weight: 800; vertical-align: middle; }
 .vary .variations { border: 2px solid color-mix(in srgb, #2ec4b6 55%, transparent); }
+
+/* "Still posting for it?" (StillPosting.tsx). */
+.still-posting { display: grid; gap: 4px; margin: 0 0 12px; padding: 12px 14px; border-radius: 14px; border: 1px solid color-mix(in srgb, var(--warn) 55%, transparent); background: color-mix(in srgb, var(--warn) 9%, var(--surface)); }
+.still-posting .label { color: var(--warn); font-weight: 700; }
+.still-posting .actions-row { margin-top: 6px; }

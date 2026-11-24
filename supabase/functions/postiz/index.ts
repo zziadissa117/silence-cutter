@@ -1403,13 +1403,39 @@ async function insights(profile: Profile): Promise<Response> {
     .gte('post_at', new Date(now - HOOKS_LOOK_BACK_DAYS * 86_400_000).toISOString())
     .limit(10000)
   if (error) throw new Problem('The numbers could not be read. Try again.', true, 500)
-  const [bestHours, trouble, alarms] = await Promise.all([bestHoursFor(profile.id), troubleFor(profile.id), alarmsFor(profile.id)])
+  const [bestHours, trouble, alarms, campaignDates] = await Promise.all([bestHoursFor(profile.id), troubleFor(profile.id), alarmsFor(profile.id), campaignDatesFor(profile)])
   return reply({
     campaigns: hookInsights((data ?? []) as Parameters<typeof hookInsights>[0], now),
     bestHours,
     trouble: trouble?.accounts ?? [],
     formatAlarms: alarms.alarms,
+    campaignDates,
   })
+}
+
+/** Each campaign that posts through this profile: when its first video came
+ *  in (for the phone to list campaigns newest first - one made before they
+ *  carried their own date) and when its last one went out or is set to go
+ *  (for "Still posting for it?"). Two one-row reads a campaign. */
+async function campaignDatesFor(profile: Profile): Promise<Record<string, { first: string | null; last: string | null }>> {
+  const ids = Object.keys(profile.settings.campaigns ?? {}).filter((id) => id.length <= 200)
+  const one = async (id: string) => {
+    const [first, last] = await Promise.all([
+      db.from('cutter_posts').select('created_at').eq('profile_id', profile.id).eq('campaign_id', id).order('created_at', { ascending: true }).limit(1).maybeSingle(),
+      db
+        .from('cutter_posts')
+        .select('post_at')
+        .eq('profile_id', profile.id)
+        .eq('campaign_id', id)
+        .in('status', ['posted', 'scheduled', 'approved', 'waiting', 'writing', 'uploading', 'error'])
+        .not('post_at', 'is', null)
+        .order('post_at', { ascending: false })
+        .limit(1)
+        .maybeSingle(),
+    ])
+    return [id, { first: (first.data as { created_at: string } | null)?.created_at ?? null, last: (last.data as { post_at: string } | null)?.post_at ?? null }] as const
+  }
+  return Object.fromEntries(await Promise.all(ids.slice(0, 100).map(one)))
 }
 
 /** Like update, but only while the post is still in `status` - null when it

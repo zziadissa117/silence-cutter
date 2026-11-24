@@ -37,6 +37,8 @@ import { copiesToMake, dislikedBy, keepStopped, nextInLine, oneAtATime, overfull
 import { NOT_ALLOWED, trialAngle, trialFileName, withAccounts } from './trialLoop'
 import { AnalyticsView, addHeadline, answerSuggestion, dropWorst, saveTarget, useCampaignRows } from './AnalyticsView'
 import { FormatAlarmLine } from './FormatAlarm'
+import { newestFirst } from './campaignOrder'
+import { StillPosting } from './StillPosting'
 import { FormatsView, type FormatClips } from './FormatsView'
 import { WarmupView } from './WarmupView'
 import { sendDueWarmups } from './warmupSend'
@@ -381,8 +383,9 @@ function postsLine(toApprove: number, sendingCount: number, unsent: number): str
 }
 
 /** The General campaign last, after his own. */
+/** Newest made first, the General campaign last (campaignOrder.ts). */
 function ordered(campaigns: Campaign[]): Campaign[] {
-  return [...campaigns.filter((c) => !c.general), ...campaigns.filter((c) => c.general)]
+  return newestFirst(campaigns, lastInsights().campaignDates ?? {})
 }
 
 type Editing =
@@ -3314,7 +3317,7 @@ export function CampaignApp() {
     })
   }
 
-  const startNewCampaign = () => setEditing({ kind: 'campaign', campaign: blankCampaign(crypto.randomUUID()), isNew: true })
+  const startNewCampaign = () => setEditing({ kind: 'campaign', campaign: { ...blankCampaign(crypto.randomUUID()), createdAt: Date.now() }, isNew: true })
 
   /** Each reaction clip becomes a video with the product clip picked for
    *  them, listened to first - the product clip - for any talking. */
@@ -3670,6 +3673,11 @@ export function CampaignApp() {
   const [viewsLoading, setViewsLoading] = useState(false)
   // What works in each batch campaign (hookInsights.ts), with the views.
   const [insights, setInsights] = useState(() => lastInsights())
+  // The campaigns put in order again once their first videos' dates come in.
+  const datesKey = JSON.stringify(insights.campaignDates ?? {})
+  useEffect(() => {
+    setCampaigns((cs) => (cs ? ordered(cs) : cs))
+  }, [datesKey])
   /** Bumped to read the batches again: after a change from Analytics, and
    *  whenever Analytics opens (the Batch tab changes them too). */
   const [bankVersion, setBankVersion] = useState(0)
@@ -3995,6 +4003,17 @@ export function CampaignApp() {
       {notices}
 
       {posting ? <FormatAlarmLine alarms={insights.formatAlarms ?? []} onOpen={() => setTab('analytics')} /> : null}
+      {posting && campaigns ? (
+        <StillPosting
+          campaigns={campaigns}
+          dates={insights.campaignDates ?? {}}
+          posts={(id) => placeFor(posting.profile, id).accounts.length > 0}
+          onOpen={(id) => {
+            setOpenCampaignId(id)
+            setTab('campaigns')
+          }}
+        />
+      ) : null}
       {posting && mode === 'day' ? <TodayCard toApprove={toApprove} onPosts={() => setTab('posts')} /> : null}
 
       {/* Posts has its own tab, with how many wait to be approved on it: here

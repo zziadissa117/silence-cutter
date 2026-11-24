@@ -3,6 +3,19 @@
 Newest first. Every change says what it does, how to use it, and how it works
 underneath. Kept up to date with each commit.
 
+## Campaigns newest first; "Still posting for it?"
+- His asks (2026-11-24): "make sure that campaign names are sorted into which one was the most recently made" and,
+  sharing one Postiz with Ilyan, "if none of us have posted in one campaign in a long time, alert it ... 'Hey, are
+  you still posting for this campaign? You could free your Postiz account ... delete the campaign'".
+- Every list of campaigns is newest made first (General last). A new campaign keeps when it was made
+  (`Campaign.createdAt`); one from before stands in with its first video's date, read by the server
+  (`insights.campaignDates`, `campaignDatesFor`), else when it was last changed (`campaignOrder.newestFirst`).
+- Videos tab: a campaign posting to accounts with nothing out or set to go for 14 days (by anyone on the shared
+  Postiz) shows "Still posting for X? Nothing has gone out for it in N days..." - "End or delete it" opens the
+  campaign (Stop or end this campaign), "Still posting" hides it for 30 days (`campaignOrder.staleCampaigns`,
+  `StillPosting.tsx`).
+- Needs deploying: run ./deploy-server.sh
+
 ## UGC Roadmap's look, written down
 - His ask (2026-11-24): remember the styling for everything related to UGC Roadmap - the look of the
   sales-call PowerPoint he made with Claude. `docs/UGC_ROADMAP_STYLE.md` says so (its colours and fonts to be

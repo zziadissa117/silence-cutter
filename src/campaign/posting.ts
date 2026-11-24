@@ -713,6 +713,8 @@ export interface Insights {
   /** Accounts whose last video of a watched campaign got under 1k: change
    *  the format (postiz/lowViews.ts). */
   formatAlarms?: FormatAlarm[]
+  /** Each posting campaign's first video in and last one out (or set to go). */
+  campaignDates?: Record<string, { first: string | null; last: string | null }>
 }
 
 /** New post's note read by Claude: when the videos go (`plan`), and the
@@ -828,7 +830,13 @@ export function lastInsights(): Insights {
  *  (postiz/hookInsights.ts, bestHours.ts). */
 export const listInsights = shared(async (): Promise<Insights> => {
   const got = await call<Insights>('insights', { profile: profileId() })
-  const insights = { campaigns: got.campaigns ?? [], bestHours: got.bestHours ?? null, trouble: got.trouble ?? [], formatAlarms: got.formatAlarms ?? [] }
+  const insights = {
+    campaigns: got.campaigns ?? [],
+    bestHours: got.bestHours ?? null,
+    trouble: got.trouble ?? [],
+    formatAlarms: got.formatAlarms ?? [],
+    campaignDates: got.campaignDates ?? {},
+  }
   try {
     localStorage.setItem(INSIGHTS_KEY, JSON.stringify(insights))
   } catch {
