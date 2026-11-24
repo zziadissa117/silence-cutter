@@ -4,9 +4,9 @@ Newest first. Every change says what it does, how to use it, and how it works
 underneath. Kept up to date with each commit.
 
 ## UGC Roadmap's look, written down
-- His ask (2026-11-24): remember the styling for everything related to UGC Roadmap. `docs/UGC_ROADMAP_STYLE.md`
-  holds it (the logo's cream and black, the logo, the road as divider, black step pills and boxes), and
-  `CLAUDE.md` points every session at it. Nothing in the app changes.
+- His ask (2026-11-24): remember the styling for everything related to UGC Roadmap - the look of the
+  sales-call PowerPoint he made with Claude. `docs/UGC_ROADMAP_STYLE.md` says so (its colours and fonts to be
+  written there once he sends the deck), and `CLAUDE.md` points every session at it. Nothing in the app changes.
 
 ## Formats off the More screen; Variations its own screen
 - His ask (2026-11-24): "You can remove the formats section. We don't really use this. You need to fix the UI for
