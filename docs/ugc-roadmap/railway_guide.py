@@ -203,7 +203,8 @@ c.setFont('Arial-Bold', 40)
 c.setFillColor(WHITE)
 for i, line in enumerate(['Your own Cutter server,', 'making videos', 'day and night']):
     c.drawString(65, H - 225 - i * 52, line)
-para(c, 'Set it up on Railway in about 20 minutes, once.', 65, 378, 460, style(17, MUTED))
+para(c, "You set it up on Railway in 20 minutes, once - and your phone won't overheat making huge batches.*", 65, 372, 470, style(17, MUTED, leading=23))
+para(c, "*Needed if you want to do big media maxing batches. Not needed if you're not media maxing yet.", 65, 488, 560, style(10.5, DIM))
 
 # 2. The eight steps
 p = next_page()
@@ -244,7 +245,7 @@ for i, (name, line) in enumerate(steps):
     spaced(c, f'STEP {i + 1:02d}', x, 250, size=9.5, space=1.8)
     h = para(c, name, x, 268, col - 12, style(14.5, WHITE, True, 18))
     para(c, line, x, 268 + h + 7, col - 12, style(11.5, MUTED, leading=15))
-bar(c, 'You need: a computer, a free GitHub account, and Railway on the <b>Hobby</b> plan - the free plan is too small for it.', top=430)
+bar(c, 'You need: a computer, <b>Postiz set up</b> in the Cutter, a free GitHub account, and a Railway plan - we use <b>Pro</b>.', top=430)
 
 # 3. Before you start
 p = next_page()
@@ -253,12 +254,15 @@ heading(c, 'BEFORE YOU START', 'What you need', 'Do the GitHub and Railway steps
 cards(
     c,
     [
-        ('YOUR CUTTER', 'A Cutter login', 'Working on your phone (the sign-in link you were sent), with your posting accounts set up in the Cutter.', False),
+        ('YOUR CUTTER', 'A Cutter login', 'Working on your phone - the sign-in link you were sent.', False),
         ('GITHUB', 'A GitHub account', f'Free, at {chip("github.com")}.', False),
-        ('RAILWAY', 'Railway, Hobby plan', f'At {chip("railway.com")}, signed in with GitHub. The free plan is too small for it.', False),
-        ('IMPORTANT', 'One server per person', 'A server makes videos only for the login that connected it first. Set up your own, and never share it.', True),
+        ('RAILWAY', 'Railway, Pro plan', 'What we use, about $20 a month. Hobby works to start.', False),
+        ('IMPORTANT', 'Postiz set up', f'{b("Settings")}{arrow}{b("Posting")} in the Cutter shows your accounts. The server posts through it.', True),
     ],
+    top=196,
+    bottom=422,
 )
+bar(c, '<b>One server per person.</b> It makes videos only for the login that connected it first - set up your own, never share it.', top=436)
 
 # 4-11. The steps
 STEPS = [
@@ -334,7 +338,7 @@ STEPS = [
     ),
     (
         'Connect it from your phone',
-        'The server takes your login and posting accounts from the Cutter.',
+        'The server takes your login and your Postiz accounts from the Cutter.',
         [
             ('IN THE CUTTER', f'{b("Settings")}{arrow}{b("Server")}', 'On your phone.', False),
             ('PASTE', f'Tap {b("Connect")}', 'With the address from Step 4.', False),
@@ -389,13 +393,14 @@ fixes = [
     ('/health shows the Cutter\'s sign-in page', 'The branch is main, or Root Directory isn\'t empty. Fix it in Step 3.'),
     (f'The branch isn\'t in the list', 'The fork copied main only. Delete your fork and do Step 1 again, box unticked.'),
     ('"That isn\'t a web address"', 'Paste the whole address from Step 4, starting with https://'),
-    ('Disk full, or memory ran out', 'Move to the Hobby plan; make the volume bigger.'),
+    ('Disk full, or memory ran out', 'Move up to the Pro plan; make the volume bigger.'),
     ('Everything gone after an update', 'No volume at /data. Do Step 5, then connect again.'),
     ('Connected, but nothing is made', 'Keep the Cutter open with signal; in the Batch tab, tap Start.'),
+    ('Videos made, but nothing posts', f'Postiz isn\'t set up: in the Cutter, Settings{arrow}Posting.'),
 ]
-top = 116
+top = 112
 for i, (what, fix) in enumerate(fixes):
-    h = 50
+    h = 45
     card(c, X0, top, X1 - X0, h, high=False)
     c.setFont('Arial-Bold', 17)
     c.setFillColor(BLUE)
@@ -404,7 +409,7 @@ for i, (what, fix) in enumerate(fixes):
     fp = Paragraph(fix, style(12.5, MUTED, leading=16))
     _, fh = fp.wrapOn(c, X1 - X0 - 410, H)
     fp.drawOn(c, X0 + 395, H - top - (h + fh) / 2)
-    top += h + 7
+    top += h + 6
 
 # 14. You're live
 p = next_page()
@@ -414,8 +419,8 @@ c.setFont('Arial-Bold', 64)
 c.setFillColor(WHITE)
 c.drawCentredString(W / 2, H - 205, "You're live")
 para(c, 'Your batches are made on your own server from now on.', 0, 228, W, style(16, MUTED, align=1))
-chips = ['Forked', 'Branch set', 'Port 8080', 'Volume /data', '/health ok', 'Connected']
-cw, gap = 128, 14
+chips = ['Postiz ready', 'Forked', 'Branch set', 'Port 8080', 'Volume /data', '/health ok', 'Connected']
+cw, gap = 118, 8
 x = (W - (len(chips) * cw + (len(chips) - 1) * gap)) / 2
 for i, t in enumerate(chips):
     cx = x + i * (cw + gap)
