@@ -3,6 +3,11 @@
 Newest first. Every change says what it does, how to use it, and how it works
 underneath. Kept up to date with each commit.
 
+## UGC Roadmap's look, written down
+- His ask (2026-11-24): remember the styling for everything related to UGC Roadmap. `docs/UGC_ROADMAP_STYLE.md`
+  holds it (the logo's cream and black, the logo, the road as divider, black step pills and boxes), and
+  `CLAUDE.md` points every session at it. Nothing in the app changes.
+
 ## Formats off the More screen; Variations its own screen
 - His ask (2026-11-24): "You can remove the formats section. We don't really use this. You need to fix the UI for
   the variation section. It looks a little too similar to the badge section, and it's kind of complicated to use."

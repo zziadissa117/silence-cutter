@@ -86,6 +86,8 @@ AGENTS.md). Batches and other features get their own version in their own file.
 
 ## How he works
 
+- Anything for UGC Roadmap (his students' guides, PDFs, decks, pages): its own look, every time -
+  `docs/UGC_ROADMAP_STYLE.md` (cream, black, the logo, the road). He asked to have it remembered.
 - Plain words, no jargon; he reads replies on his phone. Lead with what changed
   for him and the deploy command, then caveats.
 - Ask before anything that changes how a feature behaves for him; fix bugs
