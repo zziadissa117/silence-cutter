@@ -678,15 +678,19 @@ function timeLabel(iso: string | null): string {
   return whenLabel(iso)
 }
 
-/** "Saturday, November 28 · 10:27 AM": a video to approve sits in no day's
- *  block, so it says its day (his ask, 2026-11-24). */
-export function dayAndTime(iso: string | null): string {
+/** When a video to approve goes (his ask, 2026-11-24): today, just its time;
+ *  tomorrow, "Tomorrow"; later, its date - "November 28th". */
+export function dayAndTime(iso: string | null, now = new Date()): string {
   if (!iso) return 'No time'
   const at = new Date(iso)
-  const day = at.toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric' })
   const time = at.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' })
-  const today = localDay(iso) === localDay(new Date().toISOString())
-  return `${today ? 'Today, ' : ''}${day} · ${time}`
+  const day = (d: Date) => new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime()
+  const days = Math.round((day(at) - day(now)) / 86_400_000)
+  if (days <= 0) return time
+  if (days === 1) return `Tomorrow · ${time}`
+  const n = at.getDate()
+  const th = n % 10 === 1 && n !== 11 ? 'st' : n % 10 === 2 && n !== 12 ? 'nd' : n % 10 === 3 && n !== 13 ? 'rd' : 'th'
+  return `${at.toLocaleDateString('en-US', { month: 'long' })} ${n}${th} · ${time}`
 }
 
 /** His batch's captions redone with its campaign's rules as they are now. */

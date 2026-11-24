@@ -4019,7 +4019,30 @@ export function CampaignApp() {
   const making = jobs.find((j) => j.status === 'working')
   const behindLine = !making ? null : making.batch ? 'after the batch video being made' : making.forFormat ? 'after the format video being made' : `after ${making.name}`
 
-  const videos = (
+  // Join clips / Timeline editor: only adding the videos in order - nothing
+  // else of the Videos tab around it (his ask, 2026-11-24).
+  const picking = mode === 'join' || mode === 'together'
+  const joinPicker = (
+        <JoinPicker
+          key={mode}
+          kind={mode === 'together' ? 'join' : 'editor'}
+          onJoin={(files) => {
+            if (mode === 'together') addJoinClips(files)
+            else addOwnEdit(files, 'keep')
+            setMode('day')
+          }}
+          onBack={() => setMode('day')}
+          onNotice={setNotice}
+        />
+  )
+
+  const videos = picking ? (
+    <section className="screen home">
+      <h1 className="visually-hidden">{mode === 'together' ? 'Join clips' : 'Timeline editor'}</h1>
+      {notices}
+      {joinPicker}
+    </section>
+  ) : (
     <section className="screen home">
       <h1 className="visually-hidden">Videos</h1>
       <HomeHeader
@@ -4078,18 +4101,8 @@ export function CampaignApp() {
         </div>
       ) : null}
 
-      {mode === 'join' || mode === 'together' ? (
-        <JoinPicker
-          key={mode}
-          kind={mode === 'together' ? 'join' : 'editor'}
-          onJoin={(files) => {
-            if (mode === 'together') addJoinClips(files)
-            else addOwnEdit(files, 'keep')
-            setMode('day')
-          }}
-          onBack={() => setMode('day')}
-          onNotice={setNotice}
-        />
+      {picking ? (
+        joinPicker
       ) : mode === 'clips' && campaign && angle ? (
         <ClipsMaker
           campaigns={campaigns ?? []}

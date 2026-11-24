@@ -3,6 +3,12 @@
 Newest first. Every change says what it does, how to use it, and how it works
 underneath. Kept up to date with each commit.
 
+## To approve: "Tomorrow" or the date; Join clips and Timeline editor on their own
+- His ask (2026-11-24): a video to approve today shows only its time; tomorrow's "Tomorrow · 10:27 AM"; later ones
+  their date, "November 28th · 10:27 AM" (`PostsView.dayAndTime`).
+- Join clips and Timeline editor open on a page of their own: only "Add the videos, in order" and Join (or Open
+  in the timeline editor) - no videos to approve, tracker or campaigns around them (`CampaignApp` `picking`).
+
 ## Videos tab: Join clips and a raw Timeline editor
 - His ask (2026-11-24): "You can remove reaction videos ... I just want 'Join clips together' or 'timeline editor'"
   - Join clips: "just add the videos in order ... I click join ... those clips are joined, and then they're on the
