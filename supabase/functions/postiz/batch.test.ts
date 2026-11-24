@@ -49,6 +49,11 @@ describe('who says a video can go', () => {
     expect(approvalFor('direct', { ...plain, batch: true })).toBe('me')
     expect(approvalFor('brand', { ...plain, batch: true })).toBe('me')
   })
+  it('lets a batch of 10 a day or more go without asking (his ask, 2026-11-24)', () => {
+    expect(approvalFor('me', { ...plain, batch: true, manyADay: true })).toBe('direct')
+    expect(batchInfo({ id: 'b', date: '2026-11-24', time: '10:00', size: 3, perDay: 12 })?.perDay).toBe(12)
+    expect(batchInfo({ id: 'b', date: '2026-11-24', time: '10:00', size: 3, perDay: 'x' })?.perDay).toBeUndefined()
+  })
   it('lets a Formats video he scheduled himself go at its time', () => {
     expect(approvalFor('me', { ...plain, batch: true, scheduled: true })).toBe('direct')
     expect(approvalFor('brand', { ...plain, batch: true, scheduled: true })).toBe('direct')

@@ -33,7 +33,7 @@ import { copyKind, forgetSend, localVideo, retryStuck, sending, tidySends, watch
 import {
   PostingError,
   accountLabel,
-  linkLabel,
+  postLinks,
   isBeingRemade,
   lastPosts,
   listPosts,
@@ -266,7 +266,7 @@ function WaitingPost({
   return (
     <li className="post">
       <div className="post-head">
-        <span className="post-time">{timeLabel(post.postAt)}</span>
+        <span className="post-time">{post.status === 'waiting' ? dayAndTime(post.postAt) : timeLabel(post.postAt)}</span>
         <span className="post-title">{post.campaignName}{post.repost ? ' · repost' : ''}</span>
         <span className="state-chip now">{post.ready ? 'Tap Post' : brand ? 'Brand' : 'To approve'}</span>
       </div>
@@ -443,7 +443,7 @@ function OtherPost({
       {viaBuffer ? <span>{viaBuffer.slice(3)}</span> : null}
     </>
   )
-  const links = Object.entries(post.links)
+  const links = postLinks(post)
   // Its views, once the server has read them (postiz/views.ts).
   const views = post.status === 'posted' && post.views ? Object.values(post.views).reduce((n, v) => n + (Number(v) || 0), 0) : null
   return (
@@ -488,9 +488,9 @@ function OtherPost({
       ) : null}
       {links.length > 0 ? (
         <div className="post-links">
-          {links.map(([name, href]) => (
-            <a key={name} className="linkbtn" href={href} target="_blank" rel="noreferrer">
-              {linkLabel(name, post.accounts)}
+          {links.map((link) => (
+            <a key={link.key} className="linkbtn" href={link.href} target="_blank" rel="noreferrer">
+              {link.label}
             </a>
           ))}
         </div>
@@ -676,6 +676,17 @@ function timeLabel(iso: string | null): string {
   // Still to come: under its day's heading. Gone out on another day: the day too.
   if (at.getTime() >= Date.now() || localDay(iso) === localDay(new Date().toISOString())) return time
   return whenLabel(iso)
+}
+
+/** "Saturday, November 28 · 10:27 AM": a video to approve sits in no day's
+ *  block, so it says its day (his ask, 2026-11-24). */
+export function dayAndTime(iso: string | null): string {
+  if (!iso) return 'No time'
+  const at = new Date(iso)
+  const day = at.toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric' })
+  const time = at.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' })
+  const today = localDay(iso) === localDay(new Date().toISOString())
+  return `${today ? 'Today, ' : ''}${day} · ${time}`
 }
 
 /** His batch's captions redone with its campaign's rules as they are now. */

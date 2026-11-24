@@ -371,7 +371,9 @@ export function videoOf(
       : { headline: pick.headline }),
     ...(style ? { headlineStyle: style } : {}),
     ...(talksIn(bank, byId(bank.reactions, pick.reaction)!) ? { voice: true } : {}),
-    batch: { id, date: slot.date, time: slot.time, size, ...(ending ? { last: true as const } : {}), ...(format ? { format } : {}) },
+    // How many a day the batch makes then: from 10 a day it goes out without
+    // his approval (postiz batch.approvalFor).
+    batch: { id, date: slot.date, time: slot.time, size, perDay: perDayOn(bank, slot.date), ...(ending ? { last: true as const } : {}), ...(format ? { format } : {}) },
   }
 }
 

@@ -1172,6 +1172,34 @@ export function linkLabel(key: string, accounts: readonly { name: string; platfo
   return account ? accountLabel(account) : key
 }
 
+/** Where an account's own page is, for an account the post has no link for
+ *  (his ask, 2026-11-24: "I would still like to click on the YouTube link ...
+ *  even if it didn't go out"). Null when it has no username. */
+export function accountPage(account: { platform: string; profile?: string }): string | null {
+  const handle = handleOf(account)
+  if (!handle) return null
+  const at = encodeURIComponent(handle)
+  if (account.platform === 'youtube') return `https://www.youtube.com/@${at}/shorts`
+  if (account.platform.startsWith('tiktok')) return `https://www.tiktok.com/@${at}`
+  if (account.platform.startsWith('instagram')) return `https://www.instagram.com/${at}/`
+  if (account.platform === 'facebook') return `https://www.facebook.com/${at}`
+  return null
+}
+
+/** A post's links: each account's post where there is one, and the account's
+ *  own page for those that have none, once it is meant to be out. */
+export function postLinks(post: { links: Record<string, string>; accounts: readonly { name: string; platform: string; profile?: string }[]; status: string }): { key: string; href: string; label: string; page: boolean }[] {
+  const out = Object.entries(post.links).map(([key, href]) => ({ key, href, label: linkLabel(key, post.accounts), page: false }))
+  if (!['posted', 'error', 'failed'].includes(post.status)) return out
+  for (const account of post.accounts) {
+    const label = accountLabel(account)
+    if (out.some((l) => l.label === label)) continue
+    const href = accountPage(account)
+    if (href) out.push({ key: `page:${account.name}:${account.platform}`, href, label: `${label} (its page)`, page: true })
+  }
+  return out
+}
+
 /** "Today 6:04 PM", "Tomorrow 9:03 AM", "Mon 9:03 AM" - in the phone's time. */
 export function whenLabel(iso: string | null, now = new Date()): string {
   if (!iso) return 'As soon as it goes'

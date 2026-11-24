@@ -3,6 +3,18 @@
 Newest first. Every change says what it does, how to use it, and how it works
 underneath. Kept up to date with each commit.
 
+## The day on videos to approve; every account linked; batches of 10+ a day go without approval
+- To approve: each video says its day with its time - "Saturday, November 28 · 10:27 AM" ("Today, ..." today)
+  (`PostsView.dayAndTime`). His ask, 2026-11-24.
+- Links on a post that went out (or failed): an account Postiz gave no link for - YouTube most often - gets a link
+  to its own page (YouTube `@handle/shorts`, TikTok, Instagram, Facebook), "(its page)" (`posting.postLinks`,
+  `accountPage`). His ask: "I would still like to click on the YouTube link ... even if it didn't go out".
+- Batches making 10 or more videos a day go out without his approval; under 10 a day still wait in To approve (his
+  ask: "I only want to approve batches that are less than 10 videos per day"). The phone sends each batch video's
+  day count (`JobBatch.perDay`, `batchRun.videoOf`), the server lets it go (`batch.NO_APPROVAL_FROM`,
+  `approvalFor` `manyADay`). Trial reels keep their own rule. Videos already waiting stay waiting.
+- Needs deploying: run ./deploy-server.sh
+
 ## Quiet stretches no longer held in by words that were never said; talking videos with a loop in them stay talking
 - His words (2026-11-24): "please fix this, sometimes i am left with cutting a silent part myself, which defeats the
   whole point of the cutter" and "fix the heardLoops". Both change the frozen cut, at his ask.

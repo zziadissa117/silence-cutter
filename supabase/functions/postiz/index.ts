@@ -103,7 +103,7 @@ import { carryOver, cleanCaptions, cleanRepost, repostDueAt, textFor, variationN
 import { FAKE_CLAUDE, FakeError, fakeCaption, fakePostiz, isFakePostiz } from './fake.ts'
 import { withCover } from './cover.ts'
 import { TRIAL_HEADLINES, TRIAL_HEADLINES_SCHEMA, TRIAL_HEADLINES_SYSTEM, cleanTrialHeadlines, trialHeadlinesMessage } from './trialHeadlines.ts'
-import { approvalFor, batchChoices, batchInfo, batchReady, batchTrusted, freeBatchTimes, isWarmupKey, trustKey, warmupOf, warmupReady, type BatchInfo } from './batch.ts'
+import { NO_APPROVAL_FROM, approvalFor, batchChoices, batchInfo, batchReady, batchTrusted, freeBatchTimes, isWarmupKey, trustKey, warmupOf, warmupReady, type BatchInfo } from './batch.ts'
 import { handFields } from './hand.ts'
 import { laterWhileWaiting, lastTimeToday, nextSlot, normalTimes, pickTime, sessionOf, spreadDay, spreadEnd, spreadUntil, timesFor, type OtherPost, type Spread, addDays, localDate, localTime, zoned } from './slots.ts'
 import { cleanWindow, type PostingWindow } from './window.ts'
@@ -2303,7 +2303,13 @@ async function start(profile: Profile, body: Record<string, unknown>): Promise<R
         rules: {
           ...rules,
           ...(warm?.only && profile.accounts.some((a) => a.id === warm.only) ? { only: [warm.only] } : {}),
-          approval: warm ? 'me' : approvalFor(rules.approval, { hand: Boolean(hand), approveNow, batch: Boolean(batch), scheduled: meta.scheduled === true }),
+          approval: warm ? 'me' : approvalFor(rules.approval, {
+                hand: Boolean(hand),
+                approveNow,
+                batch: Boolean(batch),
+                scheduled: meta.scheduled === true,
+                manyADay: Boolean(batch && !batch.trial && (batch.perDay ?? 0) >= NO_APPROVAL_FROM),
+              }),
         },
         ...(warm ? { post_at: warm.at } : {}),
         status: 'uploading',

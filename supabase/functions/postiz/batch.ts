@@ -17,6 +17,8 @@ export interface BatchInfo {
   time: string
   /** How many videos that making made. */
   size: number
+  /** How many a day its batch makes on its day (the phone's perDayOn). */
+  perDay?: number
   /** The last different videos his clips could make: the batch stops after
    *  them until he films new ones. */
   last?: boolean
@@ -53,11 +55,13 @@ export function batchInfo(value: unknown): BatchInfo | null {
   if (!id || !date || !time || !Number.isInteger(size) || size < 1 || size > 500) return null
   const look = typeof v.look === 'string' && LOOKS.has(v.look) ? (v.look as BatchInfo['look']) : undefined
   const song = typeof v.song === 'string' ? v.song.trim().slice(0, 120) : ''
+  const perDay = Number(v.perDay)
   return {
     id,
     date,
     time,
     size,
+    ...(Number.isInteger(perDay) && perDay >= 1 && perDay <= 500 ? { perDay } : {}),
     ...(v.last === true ? { last: true } : {}),
     ...(look ? { look } : {}),
     ...(song ? { song } : {}),
@@ -121,16 +125,22 @@ export function batchReady(campaign: string, dates: string[], last: boolean): { 
   return { title: `${campaign}: ${videos} ready to approve`, body: `${perDay} a day, ${batchSpan(dates)}. Approve them in Posts.` }
 }
 
+/** A batch making this many a day or more goes out without his approval (his
+ *  ask, 2026-11-24: "I only want to approve batches that are less than 10
+ *  videos per day"). Trial reels keep their own rule (BATCH_TRUST per reel). */
+export const NO_APPROVAL_FROM = 10
+
 /** Who says a video arriving can go. By hand, or made again with "approve":
- *  nobody - it goes. A batch video: always him, on the Posts screen, whatever
- *  the campaign says - unless it is a Formats video he scheduled himself
+ *  nobody - it goes. A batch video: him, on the Posts screen, whatever the
+ *  campaign says - unless its batch makes NO_APPROVAL_FROM a day or more
+ *  (`manyADay`), or it is a Formats video he scheduled himself
  *  (`scheduled`), once the brand had seen it: it goes at its day and time.
  *  Anything else: the campaign's own rule. */
 export function approvalFor(
   campaign: 'me' | 'direct' | 'brand',
-  { hand, approveNow, batch, scheduled }: { hand: boolean; approveNow: boolean; batch: boolean; scheduled: boolean },
+  { hand, approveNow, batch, scheduled, manyADay = false }: { hand: boolean; approveNow: boolean; batch: boolean; scheduled: boolean; manyADay?: boolean },
 ): 'me' | 'direct' | 'brand' {
-  if (hand || approveNow || (batch && scheduled)) return 'direct'
+  if (hand || approveNow || (batch && (scheduled || manyADay))) return 'direct'
   if (batch) return 'me'
   return campaign
 }

@@ -255,6 +255,9 @@ export interface JobBatch {
   date: string
   time: string
   size: number
+  /** How many a day its batch makes on its day: from 10 a day (NO_APPROVAL_FROM
+   *  on the server) it goes out without his approval. */
+  perDay?: number
   /** The last different videos the bank could make (batchRun.planVideos):
    *  the server's notification tells him to film new clips. */
   last?: true
