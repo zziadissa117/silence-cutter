@@ -26,4 +26,10 @@ describe('words the speech model made up', () => {
   it('in English too, case and punctuation aside', () => {
     expect(withoutLoops(words('Thank you. thank you. Thank you! thank you.')).words).toEqual([])
   })
+  it('a long loop inside a real talking video (his report, 2026-11-22: 234 of 406 words looped): the talking is kept', () => {
+    const talk = Array.from({ length: 40 }, (_, k) => `word${k}`).join(' ')
+    const loop = Array.from({ length: 60 }, () => 'je vais vous dire que').join(' ')
+    const got = withoutLoops(words(`${talk} ${loop}`))
+    expect(got.words.length).toBe(40 + 5)
+  })
 })

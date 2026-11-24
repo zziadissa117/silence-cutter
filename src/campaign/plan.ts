@@ -394,7 +394,18 @@ export async function planCampaignCut(
   let checks: CutCheck[] | undefined
   let noiseNote: string | undefined
   if (options.cutNoise && forRecheck && words.length > 0) {
-    const found = noiseCandidates(keep, [...words, ...(spoken ?? [])], mergeRanges([...fillerWords, ...stutters]), levels, duration)
+    // A word "heard" where there is no more sound than the room's own -
+    // the speech model making one up over a pause ("you"), or a rough time
+    // landing in one - holds nothing in (his ask, 2026-11-24: "sometimes I
+    // am left with cutting a silent part myself").
+    const real = soundedWords(levels)
+    const all = [...words, ...(spoken ?? [])]
+    const sounded = all.filter(real)
+    if (sounded.length < all.length) {
+      const silent = all.filter((w) => !real(w)).map((w) => `"${w.text.trim()}" ${w.start.toFixed(1)}s`)
+      report({ page: 'campaign', kind: 'check', phase: 'silent words', message: `${silent.length} heard word(s) with no sound under them hold nothing in: ${silent.slice(0, 12).join(', ')}` })
+    }
+    const found = noiseCandidates(keep, sounded, mergeRanges([...fillerWords, ...stutters]), levels, duration)
     keep = found.keep
     const { lone, worth } = found
     const heardAgain = new Set<number>()
@@ -465,7 +476,7 @@ export async function planCampaignCut(
   if (exactWords.length === 0 && language === 'fr' && spoken) {
     exactWords = spoken.filter((w) => !isFillerWord(w.text) && w.end > w.start).map((w) => ({ start: w.start, end: w.end + HEARD_LATE_SEC }))
   }
-  if (exactWords.length > 0) keep = keepWordEnds(keep, exactWords, mergeRanges([...fillerWords, ...stutters, ...ums]), duration)
+  if (exactWords.length > 0) keep = keepWordEnds(keep, exactWords.filter(soundedWords(levels)), mergeRanges([...fillerWords, ...stutters, ...ums]), duration)
   return {
     keep,
     duration,
@@ -480,6 +491,25 @@ export async function planCampaignCut(
     ...(checks ? { checks } : {}),
     ...(noiseNote ? { noiseNote } : {}),
     ...(language === 'fr' ? { language } : {}),
+  }
+}
+
+/** How far over the room's own sound (the quietest tenth of the video) a
+ *  word's start must rise to be a word he said: his quietest words are well
+ *  above it; a pause, however long, is not. */
+export const SOUNDED_DB = 8
+/** How much of a word's start is listened to for that. */
+const SOUNDED_HEAD_SEC = 0.5
+
+/** Whether a heard word has any sound in it: its start rises SOUNDED_DB over
+ *  the room. One that doesn't is the speech model writing a word into a
+ *  pause, and must not hold the pause in. */
+export function soundedWords(levels: readonly Level[]): (word: { start: number; end: number }) => boolean {
+  const room = percentile(levels.map((l) => l.db).filter(Number.isFinite), 0.1)
+  if (!Number.isFinite(room)) return () => true
+  return (word) => {
+    const peak = peakDbIn(levels, { start: word.start, end: Math.max(word.start + 0.05, Math.min(word.end, word.start + SOUNDED_HEAD_SEC)) })
+    return peak === undefined || peak >= room + SOUNDED_DB
   }
 }
 

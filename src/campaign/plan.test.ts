@@ -15,7 +15,7 @@ import { describe, expect, it } from 'vitest'
 import type { WordChunk } from '../media/fillerWords'
 import { PRESETS, findSilentRanges, type Level, type Range } from '../media/silenceMath'
 import { cutNoise } from './noiseCuts'
-import { WORD_TAIL_SEC, fillersLine, fromHeard, keepWordEnds, noiseCandidates, plainKeep, soundsLikeFiller } from './plan'
+import { WORD_TAIL_SEC, fillersLine, fromHeard, keepWordEnds, noiseCandidates, plainKeep, soundedWords, soundsLikeFiller } from './plan'
 
 const STEP = 0.02
 
@@ -310,5 +310,17 @@ describe('the end of every word is kept (his report, 2026-11-11: "it just cut of
 
   it('never past the end of the video', () => {
     expect(keepWordEnds([{ start: 0, end: 2.95 }], [{ start: 2.5, end: 2.98 }], [], 3)[0].end).toBe(3)
+  })
+})
+
+describe('soundedWords', () => {
+  // 10 s: room at -60 dB, his voice at -25 dB from 2 to 4 s.
+  const levels = Array.from({ length: 1000 }, (_, i) => ({ time: i / 100, db: i >= 200 && i < 400 ? -25 : -60 }))
+  const real = soundedWords(levels)
+  it('a word over his voice is a word', () => expect(real({ start: 2.5, end: 2.8 })).toBe(true))
+  it('a word "heard" in a silent pause holds nothing in (his ask, 2026-11-24)', () => expect(real({ start: 6, end: 6.4 })).toBe(false))
+  it('a quiet word well over the room still counts', () => {
+    const soft = levels.map((l) => (l.time >= 7 && l.time < 7.3 ? { ...l, db: -50 } : l))
+    expect(soundedWords(soft)({ start: 7, end: 7.3 })).toBe(true)
   })
 })

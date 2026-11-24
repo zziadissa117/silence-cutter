@@ -3,6 +3,21 @@
 Newest first. Every change says what it does, how to use it, and how it works
 underneath. Kept up to date with each commit.
 
+## Quiet stretches no longer held in by words that were never said; talking videos with a loop in them stay talking
+- His words (2026-11-24): "please fix this, sometimes i am left with cutting a silent part myself, which defeats the
+  whole point of the cutter" and "fix the heardLoops". Both change the frozen cut, at his ask.
+- Silent parts: the Cutter never cuts a heard word, and puts back a stretch the pauses took a word out of. The speech
+  model sometimes writes a word into a pause (a made-up "you", or a rough time landing in the quiet), and that put the
+  quiet back. Now a heard word whose start rises less than 8 dB over the room's own sound (the quietest tenth of the
+  video) holds nothing in - not for the word protection, not for keeping word ends (`plan.soundedWords`, used in
+  `planCampaignCut` before `noiseCandidates` and `keepWordEnds`). What can cut differently: a quiet stretch that a
+  word with no sound under it used to bring back is now cut. A real word, however soft, rises well over the room
+  and is kept as before. Report `check` / `silent words` lists each one left out.
+- heardLoops: a video where one phrase looped for most of what was heard was taken as "no talking" and kept whole
+  with no captions - even with 172 real words around the loop (his report: a talking video detected as no speech and
+  approved unseen). Now nothing is kept only when fewer than 15 real words are left once the repeats go
+  (`heardLoops.FEW_LEFT`); otherwise only the repeats go and it is cut and captioned as a talking video.
+
 ## "Change the format now": told the moment a video gets under 1k
 - His ask (2026-11-23): "whenever we post something for campaigns that we select, if we get under 1k views, notify
   us, saying, 'Hey, your account got under 1k views. Change the format now.' Try to really force the fact that we

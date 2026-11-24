@@ -5,9 +5,11 @@
 // where he barely spoke). Whisper does this in English too.
 //
 // A phrase said three times in a row (a single word, four) is a loop: its
-// repeats are not words he said. When the loops are most of what was heard,
-// nothing in it was said - no words at all, so the clip goes in as filmed,
-// with no captions.
+// repeats are not words he said. When the loops are most of what was heard
+// and hardly anything else is left, nothing in it was said - no words at all,
+// so the clip goes in as filmed, with no captions. With real talking around
+// the loop (his report, 2026-11-22: a talking video, 234 of 406 words a loop,
+// came out "no speech" and was approved unseen), only the repeats go.
 
 /** A word as said, for comparing: lower case, letters and digits only. */
 const said = (text: string) => text.toLowerCase().replace(/[^\p{L}\p{N}]+/gu, '')
@@ -17,6 +19,10 @@ const LONGEST = 10
 
 /** Of all the words heard, the share made of loops past which none is kept. */
 const MOSTLY = 0.5
+
+/** Real words left once the repeats are gone, from which it is a talking
+ *  video whatever the loops were. */
+export const FEW_LEFT = 15
 
 export function withoutLoops<T extends { text: string }>(words: readonly T[]): { words: T[]; looped: number } {
   const tokens = words.map((w) => said(w.text))
@@ -45,6 +51,8 @@ export function withoutLoops<T extends { text: string }>(words: readonly T[]): {
     looped += best.n * best.times
     i += best.n * best.times
   }
-  if (looped > 0 && looped >= MOSTLY * words.filter((_, k) => tokens[k]).length) return { words: [], looped }
-  return { words: words.filter((_, k) => !drop[k]), looped }
+  const kept = words.filter((_, k) => !drop[k])
+  const left = kept.filter((w) => said(w.text)).length
+  if (looped > 0 && looped >= MOSTLY * words.filter((_, k) => tokens[k]).length && left < FEW_LEFT) return { words: [], looped }
+  return { words: kept, looped }
 }
