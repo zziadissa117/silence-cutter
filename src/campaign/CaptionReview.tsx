@@ -24,11 +24,11 @@ import {
   CAPTION_SIZES,
   CAPTION_STYLES,
   captionAt,
+  captionY,
   drawStyledCaption,
   captionRanges,
   phrasesOf,
   retimePhrase,
-  type CaptionPosition,
   type CaptionSize,
   type CaptionSpot,
   type CaptionStyle,
@@ -46,6 +46,7 @@ import { formatTime } from './jobs'
 import { findRepeats, type Repeat } from './repeats'
 import { POP_POSITIONS, POP_SIZE, drawPop, popLayout, type PopPosition } from './popVideo'
 import { CaptionSheet, useSheetPref } from './CaptionSheet'
+import { DeadZone } from './DeadZone'
 
 /** The bank videos said in a take, for the caption check: each with when
  *  it comes up (on the raw take) and its still, and how they all look. */
@@ -293,7 +294,7 @@ export function CaptionReview({
   /** Where the caption sits on the frame (one of the places, or a height a
    *  batch format was dragged to), and a way to move it. */
   position?: CaptionSpot
-  onPosition?: (position: CaptionPosition) => void
+  onPosition?: (position: CaptionSpot) => void
   /** How big the caption is on the frame, and a way to change it. */
   size?: CaptionSize
   onSize?: (size: CaptionSize) => void
@@ -374,8 +375,15 @@ export function CaptionReview({
   wordsRef.current = words
   const ownerRef = useRef(owner)
   ownerRef.current = owner
-  const positionRef = useRef(position)
-  positionRef.current = position
+  // Captions dragged up or down on the video itself (his ask, 2026-11-25:
+  // "captions to be under my face, not covering my face ever ... set the
+  // height how we want"): where they are while his finger is on them.
+  const [dragY, setDragY] = useState<number | null>(null)
+  const drag = useRef<{ startY: number; moved: boolean } | null>(null)
+  const dragged = useRef(false)
+  const shownPosition = dragY ?? position
+  const positionRef = useRef(shownPosition)
+  positionRef.current = shownPosition
   const sizeRef = useRef(size)
   sizeRef.current = size
   const styleRef = useRef(captionStyle)
@@ -441,7 +449,7 @@ export function CaptionReview({
     const v = video.current
     if (first >= 0 && v && v.readyState >= 1) v.currentTime = words[first].start + 0.02
     paint(first, 1)
-  }, [current, playing, words, paint, position, size, captionStyle, pops?.size, pops?.position, pops?.skipped, stillsReady]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [current, playing, words, paint, shownPosition, size, captionStyle, pops?.size, pops?.position, pops?.skipped, stillsReady]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Painted again once TikTok Sans is here; later paints already have it.
   useEffect(() => {
@@ -717,7 +725,44 @@ export function CaptionReview({
           ) : null}
         </div>
         {top}
-        <div className="review-frame" style={{ aspectRatio: String(aspect) }} onClick={() => playFrom(0, true)}>
+        <div
+          className={`review-frame${onPosition ? ' can-move-captions' : ''}${dragY !== null ? ' dragging-captions' : ''}`}
+          style={{ aspectRatio: String(aspect) }}
+          onClick={() => {
+            // The end of a drag is not a tap.
+            if (dragged.current) {
+              dragged.current = false
+              return
+            }
+            playFrom(0, true)
+          }}
+          onPointerDown={(e) => {
+            if (!onPosition) return
+            drag.current = { startY: e.clientY, moved: false }
+          }}
+          onPointerMove={(e) => {
+            const d = drag.current
+            if (!d || !onPosition) return
+            if (!d.moved && Math.abs(e.clientY - d.startY) < 10) return
+            if (!d.moved) e.currentTarget.setPointerCapture(e.pointerId)
+            d.moved = true
+            const r = e.currentTarget.getBoundingClientRect()
+            setDragY(captionY((e.clientY - r.top) / r.height))
+          }}
+          onPointerUp={() => {
+            const d = drag.current
+            drag.current = null
+            if (d?.moved && dragY !== null && onPosition) {
+              dragged.current = true
+              onPosition(Math.round(dragY * 1000) / 1000)
+            }
+            setDragY(null)
+          }}
+          onPointerCancel={() => {
+            drag.current = null
+            setDragY(null)
+          }}
+        >
           {url ? (
             <video
               ref={video}
@@ -738,6 +783,8 @@ export function CaptionReview({
             </div>
           )}
           <canvas ref={canvas} aria-hidden />
+          {/* A guide while the captions move, never a limit (his ask, 2026-11-25). */}
+          {dragY !== null ? <DeadZone label={false} /> : null}
           {url ? (
             <span className="review-playing" aria-hidden>
               {playing ? <PauseIcon /> : <PlayIcon />}
@@ -876,6 +923,8 @@ export function CaptionReview({
           </label>
         ) : null}
         {onPosition ? (
+          <>
+          <p className="hint caption-drag-hint">Drag the captions up or down on the video to put them anywhere - under your face. The striped parts are where TikTok and Reels put their own buttons: a guide, not a limit.</p>
           <div className="seg full caption-position" role="radiogroup" aria-label="Where the captions sit">
             {CAPTION_POSITIONS.map((p) => (
               <button
@@ -890,6 +939,7 @@ export function CaptionReview({
               </button>
             ))}
           </div>
+          </>
         ) : null}
         {onCaptionStyle ? (
           <div className="seg full caption-style" role="radiogroup" aria-label="Caption style">

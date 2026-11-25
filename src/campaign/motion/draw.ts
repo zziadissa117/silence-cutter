@@ -14,7 +14,7 @@ import { formatOf, popScene, type Card, type Part, type Scene, type Storyboard, 
 import { HEADLINE_FAMILY } from '../headlineFont'
 import { drawGlassLook, type Kinetic } from './glass'
 import { drawIconBadge } from './icons'
-import type { CaptionPosition } from '../captions'
+import type { CaptionSpot } from '../captions'
 
 type Ctx = CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D
 
@@ -1010,7 +1010,7 @@ export function drawMotion(ctx: Ctx, width: number, height: number, board: Story
 /** Where the captions sit at `t`: where he put them - except a caption set
  *  up on the board's part of the frame (Top, Middle) while the board is up,
  *  which drops under it with his face, so it never covers the graphics. */
-export function captionPositionAt(board: Storyboard, time: Timing, t: number, position: CaptionPosition): CaptionPosition {
+export function captionPositionAt(board: Storyboard, time: Timing, t: number, position: CaptionSpot): CaptionSpot {
   // While the board is up his face sits low, where the usual caption is:
   // the caption goes to the seam between the board and his face, never over
   // his face or the graphics (2026-11-12) - unless he put it at the bottom.

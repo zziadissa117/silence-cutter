@@ -15,7 +15,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, type ComponentProps 
 
 import type { Range } from '../media/silenceMath'
 import { CaptionReview, paintPictures, paintPopBox, usePictureStills, usePopStills, type EmbeddedVideo } from './CaptionReview'
-import { CAPTION_LEAD, captionAt, captionRanges, drawStyledCaption, type CaptionWord, PHRASE_HOLD_SEC } from './captions'
+import { CAPTION_LEAD, captionAt, captionRanges, captionY, drawStyledCaption, type CaptionWord, PHRASE_HOLD_SEC } from './captions'
 import { CutsEditor, type CutsControl } from './CutsEditor'
 import { useSheetPref } from './CaptionSheet'
 import type { ManualPicture } from './manualPictures'
@@ -108,6 +108,8 @@ export function EditScreen({
   const pictureImages = useRef(pictures.images)
   pictureImages.current = pictures.images
 
+  /** The captions' height while their grip is dragged (CutsEditor captionGrip). */
+  const dragY = useRef<number | null>(null)
   const paintOver = useCallback((ctx: CanvasRenderingContext2D, w: number, h: number, t: number, playing: boolean) => {
     const r = look.current
     paintPictures(ctx, w, h, t, r.pictures, pictureImages.current)
@@ -117,7 +119,7 @@ export function EditScreen({
     const style = r.captionStyle ?? 'word'
     const at = captionAt(starts, all, t, style === 'word' ? undefined : PHRASE_HOLD_SEC)
     if (at < 0) return
-    drawStyledCaption(ctx, w, h, all, captionRanges(all, style), at, playing ? t + CAPTION_LEAD - starts[at] : 1, r.bare ?? false, r.position ?? 'usual', r.size ?? 'normal', style)
+    drawStyledCaption(ctx, w, h, all, captionRanges(all, style), at, playing ? t + CAPTION_LEAD - starts[at] : 1, r.bare ?? false, dragY.current ?? r.position ?? 'usual', r.size ?? 'normal', style)
   }, [])
 
   // A new look, or the stills arriving: drawn again.
@@ -183,6 +185,21 @@ export function EditScreen({
       onDone={() => finish(false, words.current)}
       onCancel={() => finish(false, words.current)}
       paintOver={paintOver}
+      captionGrip={
+        review.onPosition
+          ? {
+              y: captionY(review.position ?? 'usual'),
+              onMove: (y) => {
+                dragY.current = y
+                control.current?.repaint()
+              },
+              onDone: (y) => {
+                dragY.current = null
+                review.onPosition?.(y)
+              },
+            }
+          : undefined
+      }
       onState={onState}
       control={control}
       headActions={null}

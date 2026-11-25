@@ -3,6 +3,27 @@
 Newest first. Every change says what it does, how to use it, and how it works
 underneath. Kept up to date with each commit.
 
+## The same video never sent twice; captions at any height, the dead zone only a guide
+- His report (2026-11-25): "sometimes my videos post twice on the same account". Read in cutter_posts: the same
+  finished video (to the byte) went to the same accounts twice under two send keys - Webild (Nov 13 and 15),
+  RestORTrain (two minutes apart, Nov 10), Pumpfun (Nov 21: once by hand, once as the Cutter's own). A video saved
+  and picked again reads as other bytes on the phone, so the phone's duplicate check let it through. The server now
+  turns down a video whose exact size matches one of the same campaign sent in the last 14 days (not turned down
+  itself): it shows in Posts as "Not sent again: this exact video already went out for this campaign (date)".
+  A video made again (Edit again, music added) is a new version and goes (`postiz/index.ts` `sameVideo`).
+  Batch videos are different files (each its own headline or song) and are not touched; a batch making 2-4 a day
+  posts 2-4 a day on its accounts, as set.
+- His ask: "the dead zone ... make it a suggestion. Don't actually enforce it", and captions "under my face, not
+  covering my face ever ... set the height how we want".
+  - Captions go at any height on the frame (`captions.CAPTION_SPOT` 0.08-0.9, Bottom back at 0.8).
+  - Edit screen and caption check: a "Captions ↕" grip on the video's right edge - drag it up or down, the captions
+    follow live, the striped dead zone shows as a guide while dragging. Let go: that video's captions sit there and
+    the next videos start there too (`CutsEditor captionGrip`, `EditScreen`, `defaultCaptionPosition` keeps a
+    height). Top/Middle/Usual/Bottom stay as quick picks.
+  - Headlines, pictures and step pictures he places by hand stay where he puts them - only kept on the frame
+    (`overlay.keepOnFrame`); what the Cutter places by itself still keeps clear of the dead zone.
+- Needs deploying: run ./deploy-server.sh
+
 ## To approve: "Tomorrow" or the date; Join clips and Timeline editor on their own
 - His ask (2026-11-24): a video to approve today shows only its time; tomorrow's "Tomorrow · 10:27 AM"; later ones
   their date, "November 28th · 10:27 AM" (`PostsView.dayAndTime`).

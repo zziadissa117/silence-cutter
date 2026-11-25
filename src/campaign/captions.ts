@@ -471,9 +471,9 @@ export const CAPTION_POSITIONS: { id: CaptionPosition; label: string; y: number 
   { id: 'middle', label: 'Middle', y: 0.5 },
   { id: 'usual', label: 'Usual', y: CAPTION_Y },
   // As low as it goes clear of the post's caption and name at the bottom
-  // (overlay.TIKTOK_ZONES - the dead zone, his ask 2026-11-23). Was 0.8,
-  // inside it.
-  { id: 'bottom', label: 'Bottom', y: 0.69 },
+  // The dead zone (overlay.TIKTOK_ZONES) is shown as a guide, never
+  // enforced (his ask, 2026-11-25): low as it always was.
+  { id: 'bottom', label: 'Bottom', y: 0.8 },
 ]
 
 /** A caption's place: one of the named heights, or any height he dragged it
@@ -481,10 +481,11 @@ export const CAPTION_POSITIONS: { id: CaptionPosition; label: string; y: number 
  *  his ask 2026-11-13: "let me change it manually and not in a set space"). */
 export type CaptionSpot = CaptionPosition | number
 
-/** The most and least a dragged caption's centre can be: a caption's lines
- *  clear of the dead zone's top tabs and of the post's caption at the
- *  bottom (overlay.TIKTOK_ZONES, his ask 2026-11-23). Were 0.12 and 0.85. */
-export const CAPTION_SPOT = { min: 0.2, max: 0.69 } as const
+/** The most and least a dragged caption's centre can be: on the frame. The
+ *  dead zone (overlay.TIKTOK_ZONES) is a guide shown while dragging, not a
+ *  limit (his ask, 2026-11-25: "we can't put the captions at the height we
+ *  want ... make it a suggestion. Don't actually enforce it"). */
+export const CAPTION_SPOT = { min: 0.08, max: 0.9 } as const
 
 export function captionY(position: CaptionSpot): number {
   if (typeof position === 'number') return Number.isFinite(position) ? Math.min(CAPTION_SPOT.max, Math.max(CAPTION_SPOT.min, position)) : CAPTION_Y
@@ -530,19 +531,22 @@ export function setDefaultCaptionSize(size: CaptionSize): void {
 const POSITION_KEY = 'cutter-caption-position'
 
 /** The position new videos start with: his choice in Settings, else usual. */
-export function defaultCaptionPosition(): CaptionPosition {
+export function defaultCaptionPosition(): CaptionSpot {
   try {
     const saved = localStorage.getItem(POSITION_KEY)
     if (CAPTION_POSITIONS.some((p) => p.id === saved)) return saved as CaptionPosition
+    // A height he dragged them to (his ask, 2026-11-25), kept for the next.
+    const dragged = Number(saved)
+    if (saved && Number.isFinite(dragged)) return captionY(dragged)
   } catch {
     // Storage blocked: the usual place.
   }
   return 'usual'
 }
 
-export function setDefaultCaptionPosition(position: CaptionPosition): void {
+export function setDefaultCaptionPosition(position: CaptionSpot): void {
   try {
-    localStorage.setItem(POSITION_KEY, position)
+    localStorage.setItem(POSITION_KEY, String(position))
   } catch {
     // Not saved.
   }

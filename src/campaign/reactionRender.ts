@@ -30,7 +30,7 @@ import { RangeReader, inTimestampOrder } from '../media/rangeReader'
 import { MAX_RECOVERIES, StoppedEarly, stoppedEarly } from '../media/recovery'
 import { MAX_CHANNELS, SAFE_SAMPLE_RATE, isSilenceCutSupported } from '../media/silenceCut'
 import type { Range } from '../media/silenceMath'
-import { CAPTION_LEAD, captionAt, drawStyledCaption, captionRanges, type CaptionPosition, type CaptionSize, type CaptionStyle, type CaptionWord, PHRASE_HOLD_SEC } from './captions'
+import { CAPTION_LEAD, captionAt, drawStyledCaption, captionRanges, type CaptionSpot, type CaptionSize, type CaptionStyle, type CaptionWord, PHRASE_HOLD_SEC } from './captions'
 import { framingAt, planMotion, reactionZoom, zoomPlace } from './effects'
 import { eachSound, openClip, withDecoderRecovery, type Clip } from './clipParts'
 import { headlineFontReady } from './headlineFont'
@@ -69,7 +69,7 @@ export interface ReactionRenderInput {
   /** Makes this video's effect variations its own (look.effects says which). */
   seed?: string
   /** Where the captions sit on the product clip. */
-  captionPosition?: CaptionPosition
+  captionPosition?: CaptionSpot
   /** How big the captions are. */
   captionSize?: CaptionSize
   /** One word at a time, or the phrase with the spoken word lit. */

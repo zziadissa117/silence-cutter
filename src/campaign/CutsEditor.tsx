@@ -45,7 +45,7 @@ import {
 
 import type { Range } from '../media/silenceMath'
 import { cutOut, putBack, type CutCheck } from './noiseCuts'
-import type { CaptionWord } from './captions'
+import { captionY, type CaptionWord } from './captions'
 import {
   formatPrecise,
   markLabel,
@@ -604,6 +604,7 @@ export function CutsEditor({
   onCaptions,
   onCancel,
   paintOver,
+  captionGrip,
   below,
   onCaptionsTool,
   onState,
@@ -664,6 +665,11 @@ export function CutsEditor({
   /** Draws over the video for moment `t` of the recording - the captions,
    *  when they are on the same page. */
   paintOver?: (ctx: CanvasRenderingContext2D, width: number, height: number, t: number, playing: boolean) => void
+  /** The captions' height, dragged by the grip on the video's edge (his ask,
+   *  2026-11-25: "under my face ... set the height how we want"): `y` the
+   *  caption's centre as a share of the height; `onMove` while dragging,
+   *  `onDone` when let go. */
+  captionGrip?: { y: number; onMove: (y: number) => void; onDone: (y: number) => void }
   /** Shown under the cuts' buttons: the captions, on the same page. */
   below?: ReactNode
   /** The toolbar's Captions: opens the captions' sheet (CaptionSheet.tsx).
@@ -1347,6 +1353,12 @@ export function CutsEditor({
   }
   /** The dead zone on the video while something is being moved (DeadZone). */
   const [zoneShown, setZoneShown] = useState(false)
+  /** Where the captions' grip is while it is dragged. */
+  const [gripY, setGripY] = useState<number | null>(null)
+  const gripAt = (e: ReactPointerEvent) => {
+    const r = frameBox.current!.getBoundingClientRect()
+    return captionY((e.clientY - r.top) / r.height)
+  }
   /** A finger down on something on the video: it is picked, one finger
    *  moves it, two pinch it bigger or smaller. */
   const onItemDown = (id: string, e: ReactPointerEvent) => {
@@ -1886,7 +1898,39 @@ export function CutsEditor({
           onPointerUp={onItemUp}
           onPointerCancel={onItemUp}
         >
-          {zoneShown ? <DeadZone /> : null}
+          {zoneShown || gripY !== null ? <DeadZone /> : null}
+          {captionGrip ? (
+            <span
+              className={`caption-grip${gripY !== null ? ' on' : ''}`}
+              role="slider"
+              aria-label="Drag to move the captions up or down"
+              aria-valuenow={Math.round((gripY ?? captionGrip.y) * 100)}
+              style={{ top: `${(gripY ?? captionGrip.y) * 100}%` }}
+              onClick={(e) => e.stopPropagation()}
+              onPointerDown={(e) => {
+                e.stopPropagation()
+                e.currentTarget.setPointerCapture(e.pointerId)
+                setGripY(gripAt(e))
+              }}
+              onPointerMove={(e) => {
+                if (gripY === null) return
+                e.stopPropagation()
+                const y = gripAt(e)
+                setGripY(y)
+                captionGrip.onMove(y)
+              }}
+              onPointerUp={(e) => {
+                if (gripY === null) return
+                e.stopPropagation()
+                lastGesture.current = performance.now()
+                captionGrip.onDone(Math.round(gripY * 1000) / 1000)
+                setGripY(null)
+              }}
+              onPointerCancel={() => setGripY(null)}
+            >
+              <span className="caption-grip-label">Captions ↕</span>
+            </span>
+          ) : null}
           {url ? (
             <video
               ref={video}

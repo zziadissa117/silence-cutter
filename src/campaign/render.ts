@@ -54,7 +54,7 @@ import type { Range } from '../media/silenceMath'
 import { frameSlots, keptLength, partLength, speedOf } from './cuts'
 import { stretch } from './timeStretch'
 import type { VideoLook } from './look'
-import { CAPTION_LEAD, captionAt, drawStyledCaption, captionRanges, type CaptionPosition, type CaptionSize, type CaptionStyle, type CaptionWord, PHRASE_HOLD_SEC } from './captions'
+import { CAPTION_LEAD, captionAt, drawStyledCaption, captionRanges, type CaptionSpot, type CaptionSize, type CaptionStyle, type CaptionWord, PHRASE_HOLD_SEC } from './captions'
 import { decoderGaveUp, eachSound, firstShown, openClip, pause, planesOf, visibleAgain, wholeOf, writeWhole, type Clip } from './clipParts'
 import { MAX_RECOVERIES, StoppedEarly, asRenderError, stalledProblem, stoppedEarly } from '../media/recovery'
 import { traceRead, traceStart, traceStep, traceWritten } from './renderTrace'
@@ -139,7 +139,7 @@ export interface CampaignRenderInput {
   /** One word at a time, as he checked them. None when captions are off. */
   captions?: CaptionWord[]
   /** Where the captions sit on the frame; usual when not given. */
-  captionPosition?: CaptionPosition
+  captionPosition?: CaptionSpot
   /** How big the captions are. */
   captionSize?: CaptionSize
   /** One word at a time, or the phrase with the spoken word lit. */

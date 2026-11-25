@@ -6,7 +6,7 @@ import type { Range, SilenceSettings } from '../media/silenceMath'
 import type { Angle, Campaign, HeadlinePlace, HeadlineStyle } from './look'
 import type { CampaignResult } from './pipeline'
 import type { BankFile } from './batch'
-import type { CaptionPosition, CaptionSize, CaptionStyle, CaptionWord } from './captions'
+import type { CaptionSpot, CaptionSize, CaptionStyle, CaptionWord } from './captions'
 import type { CampaignPlan } from './plan'
 import type { ManualPicture } from './manualPictures'
 import type { Guess } from './sort'
@@ -92,7 +92,7 @@ export type Job = {
      *  ask, 2026-11-16); absent = its angle's. */
     headlineSeconds?: number
     /** Where this video's captions sit; absent = the Settings default. */
-    captionPosition?: CaptionPosition
+    captionPosition?: CaptionSpot
     /** How big this video's captions are; absent = the Settings default. */
     captionSize?: CaptionSize
     /** One word at a time or Highlight; absent = the last one he picked. */

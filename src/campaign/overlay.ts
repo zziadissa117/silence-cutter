@@ -66,6 +66,15 @@ export function keepSafe(box: { x: number; y: number; width: number; height: num
   return { ...box, x: fit(box.x, box.width, area.left, area.right), y }
 }
 
+/** A box he placed by hand, moved only as much as it takes to stay on the
+ *  frame: the dead zone is a guide shown while dragging, never enforced on
+ *  what he places (his ask, 2026-11-25: "make it a suggestion. Don't
+ *  actually enforce it"). */
+export function keepOnFrame(box: { x: number; y: number; width: number; height: number }, width: number, height: number): { x: number; y: number; width: number; height: number } {
+  const fit = (at: number, size: number, high: number) => (size > high ? (high - size) / 2 : Math.min(Math.max(0, at), high - size))
+  return { ...box, x: fit(box.x, box.width, width), y: fit(box.y, box.height, height) }
+}
+
 /** TikTok's text is TikTok Sans at a semibold weight. */
 const HEADLINE_WEIGHT = 600
 
@@ -224,10 +233,10 @@ export function layoutHeadline(
   let top = Math.max(height * TIKTOK_ZONES.top + above, height * HEADLINE_Y[headline.position] - blockHeight / 2)
   let centerX = width / 2
   if (place) {
-    // Where he put it, all of it outside the dead zone (keepSafe).
+    // Where he put it, on the frame (keepOnFrame - the dead zone is only a guide).
     const below = snap ? fontPx * SNAP.padY : 0
     const half = snap ? width / 2 : Math.max(...lines.map((l) => l.width)) / 2 + (boxed ? fontPx * BOX.padX : 0)
-    const safe = keepSafe({ x: place.x * width - half, y: place.y * height - blockHeight / 2 - above, width: half * 2, height: blockHeight + above + below }, width, height)
+    const safe = keepOnFrame({ x: place.x * width - half, y: place.y * height - blockHeight / 2 - above, width: half * 2, height: blockHeight + above + below }, width, height)
     top = safe.y + above
     // Snapchat's band is the frame's width: only up and down.
     if (!snap) centerX = safe.x + half
@@ -320,7 +329,7 @@ export function layoutLogo(
   const h = Math.round(w * (image.height / image.width))
   // Dragged to a spot of his own (a picture in the cuts editor): its middle
   // there, kept inside the frame.
-  if (logo.center) return keepSafe({ x: logo.center.x * width - w / 2, y: logo.center.y * height - h / 2, width: w, height: h }, width, height)
+  if (logo.center) return keepOnFrame({ x: logo.center.x * width - w / 2, y: logo.center.y * height - h / 2, width: w, height: h }, width, height)
   // Close to the edges of the safe area, every spot alike, the middle left
   // free: on the right, clear of the button column where it reaches it.
   const left = width * PICTURE_EDGE

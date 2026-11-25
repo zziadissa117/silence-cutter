@@ -5,7 +5,7 @@
 // Nothing of a campaign: no headline, logo, music or effects.
 
 import { PRESETS, type PresetName } from '../../media/silenceMath'
-import { captionAt, captionRanges, captionScale, captionWords, cutTime, defaultCaptionSize, defaultCaptionStyle, drawStyledCaption, drawnWords, CAPTION_LEAD, PHRASE_HOLD_SEC, type CaptionPosition, type CaptionSize, type CaptionStyle, type CaptionWord } from '../captions'
+import { captionAt, captionRanges, captionScale, captionWords, captionY, cutTime, defaultCaptionSize, defaultCaptionStyle, drawStyledCaption, drawnWords, CAPTION_LEAD, PHRASE_HOLD_SEC, type CaptionSpot, type CaptionSize, type CaptionStyle, type CaptionWord } from '../captions'
 import { MOTION_EFFECTS, punchMoments } from './camera'
 import { blankAngle, blankCampaign, videoLook } from '../look'
 import { listen, type CampaignCallbacks } from '../pipeline'
@@ -80,7 +80,7 @@ export function claudeWords(plan: CampaignPlan, choice: CaptionChoice | undefine
 export interface CaptionChoice {
   edited?: CaptionWord[]
   off?: boolean
-  position?: CaptionPosition
+  position?: CaptionSpot
   size?: CaptionSize
   style?: CaptionStyle
 }
@@ -122,7 +122,7 @@ export function captionsToEdit(plan: CampaignPlan, choice: CaptionChoice = {}): 
   return choice.edited ?? captionWords(plan.spoken ?? plan.words, [{ start: 0, end: plan.duration }])
 }
 
-export function captionLook(choice: CaptionChoice = {}): { position: CaptionPosition; size: CaptionSize; style: CaptionStyle } {
+export function captionLook(choice: CaptionChoice = {}): { position: CaptionSpot; size: CaptionSize; style: CaptionStyle } {
   return { position: choice.position ?? 'usual', size: choice.size ?? defaultCaptionSize(), style: choice.style ?? defaultCaptionStyle() }
 }
 
@@ -147,7 +147,7 @@ export function kineticFor(
   }
   // Where and how big he put the captions on the caption screen.
   const look = captionLook(choice)
-  return { words, phrases: kineticPhrases(words), styles, centerY: CAPTION_CENTER[look.position], scale: captionScale(look.size) }
+  return { words, phrases: kineticPhrases(words), styles, centerY: typeof look.position === 'number' ? captionY(look.position) : CAPTION_CENTER[look.position], scale: captionScale(look.size) }
 }
 
 /** The block as draw.ts takes it, for a still before it is made. */

@@ -33,7 +33,7 @@ import {
 import { isText, isVideo, manualCues, textHeadline, type ManualPicture } from './manualPictures'
 import { wordMoments } from './moments'
 import { cutNoiseOn } from './noiseSetting'
-import { captionWords, type CaptionPosition, type CaptionSize, type CaptionStyle, type CaptionWord } from './captions'
+import { captionWords, type CaptionSpot, type CaptionSize, type CaptionStyle, type CaptionWord } from './captions'
 import { placeCues } from './cueClips'
 import { renderGreenScreen, type Corner } from './greenScreenRender'
 import type { ClipPlace, JoinedClips } from './clips'
@@ -220,7 +220,7 @@ export async function make(
   /** Picture ids left out of this video. */
   skipPictures: readonly string[] = [],
   /** Where the captions sit on the frame. */
-  captionPosition: CaptionPosition = 'usual',
+  captionPosition: CaptionSpot = 'usual',
   /** Made 9:16 even when the Wide clips setting is Off (he asked for 9:16). */
   forceVertical = false,
   /** Pictures he put on this video by hand, each with its image. */
@@ -413,7 +413,7 @@ export async function makeReaction(
   music?: AngleMusic | null,
   /** What varies per video: its seed, the default effects for an angle with
    *  none (null for none), and where its captions sit. */
-  extra: { seed?: string; defaults?: AngleEffects | null; captionPosition?: CaptionPosition; captionSize?: CaptionSize; captionStyle?: CaptionStyle } = {},
+  extra: { seed?: string; defaults?: AngleEffects | null; captionPosition?: CaptionSpot; captionSize?: CaptionSize; captionStyle?: CaptionStyle } = {},
 ): Promise<CampaignResult> {
   const talking = plan ? talksIn(plan.words, plan.keep) : false
   const track = music === undefined ? (angle.music ?? null) : music

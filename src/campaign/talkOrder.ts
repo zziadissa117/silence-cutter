@@ -8,7 +8,7 @@
 // Postiz exactly as the phone would. Shared by both sides; plain data only.
 
 import type { DropPlan } from './prepareDrop'
-import type { CaptionPosition, CaptionSize, CaptionStyle, CaptionWord } from './captions'
+import type { CaptionSpot, CaptionSize, CaptionStyle, CaptionWord } from './captions'
 import type { Voices } from './voiceProfile'
 import type { AngleEffects } from './effects'
 import type { CampaignPosting, HeadlinePlace, HeadlineStyle, PopCue } from './look'
@@ -64,7 +64,7 @@ export interface MakeOrder {
   /** The picture bank as it is on the phone: the server's copy may still
    *  hold pictures taken out of it there. Absent on orders from before. */
   bankIds?: string[]
-  captionPosition: CaptionPosition
+  captionPosition: CaptionSpot
   noCut: boolean
   /** A reaction (no talking): its own sound muted, the music the only sound
    *  (render.ts musicOnly). Absent on orders from before. */

@@ -2416,3 +2416,12 @@ textarea.lines-input { resize: none; line-height: 1.35; overflow: hidden; }
 .still-posting { display: grid; gap: 4px; margin: 0 0 12px; padding: 12px 14px; border-radius: 14px; border: 1px solid color-mix(in srgb, var(--warn) 55%, transparent); background: color-mix(in srgb, var(--warn) 9%, var(--surface)); }
 .still-posting .label { color: var(--warn); font-weight: 700; }
 .still-posting .actions-row { margin-top: 6px; }
+
+/* Captions dragged up or down on the preview (CaptionReview): the finger moves them, not the page. */
+.review-frame.can-move-captions { touch-action: none; }
+.review-frame.dragging-captions { cursor: ns-resize; }
+.caption-drag-hint { margin: 0 0 6px; }
+/* The captions' grip on the edit screen's video (CutsEditor captionGrip). */
+.caption-grip { position: absolute; right: 0; z-index: 7; transform: translateY(-50%); padding: 10px 0 10px 10px; touch-action: none; cursor: ns-resize; }
+.caption-grip-label { display: block; padding: 4px 8px; border-radius: 10px 0 0 10px; background: rgb(0 0 0 / 0.55); color: #fff; font-size: 11px; font-weight: 700; white-space: nowrap; }
+.caption-grip.on .caption-grip-label { background: var(--accent); }

@@ -2316,6 +2316,14 @@ async function start(profile: Profile, body: Record<string, unknown>): Promise<R
   const approveNow = carry !== null && (meta.carry as Record<string, unknown>).approve === true && rules.approval !== 'brand'
 
   let { data: post } = await db.from('cutter_posts').select('*').eq('profile_id', profile.id).eq('client_key', key).maybeSingle()
+  // The same finished video sent again for the same campaign under another
+  // key - saved and picked again by hand (a re-saved copy reads as other
+  // bytes on the phone), or posted by hand while the Cutter sent it too -
+  // went out twice on the same accounts (his report, 2026-11-25; Webild,
+  // RestORTrain, Pumpfun in November). A byte-for-byte equal size within
+  // SAME_VIDEO_DAYS is that same video: it is kept, turned down, and says why.
+  // A video made again (carry) is a new version and goes.
+  const twin = post || carry ? null : await sameVideo(profile.id, campaign.id, size)
   if (!post) {
     const { data, error } = await db
       .from('cutter_posts')
@@ -2338,7 +2346,8 @@ async function start(profile: Profile, body: Record<string, unknown>): Promise<R
               }),
         },
         ...(warm ? { post_at: warm.at } : {}),
-        status: 'uploading',
+        status: twin ? 'rejected' : 'uploading',
+        ...(twin ? { error: sameVideoNote(twin, profile.timezone || 'UTC') } : {}),
         parts,
         size,
         file_name: text(meta.fileName, 300),
@@ -2371,6 +2380,31 @@ async function start(profile: Profile, body: Record<string, unknown>): Promise<R
     uploads.push({ part: i, url: data.signedUrl })
   }
   return reply({ id: row.id, partBytes: PART_BYTES, uploads, status: row.status })
+}
+
+/** How far back the same video for the same campaign counts as sent already. */
+const SAME_VIDEO_DAYS = 14
+
+/** A post of this campaign with exactly this many bytes, sent in the last
+ *  SAME_VIDEO_DAYS and not turned down: the same finished video. */
+async function sameVideo(profileId: string, campaignId: string, size: number): Promise<Pick<Post, 'id' | 'post_at' | 'created_at' | 'status'> | null> {
+  const { data } = await db
+    .from('cutter_posts')
+    .select('id, post_at, created_at, status')
+    .eq('profile_id', profileId)
+    .eq('campaign_id', campaignId)
+    .eq('size', size)
+    .in('status', ['uploading', 'writing', 'waiting', 'approved', 'scheduled', 'posted', 'error'])
+    .gte('created_at', new Date(Date.now() - SAME_VIDEO_DAYS * 86_400_000).toISOString())
+    .limit(1)
+    .maybeSingle()
+  return (data as Pick<Post, 'id' | 'post_at' | 'created_at' | 'status'> | null) ?? null
+}
+
+/** Why a video was not sent again, for its row. */
+function sameVideoNote(twin: Pick<Post, 'post_at' | 'created_at' | 'status'>, tz: string): string {
+  const when = new Date(twin.post_at ?? twin.created_at).toLocaleDateString('en-US', { timeZone: tz, weekday: 'short', month: 'short', day: 'numeric' })
+  return `Not sent again: this exact video already ${twin.status === 'posted' ? 'went out' : 'is set to go'} for this campaign (${when}).`
 }
 
 /** The caption Claude would write for a post made by hand, for him to read

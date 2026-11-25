@@ -33,7 +33,7 @@ import { emptyScript, type FormatScript } from './formats'
 import type { ManualPicture } from './manualPictures'
 import type { MusicLevel } from './music'
 import type { TrialLook } from './trialLoop'
-import type { CaptionPosition, CaptionSize, CaptionStyle, CaptionWord } from './captions'
+import type { CaptionSpot, CaptionSize, CaptionStyle, CaptionWord } from './captions'
 import type { CampaignPlan } from './plan'
 import type { Guess } from './sort'
 import { SERVER_MODE } from './serverFlag'
@@ -113,7 +113,7 @@ interface StoredJob {
      *  (headlinePlace.ts). */
     headlinePlace?: HeadlinePlace | null
     /** Where this video's captions sit; absent = the Settings default. */
-    captionPosition?: CaptionPosition
+    captionPosition?: CaptionSpot
     /** How big this video's captions are; absent = the Settings default. */
     captionSize?: CaptionSize
     /** One word at a time or Highlight; absent = the last one he picked. */

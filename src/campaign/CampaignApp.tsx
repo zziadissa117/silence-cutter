@@ -74,7 +74,7 @@ import {
   defaultCaptionStyle,
   drawnWords,
   setDefaultCaptionStyle,
-  type CaptionPosition,
+  type CaptionSpot,
   type CaptionSize,
   type CaptionStyle,
   type CaptionWord,
@@ -4727,7 +4727,7 @@ export function CampaignApp() {
 
   /** Moves this video's captions (top, middle, usual, bottom) - and the
    *  next ones start there. */
-  const setCaptionPosition = (id: string, captionPosition: CaptionPosition) => {
+  const setCaptionPosition = (id: string, captionPosition: CaptionSpot) => {
     setDefaultCaptionPosition(captionPosition)
     const job = jobs.find((j) => j.id === id)
     if (!job?.day) return
