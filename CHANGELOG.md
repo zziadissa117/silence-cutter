@@ -3,6 +3,20 @@
 Newest first. Every change says what it does, how to use it, and how it works
 underneath. Kept up to date with each commit.
 
+## Each campaign its own picture bank, first in the edit screen
+- His ask (2026-11-26): "go into campaigns and click on a campaign. We're going to have a sort of picture bank for
+  that campaign ... all the pictures that we've used for that campaign ... or ... for future videos ... in the
+  timeline editor editing a video for that exact campaign ... that as a priority: the first thing we see".
+- Campaigns -> a campaign -> Picture bank: its own pictures, + Add pictures (several at once, brought down to video
+  size, each picture once), ✕ to take one out. Synced to the other phone with the shared bank.
+- A picture from his phone put on one of the campaign's videos lands in its bank by itself when he keeps the edit
+  (not for General). Pictures used before today aren't added back.
+- Edit screen, Overlay, on that campaign's video: "This campaign's pictures" at the top, then a photo from the
+  phone, then the shared picture bank. Other campaigns' pictures don't show; the shared Bank tab shows only the
+  shared ones. Campaign pictures have no words, so they never come up on a video by themselves.
+- Underneath: `BankPicture.campaignId`, `campaignBank.ts` (`picturesOf`, `sharedPictures`, `addToCampaignBank`),
+  `CampaignsView` `CampaignPictures`, `CampaignApp` `editorBank`/`bankPhonePictures`, `CutsEditor` picker.
+
 ## Tribe: its own purple campaign and tab, videos kept until Tribe approves them
 - His ask (2026-11-26): an hour of Tribe videos every day; "a section inside of the cutter as if it was a campaign
   ... Make it purple ... save that video indefinitely ... Tribe asks for revisions ... still have that original

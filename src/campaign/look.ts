@@ -133,6 +133,10 @@ export interface BankPicture {
    *  modify where he would want his images to be placed"); unset, the
    *  campaign's picture bank spot. */
   position?: LogoPosition
+  /** In one campaign's own picture bank (campaignBank.ts): shown first when
+   *  he puts a picture on that campaign's video, and kept out of the shared
+   *  bank. Absent: the shared picture bank, for every campaign. */
+  campaignId?: string
 }
 
 export interface Headline {

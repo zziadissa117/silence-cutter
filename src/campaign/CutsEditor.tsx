@@ -2392,6 +2392,20 @@ export function CutsEditor({
       {picking ? (
         <div className="pic-picker" ref={picPanel}>
           <div className="group-title">Put on at {formatPrecise(outT)}</div>
+          {bank.some((b) => b.campaignId) ? (
+            <>
+              <span className="hint">This campaign&rsquo;s pictures:</span>
+              <div className="pic-grid">
+                {bank
+                  .filter((b) => b.campaignId)
+                  .map((b) => (
+                    <button key={b.id} type="button" className="pic-cell" onClick={() => addOverlay({ kind: 'bank', pictureId: b.id })}>
+                      {bankUrls[b.id] ? <img alt="" src={bankUrls[b.id]} /> : null}
+                    </button>
+                  ))}
+              </div>
+            </>
+          ) : null}
           <button type="button" className="btn wide pic-phone" onClick={() => phonePicker.current?.click()}>
             A photo or video from my phone
           </button>
@@ -2409,11 +2423,11 @@ export function CutsEditor({
               else addOverlay({ kind: 'phone', name: file.name, type }, file)
             }}
           />
-          {bank.length > 0 ? (
+          {bank.some((b) => !b.campaignId) ? (
             <>
               <span className="hint">Or from the picture bank:</span>
               <div className="pic-grid">
-                {bank.map((b) => (
+                {bank.filter((b) => !b.campaignId).map((b) => (
                   <button key={b.id} type="button" className="pic-cell" onClick={() => addOverlay({ kind: 'bank', pictureId: b.id })}>
                     {bankUrls[b.id] ? <img alt="" src={bankUrls[b.id]} /> : null}
                     <span>{b.words[0] ?? ''}</span>

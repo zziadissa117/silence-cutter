@@ -9,7 +9,7 @@ import { ChevronLeft, ChevronRight } from './icons'
 import { BackToMore } from './MoreView'
 import { EndCampaign } from './EndCampaign'
 import type { Profile } from './posting'
-import { describeAngle, type Angle, type Campaign } from './look'
+import { describeAngle, type Angle, type BankPicture, type Campaign } from './look'
 import { hueOf } from './HomeTop'
 
 function useObjectUrl(blob: Blob | null): string | null {
@@ -52,7 +52,11 @@ export function CampaignsView({
   shared,
   ending,
   onBackToMore,
+  pictures,
 }: {
+  /** Each campaign's own picture bank (campaignBank.ts): its pictures, and
+   *  adding or taking one out. */
+  pictures?: { of: (campaignId: string) => BankPicture[]; onAdd: (campaignId: string, files: File[]) => Promise<void>; onRemove: (id: string) => void }
   /** Back to More, which it is reached from. */
   onBackToMore?: () => void
   campaigns: Campaign[]
@@ -99,6 +103,8 @@ export function CampaignsView({
               ? `Heard as "${open.brandWords.join('", "')}".`
               : 'No brand name yet - add it under Brand & logo.'}
         </p>
+
+        {pictures ? <CampaignPictures campaign={open} pictures={pictures} /> : null}
 
         <div className="list-title">Angles</div>
         <ul className="rows">
@@ -226,5 +232,82 @@ function StopPosts({ campaign, onStop }: { campaign: Campaign; onStop: (campaign
       </button>
       {said ? <div className="hint">{said}</div> : null}
     </div>
+  )
+}
+
+/** A campaign's own picture bank on its page (campaignBank.ts). */
+function CampaignPictures({
+  campaign,
+  pictures,
+}: {
+  campaign: Campaign
+  pictures: { of: (campaignId: string) => BankPicture[]; onAdd: (campaignId: string, files: File[]) => Promise<void>; onRemove: (id: string) => void }
+}) {
+  const list = pictures.of(campaign.id)
+  const [adding, setAdding] = useState(false)
+  const [problem, setProblem] = useState<string | null>(null)
+  return (
+    <div className="campaign-pictures">
+      <div className="list-title">
+        Picture bank <span className="bank-count">{list.length}</span>
+      </div>
+      <p className="hint">
+        {campaign.name}&rsquo;s own pictures. They come first when you put a picture on one of its videos (Overlay in the edit screen). Pictures from your
+        phone that you use on its videos are kept here by themselves.
+      </p>
+      {list.length > 0 ? (
+        <div className="pic-grid campaign-pic-grid">
+          {list.map((p) => (
+            <CampaignPicture key={p.id} picture={p} onRemove={() => pictures.onRemove(p.id)} />
+          ))}
+        </div>
+      ) : null}
+      <label className="btn small picker">
+        {adding ? 'Adding…' : '+ Add pictures'}
+        <input
+          type="file"
+          accept="image/*"
+          multiple
+          hidden
+          disabled={adding}
+          onChange={(e) => {
+            const files = Array.from(e.target.files ?? [])
+            e.target.value = ''
+            if (files.length === 0) return
+            setAdding(true)
+            setProblem(null)
+            void pictures
+              .onAdd(campaign.id, files)
+              .catch(() => setProblem("Some pictures couldn't be opened."))
+              .finally(() => setAdding(false))
+          }}
+        />
+      </label>
+      {problem ? <p className="hint warn-text">{problem}</p> : null}
+    </div>
+  )
+}
+
+function CampaignPicture({ picture, onRemove }: { picture: BankPicture; onRemove: () => void }) {
+  const [url, setUrl] = useState<string | null>(null)
+  useEffect(() => {
+    const made = URL.createObjectURL(picture.image)
+    setUrl(made)
+    return () => URL.revokeObjectURL(made)
+  }, [picture.image])
+  return (
+    <span className="pic-cell campaign-pic">
+      {url ? <img alt="" src={url} /> : null}
+      <button
+        type="button"
+        className="campaign-pic-x"
+        aria-label="Take this picture out of the bank"
+        onClick={() => {
+          if (window.confirm('Take this picture out of the campaign\'s bank? Videos already made keep it.')) onRemove()
+        }}
+      >
+        ✕
+      </button>
+    </span>
   )
 }

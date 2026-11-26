@@ -2436,3 +2436,9 @@ textarea.lines-input { resize: none; line-height: 1.35; overflow: hidden; }
 .tribe-text { min-width: 0; display: grid; gap: 4px; }
 .tribe-text .row-name { overflow-wrap: anywhere; }
 .tribe-text .actions-row { flex-wrap: wrap; gap: 6px; }
+
+/* A campaign's own picture bank (CampaignsView CampaignPictures). */
+.campaign-pictures { margin: 6px 0 14px; display: grid; gap: 8px; justify-items: start; }
+.campaign-pic-grid { width: 100%; }
+.campaign-pic { position: relative; }
+.campaign-pic-x { position: absolute; top: 4px; right: 4px; width: 24px; height: 24px; border-radius: 50%; border: 0; background: rgb(0 0 0 / 0.6); color: #fff; font-size: 12px; line-height: 24px; padding: 0; }

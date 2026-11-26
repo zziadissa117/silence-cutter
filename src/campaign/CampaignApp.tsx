@@ -38,6 +38,7 @@ import { NOT_ALLOWED, trialAngle, trialFileName, withAccounts } from './trialLoo
 import { AnalyticsView, addHeadline, answerSuggestion, dropWorst, saveTarget, useCampaignRows } from './AnalyticsView'
 import { FormatAlarmLine } from './FormatAlarm'
 import { newestFirst } from './campaignOrder'
+import { addToCampaignBank, picturesOf, sharedPictures } from './campaignBank'
 import { newTribeCampaign, setTribeOn, tribeCampaign, tribeOn } from './tribe'
 import { TribeView } from './TribeView'
 import { StillPosting } from './StillPosting'
@@ -208,6 +209,7 @@ import {
   keepJobVideo,
   holdMade,
   holdTribe,
+  deleteBankPicture,
   heldVideos,
   loadHeldVideo,
   madeNotSent,
@@ -4784,9 +4786,28 @@ export function CampaignApp() {
   }
 
   /** The kept parts as he fixed them, or none when they are the plan's own. */
+  /** The pictures the edit screen offers for a campaign's video: its own
+   *  picture bank first, then the shared one (campaignBank.ts). */
+  const editorBank = (campaignId: string) => [...picturesOf(bankRef.current, campaignId), ...sharedPictures(bankRef.current)]
+
+  /** Pictures from his phone put on a campaign's video go into its picture
+   *  bank by themselves, once (campaignBank.ts). */
+  const bankPhonePictures = (campaignId: string, overlays: ManualPicture[], files: Map<string, Blob>) => {
+    const campaign = campaignsRef.current.find((c) => c.id === campaignId)
+    if (!campaign || campaign.general) return
+    const images = overlays.flatMap((o) => (o.source.kind === 'phone' && o.source.type.startsWith('image/') && files.get(o.id) ? [files.get(o.id)!] : []))
+    if (images.length === 0) return
+    void addToCampaignBank(campaignId, images, bankRef.current)
+      .then((added) => {
+        if (added.length > 0) setBank((b) => [...b, ...added])
+      })
+      .catch(() => {})
+  }
+
   const keepCuts = (id: string, fixed: Range[], overlays: ManualPicture[] = [], files: Map<string, Blob> = new Map()) => {
     const job = jobs.find((j) => j.id === id)
     if (!job?.day?.plan) return
+    bankPhonePictures(job.campaignId, overlays, files)
     // Touching parts (a Split never followed by Delete) are one part again.
     const keep = tidyParts(fixed)
     const same = JSON.stringify(keep) === JSON.stringify(job.day.plan.keep)
@@ -5032,7 +5053,7 @@ export function CampaignApp() {
         noiseNote={cutsJob.day!.plan!.noiseNote}
         words={cutsWords}
         overlays={editorOverlays(cutsJob)}
-        bank={bankRef.current}
+        bank={editorBank(cutsJob.campaignId)}
         defaults={angleBankDefaults(cutsJob)}
         loadImage={(m) => autoImage(cutsJob, m) ?? (ownFile(m) ? loadOverlayFile(cutsJob.id, m.id, ownFile(m)!) : Promise.resolve(null))}
         loadSound={(m) => soundFileOf(cutsJob.id, m)}
@@ -5089,7 +5110,7 @@ export function CampaignApp() {
           noiseNote: reviewJob.day!.plan!.noiseNote,
           words: captionWords(reviewJob.day!.plan!.spoken ?? reviewJob.day!.plan!.words, [{ start: 0, end: reviewJob.day!.plan!.duration }]),
           overlays: editorOverlays(reviewJob),
-          bank: bankRef.current,
+          bank: editorBank(reviewJob.campaignId),
           defaults: angleBankDefaults(reviewJob),
           loadImage: (m) => autoImage(reviewJob, m) ?? (ownFile(m) ? loadOverlayFile(reviewJob.id, m.id, ownFile(m)!) : Promise.resolve(null)),
           loadSound: (m) => soundFileOf(reviewJob.id, m),
@@ -5211,6 +5232,17 @@ export function CampaignApp() {
       />
     ) : tab === 'campaigns' ? (
       <CampaignsView
+        pictures={{
+          of: (campaignId) => picturesOf(bank, campaignId),
+          onAdd: async (campaignId, files) => {
+            const added = await addToCampaignBank(campaignId, files, bankRef.current)
+            setBank((b) => [...b, ...added])
+          },
+          onRemove: (id) => {
+            void deleteBankPicture(id)
+            setBank((b) => b.filter((p) => p.id !== id))
+          },
+        }}
         onBackToMore={() => setTab('more')}
         campaigns={campaigns}
         openId={openCampaignId}
@@ -5244,7 +5276,7 @@ export function CampaignApp() {
         <div className="screen-head">
           <h1>Bank</h1>
         </div>
-        <BankView bank={bank} onChange={setBank} />
+        <BankView bank={sharedPictures(bank)} onChange={(shared) => setBank((all) => [...shared, ...all.filter((p) => p.campaignId)])} />
         <VideoBankView />
         <MusicBankView />
       </>
