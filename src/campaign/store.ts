@@ -183,6 +183,9 @@ interface StoredJob {
    *  finished MP4 is kept under heldKey(id) until it is scheduled or he
    *  takes it out - never expired. */
   held?: HeldVideo
+  /** A Tribe video (tribe.ts): kept, recording and all, until he marks it
+   *  approved; `approvedAt` once he has. */
+  tribe?: { approvedAt?: number }
 }
 
 export interface HeldVideo {
@@ -215,8 +218,10 @@ export const GOING_OUT_KEEP_MS = 14 * 24 * 60 * 60 * 1000
 
 /** Whether a made job is still kept, to be edited again: inside its window,
  *  or its post (`goingOut`: the jobs whose post hasn't gone out) still to go. */
-export function stillKept(row: { id: string; madeAt?: number; unsent?: boolean }, goingOut: ReadonlySet<string>, window = keptFor(row), now = Date.now()): boolean {
+export function stillKept(row: { id: string; madeAt?: number; unsent?: boolean; tribe?: { approvedAt?: number } }, goingOut: ReadonlySet<string>, window = keptFor(row), now = Date.now()): boolean {
   if (row.madeAt === undefined) return false
+  // A Tribe video waiting on Tribe: for as long as it takes (tribe.ts).
+  if (row.tribe && !row.tribe.approvedAt) return true
   const age = now - row.madeAt
   return age < window || (!SERVER_MODE && goingOut.has(row.id) && age < GOING_OUT_KEEP_MS)
 }
@@ -972,6 +977,33 @@ export async function heldVideos(): Promise<PendingJob[]> {
   return rows.sort((a, b) => (a.madeAt ?? 0) - (b.madeAt ?? 0)).map(({ addedAt: _added, ...meta }) => meta)
 }
 
+/** A Tribe video kept: its finished MP4 held, its recording kept with it
+ *  until he marks it approved (tribe.ts). */
+export async function holdTribe(id: string, video: Blob, held: HeldVideo, now = Date.now()): Promise<boolean> {
+  if (!(await holdMade(id, video, held, now))) return false
+  const row = await db.jobs.get(id)
+  await db.jobs.update(id, { tribe: { ...(row?.tribe ?? {}), approvedAt: undefined } }).catch(() => {})
+  return true
+}
+
+/** Tribe approved it: its recording goes (the phone's space back), the
+ *  finished video stays to look at and save. */
+export async function approveTribe(id: string, now = Date.now()): Promise<void> {
+  await db.jobs.update(id, { tribe: { approvedAt: now } })
+  await db.videos.delete(id).catch(() => {})
+}
+
+/** Tribe sent it back after all: kept again, recording or not. */
+export async function unapproveTribe(id: string): Promise<void> {
+  await db.jobs.update(id, { tribe: {} })
+}
+
+/** Whether a Tribe video's recording is still on the phone (Edit again). */
+export async function hasRecording(id: string): Promise<boolean> {
+  const v = await db.videos.get(id).catch(() => undefined)
+  return Boolean(v && v.blob.size > 0)
+}
+
 /** A held format video's finished MP4. */
 export async function loadHeldVideo(id: string): Promise<Blob | null> {
   return (await db.videos.get(heldKey(id)))?.blob ?? null
@@ -1362,7 +1394,8 @@ export const UNSENT_KEEP_MAX = 10
 export async function expireMade(now = Date.now(), goingOut: ReadonlySet<string> = NONE): Promise<number> {
   // A held format video never goes by itself - only its recording does,
   // once it can no longer be edited, to give the phone its space back.
-  const held = await db.jobs.filter((j) => j.held !== undefined && j.madeAt !== undefined && now - j.madeAt >= EDIT_WINDOW_MS).primaryKeys()
+  // A Tribe video's recording stays until Tribe approves it (tribe.ts).
+  const held = await db.jobs.filter((j) => j.held !== undefined && j.madeAt !== undefined && now - j.madeAt >= EDIT_WINDOW_MS && !(j.tribe && !j.tribe.approvedAt)).primaryKeys()
   if (held.length > 0) await db.videos.bulkDelete(held).catch(() => {})
   const unsent = (await db.jobs.filter((j) => j.unsent === true && j.madeAt !== undefined).toArray()).sort((a, b) => (b.madeAt ?? 0) - (a.madeAt ?? 0))
   const tooMany = new Set(unsent.slice(UNSENT_KEEP_MAX).map((j) => j.id))

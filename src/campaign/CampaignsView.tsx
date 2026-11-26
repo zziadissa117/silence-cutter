@@ -2,6 +2,7 @@
 // campaigns; tap one for its angles; tap an angle to change its look. A
 // campaign is deleted from its own screen, at the bottom.
 
+import { TRIBE_HUE } from './tribe'
 import { useEffect, useState } from 'react'
 
 import { ChevronLeft, ChevronRight } from './icons'
@@ -30,7 +31,7 @@ function Mark({ campaign }: { campaign: Campaign }) {
   return url ? (
     <img className="mark" src={url} alt="" />
   ) : (
-    <span className="mark letter" aria-hidden style={{ ['--hue' as string]: String(hueOf(campaign.name || '?')) }}>
+    <span className="mark letter" aria-hidden style={{ ['--hue' as string]: String(campaign.tribe ? TRIBE_HUE : hueOf(campaign.name || '?')) }}>
       {(campaign.name.trim()[0] ?? '?').toUpperCase()}
     </span>
   )

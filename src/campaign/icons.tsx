@@ -69,6 +69,14 @@ export const VideosIcon = () => (
   </Icon>
 )
 
+/** Tribe: a video with a tick - made for Tribe, kept until they approve it. */
+export const TribeIcon = () => (
+  <Icon>
+    <rect x="3.75" y="4.75" width="16.5" height="14.5" rx="3" />
+    <path d="M8.5 12.25l2.4 2.4 4.6-4.9" />
+  </Icon>
+)
+
 /** Stacked cards: one format, filmed again and again. */
 export const FormatsIcon = () => (
   <Icon>

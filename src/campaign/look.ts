@@ -226,6 +226,10 @@ export interface Campaign {
   /** The Trial reels campaign (trialLoop.ts): made by the Trial reels
    *  screen, its batch a Trial loop - not shown in the Batch tab. */
   trial?: boolean
+  /** The Tribe campaign (tribe.ts, his ask 2026-11-26): its videos are made,
+   *  never posted, and kept - with their recording - until Tribe approves
+   *  them. Shown purple. */
+  tribe?: boolean
   /** Warm-up posts between its videos (warmups.ts, his ask 2026-11-11): from
    *  these categories (none: any), this many every 7 days, on top of the
    *  batch. Absent: none. */

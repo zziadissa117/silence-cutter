@@ -3,6 +3,25 @@
 Newest first. Every change says what it does, how to use it, and how it works
 underneath. Kept up to date with each commit.
 
+## Tribe: its own purple campaign and tab, videos kept until Tribe approves them
+- His ask (2026-11-26): an hour of Tribe videos every day; "a section inside of the cutter as if it was a campaign
+  ... Make it purple ... save that video indefinitely ... Tribe asks for revisions ... still have that original
+  video file ... edit again anytime (or just save again anytime until I say that it's fine and the video has been
+  approved) ... only if you turn that on in the settings ... the Tribe icon at the bottom too".
+- Settings, Tribe: on, a purple Tribe campaign appears (one for the whole login, id `tribe`) and a Tribe tab beside
+  Batch. Add videos as usual and pick Tribe in "Goes to": cut and captioned like any of his videos, never posted.
+- Tribe tab: Waiting on Tribe - each video with its still and length; tap to watch, Save (share sheet), Edit again
+  (back to Videos with the edit screen open, from the original recording; made again it comes back as "edit 2"),
+  Approved ✓ (its recording leaves the phone to free space; the finished video stays, folded under "Show approved",
+  with Not approved and Delete).
+- Kept on the phone for good while waiting: the recording is never cleared by the 2-hour edit window
+  (`store.stillKept`, `expireMade`, `holdTribe`, `approveTribe`), and turning Tribe on asks Safari to keep the
+  Cutter's storage (`navigator.storage.persist`). Not yet on the Cutter server: a phone that is wiped loses them.
+- Tribe stays out of Batch and Variations. Checked in the demo (Chrome for Testing): made into Tribe in 6 s, Edit
+  again, edit 2 back in Tribe, Approved.
+- Underneath: `tribe.ts`, `TribeView.tsx`, `Campaign.tribe`, `StoredJob.tribe`, `CampaignApp` (`holdTribeVideo`,
+  `editTribe`), `TabBar` `tribe`, `SettingsView` `onTribe`, `icons.TribeIcon`.
+
 ## The same video never sent twice; captions at any height, the dead zone only a guide
 - His report (2026-11-25): "sometimes my videos post twice on the same account". Read in cutter_posts: the same
   finished video (to the byte) went to the same accounts twice under two send keys - Webild (Nov 13 and 15),

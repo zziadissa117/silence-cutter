@@ -305,7 +305,7 @@ export function BatchView({
   const vary = variations !== null
   // The Trial reels campaign has its own screen (TrialView). Variations need
   // no accounts: nothing is posted.
-  const choices = vary ? campaigns.filter((c) => !c.trial) : profile ? campaigns.filter((c) => !c.trial && placeFor(profile, c.id).accounts.length > 0) : []
+  const choices = vary ? campaigns.filter((c) => !c.trial && !c.tribe) : profile ? campaigns.filter((c) => !c.trial && !c.tribe && placeFor(profile, c.id).accounts.length > 0) : []
   const [campaignId, setCampaignId] = useState(() => choices.find((c) => c.id === remembered(vary))?.id ?? choices[0]?.id ?? '')
   const campaign = choices.find((c) => c.id === campaignId) ?? null
   const [bank, setBank] = useState<BatchBank | null>(null)

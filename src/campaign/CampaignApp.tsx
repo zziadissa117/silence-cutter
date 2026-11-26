@@ -38,6 +38,8 @@ import { NOT_ALLOWED, trialAngle, trialFileName, withAccounts } from './trialLoo
 import { AnalyticsView, addHeadline, answerSuggestion, dropWorst, saveTarget, useCampaignRows } from './AnalyticsView'
 import { FormatAlarmLine } from './FormatAlarm'
 import { newestFirst } from './campaignOrder'
+import { newTribeCampaign, setTribeOn, tribeCampaign, tribeOn } from './tribe'
+import { TribeView } from './TribeView'
 import { StillPosting } from './StillPosting'
 import { FormatsView, type FormatClips } from './FormatsView'
 import { WarmupView } from './WarmupView'
@@ -205,6 +207,7 @@ import {
   jobOfPostKey,
   keepJobVideo,
   holdMade,
+  holdTribe,
   heldVideos,
   loadHeldVideo,
   madeNotSent,
@@ -1043,6 +1046,33 @@ export function CampaignApp() {
 
   /** Bumped when a format video is kept or scheduled: Formats reads them again. */
   const [heldVersion, setHeldVersion] = useState(0)
+  // Tribe (tribe.ts): on in Settings, a purple campaign and its own tab.
+  const [tribe, setTribe] = useState(tribeOn)
+  useEffect(() => {
+    if (!tribe || !campaigns || tribeCampaign(campaigns)) return
+    void saveCampaign(newTribeCampaign()).then((made) => setCampaigns((cs) => (cs && !tribeCampaign(cs) ? ordered([made, ...cs]) : cs)))
+  }, [tribe, campaigns])
+  /** A Tribe video made: kept with its recording until he marks it approved. */
+  const holdTribeVideo = async (job: Job, result: CampaignResult, plan: CampaignPlan | null): Promise<void> => {
+    const held = { transcript: transcriptOf(job, result, plan), headline: result.headline, duration: result.newDurationSec, size: result.blob.size }
+    if (!(await holdTribe(job.id, result.blob, held))) {
+      setNotice(`${job.name} is made, but the phone had no room to keep it - save it from the Tribe tab before you close the app.`)
+    }
+    setHeldVersion((v) => v + 1)
+  }
+  /** Tribe asked for a change: the video back on Videos, its edit screen open. */
+  const editTribe = async (id: string) => {
+    const reopened = await reopenJob(id, '')
+    if (!reopened) {
+      setNotice("This Tribe video's recording is no longer on the phone - it can be saved, not edited again.")
+      return
+    }
+    const restored = restoredJob(reopened)
+    setJobs((js) => [restored, ...js.filter((j) => j.id !== restored.id)])
+    setTab('videos')
+    setOpenFull((all) => new Set(all).add(restored.id))
+    setReviewing([restored.id])
+  }
   /** A format's take, made: kept on the phone with what its post needs (the
    *  words heard, for the caption), not sent, until he schedules it from the
    *  Formats tab. */
@@ -2425,6 +2455,12 @@ export function CampaignApp() {
         patch({ status: 'done', result, url: next.batch ? undefined : URL.createObjectURL(result.blob) })
         if (next.forFormat) {
           await holdFormat(next, result, plan ?? result.plan ?? null)
+          return
+        }
+        // Tribe: made, never posted, kept with its recording until approved.
+        if (jobCampaign.tribe) {
+          await holdTribeVideo(next, result, plan ?? result.plan ?? null)
+          setJobs((js) => js.filter((j) => j.id !== next.id))
           return
         }
         // A variation (More -> Variations): kept on the phone for his grid,
@@ -5246,6 +5282,12 @@ export function CampaignApp() {
         onFormatAlarm={(campaignId, on) => setFormatAlarm(campaignId, on).then(() => setPosting(postingHere()))}
         onFormatChanged={(accountIds) => formatChanged(accountIds).then((formatAlarms) => setInsights((i) => ({ ...i, formatAlarms })))}
       />
+    ) : tab === 'tribe' && tribe ? (
+      <TribeView
+        version={heldVersion}
+        editing={jobs.filter((j) => j.status !== 'done' && campaigns?.find((c) => c.id === j.campaignId)?.tribe).length}
+        onEditAgain={(id) => void editTribe(id)}
+      />
     ) : tab === 'variations' ? (
       <>
         <BackToMore onBack={() => setTab('more')} />
@@ -5275,6 +5317,11 @@ export function CampaignApp() {
       />
     ) : tab === 'settings' ? (
       <SettingsView
+        tribe={tribe}
+        onTribe={(on) => {
+          setTribeOn(on)
+          setTribe(on)
+        }}
         onBackToMore={() => setTab('more')}
         session={session}
         syncState={syncState}
@@ -5409,6 +5456,7 @@ export function CampaignApp() {
       </main>
       {inFlow ? null : (
         <TabBar
+          tribe={tribe}
           tab={tab}
           onTab={(next) => {
             setTab(next)

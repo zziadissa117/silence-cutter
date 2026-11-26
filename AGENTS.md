@@ -140,6 +140,7 @@ it back.)
 - Wide clips -> 9:16: `framing916.ts` (Settings: Fit - whole on black, the default - / Fill / Off); a 9:16 clip with black bands already in it is never zoomed: `blackBands.ts` (render.ts and montageRender.ts)
 - Edit again: `store.ts` (markMade/reopenJob/expireMade, `stillKept`: until the post goes out, and 2 h after; server-made talking videos too), `PostsView.EditAgain`, `CampaignApp.editAgain/retireOld` (see ARCHITECTURE.md)
 - Videos tab "More ways to make one": Join clips (in order, then cut and captioned like any video) and Timeline editor (raw: opened as filmed, not listened to, kept not posted - `rawEdit.ts`, `Job.raw`): `JoinPicker.tsx` (`kind`), `CampaignApp.addJoinClips`/`addOwnEdit`
+- Tribe (Settings switch; purple campaign id `tribe` + Tribe tab): its videos made, never posted, kept with their recording until marked approved - watch, save, Edit again: `tribe.ts`, `TribeView.tsx`, `store.holdTribe`/`approveTribe`, `StoredJob.tribe` (stillKept/expireMade), `CampaignApp.holdTribeVideo`/`editTribe`
 - Campaigns newest first (`campaignOrder.newestFirst`, `Campaign.createdAt`, server `insights.campaignDates`); "Still posting for it?" after 14 days with nothing out (`StillPosting.tsx`)
 - Recording in the Cutter (camera, flip, light, takes): `Recorder.tsx` (Videos -> Record a video); the back camera's takes steadied after Done, only when it helps: `stabilize.ts`
 - Tabs: `TabBar.tsx` (Videos, Posts, Batch, Analytics, More), `MoreView.tsx` (Campaigns, Formats, Bank, Settings, Cut only - each with `BackToMore`)

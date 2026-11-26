@@ -2425,3 +2425,14 @@ textarea.lines-input { resize: none; line-height: 1.35; overflow: hidden; }
 .caption-grip { position: absolute; right: 0; z-index: 7; transform: translateY(-50%); padding: 10px 0 10px 10px; touch-action: none; cursor: ns-resize; }
 .caption-grip-label { display: block; padding: 4px 8px; border-radius: 10px 0 0 10px; background: rgb(0 0 0 / 0.55); color: #fff; font-size: 11px; font-weight: 700; white-space: nowrap; }
 .caption-grip.on .caption-grip-label { background: var(--accent); }
+
+/* Tribe (TribeView.tsx): purple, its videos in a list with their still. */
+.screen.tribe { --accent: #8b5cf6; --accent-grad: linear-gradient(180deg, #a78bfa 0%, #8b5cf6 50%, #6d28d9 100%); }
+.screen.tribe h1 { color: #a78bfa; }
+.tribe-list { list-style: none; margin: 8px 0 0; padding: 0; display: grid; gap: 12px; }
+.tribe-item { display: flex; gap: 12px; align-items: flex-start; }
+.tribe-still { position: relative; flex: none; width: 74px; aspect-ratio: 9 / 16; padding: 0; border: 0; border-radius: 10px; overflow: hidden; background: #000; }
+.tribe-still .var-still { width: 100%; height: 100%; object-fit: cover; display: block; }
+.tribe-text { min-width: 0; display: grid; gap: 4px; }
+.tribe-text .row-name { overflow-wrap: anywhere; }
+.tribe-text .actions-row { flex-wrap: wrap; gap: 6px; }

@@ -7,9 +7,9 @@
 
 import type { ReactNode } from 'react'
 
-import { AnalyticsIcon, BatchIcon, MoreIcon, PostsIcon, VideosIcon } from './icons'
+import { AnalyticsIcon, BatchIcon, MoreIcon, PostsIcon, TribeIcon, VideosIcon } from './icons'
 
-export type Tab = 'videos' | 'posts' | 'formats' | 'batch' | 'analytics' | 'campaigns' | 'pictures' | 'settings' | 'more' | 'trial' | 'motion' | 'warmups' | 'variations'
+export type Tab = 'videos' | 'posts' | 'formats' | 'batch' | 'analytics' | 'campaigns' | 'pictures' | 'settings' | 'more' | 'trial' | 'motion' | 'warmups' | 'variations' | 'tribe'
 
 /** The screens reached from More: the More tab stays lit on them. */
 export const UNDER_MORE: readonly Tab[] = ['more', 'campaigns', 'formats', 'pictures', 'settings', 'trial', 'motion', 'warmups', 'variations']
@@ -22,6 +22,9 @@ const TABS: { tab: Tab; label: string; icon: ReactNode }[] = [
   { tab: 'more', label: 'More', icon: <MoreIcon /> },
 ]
 
+/** Tribe's tab, beside Batch, once Tribe is turned on in Settings (tribe.ts). */
+const TRIBE_TAB = { tab: 'tribe' as const, label: 'Tribe', icon: <TribeIcon /> }
+
 /** `dots`: tabs with something waiting for him - a suggestion to answer.
  *  `counts`: how many, shown on the tab (posts to approve). */
 export function TabBar({
@@ -29,7 +32,10 @@ export function TabBar({
   onTab,
   dots = {},
   counts = {},
+  tribe = false,
 }: {
+  /** Tribe's tab shown (Settings, Tribe). */
+  tribe?: boolean
   tab: Tab
   onTab: (tab: Tab) => void
   dots?: Partial<Record<Tab, boolean>>
@@ -38,7 +44,7 @@ export function TabBar({
   const lit = UNDER_MORE.includes(tab) ? 'more' : tab
   return (
     <nav className="tabbar" aria-label="Campaign videos">
-      {TABS.map((t) => {
+      {(tribe ? [...TABS.slice(0, 3), TRIBE_TAB, ...TABS.slice(3)] : TABS).map((t) => {
         const count = counts[t.tab] ?? 0
         return (
           <button

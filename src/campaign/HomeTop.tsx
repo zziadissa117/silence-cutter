@@ -4,6 +4,7 @@
 // for him - the two things he does most as big tiles, and his campaigns as a
 // row of brand badges.
 
+import { TRIBE_HUE } from './tribe'
 import { useEffect, useMemo, useState, type ReactNode } from 'react'
 
 import type { Campaign } from './look'
@@ -103,7 +104,7 @@ export function ActionTiles({ onRecord, add }: { onRecord: () => void; add: Reac
 }
 
 /** A campaign's badge: its logo, or its first letter on a colour of its own. */
-export function BrandBadge({ campaign }: { campaign: Pick<Campaign, 'name' | 'logo'> }) {
+export function BrandBadge({ campaign }: { campaign: Pick<Campaign, 'name' | 'logo'> & { tribe?: boolean } }) {
   const [url, setUrl] = useState<string | null>(null)
   useEffect(() => {
     if (!campaign.logo) return
@@ -113,7 +114,7 @@ export function BrandBadge({ campaign }: { campaign: Pick<Campaign, 'name' | 'lo
   }, [campaign.logo])
   const name = campaign.name || 'Campaign'
   return (
-    <span className="brand-badge" style={{ ['--hue' as string]: String(hueOf(name)) }}>
+    <span className="brand-badge" style={{ ['--hue' as string]: String(campaign.tribe ? TRIBE_HUE : hueOf(name)) }}>
       {url ? <img src={url} alt="" /> : <span aria-hidden>{name.slice(0, 1).toUpperCase()}</span>}
     </span>
   )

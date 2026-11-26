@@ -27,7 +27,8 @@ import { PlaceField } from './InstagramPlace'
 import type { PushState } from './push'
 import { BackToMore } from './MoreView'
 import { hueOf } from './HomeTop'
-import { CaptionsIcon, MicIcon, PaletteIcon, PeopleIcon, PostsIcon, ScissorsIcon, ServerIcon, SparkIcon, StorageIcon } from './icons'
+import { CaptionsIcon, MicIcon, PaletteIcon, PeopleIcon, PostsIcon, ScissorsIcon, ServerIcon, SparkIcon, StorageIcon, TribeIcon } from './icons'
+import { TRIBE_HUE } from './tribe'
 
 const PUSH_LINE: Record<PushState, string> = {
   on: 'On - posts to approve, and reminders to submit.',
@@ -186,7 +187,12 @@ export function SettingsView({
   onLimitsChanged,
   campaigns,
   onPlacesChanged,
+  tribe = false,
+  onTribe,
 }: {
+  /** Tribe turned on (tribe.ts), and the switch. */
+  tribe?: boolean
+  onTribe?: (on: boolean) => void
   /** Back to More, which it is reached from. */
   onBackToMore?: () => void
   session: Session | null
@@ -378,6 +384,21 @@ export function SettingsView({
       <Section icon={<SparkIcon />} hue={318} title="Effects">
         <DefaultEffectsSetting />
       </Section>
+
+      {onTribe ? (
+        <Section icon={<TribeIcon />} hue={TRIBE_HUE} title="Tribe">
+          <label className="toggle">
+            <input type="checkbox" checked={tribe} onChange={(e) => onTribe(e.target.checked)} />
+            <span>
+              <span className="label">Tribe</span>
+              <span className="hint" style={{ display: 'block' }}>
+                A purple Tribe campaign and a Tribe tab. Videos you put in Tribe are made, never posted, and kept with their recording until you mark
+                them approved - to watch, save and edit again whenever Tribe asks for changes.
+              </span>
+            </span>
+          </label>
+        </Section>
+      ) : null}
 
       {posting ? <ServerSetting campaignIds={Object.keys(posting.profile.settings.campaigns ?? {})} /> : null}
       {/* Le plateau's engine: only for a phone that already uses it - the
