@@ -477,7 +477,13 @@ export function videoLook(
           : sound.trigger,
     })),
     pictures: without(angle.pictures, skipPictures),
-    bankPictures: angle.bank.use ? without(bank, skipPictures) : [],
+    // The campaign's own pictures always (his ask, 2026-11-27: a name on them
+    // and "it pops up whenever I say the word"); the shared bank when the
+    // angle uses it; never another campaign's.
+    bankPictures: without(
+      bank.filter((p) => (p.campaignId ? p.campaignId === campaign.id : angle.bank.use)),
+      skipPictures,
+    ),
     bankPlacement: { position: angle.bank.position, widthPct: angle.bank.widthPct, seconds: angle.bank.seconds },
     bankVideos: angle.bank.use ? videos.filter((v) => v.words.length > 0) : [],
     mentions: angle.mentions,

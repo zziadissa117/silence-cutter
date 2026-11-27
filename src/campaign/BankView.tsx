@@ -13,7 +13,27 @@ import { PICTURE_SPOTS, parseWordList, type BankPicture, type LogoPosition } fro
 import { shrinkPicture } from './PictureRow'
 import { deleteBankPicture, saveBankPicture } from './store'
 
-export function BankView({ bank, onChange }: { bank: BankPicture[]; onChange: (bank: BankPicture[]) => void }) {
+export function BankView({
+  bank: all,
+  onChange: onAll,
+  campaigns = [],
+}: {
+  /** Every picture: the shared bank's and each campaign's own (campaignBank.ts). */
+  bank: BankPicture[]
+  onChange: (bank: BankPicture[]) => void
+  /** The campaigns a picture can be moved to. */
+  campaigns?: readonly { id: string; name: string }[]
+}) {
+  // The shared bank is this screen's list; a campaign's own pictures are on
+  // its page - except any still without a name, which wait on top here.
+  const bank = all.filter((p) => !p.campaignId)
+  const onChange = (shared: BankPicture[]) => onAll([...shared, ...all.filter((p) => p.campaignId)])
+  const unnamed = all.filter((p) => p.words.length === 0)
+  const updateAny = (id: string, fields: Partial<BankPicture>) => onAll(all.map((p) => (p.id === id ? { ...p, ...fields } : p)))
+  const removeAny = (id: string) => {
+    void deleteBankPicture(id)
+    onAll(all.filter((p) => p.id !== id))
+  }
   const picker = useRef<HTMLInputElement>(null)
   const [adding, setAdding] = useState(0)
   const [error, setError] = useState<string | null>(null)
@@ -57,7 +77,6 @@ export function BankView({ bank, onChange }: { bank: BankPicture[]; onChange: (b
     const key = squash(filter)
     return key ? bank.filter((p) => p.words.some((w) => squash(w).includes(key))) : bank
   }, [bank, filter])
-  const missingWords = bank.filter((p) => p.words.length === 0).length
 
   return (
     <section className="screen">
@@ -82,10 +101,20 @@ export function BankView({ bank, onChange }: { bank: BankPicture[]; onChange: (b
           e.target.value = ''
         }}
       />
-      {missingWords > 0 ? (
-        <p className="hint warn-text">
-          {missingWords} picture{missingWords === 1 ? ' needs' : 's need'} words before it can come up.
-        </p>
+      {unnamed.length > 0 ? (
+        <div className="group name-these">
+          <div className="group-title warn-text">
+            Name these <span className="bank-count">{unnamed.length}</span>
+          </div>
+          <p className="hint">
+            Pictures you put on videos from your phone are kept here. Give each a name - it pops up when you say it - or put it in a campaign&rsquo;s own bank.
+          </p>
+          <div className="bank">
+            {unnamed.map((picture) => (
+              <BankRow key={picture.id} picture={picture} campaigns={campaigns} onChange={(fields) => updateAny(picture.id, fields)} onRemove={() => removeAny(picture.id)} />
+            ))}
+          </div>
+        </div>
       ) : null}
       {error ? <div className="error">{error}</div> : null}
       {bank.length > 6 ? (
@@ -101,19 +130,24 @@ export function BankView({ bank, onChange }: { bank: BankPicture[]; onChange: (b
       ) : null}
       {bank.length === 0 ? <p className="empty">No pictures yet. Save the logos you use to your phone, then add them here.</p> : null}
       <div className="bank">
-        {shown.map((picture) => (
-          <BankRow key={picture.id} picture={picture} onChange={(fields) => update(picture.id, fields)} onRemove={() => remove(picture.id)} />
-        ))}
+        {shown
+          .filter((p) => p.words.length > 0)
+          .map((picture) => (
+            <BankRow key={picture.id} picture={picture} campaigns={campaigns} onChange={(fields) => update(picture.id, fields)} onRemove={() => remove(picture.id)} />
+          ))}
       </div>
     </section>
   )
 }
 
-function BankRow({
+export function BankRow({
   picture,
   onChange,
   onRemove,
+  campaigns,
 }: {
+  /** With campaigns: which bank it belongs to, the shared one or a campaign's. */
+  campaigns?: readonly { id: string; name: string }[]
   picture: BankPicture
   onChange: (fields: Partial<BankPicture>) => void
   onRemove: () => void
@@ -140,7 +174,7 @@ function BankRow({
       <input
         type="text"
         value={text}
-        placeholder="Words that bring it up"
+        placeholder="Its name - it pops up when you say it"
         autoCapitalize="off"
         aria-label="Words that bring it up"
         className={picture.words.length === 0 ? 'needs' : ''}
@@ -167,6 +201,27 @@ function BankRow({
           </option>
         ))}
       </select>
+      {campaigns && campaigns.length > 0 ? (
+        <select
+          value={picture.campaignId ?? ''}
+          aria-label="Which bank it is in"
+          onChange={(e) => {
+            const campaignId = e.target.value || undefined
+            const { campaignId: _old, ...rest } = picture
+            void _old
+            const next: BankPicture = campaignId ? { ...rest, campaignId } : rest
+            onChange({ campaignId })
+            void saveBankPicture(next)
+          }}
+        >
+          <option value="">Every campaign</option>
+          {campaigns.map((c) => (
+            <option key={c.id} value={c.id}>
+              {c.name}&rsquo;s own
+            </option>
+          ))}
+        </select>
+      ) : null}
       <button
         type="button"
         className="linkbtn"

@@ -4722,7 +4722,7 @@ export function CampaignApp() {
     const plan = job.day?.plan
     const campaign = campaignsRef.current.find((c) => c.id === job.campaignId)
     const angle = campaign?.angles.find((a) => a.id === job.angleId)
-    return plan && angle ? picturesHeard(angle, bankRef.current, plan.words) : []
+    return plan && angle ? picturesHeard(angle, bankRef.current, plan.words, job.campaignId) : []
   }
 
   const setSkipPicture = (id: string, pictureId: string, skip: boolean) => {
@@ -4800,11 +4800,12 @@ export function CampaignApp() {
   /** Pictures from his phone put on a campaign's video go into its picture
    *  bank by themselves, once (campaignBank.ts). */
   const bankPhonePictures = (campaignId: string, overlays: ManualPicture[], files: Map<string, Blob>) => {
+    // Unnamed, in its campaign's bank (General's: the shared one) - the Bank
+    // page asks him to name it (his ask, 2026-11-27).
     const campaign = campaignsRef.current.find((c) => c.id === campaignId)
-    if (!campaign || campaign.general) return
     const images = overlays.flatMap((o) => (o.source.kind === 'phone' && o.source.type.startsWith('image/') && files.get(o.id) ? [files.get(o.id)!] : []))
     if (images.length === 0) return
-    void addToCampaignBank(campaignId, images, bankRef.current)
+    void addToCampaignBank(campaign && !campaign.general ? campaignId : undefined, images, bankRef.current)
       .then((added) => {
         if (added.length > 0) setBank((b) => [...b, ...added])
       })
@@ -5217,7 +5218,7 @@ export function CampaignApp() {
         </section>
       )
     ) : tab === 'more' ? (
-      <MoreView campaigns={ownCampaigns.length} onOpen={setTab} workToLose={workToLose} trialReels={posting?.profile.trialReels === true} />
+      <MoreView unnamedPictures={bank.filter((p) => p.words.length === 0).length} campaigns={ownCampaigns.length} onOpen={setTab} workToLose={workToLose} trialReels={posting?.profile.trialReels === true} />
     ) : tab === 'motion' ? (
       <MotionView onBack={() => setTab('more')} />
     ) : tab === 'warmups' ? (
@@ -5249,6 +5250,7 @@ export function CampaignApp() {
             void deleteBankPicture(id)
             setBank((b) => b.filter((p) => p.id !== id))
           },
+          onChange: (id, fields) => setBank((b) => b.map((p) => (p.id === id ? { ...p, ...fields } : p))),
         }}
         onBackToMore={() => setTab('more')}
         campaigns={campaigns}
@@ -5283,7 +5285,7 @@ export function CampaignApp() {
         <div className="screen-head">
           <h1>Bank</h1>
         </div>
-        <BankView bank={sharedPictures(bank)} onChange={(shared) => setBank((all) => [...shared, ...all.filter((p) => p.campaignId)])} />
+        <BankView bank={bank} onChange={setBank} campaigns={(campaigns ?? []).filter((c) => !c.general && !c.trial)} />
         <VideoBankView />
         <MusicBankView />
       </>
@@ -5501,7 +5503,7 @@ export function CampaignApp() {
             setTab(next)
             if (next !== 'posts' && window.location.hash.startsWith('#posts')) history.replaceState(null, '', window.location.pathname)
           }}
-          dots={{ analytics: analyticsRows.some((r) => r.suggestion) || (insights.formatAlarms ?? []).length > 0 }}
+          dots={{ analytics: analyticsRows.some((r) => r.suggestion) || (insights.formatAlarms ?? []).length > 0, more: bank.some((p) => p.words.length === 0) }}
           counts={{ posts: posting ? toApprove : 0 }}
         />
       )}

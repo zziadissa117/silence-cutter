@@ -14,6 +14,8 @@ interface Row {
   hue: number
   name: string
   line: string
+  /** Something waiting for him there. */
+  warn?: boolean
 }
 
 export function MoreView({
@@ -21,7 +23,10 @@ export function MoreView({
   onOpen,
   workToLose,
   trialReels = false,
+  unnamedPictures = 0,
 }: {
+  /** Pictures in a bank still without a name (BankView "Name these"). */
+  unnamedPictures?: number
   /** How many campaigns there are, to say so. */
   campaigns: number
   /** Trial reels are on for this login (postiz profile `trialReels`). */
@@ -36,7 +41,14 @@ export function MoreView({
     { tab: 'motion', icon: <MotionIcon />, hue: 320, name: 'Motion graphics', line: 'Claude plans graphics around you' },
     ...(trialReels ? [{ tab: 'trial' as const, icon: <BatchIcon />, hue: 25, name: 'Trial reels', line: 'Viral reels for people who don’t follow you' }] : []),
     { tab: 'warmups', icon: <VideosIcon />, hue: 150, name: 'Warm-ups', line: 'Quick posts that keep accounts warm' },
-    { tab: 'pictures', icon: <PicturesIcon />, hue: 45, name: 'Bank', line: 'Pictures, videos and songs' },
+    {
+      tab: 'pictures',
+      icon: <PicturesIcon />,
+      hue: 45,
+      name: 'Bank',
+      line: unnamedPictures > 0 ? `${unnamedPictures} picture${unnamedPictures === 1 ? ' needs' : 's need'} a name - tap to add it` : 'Pictures, videos and songs',
+      warn: unnamedPictures > 0,
+    },
     { tab: 'settings', icon: <SettingsIcon />, hue: 230, name: 'Settings', line: 'Posting, people, server, defaults' },
   ]
   const leave = async () => {
@@ -65,7 +77,7 @@ export function MoreView({
               </span>
               <span className="row-text">
                 <span className="row-name">{r.name}</span>
-                <span className="row-line">{r.line}</span>
+                <span className={`row-line${r.warn ? ' warn-text' : ''}`}>{r.line}</span>
               </span>
               <ChevronRight />
             </button>

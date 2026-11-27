@@ -27,20 +27,20 @@ export function sharedPictures(bank: readonly BankPicture[]): BankPicture[] {
 }
 
 /** A picture's id in a campaign's bank: the same picture twice is one. */
-export async function campaignPictureId(campaignId: string, image: Blob): Promise<string> {
-  return `cb-${campaignId}-${await fingerprint(image)}`
+export async function campaignPictureId(campaignId: string | undefined, image: Blob): Promise<string> {
+  return `cb-${campaignId ?? 'shared'}-${await fingerprint(image)}`
 }
 
-/** Pictures into a campaign's bank, each once - brought down to video size
- *  first. Returns the ones that are new. */
-export async function addToCampaignBank(campaignId: string, images: readonly Blob[], bank: readonly BankPicture[], now = Date.now()): Promise<BankPicture[]> {
+/** Pictures into a campaign's bank (none: the shared bank), each once -
+ *  brought down to video size first. Returns the ones that are new. */
+export async function addToCampaignBank(campaignId: string | undefined, images: readonly Blob[], bank: readonly BankPicture[], now = Date.now()): Promise<BankPicture[]> {
   const have = new Set(bank.map((p) => p.id))
   const added: BankPicture[] = []
   for (const [i, file] of images.entries()) {
     const id = await campaignPictureId(campaignId, file)
     if (have.has(id)) continue
     have.add(id)
-    const picture: BankPicture = { id, image: await shrinkPicture(file), words: [], addedAt: now + i, campaignId }
+    const picture: BankPicture = { id, image: await shrinkPicture(file), words: [], addedAt: now + i, ...(campaignId ? { campaignId } : {}) }
     await saveBankPicture(picture)
     added.push(picture)
   }

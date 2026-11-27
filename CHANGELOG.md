@@ -3,6 +3,22 @@
 Newest first. Every change says what it does, how to use it, and how it works
 underneath. Kept up to date with each commit.
 
+## Campaign pictures have a name and pop up when said; phone pictures kept and waiting for a name
+- His ask (2026-11-27): a name on each picture in a campaign's picture bank - "It pops up whenever I say the word" -
+  keeping the shared bank too; and a picture added from the phone in the edit screen "also add it to the picture
+  bank ... not going to ask me yet to name it, but ... tell me 'add in a name to this ... or add it to a
+  campaign'".
+- Campaign page, Picture bank: each picture has its name box (one or more words), its spot and Remove. Named, it
+  comes up on that campaign's videos when he says it - always, whether or not the angle uses the shared bank - and
+  never on another campaign's (`look.videoLook` `bankPictures`, `skipPictures.picturesHeard`).
+- A picture from his phone put on a video in the edit screen is kept, unnamed, when he keeps the edit: in that
+  campaign's bank (General's videos: the shared bank). Nothing is asked then.
+- More -> Bank: "Name these" on top - every picture still without a name, from any bank, each with its name box and
+  "Every campaign" / "<campaign>'s own" to move it. A dot on More and "N pictures need a name" on the Bank row until
+  they all have one. The shared list below shows the shared bank's named pictures.
+- Underneath: `BankView` (`BankRow` exported, `campaigns`), `CampaignsView.CampaignPictures`, `campaignBank.ts`
+  (shared bank when no campaign), `MoreView` `unnamedPictures`; tests `campaignBank.test.ts`.
+
 ## Trybe, with a y
 - His correction (2026-11-27): it is spelled Trybe. Every word he sees says Trybe - the tab, Settings, the campaign,
   its page; a campaign already made as "Tribe" is renamed by itself. The code keeps `tribe` (ids, saved data).

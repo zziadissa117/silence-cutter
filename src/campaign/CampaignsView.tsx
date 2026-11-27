@@ -8,6 +8,7 @@ import { useEffect, useState } from 'react'
 import { ChevronLeft, ChevronRight } from './icons'
 import { BackToMore } from './MoreView'
 import { EndCampaign } from './EndCampaign'
+import { BankRow } from './BankView'
 import type { Profile } from './posting'
 import { describeAngle, type Angle, type BankPicture, type Campaign } from './look'
 import { hueOf } from './HomeTop'
@@ -56,7 +57,7 @@ export function CampaignsView({
 }: {
   /** Each campaign's own picture bank (campaignBank.ts): its pictures, and
    *  adding or taking one out. */
-  pictures?: { of: (campaignId: string) => BankPicture[]; onAdd: (campaignId: string, files: File[]) => Promise<void>; onRemove: (id: string) => void }
+  pictures?: { of: (campaignId: string) => BankPicture[]; onAdd: (campaignId: string, files: File[]) => Promise<void>; onRemove: (id: string) => void; onChange: (id: string, fields: Partial<BankPicture>) => void }
   /** Back to More, which it is reached from. */
   onBackToMore?: () => void
   campaigns: Campaign[]
@@ -241,7 +242,7 @@ function CampaignPictures({
   pictures,
 }: {
   campaign: Campaign
-  pictures: { of: (campaignId: string) => BankPicture[]; onAdd: (campaignId: string, files: File[]) => Promise<void>; onRemove: (id: string) => void }
+  pictures: { of: (campaignId: string) => BankPicture[]; onAdd: (campaignId: string, files: File[]) => Promise<void>; onRemove: (id: string) => void; onChange: (id: string, fields: Partial<BankPicture>) => void }
 }) {
   const list = pictures.of(campaign.id)
   const [adding, setAdding] = useState(false)
@@ -252,13 +253,18 @@ function CampaignPictures({
         Picture bank <span className="bank-count">{list.length}</span>
       </div>
       <p className="hint">
-        {campaign.name}&rsquo;s own pictures. They come first when you put a picture on one of its videos (Overlay in the edit screen). Pictures from your
-        phone that you use on its videos are kept here by themselves.
+        {campaign.name}&rsquo;s own pictures. Give each a name: it pops up on {campaign.name}&rsquo;s videos when you say it. They also come first in the
+        edit screen&rsquo;s Overlay. Pictures from your phone that you use on its videos are kept here by themselves.
       </p>
+      {list.some((p) => p.words.length === 0) ? (
+        <p className="hint warn-text">
+          {list.filter((p) => p.words.length === 0).length} without a name yet - name it so it pops up when you say it.
+        </p>
+      ) : null}
       {list.length > 0 ? (
-        <div className="pic-grid campaign-pic-grid">
+        <div className="bank campaign-bank-rows">
           {list.map((p) => (
-            <CampaignPicture key={p.id} picture={p} onRemove={() => pictures.onRemove(p.id)} />
+            <BankRow key={p.id} picture={p} onChange={(fields) => pictures.onChange(p.id, fields)} onRemove={() => pictures.onRemove(p.id)} />
           ))}
         </div>
       ) : null}
@@ -285,29 +291,5 @@ function CampaignPictures({
       </label>
       {problem ? <p className="hint warn-text">{problem}</p> : null}
     </div>
-  )
-}
-
-function CampaignPicture({ picture, onRemove }: { picture: BankPicture; onRemove: () => void }) {
-  const [url, setUrl] = useState<string | null>(null)
-  useEffect(() => {
-    const made = URL.createObjectURL(picture.image)
-    setUrl(made)
-    return () => URL.revokeObjectURL(made)
-  }, [picture.image])
-  return (
-    <span className="pic-cell campaign-pic">
-      {url ? <img alt="" src={url} /> : null}
-      <button
-        type="button"
-        className="campaign-pic-x"
-        aria-label="Take this picture out of the bank"
-        onClick={() => {
-          if (window.confirm('Take this picture out of the campaign\'s bank? Videos already made keep it.')) onRemove()
-        }}
-      >
-        ✕
-      </button>
-    </span>
   )
 }

@@ -17,16 +17,17 @@ export interface PictureChoice {
 /** The pictures this video will show: its angle's and the bank's, those whose
  *  words are in what was heard. `skipped` ids are still listed - they are the
  *  ones he can put back. */
-export function picturesHeard(angle: Angle, bank: BankPicture[], heard: WordChunk[]): PictureChoice[] {
+export function picturesHeard(angle: Angle, bank: BankPicture[], heard: WordChunk[], campaignId?: string): PictureChoice[] {
   const out: PictureChoice[] = []
   const heardIn = (words: string[]) => firing(findMentions(heard, words), angle.mentions).length > 0
   for (const picture of angle.pictures) {
     if (heardIn(picture.words)) out.push({ id: picture.id, words: picture.words.join(', '), image: picture.image })
   }
-  if (angle.bank.use) {
-    for (const picture of bank) {
-      if (heardIn(picture.words)) out.push({ id: picture.id, words: picture.words.join(', '), image: picture.image })
-    }
+  // The campaign's own pictures always; the shared bank when the angle uses
+  // it; never another campaign's (look.videoLook).
+  for (const picture of bank) {
+    const mine = picture.campaignId ? picture.campaignId === campaignId : angle.bank.use
+    if (mine && heardIn(picture.words)) out.push({ id: picture.id, words: picture.words.join(', '), image: picture.image })
   }
   return out
 }
