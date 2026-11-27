@@ -3,6 +3,21 @@
 Newest first. Every change says what it does, how to use it, and how it works
 underneath. Kept up to date with each commit.
 
+## Trybe videos backed up on his server
+- His ask (2026-11-27): "back up Trybe videos to the server too".
+- With his Cutter server connected (Settings -> Server), every Trybe video goes up to it by itself once made, and again
+  after each new edit: the finished video, its recording until he marks it approved, and its row (words heard, his
+  edits) so it can be edited again from a phone that lost it. The Trybe tab says "on your server ✓" per video, or
+  how many haven't gone up yet (tried again each time Trybe opens).
+- Approved: the server lets go of the recording, keeps the video. Delete: gone from the phone and the server.
+- A video on the server but not on this phone (phone wiped, or another phone) is listed under "On your server, not on
+  this phone" with "Bring back to this phone" (video, recording and edits back, Edit again works) or Delete.
+- Underneath: `tribeBackup.ts` (`backUp`, `backUpAll`, `serverOnly`, `bringBack`), `serverLink.sendBlob`/`serverFiles`,
+  store `tribeRow`/`markTribeBackedUp`/`loadRecording`/`restoreTribe`, `StoredJob.tribe.backedUp`. Server: files named
+  `tribe-...` are kept exactly as sent (not re-encoded), never swept, and `DELETE /files/:id` takes away these only.
+- Only to his own server (rule 4). Server redeploys by itself on Railway from the push; no Supabase deploy needed.
+- Recordings take room on the server's 5 GB disk until approved; when it is full the tab says so.
+
 ## His new songs go to every student by themselves
 - His ask (2026-11-27): after his 21 songs were added to every student's music bank (by hand on the server, the same
   day: added to theirs, nothing replaced), "make new songs go to every student automatically".

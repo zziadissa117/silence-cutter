@@ -3,13 +3,14 @@
 // watch it, save it again, edit it again when Tribe asks for a change - and
 // the approved ones folded below (their recording gone, the video kept).
 
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 
 import { FullPage } from './FullPage'
 import { CloseIcon } from './icons'
 import { formatTime } from './jobs'
 import { canShareFiles, share } from './jobs'
-import { approveTribe, forgetJob, hasRecording, heldVideos, loadHeldVideo, unapproveTribe, type PendingJob } from './store'
+import { approveTribe, forgetJob, hasRecording, heldVideos, loadHeldVideo, unapproveTribe, type PendingJob, type StoredJob } from './store'
+import { approvedOnServer, backUpAll, backupOn, bringBack, deleteFromServer, needsBackup, serverOnly } from './tribeBackup'
 
 interface TribeVideo {
   id: string
@@ -20,6 +21,8 @@ interface TribeVideo {
   version: number
   approvedAt?: number
   recording: boolean
+  /** On his server too (tribeBackup.ts). */
+  backedUp: boolean
 }
 
 const dayOf = (ms: number) => new Date(ms).toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' })
@@ -31,6 +34,20 @@ export function TribeView({ version, editing, onEditAgain }: { version: number; 
   const [busy, setBusy] = useState<string | null>(null)
   const [said, setSaid] = useState<string | null>(null)
   const [showApproved, setShowApproved] = useState(false)
+  const backingUp = useRef(false)
+  const [unsaved, setUnsaved] = useState(0)
+  /** Kept on his server, not on this phone (a phone wiped, or another one). */
+  const [onServer, setOnServer] = useState<StoredJob[]>([])
+
+  useEffect(() => {
+    let alive = true
+    void serverOnly()
+      .then((rows) => alive && setOnServer(rows))
+      .catch(() => undefined)
+    return () => {
+      alive = false
+    }
+  }, [readAgain])
 
   useEffect(() => {
     let alive = true
@@ -46,9 +63,21 @@ export function TribeView({ version, editing, onEditAgain }: { version: number; 
           version: r.version ?? 1,
           ...(r.tribe?.approvedAt ? { approvedAt: r.tribe.approvedAt } : {}),
           recording: await hasRecording(r.id),
+          backedUp: !needsBackup(r),
         })),
       )
-      if (alive) setVideos(list.sort((a, b) => b.madeAt - a.madeAt))
+      if (!alive) return
+      setVideos(list.sort((a, b) => b.madeAt - a.madeAt))
+      // What hasn't gone up to his server yet goes now, in the background.
+      if (backupOn() && mine.some(needsBackup) && !backingUp.current) {
+        backingUp.current = true
+        void backUpAll(mine)
+          .then((missed) => {
+            setUnsaved(missed)
+            if (missed < mine.filter(needsBackup).length) setReadAgain((n) => n + 1)
+          })
+          .finally(() => (backingUp.current = false))
+      }
     })
     return () => {
       alive = false
@@ -100,6 +129,7 @@ export function TribeView({ version, editing, onEditAgain }: { version: number; 
           Made {dayOf(v.madeAt)}
           {v.version > 1 ? ` · edit ${v.version}` : ''}
           {v.approvedAt ? ` · approved ${dayOf(v.approvedAt)}` : ''}
+          {backupOn() ? (v.backedUp ? ' · on your server ✓' : ' · going to your server…') : ''}
         </span>
         <div className="actions-row">
           <button type="button" className="btn small" disabled={busy !== null} onClick={() => void save(v)}>
@@ -116,7 +146,10 @@ export function TribeView({ version, editing, onEditAgain }: { version: number; 
                 disabled={busy !== null}
                 onClick={() => {
                   if (window.confirm('Trybe approved it? Its recording leaves the phone to free space - the finished video stays here.')) {
-                    void act(v.id, () => approveTribe(v.id))
+                    void act(v.id, async () => {
+                      await approveTribe(v.id)
+                      await approvedOnServer(v.id)
+                    })
                   }
                 }}
               >
@@ -133,7 +166,12 @@ export function TribeView({ version, editing, onEditAgain }: { version: number; 
                 className="linkbtn warn-text"
                 disabled={busy !== null}
                 onClick={() => {
-                  if (window.confirm('Delete this video from the phone?')) void act(v.id, () => forgetJob(v.id))
+                  if (window.confirm(`Delete this video from the phone${backupOn() ? ' and your server' : ''}?`)) {
+                    void act(v.id, async () => {
+                      await forgetJob(v.id)
+                      await deleteFromServer(v.id)
+                    })
+                  }
                 }}
               >
                 Delete
@@ -161,6 +199,49 @@ export function TribeView({ version, editing, onEditAgain }: { version: number; 
         </p>
       ) : null}
       {said ? <p className="hint warn-text">{said}</p> : null}
+      {!backupOn() ? (
+        <p className="hint">Only on this phone. Connect your server in Settings → Server and every Trybe video is backed up there too.</p>
+      ) : unsaved > 0 ? (
+        <p className="hint warn-text">
+          {unsaved} not on your server yet (no signal, or its disk is full) - tried again next time you open Trybe.
+        </p>
+      ) : null}
+      {onServer.length > 0 ? (
+        <div className="group">
+          <div className="group-title">
+            On your server, not on this phone <span className="bank-count">{onServer.length}</span>
+          </div>
+          <ul className="tribe-list">
+            {onServer.map((r) => (
+              <li key={r.id} className="tribe-item">
+                <div className="tribe-text">
+                  <span className="row-name">{r.held?.headline || r.headlineText || r.fileName}</span>
+                  <span className="hint">
+                    {r.madeAt ? `Made ${dayOf(r.madeAt)}` : 'Made'}
+                    {(r.version ?? 1) > 1 ? ` · edit ${r.version}` : ''}
+                    {r.tribe?.approvedAt ? ` · approved ${dayOf(r.tribe.approvedAt)}` : ''}
+                  </span>
+                  <div className="actions-row">
+                    <button type="button" className="btn small primary" disabled={busy !== null} onClick={() => void act(r.id, () => bringBack(r))}>
+                      {busy === r.id ? 'Bringing it back…' : 'Bring back to this phone'}
+                    </button>
+                    <button
+                      type="button"
+                      className="linkbtn warn-text"
+                      disabled={busy !== null}
+                      onClick={() => {
+                        if (window.confirm('Delete this video from your server?')) void act(r.id, () => deleteFromServer(r.id))
+                      }}
+                    >
+                      Delete
+                    </button>
+                  </div>
+                </div>
+              </li>
+            ))}
+          </ul>
+        </div>
+      ) : null}
       {videos === null ? null : waiting.length === 0 ? (
         <p className="empty">Nothing waiting on Trybe.</p>
       ) : (

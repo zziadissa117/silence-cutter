@@ -235,9 +235,14 @@ function say(campaignId: string, line: string | null): void {
 
 /** One file up, in pieces; a dropped connection costs one piece, tried again. */
 export async function sendFile(file: BankFile, blob: Blob, onPiece: (fraction: number) => void): Promise<void> {
+  return sendBlob(file.id, file.name, file.type || blob.type, blob, onPiece)
+}
+
+/** Any file to the server, in pieces, each tried three times. */
+export async function sendBlob(id: string, name: string, type: string, blob: Blob, onPiece: (fraction: number) => void = () => {}): Promise<void> {
   const total = Math.max(1, Math.ceil(blob.size / PIECE))
   const query = (n: number) =>
-    `/files/${encodeURIComponent(file.id)}/${n}?total=${total}&size=${blob.size}&name=${encodeURIComponent(file.name)}&type=${encodeURIComponent(file.type || blob.type)}`
+    `/files/${encodeURIComponent(id)}/${n}?total=${total}&size=${blob.size}&name=${encodeURIComponent(name)}&type=${encodeURIComponent(type)}`
   for (let n = 0; n < total; n++) {
     for (let attempt = 1; ; attempt++) {
       try {
@@ -250,6 +255,11 @@ export async function sendFile(file: BankFile, blob: Blob, onPiece: (fraction: n
     }
     onPiece((n + 1) / total)
   }
+}
+
+/** The files the server keeps, by id. */
+export async function serverFiles(): Promise<Record<string, { size: number }>> {
+  return (await call<{ files: Record<string, { size: number }> }>('GET', '/files')).files
 }
 
 /** The bank's files the server doesn't have yet, sent from this phone. */

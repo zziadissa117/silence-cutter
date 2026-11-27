@@ -41,6 +41,7 @@ import { newestFirst } from './campaignOrder'
 import { addToCampaignBank, picturesOf, sharedPictures } from './campaignBank'
 import { newTribeCampaign, setTribeOn, tribeCampaign, tribeOn } from './tribe'
 import { TribeView } from './TribeView'
+import { backUp, backupOn } from './tribeBackup'
 import { StillPosting } from './StillPosting'
 import { FormatsView, type FormatClips } from './FormatsView'
 import { WarmupView } from './WarmupView'
@@ -1066,6 +1067,11 @@ export function CampaignApp() {
     const held = { transcript: transcriptOf(job, result, plan), headline: result.headline, duration: result.newDurationSec, size: result.blob.size }
     if (!(await holdTribe(job.id, result.blob, held))) {
       setNotice(`${job.name} is made, but the phone had no room to keep it - save it from the Trybe tab before you close the app.`)
+    } else if (backupOn()) {
+      // Up to his own server too, in the background (tribeBackup.ts).
+      void backUp(job.id)
+        .then(() => setHeldVersion((v) => v + 1))
+        .catch(() => undefined)
     }
     setHeldVersion((v) => v + 1)
   }

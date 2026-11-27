@@ -40,7 +40,7 @@ import { SERVER_MODE } from './serverFlag'
 
 export type JobPhase = 'reading' | 'model' | 'listening' | 'cutting' | 'joining' | 'cutout' | 'sending'
 
-interface StoredJob {
+export interface StoredJob {
   id: string
   fileName: string
   fileType: string
@@ -185,7 +185,7 @@ interface StoredJob {
   held?: HeldVideo
   /** A Tribe video (tribe.ts): kept, recording and all, until he marks it
    *  approved; `approvedAt` once he has. */
-  tribe?: { approvedAt?: number }
+  tribe?: { approvedAt?: number; backedUp?: number }
 }
 
 export interface HeldVideo {
@@ -982,20 +982,49 @@ export async function heldVideos(): Promise<PendingJob[]> {
 export async function holdTribe(id: string, video: Blob, held: HeldVideo, now = Date.now()): Promise<boolean> {
   if (!(await holdMade(id, video, held, now))) return false
   const row = await db.jobs.get(id)
-  await db.jobs.update(id, { tribe: { ...(row?.tribe ?? {}), approvedAt: undefined } }).catch(() => {})
+  // A new go: backed up again (tribeBackup.ts).
+  await db.jobs.update(id, { tribe: { ...(row?.tribe ?? {}), approvedAt: undefined, backedUp: undefined } }).catch(() => {})
   return true
 }
 
 /** Tribe approved it: its recording goes (the phone's space back), the
  *  finished video stays to look at and save. */
 export async function approveTribe(id: string, now = Date.now()): Promise<void> {
-  await db.jobs.update(id, { tribe: { approvedAt: now } })
+  const row = await db.jobs.get(id)
+  await db.jobs.update(id, { tribe: { ...(row?.tribe ?? {}), approvedAt: now } })
   await db.videos.delete(id).catch(() => {})
 }
 
 /** Tribe sent it back after all: kept again, recording or not. */
 export async function unapproveTribe(id: string): Promise<void> {
-  await db.jobs.update(id, { tribe: {} })
+  const row = await db.jobs.get(id)
+  await db.jobs.update(id, { tribe: { ...(row?.tribe ?? {}), approvedAt: undefined } })
+}
+
+/** A Tribe video's row, as kept (tribeBackup.ts sends it to his server). */
+export async function tribeRow(id: string): Promise<StoredJob | undefined> {
+  const row = await db.jobs.get(id)
+  return row?.tribe ? row : undefined
+}
+
+/** Which go of a Tribe video is now on his server (tribeBackup.ts). */
+export async function markTribeBackedUp(id: string, version: number): Promise<void> {
+  const row = await db.jobs.get(id)
+  if (row?.tribe) await db.jobs.update(id, { tribe: { ...row.tribe, backedUp: version } })
+}
+
+/** A Tribe video's recording, while it is on the phone. */
+export async function loadRecording(id: string): Promise<Blob | null> {
+  const v = await db.videos.get(id).catch(() => undefined)
+  return v && v.blob.size > 0 ? v.blob : null
+}
+
+/** A Tribe video back from his server onto this phone: its row, finished
+ *  video and (if not approved yet) its recording. */
+export async function restoreTribe(row: StoredJob, video: Blob, recording: Blob | null): Promise<void> {
+  await db.videos.put({ id: heldKey(row.id), blob: video })
+  if (recording) await db.videos.put({ id: row.id, blob: recording })
+  await db.jobs.put({ ...row, attempts: 0, addedAt: row.addedAt ?? Date.now() })
 }
 
 /** Whether a Tribe video's recording is still on the phone (Edit again). */

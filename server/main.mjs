@@ -271,7 +271,8 @@ async function piece(id, n, total, meta, body) {
   }
   await fsp.rename(tmp, whole)
   await fsp.rm(parts, { recursive: true, force: true })
-  const made = meta.type?.startsWith('video/') || /\.(mov|mp4|m4v)$/i.test(meta.name ?? '') ? await readable(whole, isTalkFile(id)) : { ok: true }
+  // A Trybe backup is kept exactly as sent (isBackup): never re-made.
+  const made = !isBackup(id) && (meta.type?.startsWith('video/') || /\.(mov|mp4|m4v)$/i.test(meta.name ?? '')) ? await readable(whole, isTalkFile(id)) : { ok: true }
   if (!made.ok) {
     await fsp.rm(whole, { force: true })
     throw new Error(made.why)
@@ -315,7 +316,7 @@ async function sweepFiles() {
   for (const name of await fsp.readdir(dir('files')).catch(() => [])) {
     if (!name.endsWith('.json')) continue
     const meta = await readJson(dir('files', name), null)
-    if (!meta?.id || used.has(meta.id)) continue
+    if (!meta?.id || used.has(meta.id) || isBackup(meta.id)) continue
     const last = Math.max(startedAt, readAt.get(meta.id) ?? 0, Date.parse(meta.at ?? '') || 0)
     if (now - last < KEEP_UNUSED_MS) continue
     await fsp.rm(dir('files', meta.id), { force: true })
@@ -386,6 +387,9 @@ function toInbox(change) {
 // once (serverTalk.ts), and writes back how far each is and what it found.
 
 /** A talking video's own files: its recording, and what goes on it. */
+// His Trybe videos backed up from the phone (src/campaign/tribeBackup.ts):
+// kept until the phone takes them away, never swept.
+const isBackup = (id) => typeof id === 'string' && id.startsWith('tribe-')
 const isTalkFile = (id) => /^(t|clip|ov|vb)-/.test(id)
 const talkPath = (id) => dir('talk', `${id}.json`)
 
@@ -535,6 +539,15 @@ const publicServer = http.createServer(async (req, res) => {
       if (!meta || !fs.existsSync(dir('files', id))) return send(res, 404, { error: 'Not here.' }, cors)
       res.writeHead(200, { ...cors, 'content-type': meta.type || 'application/octet-stream', 'content-length': fs.statSync(dir('files', id)).size, 'cache-control': 'no-store' })
       return fs.createReadStream(dir('files', id)).pipe(res)
+    }
+
+    // A Trybe backup the phone no longer needs here (approved, or deleted).
+    if (req.method === 'DELETE' && parts[0] === 'files' && parts.length === 2) {
+      const id = safeId(parts[1])
+      if (!id || !isBackup(id)) return send(res, 400, { error: 'Only a Trybe backup is taken away like this.' }, cors)
+      await fsp.rm(dir('files', id), { force: true })
+      await fsp.rm(dir('files', `${id}.json`), { force: true })
+      return send(res, 200, { ok: true }, cors)
     }
 
     if (req.method === 'PUT' && parts[0] === 'files' && parts.length === 3) {
