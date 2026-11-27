@@ -3,6 +3,16 @@
 Newest first. Every change says what it does, how to use it, and how it works
 underneath. Kept up to date with each commit.
 
+## His new songs go to every student by themselves
+- His ask (2026-11-27): after his 21 songs were added to every student's music bank (by hand on the server, the same
+  day: added to theirs, nothing replaced), "make new songs go to every student automatically".
+- A song he adds to his music bank is added to every other login's too, unless they already have the same song
+  (same file or same recording) - added to theirs, never replacing (`cutter/songs.shareRows`, `songsBySpace`,
+  `index.ts shareWithStudents` in `addSong`). A student opening their sign-in link starts with all his songs
+  (`acceptInvite`). A student taking one of his songs out keeps it out; his renaming or removing a song changes
+  only his own bank. Tests in `songs.test.ts`.
+- Needs deploying: run ./deploy-server.sh
+
 ## Campaign pictures have a name and pop up when said; phone pictures kept and waiting for a name
 - His ask (2026-11-27): a name on each picture in a campaign's picture bank - "It pops up whenever I say the word" -
   keeping the shared bank too; and a picture added from the phone in the edit screen "also add it to the picture

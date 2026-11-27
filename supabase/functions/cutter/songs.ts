@@ -66,3 +66,24 @@ export function songsFrom(rows: readonly { value: string }[]): SharedSong[] {
   }
   return songs.sort((a, b) => a.addedAt - b.addedAt || a.id.localeCompare(b.id))
 }
+
+/** The owner's song for every other login that hasn't the same song yet
+ *  (his ask, 2026-11-27: "make new songs go to every student
+ *  automatically"): the rows to add, each under that login's own prefix
+ *  (invite.ts songPrefix: `song@<space>:`). Added to theirs, never replacing. */
+export function shareRows(song: SharedSong, others: readonly { id: string; songs: readonly SharedSong[] }[]): { key: string; value: string }[] {
+  return others.filter((o) => !sameSong(o.songs, song)).map((o) => ({ key: `song@${o.id}:${song.id}`, value: JSON.stringify(song) }))
+}
+
+/** Each login's songs, from every `song@<space>:` row. */
+export function songsBySpace(rows: readonly { key: string; value: string }[]): Map<string, SharedSong[]> {
+  const out = new Map<string, SharedSong[]>()
+  for (const row of rows) {
+    const space = /^song@([\w-]+):/.exec(row.key)?.[1]
+    if (!space) continue
+    const [song] = songsFrom([row])
+    if (!song) continue
+    out.set(space, [...(out.get(space) ?? []), song])
+  }
+  return out
+}

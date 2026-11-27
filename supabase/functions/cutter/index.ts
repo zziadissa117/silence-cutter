@@ -63,7 +63,7 @@
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 
-import { MUSIC_DIR, cleanSong, sameSong, songsFrom, type SharedSong } from './songs.ts'
+import { MUSIC_DIR, cleanSong, sameSong, shareRows, songsBySpace, songsFrom, type SharedSong } from './songs.ts'
 import { INVITE_MS, MAX_DEVICES, cleanLoginName, deviceFrom, isActive, roomForDevice, songPrefix, type Device } from './invite.ts'
 import webpush from 'npm:web-push@3.6.7'
 import {
@@ -404,6 +404,8 @@ async function acceptInvite(body: Record<string, unknown>): Promise<Response> {
   if (error) return reply({ error: 'The server could not check the link. Try again.' }, 500)
   if (!data) return reply(LINK_DEAD, 410)
   await onDevice({ id: data.id, name: data.name }, device, 'opened their sign-in link')
+  // A new student starts with every one of the owner's songs.
+  await shareWithStudents(await allSongs((await ownerSpace()) ?? ''), data.id).catch((e) => console.error('sharing the songs failed', e))
   return reply({ token: await makeToken(data.id, data.pass_hash, device.id), name: data.name, ...((await onlyTrial(data.id)) ? { only: 'trial' } : {}) })
 }
 
@@ -686,7 +688,30 @@ async function addSong(spaceId: string, body: Record<string, unknown>): Promise<
   const key = `${songPrefix(spaceId, await ownerSpace())}${song.id}`
   const { error } = await db.from('cutter_config').upsert({ key, value: JSON.stringify(song) }, { onConflict: 'key' })
   if (error) return reply({ error: 'The server could not keep the song.' }, 500)
+  // The owner's new song goes to every student's music bank too.
+  if (spaceId === (await ownerSpace())) await shareWithStudents([song]).catch((e) => console.error('sharing the song failed', e))
   return reply({ song })
+}
+
+/** The owner's songs into every other login's music bank, added to theirs
+ *  (songs.shareRows) - `only`: one login (a student who just signed in). */
+async function shareWithStudents(songs: readonly SharedSong[], only?: string): Promise<void> {
+  const owner = await ownerSpace()
+  let spaces = db.from('cutter_spaces').select('id').neq('id', owner ?? '')
+  if (only) spaces = spaces.eq('id', only)
+  const [{ data: logins }, { data: rows }] = await Promise.all([spaces, db.from('cutter_config').select('key, value').like('key', 'song@%')])
+  const by = songsBySpace((rows ?? []) as { key: string; value: string }[])
+  const others = ((logins ?? []) as { id: string }[]).map((l) => ({ id: l.id, songs: by.get(l.id) ?? [] }))
+  const add: { key: string; value: string }[] = []
+  for (const song of songs) {
+    for (const row of shareRows(song, others)) {
+      add.push(row)
+      // Counted as theirs now, so the same song twice in `songs` goes once.
+      const o = others.find((x) => row.key.startsWith(`song@${x.id}:`))
+      if (o) o.songs = [...o.songs, song]
+    }
+  }
+  if (add.length > 0) await db.from('cutter_config').upsert(add, { onConflict: 'key', ignoreDuplicates: true })
 }
 
 async function renameSong(spaceId: string, body: Record<string, unknown>): Promise<Response> {

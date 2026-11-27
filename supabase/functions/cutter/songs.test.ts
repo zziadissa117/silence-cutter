@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { MAX_SONG_BYTES, cleanSong, sameSong, songsFrom } from './songs'
+import { MAX_SONG_BYTES, cleanSong, sameSong, shareRows, songsBySpace, songsFrom } from './songs'
 
 const sha = (c: string) => c.repeat(64)
 const song = { id: 's1', name: 'Sad piano', type: 'audio/mp4', size: 900_000, fp: 'fp-a', sha: sha('a'), addedAt: 5 }
@@ -30,5 +30,24 @@ describe('a song for the shared music bank', () => {
   it('reads the songs from their rows, oldest first, leaving out a bad one', () => {
     const later = { ...song, id: 's2', addedAt: 9 }
     expect(songsFrom([{ value: JSON.stringify(later) }, { value: 'nope' }, { value: JSON.stringify(song) }]).map((s) => s.id)).toEqual(['s1', 's2'])
+  })
+})
+
+describe('the owner\'s songs shared with every student (his ask, 2026-11-27)', () => {
+  const song = (id: string, sha: string) => ({ id, name: id, type: 'audio/mp4', size: 1, sha, addedAt: 0 })
+  const sha = (c: string) => c.repeat(64)
+  it('adds the song to each login that has not got it, under its own prefix', () => {
+    const rows = shareRows(song('new', sha('a')), [
+      { id: 'stefan', songs: [song('his', sha('b'))] },
+      { id: 'may', songs: [song('same', sha('a'))] },
+    ])
+    expect(rows.map((r) => r.key)).toEqual(['song@stefan:new'])
+  })
+  it('reads each login\'s songs from its rows', () => {
+    const by = songsBySpace([
+      { key: 'song@stefan:x', value: JSON.stringify(song('x', sha('c'))) },
+      { key: 'song:owner', value: JSON.stringify(song('o', sha('d'))) },
+    ])
+    expect([...by.keys()]).toEqual(['stefan'])
   })
 })
