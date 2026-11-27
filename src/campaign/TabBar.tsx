@@ -23,7 +23,7 @@ const TABS: { tab: Tab; label: string; icon: ReactNode }[] = [
 ]
 
 /** Tribe's tab, beside Batch, once Tribe is turned on in Settings (tribe.ts). */
-const TRIBE_TAB = { tab: 'tribe' as const, label: 'Tribe', icon: <TribeIcon /> }
+const TRIBE_TAB = { tab: 'tribe' as const, label: 'Trybe', icon: <TribeIcon /> }
 
 /** `dots`: tabs with something waiting for him - a suggestion to answer.
  *  `counts`: how many, shown on the tab (posts to approve). */

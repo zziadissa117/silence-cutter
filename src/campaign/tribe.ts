@@ -53,6 +53,6 @@ export const TRIBE_ID = 'tribe'
  *  picks it), no logo, its one angle with no look of its own beyond his
  *  usual captions and headline. */
 export function newTribeCampaign(id = TRIBE_ID, now = Date.now()): Campaign {
-  const angle = blankAngle(`${id}-a1`, 'Tribe')
-  return { id, name: 'Tribe', logo: null, brandWords: [], tribe: true, createdAt: now, updatedAt: now, angles: [{ ...angle, general: true }] }
+  const angle = blankAngle(`${id}-a1`, 'Trybe')
+  return { id, name: 'Trybe', logo: null, brandWords: [], tribe: true, createdAt: now, updatedAt: now, angles: [{ ...angle, general: true }] }
 }

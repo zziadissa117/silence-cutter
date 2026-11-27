@@ -3,6 +3,10 @@
 Newest first. Every change says what it does, how to use it, and how it works
 underneath. Kept up to date with each commit.
 
+## Trybe, with a y
+- His correction (2026-11-27): it is spelled Trybe. Every word he sees says Trybe - the tab, Settings, the campaign,
+  its page; a campaign already made as "Tribe" is renamed by itself. The code keeps `tribe` (ids, saved data).
+
 ## Each campaign its own picture bank, first in the edit screen
 - His ask (2026-11-26): "go into campaigns and click on a campaign. We're going to have a sort of picture bank for
   that campaign ... all the pictures that we've used for that campaign ... or ... for future videos ... in the

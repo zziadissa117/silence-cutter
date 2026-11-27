@@ -115,7 +115,7 @@ export function TribeView({ version, editing, onEditAgain }: { version: number; 
                 className="btn small primary"
                 disabled={busy !== null}
                 onClick={() => {
-                  if (window.confirm('Tribe approved it? Its recording leaves the phone to free space - the finished video stays here.')) {
+                  if (window.confirm('Trybe approved it? Its recording leaves the phone to free space - the finished video stays here.')) {
                     void act(v.id, () => approveTribe(v.id))
                   }
                 }}
@@ -149,11 +149,11 @@ export function TribeView({ version, editing, onEditAgain }: { version: number; 
   return (
     <section className="screen tribe">
       <div className="screen-head">
-        <h1>Tribe</h1>
+        <h1>Trybe</h1>
       </div>
       <p className="hint tip">
-        Add your videos as usual and pick Tribe for them. They&rsquo;re made, never posted, and kept here with their recording until you mark them approved -
-        edit again whenever Tribe asks for a change.
+        Add your videos as usual and pick Trybe for them. They&rsquo;re made, never posted, and kept here with their recording until you mark them approved -
+        edit again whenever Trybe asks for a change.
       </p>
       {editing > 0 ? (
         <p className="hint">
@@ -162,11 +162,11 @@ export function TribeView({ version, editing, onEditAgain }: { version: number; 
       ) : null}
       {said ? <p className="hint warn-text">{said}</p> : null}
       {videos === null ? null : waiting.length === 0 ? (
-        <p className="empty">Nothing waiting on Tribe.</p>
+        <p className="empty">Nothing waiting on Trybe.</p>
       ) : (
         <div className="group">
           <div className="group-title">
-            Waiting on Tribe <span className="bank-count">{waiting.length}</span>
+            Waiting on Trybe <span className="bank-count">{waiting.length}</span>
           </div>
           <ul className="tribe-list">{waiting.map(row)}</ul>
         </div>

@@ -386,14 +386,14 @@ export function SettingsView({
       </Section>
 
       {onTribe ? (
-        <Section icon={<TribeIcon />} hue={TRIBE_HUE} title="Tribe">
+        <Section icon={<TribeIcon />} hue={TRIBE_HUE} title="Trybe">
           <label className="toggle">
             <input type="checkbox" checked={tribe} onChange={(e) => onTribe(e.target.checked)} />
             <span>
-              <span className="label">Tribe</span>
+              <span className="label">Trybe</span>
               <span className="hint" style={{ display: 'block' }}>
-                A purple Tribe campaign and a Tribe tab. Videos you put in Tribe are made, never posted, and kept with their recording until you mark
-                them approved - to watch, save and edit again whenever Tribe asks for changes.
+                A purple Trybe campaign and a Trybe tab. Videos you put in Trybe are made, never posted, and kept with their recording until you mark
+                them approved - to watch, save and edit again whenever Trybe asks for changes.
               </span>
             </span>
           </label>

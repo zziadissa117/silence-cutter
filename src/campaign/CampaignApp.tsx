@@ -1050,6 +1050,13 @@ export function CampaignApp() {
   const [heldVersion, setHeldVersion] = useState(0)
   // Tribe (tribe.ts): on in Settings, a purple campaign and its own tab.
   const [tribe, setTribe] = useState(tribeOn)
+  // Spelled Trybe (his correction, 2026-11-27): a campaign made as "Tribe" renamed once.
+  useEffect(() => {
+    const old = campaigns ? tribeCampaign(campaigns) : undefined
+    if (!old || old.name !== 'Tribe') return
+    const renamed = { ...old, name: 'Trybe', angles: old.angles.map((a) => (a.name === 'Tribe' ? { ...a, name: 'Trybe' } : a)) }
+    void saveCampaign(renamed).then((saved) => setCampaigns((cs) => (cs ? cs.map((c) => (c.id === saved.id ? saved : c)) : cs)))
+  }, [campaigns])
   useEffect(() => {
     if (!tribe || !campaigns || tribeCampaign(campaigns)) return
     void saveCampaign(newTribeCampaign()).then((made) => setCampaigns((cs) => (cs && !tribeCampaign(cs) ? ordered([made, ...cs]) : cs)))
@@ -1058,7 +1065,7 @@ export function CampaignApp() {
   const holdTribeVideo = async (job: Job, result: CampaignResult, plan: CampaignPlan | null): Promise<void> => {
     const held = { transcript: transcriptOf(job, result, plan), headline: result.headline, duration: result.newDurationSec, size: result.blob.size }
     if (!(await holdTribe(job.id, result.blob, held))) {
-      setNotice(`${job.name} is made, but the phone had no room to keep it - save it from the Tribe tab before you close the app.`)
+      setNotice(`${job.name} is made, but the phone had no room to keep it - save it from the Trybe tab before you close the app.`)
     }
     setHeldVersion((v) => v + 1)
   }
@@ -1066,7 +1073,7 @@ export function CampaignApp() {
   const editTribe = async (id: string) => {
     const reopened = await reopenJob(id, '')
     if (!reopened) {
-      setNotice("This Tribe video's recording is no longer on the phone - it can be saved, not edited again.")
+      setNotice("This Trybe video's recording is no longer on the phone - it can be saved, not edited again.")
       return
     }
     const restored = restoredJob(reopened)
