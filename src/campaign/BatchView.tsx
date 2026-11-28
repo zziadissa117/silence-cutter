@@ -60,6 +60,13 @@ import {
 } from './batch'
 
 /** "Talking head", "Reaction" - a format's kind in words. */
+/** A split screen's missing clips, said plainly. */
+const SPLIT_MISSING: Record<string, string> = {
+  'a clip for Under your reaction': 'a match clip',
+  'a clip for You at the computer': 'a clip of you at the computer',
+  'a clip for The product': 'the product',
+}
+
 const formatLabel = (kind: FormatKind) => FORMAT_KINDS.find((k) => k.kind === kind)?.label ?? 'Format'
 import { StepOrder } from './StepOrder'
 import { CaptionHeight } from './CaptionHeight'
@@ -149,6 +156,8 @@ import {
 } from './batchRun'
 import { FormulaPreview } from './FormulaPreview'
 import { CORNER_SIZES, DEFAULT_CORNER } from './greenScreenRender'
+import { MoneyRow, SplitLines } from './SplitLines'
+import type { SplitRole } from './splitScreen'
 import {
   carryOnEngineJob,
   engineJob,
@@ -200,7 +209,7 @@ function WhenDue({ due, signal, run }: { due: boolean; signal: string; run: () =
 
 type Kind = 'reactions' | 'products' | 'music'
 /** Where new clips go: one of the bank's lists, or a step of the product. */
-type Target = Kind | { step: string } | { format: string; as: 'reactions' | 'products' }
+type Target = Kind | { step: string } | { format: string; as: 'reactions' | 'products'; role?: SplitRole }
 
 const LEFT_KEY = 'batch.formulaLeft'
 
@@ -558,6 +567,8 @@ export function BatchView({
     const stepId = typeof target === 'object' && 'step' in target ? target.step : null
     // The format the clip is for (BankFile.formats).
     const format = typeof target === 'object' && 'format' in target ? target.format : null
+    // A split screen's match clip or computer clip (splitScreen.ts).
+    const role = typeof target === 'object' && 'format' in target ? target.role : undefined
     const listOf = (b: BatchBank | null): BankFile[] => (stepId ? (b?.steps?.find((s) => s.id === stepId)?.files ?? []) : (b?.[kind] ?? []))
     if (kind !== 'music') {
       const problemPicking = pickArrived(files)
@@ -610,6 +621,7 @@ export function BatchView({
           ...(seconds ? { seconds } : {}),
           ...(again ? { again: Date.now() + i } : {}),
           ...(format ? { formats: [format] } : {}),
+          ...(role ? { role } : {}),
         })
       }
     } catch (error) {
@@ -1565,13 +1577,63 @@ export function BatchView({
     )
   }
 
+  /** A split screen format, open (splitScreen.ts): its four kinds of clip in
+   *  the order a video plays them, the title, the step lines, the money. */
+  const splitBody = (f: BatchFormat) => {
+    if (!bank) return null
+    const products = filesIn('products', f.id, 'none')
+    return (
+      <div className="format-body">
+        <label className="field">
+          <span className="label">Name</span>
+          <input type="text" value={f.name} maxLength={60} aria-label="Format name" onChange={(e) => changeFormat(f.id, { name: e.target.value })} />
+        </label>
+        <p className="hint tip">You on top, the match then the product under you. Any clip goes with any other - never the same whole video twice.</p>
+        <div className="format-section">
+          <div className="format-section-title">The first seconds</div>
+          {list('reactions', 'You reacting', 'On top. Your voice is kept and turned up - the title over you, the money popping up on the goal.', f.id, undefined, 'none')}
+          {list('products', 'The match under you', 'Under you. Each with its goal at the same moment - the money and the beat drop land where its sound jumps (the cha-ching).', f.id, undefined, 'under')}
+        </div>
+        <div className="format-section">
+          <div className="format-section-title">Then</div>
+          {list('reactions', 'You at the computer', 'On top while the product plays. Its own sound is left out.', f.id, undefined, 'desk')}
+          {list('products', 'The product', 'Under you, its own sound kept (typing, clicks). The video lasts as long as it does.', f.id, undefined, 'none')}
+        </div>
+        <div className="format-section">
+          <div className="format-section-title">On screen</div>
+          <div className="format-box">
+            <div className="setting">
+              <div className="setting-text">
+                <span className="row-name">Title on top</span>
+                <span className="row-line">{f.noHeadline ? 'Off: no words over you.' : 'Over you for the first seconds.'}</span>
+              </div>
+              <input type="checkbox" className="switch" checked={!f.noHeadline} aria-label="Title on top" onChange={(e) => changeFormat(f.id, { noHeadline: e.target.checked ? undefined : true })} />
+            </div>
+            {f.noHeadline ? null : <FormatHeadlines format={f} shared={bank.headlines.length} onSave={(headlines) => changeFormat(f.id, { headlines })} />}
+            <SplitLines format={f} product={products[0] ?? null} loadFile={loadBankFile} onSave={(lines) => changeFormat(f.id, { lines })} />
+            <MoneyRow format={f} onSave={(money) => changeFormat(f.id, { money })} />
+            <p className="hint">The song plays the whole way. Mark its beat drop under Music and the drop lands on the goal.</p>
+          </div>
+        </div>
+        <div className="format-actions format-foot">
+          <button type="button" className="btn small" onClick={() => changeFormat(f.id, { paused: !f.paused || undefined })}>
+            {f.paused ? 'Start it again' : 'Pause'}
+          </button>
+          <button type="button" className="linkbtn danger" onClick={() => removeFormat(f)}>
+            Take out this format
+          </button>
+        </div>
+      </div>
+    )
+  }
+
   /** One format: its card - what it is, how much it has, how many videos it
    *  can still make - and, open, everything it is made of. */
   const formatCard = (f: BatchFormat) => {
     if (!bank) return null
     const sub = formatBank(bank, f)
     const open = openFormat === f.id
-    const missingHere = missingFor(sub).map((m) => (m === 'a reaction' ? 'a clip of you' : m))
+    const missingHere = missingFor(sub).map((m) => (m === 'a reaction' ? 'a clip of you' : (SPLIT_MISSING[m] ?? m)))
     const { left: leftHere } = leftToMake(sub)
     const kind = FORMAT_KINDS.find((k) => k.kind === f.kind)!
     const green = f.kind === 'greenscreen'
@@ -1603,7 +1665,9 @@ export function BatchView({
           <span className="hint">
             {vary
               ? `${sub.reactions.length} hook${sub.reactions.length === 1 ? '' : 's'} × ${bodies} bod${bodies === 1 ? 'y' : 'ies'}`
-              : `${sub.reactions.length} clip${sub.reactions.length === 1 ? '' : 's'} of you · ${products}`}
+              : f.kind === 'split'
+                ? `${sub.reactions.length} reaction${sub.reactions.length === 1 ? '' : 's'} · ${steps[0]?.files.length ?? 0} match${steps[0]?.files.length === 1 ? '' : 'es'} · ${steps[1]?.files.length ?? 0} at the computer · ${steps[2]?.files.length ?? 0} product`
+                : `${sub.reactions.length} clip${sub.reactions.length === 1 ? '' : 's'} of you · ${products}`}
             {f.kind === 'greenscreen' && f.voice ? ' · your voice' : ''}
             {f.noHeadline ? ' · no headline' : ''}
           </span>
@@ -1616,7 +1680,9 @@ export function BatchView({
             </span>
           ) : null}
         </button>
-        {open && f.kind === 'talking' ? (
+        {open && f.kind === 'split' ? (
+          splitBody(f)
+        ) : open && f.kind === 'talking' ? (
           talkBody(f, sub, steps, others)
         ) : open ? (
           <div className="format-body">
@@ -1910,8 +1976,10 @@ export function BatchView({
   /** Formats left with no song: their videos would have none. */
   const songless = bank && bank.music.length > 0 ? songFormats.filter((f) => !f.noMusic && songsOf(bank.music, f.id).length === 0) : []
   /** The files of a list: one format's only, when `formatId` is given. */
-  const filesIn = (kind: Kind, formatId?: string): BankFile[] =>
-    !bank ? [] : formatId && kind !== 'music' ? bank[kind].filter((f) => f.formats?.includes(formatId)) : bank[kind]
+  const filesIn = (kind: Kind, formatId?: string, role?: SplitRole | 'none'): BankFile[] =>
+    (!bank ? [] : formatId && kind !== 'music' ? bank[kind].filter((f) => f.formats?.includes(formatId)) : bank[kind]).filter((f) =>
+      role === undefined ? true : role === 'none' ? !f.role : f.role === role,
+    )
   /** "Use each one once" under a format's clips of him or its products (his
    *  ask, 2026-11-14: a brand that doesn't want them repurposed): off unless
    *  he ticks it; then each goes in one video, and the format makes as many
@@ -1945,13 +2013,13 @@ export function BatchView({
     )
   }
 
-  const list = (kind: Kind, title: string, hint: string, formatId?: string, onAdd?: (files: File[]) => void) => (
+  const list = (kind: Kind, title: string, hint: string, formatId?: string, onAdd?: (files: File[]) => void, role?: SplitRole | 'none') => (
     <div className="group">
       <div className="bank-head">
         <span className="group-title">
           {formatId ? null : <Mark kind={kind === 'music' ? 'music' : 'clips'} />}
           {vary && kind === 'music' && !formatId ? <span className="vary-num">4</span> : null}
-          {title} {formatId ? null : <span className="bank-count">{filesIn(kind, formatId).length}</span>}
+          {title} {formatId ? null : <span className="bank-count">{filesIn(kind, formatId, role).length}</span>}
         </span>
         {kind === 'music' ? (
           <div className="btn small picker">
@@ -1973,7 +2041,9 @@ export function BatchView({
           <VideoPicker
             className="btn small"
             label={`Add ${title.toLowerCase()}`}
-            onFiles={(files) => (onAdd ? onAdd(files) : void add(formatId ? { format: formatId, as: kind as 'reactions' | 'products' } : kind, files))}
+            onFiles={(files) =>
+              onAdd ? onAdd(files) : void add(formatId ? { format: formatId, as: kind as 'reactions' | 'products', ...(role && role !== 'none' ? { role } : {}) } : kind, files)
+            }
           >
             + Add
           </VideoPicker>
@@ -1986,7 +2056,7 @@ export function BatchView({
       {kind === 'music' && songless.length > 0 ? (
         <p className="hint warn-text">{songless.map((f) => f.name || formatLabel(f.kind)).join(', ')}: no song on - those videos will have no music.</p>
       ) : null}
-      {formatId && (kind === 'reactions' || kind === 'products') ? onceBox(formatId, kind) : null}
+      {formatId && (kind === 'reactions' || kind === 'products') && (role === undefined || (role === 'none' && kind === 'reactions')) ? onceBox(formatId, kind) : null}
       {kind === 'music' && bank && songs.length > 0 ? (
         <label className="field">
           <span className="label">From the music bank</span>
@@ -2009,10 +2079,10 @@ export function BatchView({
         </label>
       ) : null}
       {/* Inside a format, its clips behind one row until he opens them. */}
-      {formatId ? clipsToggle(`${formatId}:${kind}`, filesIn(kind, formatId)) : null}
-      {bank && filesIn(kind, formatId).length > 0 && (!formatId || shownClips.has(`${formatId}:${kind}`)) ? (
+      {formatId ? clipsToggle(`${formatId}:${kind}${role ? `:${role}` : ''}`, filesIn(kind, formatId, role)) : null}
+      {bank && filesIn(kind, formatId, role).length > 0 && (!formatId || shownClips.has(`${formatId}:${kind}${role ? `:${role}` : ''}`)) ? (
         <ul className="bank-list">
-          {filesIn(kind, formatId).map((file) => (
+          {filesIn(kind, formatId, role).map((file) => (
             <li key={file.id} className="bank-item">
               {kind === 'music' && bank ? (
                 <>

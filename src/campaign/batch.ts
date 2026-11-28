@@ -9,6 +9,7 @@
 // itself. What was made is kept, so the next batch carries on where this
 // one left off.
 
+import { DEFAULT_MONEY, hookReactions, splitSteps, type MoneyRange, type SplitLine, type SplitRole } from './splitScreen'
 import type { CaptionSize, CaptionStyle, CaptionWord } from './captions'
 import type { ClipSource } from './dropQueue'
 import type { EmojiSprite } from './emojiSprites'
@@ -90,6 +91,10 @@ export interface BankFile {
   speedSet?: number
   /** Made again by clipEdit at this version (CLIP_MADE). */
   made?: number
+  /** A split screen format's clip (splitScreen.ts): a match clip under his
+   *  reaction ('under', kept with the products) or him at the computer
+   *  ('desk', kept with his clips). Absent: the reaction / the product. */
+  role?: SplitRole
 }
 
 /** What one kind of video in a batch is: his silent reaction then the
@@ -97,7 +102,7 @@ export interface BankFile {
  *  in a corner over the product (his ask, 2026-11-06: "reaction format,
  *  talking head format, green screen format" - all in the one batch of the
  *  account, several of each when the angles differ). */
-export type FormatKind = 'reaction' | 'talking' | 'greenscreen'
+export type FormatKind = 'reaction' | 'talking' | 'greenscreen' | 'split'
 
 export interface BatchFormat {
   id: string
@@ -110,6 +115,11 @@ export interface BatchFormat {
   corner?: { side: 'left' | 'right'; sizePct: number }
   /** Green screen: he talks in these, so his voice is kept. */
   voice?: boolean
+  /** Split screen: the step lines between the halves, each from its moment
+   *  in the product (splitScreen.ts). */
+  lines?: SplitLine[]
+  /** Split screen: the range its "+$" amounts are drawn from. */
+  money?: MoneyRange
   /** No headline (hook words) over the clip of him - the clip is the hook
    *  itself, e.g. a wide clip with its own words (his ask, 2026-11-13: "make
    *  it so I can choose if I want one or not"). Absent: a headline, as
@@ -171,6 +181,7 @@ export const FORMAT_KINDS: { kind: FormatKind; label: string; hint: string }[] =
   { kind: 'reaction', label: 'Reaction', hint: 'You react without a word, then the product. Music only.' },
   { kind: 'talking', label: 'Talking head', hint: 'You talk to the camera - your voice kept with captions, music under it - then the product.' },
   { kind: 'greenscreen', label: 'Green screen', hint: 'The product plays full screen, you cut out of your background in a corner.' },
+  { kind: 'split', label: 'Split screen', hint: 'You on top, the match then the product under you. Money pops up on the goal, the steps written in the middle.' },
 ]
 
 export interface BatchBank {
@@ -259,6 +270,8 @@ export interface BatchBank {
   layout?: BatchLayout
   /** Green screen: which corner he is in, and how big. */
   corner?: { side: 'left' | 'right'; sizePct: number }
+  /** A split screen format's bank (formatBank): its lines and money range. */
+  split?: { lines: SplitLine[]; money: MoneyRange }
   /** On the engine: the batch it is making now, to follow. */
   engineJob?: string
   /** The campaign's product showcase in order (Set order): each step its own
@@ -845,6 +858,26 @@ export function withSongFormat(song: BankFile, formatId: string, on: boolean, al
  *  with the batch's headlines, looks, music and progress. */
 export function formatBank(bank: BatchBank, format: BatchFormat): BatchBank {
   const mine = inFormat(format.id)
+  if (format.kind === 'split') {
+    // His reactions, the match clips under them, him at the computer and the
+    // product: one of each in every video, as three steps after the reaction.
+    const reactions = bank.reactions.filter(mine)
+    const products = bank.products.filter(mine)
+    return {
+      ...bank,
+      layout: 'after',
+      reactions: hookReactions(reactions).map((r) => ({ ...r, talks: true })),
+      products: products.filter((p) => p.role !== 'under'),
+      steps: splitSteps(reactions, products),
+      split: { lines: format.lines ?? [], money: format.money ?? DEFAULT_MONEY },
+      ...(format.reactionsOnce ? { reactionsOnce: true } : {}),
+      ...(format.noHeadline ? { headlines: [], looks: undefined, hook: undefined, headlineStyles: undefined, headlineStyle: undefined, formula: undefined } : {}),
+      music: songsOf(bank.music, format.id),
+      ...(format.headlines?.length && !format.noHeadline ? { headlines: format.headlines } : {}),
+      voice: undefined,
+      formats: [],
+    }
+  }
   const steps = bank.steps?.filter(mine)
   const talks = formatTalks(format)
   return {

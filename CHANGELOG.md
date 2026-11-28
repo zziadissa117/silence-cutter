@@ -3,6 +3,29 @@
 Newest first. Every change says what it does, how to use it, and how it works
 underneath. Kept up to date with each commit.
 
+## Split screen batches (the soccer reel)
+- His friend's ask (2026-11-28), from their reel: half reaction on top, half the product under it, a money sound on the
+  goal. A new batch format, **Split screen** (Batch -> + Add a format):
+  - **First seconds:** his reaction on top - his own voice kept and turned well up (-10 LUFS) - and a match clip under
+    it, with its own sound (the cha-ching is in it). The title over him. On the goal, "+$586.68 US" pops up in tilted
+    green over him - a different amount on every video, $500 to $7,000 unless changed on the card.
+  - **Then:** him at the computer on top (its sound left out), the product playthrough under him with its own sound
+    (typing, clicks). The step lines he types ("Step 1. Find a soccer match", ...) written on the line between the
+    halves, each from its moment in the product - spread through it by themselves, set exactly with "Starts here"
+    while playing the product.
+  - **Music** the whole way, under everything; a song with its beat drop marked has the drop on the goal.
+  - **The goal is found by itself** in each match clip: the sharpest jump in its sound (the cha-ching and the crowd).
+    Nothing to mark. On his reel it found 1.85 s.
+  - **Mixing:** any reaction with any match clip, any computer clip and the product - a clip comes round again in
+    other videos, never the same whole video twice (the format's clips mixed as three steps, `batch.combos`).
+- Underneath: `splitScreen.ts` (roles `under`/`desk` on `BankFile.role`, `SPLIT_STEPS`, `moneyLine`, `lineAt`,
+  `linesFrom`, `goalIn`), `batch.formatBank` (kind `split`), `BatchFormat.lines`/`money`, `batchRun.videoOf`
+  (`BatchVideo.split`), `MontageParts.bank.split`, `splitRender.ts` (sound mixed once, then frames: bottom clips drive,
+  top clips read alongside), `pipeline.makeSplit`, `CampaignApp` (its branch before green screen), the card
+  `BatchView.splitBody` + `SplitLines.tsx`. Made on the phone or on the Cutter server the same way (no server change).
+- Checked: a real render in Chrome for Testing from clips cut out of the reel (1080x1920, 11.3 s, the goal found at
+  1.85 s, the amount, title and step lines where they belong); not yet on an iPhone.
+
 ## Time zones, the music behind the captions, and editor pictures kept in the campaign
 Needs deploying: run ./deploy-server.sh (the postiz function's new `save-timezone`).
 

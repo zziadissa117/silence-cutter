@@ -29,6 +29,7 @@ import {
   type PostKind,
 } from './look'
 import { filesOf, type BankFile, type BatchBank } from './batch'
+import type { SplitLook } from './splitScreen'
 import { emptyScript, type FormatScript } from './formats'
 import type { ManualPicture } from './manualPictures'
 import type { MusicLevel } from './music'
@@ -308,6 +309,9 @@ export interface MontageParts {
     /** Green screen: the product is the background video, and he is cut out
      *  in this corner over it (greenScreenRender.ts). */
     greenScreen?: { side: 'left' | 'right'; sizePct: number }
+    /** Split screen (splitScreen.ts, splitRender.ts): `steps` are the match
+     *  clip, him at the computer and the product; its lines and amount. */
+    split?: SplitLook
     /** The campaign's product showcase in steps (batch.ts BatchStep): one
      *  clip per step, in order, each playing the moment something happens in
      *  it (stepPiece.ts). `product` is then the first step's clip. Videos

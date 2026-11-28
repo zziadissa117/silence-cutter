@@ -55,6 +55,7 @@ import {
 } from './batch'
 import { engineJob, makeOnEngine, saveEngineSeries, sendFootage, stopEngineJob } from './engine'
 import { DEFAULT_CORNER } from './greenScreenRender'
+import { moneyLine, type SplitLook } from './splitScreen'
 import type { Job } from './jobs'
 import { NO_POSTING, type Campaign, type HeadlineStyle } from './look'
 import { batchTimesOn, listPosts, stackTimesOn, stoppable, stopPostsNow, takenTimes, type CampaignPlace, type ServerPost } from './posting'
@@ -80,6 +81,9 @@ export interface BatchVideo {
   formula?: { left: BankFile | null; right: BankFile | null; line: string; plain?: boolean }
   /** Green screen: the product behind him, him cut out in this corner. */
   greenScreen?: { side: 'left' | 'right'; sizePct: number }
+  /** Split screen (splitScreen.ts): `steps` are the match, the computer clip
+   *  and the product; these are its lines and its amount. */
+  split?: SplitLook
   /** The product showcase in steps: one clip each, in order, with the
    *  step's name (its words over the clip, batch.stepTitle). */
   steps?: { file: BankFile; name?: string }[]
@@ -366,6 +370,7 @@ export function videoOf(
     ...(steps ? { steps } : {}),
     music: green ? null : byId(bank.music, pick.music),
     ...(green ? { greenScreen: bank.corner ?? DEFAULT_CORNER } : {}),
+    ...(bank.split ? { split: { lines: bank.split.lines, amount: moneyLine(seed, bank.split.money) } } : {}),
     ...(onFormula
       ? { headline: formulaText(onFormula, line), formula: { left: onFormula.left, right: onFormula.right, line, ...(says === 'headlines' ? { plain: true } : {}) } }
       : { headline: pick.headline }),

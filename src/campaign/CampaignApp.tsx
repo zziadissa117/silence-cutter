@@ -137,7 +137,7 @@ import {
 } from './look'
 import { postKind } from './postKind'
 import { forgetSend, keepVoiceOnly, queueSend, replaceNow, sending, startSending, watchSending } from './outbox'
-import { headlineFor, listen, make, makeCampaignVideo, makeGreenScreen, makeMontage, makeReaction, makeSongCopy, plainCut, type CampaignResult, type PopSettings } from './pipeline'
+import { headlineFor, listen, make, makeCampaignVideo, makeGreenScreen, makeMontage, makeReaction, makeSongCopy, makeSplit, plainCut, type CampaignResult, type PopSettings } from './pipeline'
 import { makeCutout } from './cutout'
 import { popCue, posterOf, useVideoBank, videoFile, type BankVideo } from './videoBank'
 import { wordMoments } from './moments'
@@ -2144,6 +2144,32 @@ export function CampaignApp() {
           if (!track) throw new SilenceCutError("This copy's song is no longer on this phone. Remove it, and the batch makes another.")
           setPhase('cutting', 0)
           result = await watched(makeSongCopy(file, track, copy.talks, (p) => setPhase('cutting', p)))
+        } else if (next.montage?.bank?.split && next.montage.bank.steps?.length === 3) {
+          // Split screen: him on top, the match then the product under him.
+          const [under, desk, product] = await Promise.all(next.montage.bank.steps.map((s) => bankFileOf(s.file)))
+          const track = await montageMusic(next)
+          // The song's beat drop on the goal, where one is marked.
+          const drop = dropFor(batchBank, { syncDrop: true }, next.montage.bank.music?.id)
+          setPhase('cutting', 0)
+          result = await watched(
+            makeSplit(
+              {
+                reaction: file,
+                under,
+                desk,
+                product,
+                music: track ? { ...track, drop } : null,
+                headlineText: hookText,
+                // The lines as they are set now, else as planned.
+                lines: jobFormat?.lines ?? next.montage.bank.split.lines,
+                amount: next.montage.bank.split.amount,
+                reactionName: file instanceof File ? file.name : undefined,
+              },
+              jobCampaign,
+              jobAngle,
+              (p) => setPhase('cutting', p),
+            ),
+          )
         } else if (next.montage?.bank && green) {
           // Green screen: him cut out once per reaction, then over the background.
           const reactionId = next.montage.bank.reaction.id
@@ -3488,6 +3514,7 @@ export function CampaignApp() {
           ...(v.voice ? { voice: true } : {}),
           ...(v.formula ? { formula: v.formula } : {}),
           ...(v.greenScreen ? { greenScreen: v.greenScreen } : {}),
+          ...(v.split ? { split: v.split } : {}),
           ...(v.steps ? { steps: v.steps } : {}),
           ...(v.headlineStyle ? { headlineStyle: v.headlineStyle } : {}),
           ...(v.trial ? { trial: v.trial } : {}),

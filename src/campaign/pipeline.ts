@@ -36,6 +36,7 @@ import { cutNoiseOn } from './noiseSetting'
 import { captionWords, type CaptionSpot, type CaptionSize, type CaptionStyle, type CaptionWord } from './captions'
 import { placeCues } from './cueClips'
 import { renderGreenScreen, type Corner } from './greenScreenRender'
+import { renderSplit, type SplitInput } from './splitRender'
 import type { ClipPlace, JoinedClips } from './clips'
 import { planCampaignCut, type CampaignPlan } from './plan'
 import { renderSongSwap } from './songSwap'
@@ -586,6 +587,34 @@ export async function makeSongCopy(
     montage: {
       seconds: [rendered.totalSec],
       music: rendered.musicFailed ? null : music.name,
+      ...(rendered.musicFailed ? { musicFailed: rendered.musicFailed } : {}),
+    },
+  }
+}
+
+/** A split screen video (splitRender.ts): him on top, the match then the
+ *  product under him, the money on the goal, the step lines between. */
+export async function makeSplit(
+  input: Omit<SplitInput, 'look'>,
+  campaign: Campaign,
+  angle: Angle,
+  onRenderProgress?: (fraction: number) => void,
+): Promise<CampaignResult> {
+  const rendered = await renderSplit({ ...input, look: videoLook(campaign, angle, [], null) }, onRenderProgress)
+  return {
+    blob: rendered.blob,
+    storedAs: rendered.storedAs,
+    originalDurationSec: rendered.totalSec,
+    newDurationSec: rendered.totalSec,
+    cuts: 0,
+    logoAt: [],
+    picturesAt: [],
+    headline: input.headlineText.trim(),
+    notHeard: [],
+    said: '',
+    montage: {
+      seconds: [rendered.totalSec],
+      music: input.music && !rendered.musicFailed ? input.music.name : null,
       ...(rendered.musicFailed ? { musicFailed: rendered.musicFailed } : {}),
     },
   }
