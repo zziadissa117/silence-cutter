@@ -3,6 +3,13 @@
 Newest first. Every change says what it does, how to use it, and how it works
 underneath. Kept up to date with each commit.
 
+## The music picker no longer runs off the side of the screen
+- His report (2026-11-28): after dropping a video and tapping Captions, the Music picker ran off the side of the phone.
+  A field took the width of its longest choice - a long song name with its length and "(too short)" - wider than the
+  screen. Fields now never grow past the screen (`.field` one column, `minmax(0, 1fr)`); the picker keeps to its row,
+  a long name ends in "…", the play button beside it. (Checked at phone width: it ended 375 px past the screen's edge,
+  now inside it.)
+
 ## Accounts that take only his own new videos (or a few batch videos a day)
 Needs deploying: run ./deploy-server.sh (the postiz function).
 
