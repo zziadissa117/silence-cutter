@@ -158,6 +158,7 @@ import { FormulaPreview } from './FormulaPreview'
 import { CORNER_SIZES, DEFAULT_CORNER } from './greenScreenRender'
 import { MoneyRow, SplitLines } from './SplitLines'
 import { HookPlace } from './HookPlace'
+import { ShareBatch } from './ShareBatch'
 import type { SplitRole } from './splitScreen'
 import {
   carryOnEngineJob,
@@ -2669,6 +2670,8 @@ export function BatchView({
           {green || onEngine || vary ? null : <CopiesCard bank={bank} busy={saving !== null} onAdd={(files, count) => void addCopies(files, count)} onChange={changeCopies} />}
           {saving ? <p className="hint">{saving}</p> : null}
           {bankSize > 0 && !vary ? <p className="hint">The bank keeps {mb(bankSize)} on this phone.</p> : null}
+          {/* His students get this batch, without his clips (batchShare.ts). */}
+          {!vary && !onEngine && bank ? <ShareBatch campaign={campaign} bank={bank} /> : null}
 
           {vary ? (
             <>

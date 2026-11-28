@@ -3,6 +3,23 @@
 Newest first. Every change says what it does, how to use it, and how it works
 underneath. Kept up to date with each commit.
 
+## Share a batch with students - they only film and drop in clips
+Needs deploying: run ./deploy-server.sh (the cutter function's new share actions).
+
+- His ask (2026-11-28): "make it so i can share batches to students, so they only have to film and drop in clips".
+  His picks: the setup and his product clips; picked students; a one-time copy.
+- Batch tab, at the bottom of a campaign's batch (main login only): **Share with students** -> tick who (or Everyone) ->
+  Share. Each of them, the next time they open the Cutter, finds a new campaign with its batch on their Batch tab, and
+  a note saying so: the campaign's look and posting rules, its picture bank's pictures, the formats, steps with their
+  words, pictures and caption scripts, headlines and looks, songs and beat drops, split screen lines and money, and
+  his product clips. Never a clip of him: his reactions, hooks, talking clips (a talking head step keeps its words and
+  script, not his clips), copies. None of his progress, and stopped: they drop in their clips, pick their accounts and
+  tap Start. His later changes don't reach them.
+- The files go through the Cutter's storage (his OK; AGENTS.md rule 4 says so now) under `share/<id>/`, and are taken
+  off once every student it went to has them.
+- `batchShare.ts`, `ShareBatch.tsx`, `CampaignApp` (brought in on opening), server `cutter/shares.ts` and the share
+  actions in `cutter/index.ts` (the owner shares; a student reads only what was shared with their login).
+
 ## Holding a finger on the screen no longer selects words
 - His ask (2026-11-28): on the iPhone, holding on the app highlighted text to copy. Nothing on the page is selectable
   by holding now, and the copy menu doesn't pop up (`index.css`, both pages); boxes he types in still select, copy

@@ -61,6 +61,7 @@
 // this function, and every field is capped; the posting function's tick
 // deletes reports older than two months (postiz sweepErrors).
 
+import { SHARE_ID, cleanKeys, cleanNames, sharePath, shareRow } from './shares.ts'
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 
 import { MUSIC_DIR, cleanSong, sameSong, shareRows, songsBySpace, songsFrom, type SharedSong } from './songs.ts'
@@ -1003,6 +1004,81 @@ async function report(body: Record<string, unknown>, req: Request): Promise<Resp
   return reply({ stored: rows.length })
 }
 
+// --- Batches shared with students (shares.ts) -------------------------------
+
+/** He starts sharing a batch: a new share, and where its files go. */
+async function shareStart(spaceId: string, body: Record<string, unknown>): Promise<Response> {
+  if (spaceId !== (await ownerSpace())) return reply(NOT_OWNER, 403)
+  const keys = cleanKeys(body.keys)
+  const shareId = Array.from(crypto.getRandomValues(new Uint8Array(12)), (b) => b.toString(16).padStart(2, '0')).join('')
+  const uploads: { key: string; url: string }[] = []
+  for (const key of keys) {
+    const { data } = await db.storage.from(BUCKET).createSignedUploadUrl(sharePath(shareId, key))
+    if (data?.signedUrl) uploads.push({ key, url: data.signedUrl })
+  }
+  return reply({ shareId, uploads })
+}
+
+/** Its files are up: each student named gets it. */
+async function shareSend(spaceId: string, body: Record<string, unknown>): Promise<Response> {
+  if (spaceId !== (await ownerSpace())) return reply(NOT_OWNER, 403)
+  const shareId = typeof body.shareId === 'string' && SHARE_ID.test(body.shareId) ? body.shareId : null
+  const names = cleanNames(body.students)
+  const pack = body.pack && typeof body.pack === 'object' ? JSON.stringify(body.pack) : null
+  if (!shareId || names.length === 0 || !pack) return reply({ error: 'Pick who gets it.' }, 400)
+  if (pack.length > 5_000_000) return reply({ error: 'This batch is too big to share.' }, 400)
+  const { data: owner } = await db.from('cutter_spaces').select('name').eq('id', spaceId).maybeSingle()
+  const { data: spaces } = await db.from('cutter_spaces').select('id, name').in('name', names).neq('id', spaceId)
+  const sentTo: string[] = []
+  for (const space of (spaces ?? []) as { id: string; name: string }[]) {
+    await setConfig(shareRow(space.id, shareId), JSON.stringify({ from: owner?.name ?? 'Ziad', at: new Date().toISOString(), pack: JSON.parse(pack) }))
+    sentTo.push(space.name)
+  }
+  if (sentTo.length === 0) return reply({ error: 'None of them is a login here.' }, 400)
+  return reply({ sentTo })
+}
+
+/** What has been shared with this login and not taken yet. */
+async function sharesFor(spaceId: string): Promise<Response> {
+  const { data } = await db.from('cutter_config').select('key, value').like('key', `share:${spaceId}:%`)
+  const shares = ((data ?? []) as { key: string; value: string }[]).flatMap((row) => {
+    try {
+      return [{ shareId: row.key.split(':')[2], ...JSON.parse(row.value) }]
+    } catch {
+      return []
+    }
+  })
+  return reply({ shares })
+}
+
+/** A share's files, to this login's phone - only one shared with it. */
+async function shareUrls(spaceId: string, body: Record<string, unknown>): Promise<Response> {
+  const shareId = typeof body.shareId === 'string' && SHARE_ID.test(body.shareId) ? body.shareId : null
+  if (!shareId) return reply({ error: 'Which share?' }, 400)
+  const { data: row } = await db.from('cutter_config').select('key').eq('key', shareRow(spaceId, shareId)).maybeSingle()
+  if (!row) return reply({ error: 'This share is no longer waiting for you.' }, 404)
+  const urls: Record<string, string> = {}
+  for (const key of cleanKeys(body.keys)) {
+    const { data } = await db.storage.from(BUCKET).createSignedUrl(sharePath(shareId, key), 60 * 60)
+    if (data?.signedUrl) urls[key] = data.signedUrl
+  }
+  return reply({ urls })
+}
+
+/** Taken: off this login's list - and its files gone once every student has it. */
+async function shareDone(spaceId: string, body: Record<string, unknown>): Promise<Response> {
+  const shareId = typeof body.shareId === 'string' && SHARE_ID.test(body.shareId) ? body.shareId : null
+  if (!shareId) return reply({ error: 'Which share?' }, 400)
+  await db.from('cutter_config').delete().eq('key', shareRow(spaceId, shareId))
+  const { data: left } = await db.from('cutter_config').select('key').like('key', `share:%:${shareId}`).limit(1)
+  if (!left || left.length === 0) {
+    const { data: files } = await db.storage.from(BUCKET).list(`share/${shareId}`, { limit: 1000 })
+    const paths = (files ?? []).map((f: { name: string }) => sharePath(shareId, f.name))
+    if (paths.length > 0) await db.storage.from(BUCKET).remove(paths)
+  }
+  return reply({ ok: true })
+}
+
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: CORS })
   if (req.method !== 'POST') return reply({ error: 'POST only.' }, 405)
@@ -1043,6 +1119,16 @@ Deno.serve(async (req) => {
       return removeDevice(spaceId, body)
     case 'trial':
       return trialFor(spaceId, body)
+    case 'share-start':
+      return shareStart(spaceId, body).catch((error) => reply({ error: (error as Error).message }, 500))
+    case 'share-send':
+      return shareSend(spaceId, body).catch((error) => reply({ error: (error as Error).message }, 500))
+    case 'shares':
+      return sharesFor(spaceId).catch((error) => reply({ error: (error as Error).message }, 500))
+    case 'share-urls':
+      return shareUrls(spaceId, body).catch((error) => reply({ error: (error as Error).message }, 500))
+    case 'share-done':
+      return shareDone(spaceId, body).catch((error) => reply({ error: (error as Error).message }, 500))
     case 'songs':
       return songs(spaceId).catch((error) => reply({ error: (error as Error).message }, 500))
     case 'song-upload':

@@ -42,6 +42,7 @@ import { addToCampaignBank, campaignPictureId, picturesOf, sharedPictures } from
 import { newTribeCampaign, setTribeOn, tribeCampaign, tribeOn } from './tribe'
 import { TribeView } from './TribeView'
 import { backUp, backupOn } from './tribeBackup'
+import { takeShares } from './batchShare'
 import { StillPosting } from './StillPosting'
 import { FormatsView, type FormatClips } from './FormatsView'
 import { WarmupView } from './WarmupView'
@@ -1058,6 +1059,28 @@ export function CampaignApp() {
     if (!old || old.name !== 'Tribe') return
     const renamed = { ...old, name: 'Trybe', angles: old.angles.map((a) => (a.name === 'Tribe' ? { ...a, name: 'Trybe' } : a)) }
     void saveCampaign(renamed).then((saved) => setCampaigns((cs) => (cs ? cs.map((c) => (c.id === saved.id ? saved : c)) : cs)))
+  }, [campaigns])
+  // A batch his teacher shared (batchShare.ts): brought in by itself when the
+  // app opens - a new campaign, its pictures and its batch, ready to fill.
+  const sharesTaken = useRef(false)
+  useEffect(() => {
+    if (!campaigns || sharesTaken.current || SERVER_MODE) return
+    sharesTaken.current = true
+    void takeShares()
+      .then((taken) => {
+        if (taken.length === 0) return
+        setCampaigns((cs) => (cs ? ordered([...taken.map((t) => t.campaign), ...cs.filter((c) => !taken.some((t) => t.campaign.id === c.id))]) : cs))
+        setBank((b) => [...b, ...taken.flatMap((t) => t.pictures)])
+        setNotice(
+          taken.length === 1
+            ? `${taken[0].from} shared the ${taken[0].campaign.name} batch with you. Open Batch, pick ${taken[0].campaign.name}, drop in your clips and tap Start.`
+            : `${taken.length} batches were shared with you: ${taken.map((t) => t.campaign.name).join(', ')}. Open Batch, drop in your clips and tap Start.`,
+        )
+      })
+      .catch((error: unknown) => {
+        // Tried again next time the app opens.
+        console.warn('Shared batches:', error)
+      })
   }, [campaigns])
   useEffect(() => {
     if (!tribe || !campaigns || tribeCampaign(campaigns)) return

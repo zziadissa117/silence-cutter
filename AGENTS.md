@@ -87,8 +87,11 @@ it back.)
    makes a batch there, or to **the Cutter server** (`server/`, his own Railway,
    asked for by him 2026-10-20) once it is connected - and, since his OK on
    2026-11-04, his talking-video recordings to that same server of his, to be
-   listened to and made there (`talkOrder.ts`). Never upload a raw recording
-   anywhere else.
+   listened to and made there (`talkOrder.ts`) - and, since his OK on
+   2026-11-28, the product clips (and step pictures, songs) of a batch he
+   shares with his students, through the cutter-files storage under
+   `share/<id>/`, gone once every student has them (`batchShare.ts`; never a
+   clip of him). Never upload a raw recording anywhere else.
 5. Local-first: every change lands on the phone at once and syncs in the
    background; nothing waits on the network except first sign-in and posting.
 6. One page runs at a time. Do not auto-update the service worker.
@@ -114,6 +117,7 @@ it back.)
 - One video, new songs (Batch tab: the same video posted again with other songs, picture untouched): `CopiesCard.tsx`, `copyTalk.ts`, `songSwap.ts`; planned by `batchRun.planCopies` (`BatchBank.copies`/`copiesMade`)
 - Split screen format (his friend's soccer reel: reaction on top over a match clip, then him at the computer over the product; title, "+$" on the goal found from the match clip's sound, step lines on the middle line, music with its drop on the goal): `splitScreen.ts`, `splitRender.ts`, `SplitLines.tsx`, `batch.formatBank` kind `split` (`BankFile.role` under/desk), `BatchView.splitBody`, `pipeline.makeSplit`
 - Green screen (Batch "The product: Behind you"): `cutout.ts` (once per reaction), `greenScreenRender.ts` (product steps one after another; a talking reaction keeps his voice)
+- A batch shared with students (Batch tab, "Share with students", main login only): a one-time copy of the campaign and its batch without his clips or progress, brought in by itself on their phone: `batchShare.ts` (`packBank`, `shareBatch`, `takeShares`), `ShareBatch.tsx`, `CampaignApp` (takeShares on open); server `cutter/shares.ts` + `share-start`/`share-send`/`shares`/`share-urls`/`share-done` in `cutter/index.ts` (cutter_config `share:<space>:<id>`, files `share/<id>/<key>`)
 - One batch per account, made of formats (reaction, talking head, green screen - several of each): `batch.ts` `BatchFormat`, `BankFile.formats`/`BatchStep.formats`, `withFormats` (old banks), `formatBank`, `turnsFor`; `batchRun.planFormats`; Batch tab format cards `BatchView.formatCard`
 - Batch keeps going (Videos a day + Start, no days): `batchRun.ts` (`runSlots`, `planVideos`, `topUp`; Batch tab and `CampaignApp` top up); more each day: `perDayOn` (`growth`, `growthFrom`); or some days of the week, the same number on each (`BatchBank.week` days + each, `batch.weekPlan`/`weekShare`, BatchView "How often"); what it is doing, at the top of the Batch tab: `batchNow.ts` (`batchState`, `statusDays`; "Waiting its turn" behind his own video, `behind`), `BatchStatus.tsx`; Start says why it made nothing (`topUp` `onNothing`); Make now (`BatchView.makeNow`: `batchRun.letGo` a stuck top-up, `CampaignApp` `rush` puts the batch first in the phone's line); times spread evenly around the clock: `window.ts` `evenTimes` (`posting.batchTimesOn`), what is scheduled moved to even times: server `postiz/respread.ts` + `respreadBatches` in `postiz/index.ts`, phone `keepEven.ts`
 - Campaign tracker (Videos tab, under Record: the week from Monday, a line per campaign, a box a day - yellow scheduled, blue posted, purple to approve, red didn't go out, pale yellow the batch makes it): `WeekTracker.tsx`, `trackerLines.ts` (a running batch's days to come), `posting.loadWeek`; server action `week`, `postiz/tracker.ts`

@@ -2502,3 +2502,7 @@ textarea.lines-input { resize: none; line-height: 1.35; overflow: hidden; }
 .drop-check-place { padding: 6px 12px 8px; gap: 4px; }
 .drop-check-screen .review-frame { height: min(25svh, 300px); }
 
+
+/* Share with students (ShareBatch.tsx). */
+.share-batch-people { list-style: none; margin: 6px 0; padding: 0; display: flex; flex-direction: column; gap: 2px; }
+.share-batch-people .toggle { min-height: 40px; }
