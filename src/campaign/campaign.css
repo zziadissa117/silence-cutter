@@ -2501,3 +2501,4 @@ textarea.lines-input { resize: none; line-height: 1.35; overflow: hidden; }
 .drop-check-script.differs.open { white-space: normal; }
 .drop-check-place { padding: 6px 12px 8px; gap: 4px; }
 .drop-check-screen .review-frame { height: min(25svh, 300px); }
+

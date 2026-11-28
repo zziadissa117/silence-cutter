@@ -422,3 +422,9 @@ h1 { font-size: 34px; font-weight: 700; letter-spacing: -0.02em; }
 .toggle > input[type='checkbox']:checked { background-color: var(--ok); background-position: 20px 50%; }
 .toggle > input[type='checkbox']:disabled { opacity: 0.45; cursor: default; }
 input[type='checkbox'], input[type='radio'], input[type='range'] { accent-color: var(--accent); }
+
+/* Holding a finger on the screen never selects words (his ask, 2026-11-28:
+   "when we hold on our iPhone it doesn't select something"). Only what he
+   types in - boxes, fields - can still be selected, copied and pasted. */
+html, body { -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }
+input, textarea, select, [contenteditable]:not([contenteditable='false']) { -webkit-user-select: text; user-select: text; -webkit-touch-callout: default; }

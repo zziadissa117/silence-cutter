@@ -3,6 +3,11 @@
 Newest first. Every change says what it does, how to use it, and how it works
 underneath. Kept up to date with each commit.
 
+## Holding a finger on the screen no longer selects words
+- His ask (2026-11-28): on the iPhone, holding on the app highlighted text to copy. Nothing on the page is selectable
+  by holding now, and the copy menu doesn't pop up (`index.css`, both pages); boxes he types in still select, copy
+  and paste as before. The Copy buttons (the sign-in link, a post's caption) still copy.
+
 ## The Batch clip check: the clip and its captions both in sight
 - His friend's report (2026-11-28): checking a batch clip's captions, the captions couldn't be seen - "some things take
   too much space". The clip's box above the video (which clip, Cut/Raw, the script's differences, Sounds like, the
