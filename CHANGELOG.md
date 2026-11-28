@@ -3,6 +3,22 @@
 Newest first. Every change says what it does, how to use it, and how it works
 underneath. Kept up to date with each commit.
 
+## Ilyan's own login, a copy of the shared one
+Needs deploying: run ./deploy-server.sh (the cutter function), before Ilyan opens his link.
+
+- His ask (2026-11-28): he and Ilyan shared one login ("yes") and its campaigns, and couldn't tell whose campaign was
+  whose. Ilyan gets his own login, "ilyan", starting as an exact copy so nothing changes for either of them.
+- How: the owner makes Ilyan's sign-in link as usual (Settings -> People, login name `ilyan`). When Ilyan opens it and
+  picks his password, the cutter function (`startAsCopy`, set up by the `newlogin:ilyan` row in cutter_config) copies
+  every campaign and bank picture of the shared login - same ids, so batches, posts and each campaign's posting
+  settings still match - and their files; hands over Ilyan's own Postiz profile (the Jake accounts and Ilyan Hamdane:
+  its 3,900 posts, accounts, times, analytics go with it); turns on Trial reels and warm-up partner for him; and he
+  gets every song, as every new login does. The owner keeps everything; only Ilyan's Postiz profile leaves his login.
+- After: on the owner's login, a campaign that posts to none of his own accounts any more is Ilyan's - safe to end or
+  delete. Each can delete the other's campaigns from his own login without touching the other's.
+- Ilyan's Cutter server (Railway) was connected with the shared login; it now takes his new login when it is the same
+  Postiz profile (`server/main.mjs` /connect) - redeploys by itself on push.
+
 ## The hook's headline, anywhere he wants it
 - His ask (2026-11-28): "make it so we can move the headline however we want in the hook" (instead of turning the
   hook into a product step, which would have lost the rotating headlines and looks, Claude + X, the hook numbers in

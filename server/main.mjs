@@ -510,11 +510,15 @@ const publicServer = http.createServer(async (req, res) => {
     const session = await readJson(sessionFile, null)
 
     if (req.method === 'POST' && url.pathname === '/connect') {
-      if (session && session.space !== space) return send(res, 403, { error: 'This server already makes videos for another Cutter login.' }, cors)
       // His name and posting profile (whose Postiz key, accounts, times): what
       // the app on the phone has, so the app here posts the same way.
       const { name, posting } = await jsonBody(req)
       const profile = (p) => p?.profile?.id ?? null
+      // Another login - unless it is the same person's own Postiz profile,
+      // moved to a login of their own (Ilyan's, 2026-11-28): the posting
+      // function only shows a profile to the login it belongs to.
+      const sameOwner = Boolean(profile(session?.posting)) && profile(session?.posting) === profile(posting)
+      if (session && session.space !== space && !sameOwner) return send(res, 403, { error: 'This server already makes videos for another Cutter login.' }, cors)
       // One person's videos per server: his friend's go to their own Postiz.
       if (profile(session?.posting) && profile(posting) && profile(session.posting) !== profile(posting)) {
         return send(res, 403, { error: "This server already makes videos for another person's Postiz. Each of you needs your own server." }, cors)

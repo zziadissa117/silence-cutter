@@ -381,6 +381,63 @@ async function invite(spaceId: string, body: Record<string, unknown>): Promise<R
 
 const LINK_DEAD = { error: 'This link has already been used or has expired. Ask for a new one.' }
 
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
+
+/** A login that starts as a copy of another (his ask, 2026-11-28: Ilyan, who
+ *  shared his login, gets his own - "exactly duplicated as mine so that nothing
+ *  changes on our end"). Set up only by hand on the server, in cutter_config
+ *  `newlogin:<name>`: { from: space id, profiles?: posting profile ids to hand
+ *  over, trial?: true, partner?: true }. Done once, when the login's sign-in
+ *  link is opened: every campaign and bank picture (same ids, so batches,
+ *  posts and posting settings still match them), their files, the posting
+ *  profiles named (with their posts, accounts and times), Trial reels and
+ *  warm-up partner turned on. Nothing is taken from the login copied, but the
+ *  profiles handed over. */
+async function startAsCopy(space: { id: string; name: string }): Promise<void> {
+  const key = `newlogin:${space.name}`
+  const { data: row } = await db.from('cutter_config').select('value').eq('key', key).maybeSingle()
+  if (!row) return
+  let wanted: { from?: unknown; profiles?: unknown; trial?: unknown; partner?: unknown }
+  try {
+    wanted = JSON.parse(row.value)
+  } catch {
+    return
+  }
+  const from = typeof wanted.from === 'string' && UUID.test(wanted.from) && wanted.from !== space.id ? wanted.from : null
+  if (!from) return
+  // Every campaign and picture, as they are now.
+  const { data: items, error } = await db.from('cutter_items').select('kind, id, data, updated_at').eq('space_id', from).eq('deleted', false).limit(5000)
+  if (error) throw new Error(`reading the items: ${error.message}`)
+  const now = new Date().toISOString()
+  const rows = (items ?? []).map((i: { kind: string; id: string; data: unknown; updated_at: number }) => ({ space_id: space.id, kind: i.kind, id: i.id, data: i.data, updated_at: i.updated_at, deleted: false, server_at: now }))
+  for (let at = 0; at < rows.length; at += 200) {
+    const { error: put } = await db.from('cutter_items').upsert(rows.slice(at, at + 200), { onConflict: 'space_id,kind,id' })
+    if (put) throw new Error(`copying the items: ${put.message}`)
+  }
+  // Their files (logos, pictures), copied on the storage itself.
+  for (let offset = 0; ; ) {
+    const { data: files } = await db.storage.from(BUCKET).list(from, { limit: 100, offset })
+    if (!files || files.length === 0) break
+    for (const file of files) await db.storage.from(BUCKET).copy(`${from}/${file.name}`, `${space.id}/${file.name}`).catch(() => undefined)
+    offset += files.length
+    if (files.length < 100) break
+  }
+  // His own posting profiles: theirs now, with everything on them.
+  const profiles = Array.isArray(wanted.profiles) ? wanted.profiles.filter((p): p is string => typeof p === 'string' && UUID.test(p)) : []
+  for (const profile of profiles) {
+    await db.from('cutter_profiles').update({ space_id: space.id }).eq('id', profile).eq('space_id', from)
+    // The Cutter server's "still here" under the old login goes quiet: not a problem to tell.
+    await db.from('cutter_config').delete().in('key', [`server:${from}:${profile}`, `server-said:${from}:${profile}`])
+  }
+  const add = async (configKey: string) => {
+    const now = trialSpaces((await configValues([configKey]))[configKey])
+    if (!now.includes(space.id)) await setConfig(configKey, JSON.stringify([...now, space.id]))
+  }
+  if (wanted.trial === true) await add(TRIAL_CONFIG)
+  if (wanted.partner === true) await add(PARTNERS_CONFIG)
+  await db.from('cutter_config').delete().eq('key', key)
+}
+
 /** The link opened: the password he chose, and his login is his. In one
  *  update that only an invited space with this code, in time, matches - so
  *  the link works once. */
@@ -404,6 +461,8 @@ async function acceptInvite(body: Record<string, unknown>): Promise<Response> {
   if (error) return reply({ error: 'The server could not check the link. Try again.' }, 500)
   if (!data) return reply(LINK_DEAD, 410)
   await onDevice({ id: data.id, name: data.name }, device, 'opened their sign-in link')
+  // A login made as a copy of another: everything copied before it is used.
+  await startAsCopy({ id: data.id, name: data.name }).catch((e) => console.error('copying the login failed', e))
   // A new student starts with every one of the owner's songs.
   await shareWithStudents(await allSongs((await ownerSpace()) ?? ''), data.id).catch((e) => console.error('sharing the songs failed', e))
   return reply({ token: await makeToken(data.id, data.pass_hash, device.id), name: data.name, ...((await onlyTrial(data.id)) ? { only: 'trial' } : {}) })
