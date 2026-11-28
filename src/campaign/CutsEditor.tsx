@@ -67,7 +67,7 @@ import { frameAt, THUMB, useFilmstrip, type Filmstrip } from './filmstrip'
 import { headlineFontReady } from './headlineFont'
 import { ChevronLeft, FullIcon, PauseIcon, PlayIcon, RedoIcon, UndoIcon } from './icons'
 import { HeadlineLook } from './JobRow'
-import { HEADLINE_SCALE, LIMITS, type BankPicture, type Headline, type HeadlinePlace, type HeadlineStyle } from './look'
+import { HEADLINE_SCALE, LIMITS, parseWordList, type BankPicture, type Headline, type HeadlinePlace, type HeadlineStyle } from './look'
 import {
   PICTURE_SECONDS,
   PICTURE_WIDTH,
@@ -594,6 +594,8 @@ export function CutsEditor({
   noiseNote,
   overlays: initialOverlays = [],
   bank = NO_PICTURES,
+  onPhonePicture,
+  onNamePicture,
   defaults,
   loadImage,
   videoBank = NO_VIDEOS,
@@ -633,6 +635,11 @@ export function CutsEditor({
   overlays?: ManualPicture[]
   /** The picture bank, to pick from. */
   bank?: BankPicture[]
+  /** A picture from his phone, put on the video: kept in the campaign's
+   *  bank at once (to put on again right away); says which picture it is. */
+  onPhonePicture?: (image: Blob) => Promise<BankPicture | null>
+  /** The name he gives it there, so it pops up when he says it. */
+  onNamePicture?: (pictureId: string, words: string[]) => void
   /** Where and how big a new picture starts: the angle's bank placement. */
   defaults?: { position: ManualPicture['position']; widthPct: number; seconds: number }
   /** The file of a picture or video picked from the phone, from storage. */
@@ -721,6 +728,8 @@ export function CutsEditor({
   const [focus, setFocus] = useState<number | null>(null)
   const [overlays, setOverlays] = useState<ManualPicture[]>(initialOverlays)
   const [picking, setPicking] = useState(false)
+  /** A phone picture just kept in the campaign's bank, waiting for a name. */
+  const [naming, setNaming] = useState<{ id: string; text: string } | null>(null)
   /** Add sound's picker open. */
   const [soundPicking, setSoundPicking] = useState(false)
   const soundEls = useRef(new Map<string, HTMLAudioElement>())
@@ -2171,6 +2180,36 @@ export function CutsEditor({
           ))}
         </div>
       ) : null}
+      {naming && onNamePicture ? (
+        <form
+          className="pic-name-card"
+          onSubmit={(e) => {
+            e.preventDefault()
+            const words = parseWordList(naming.text)
+            if (words.length > 0) onNamePicture(naming.id, words)
+            setNaming(null)
+          }}
+        >
+          <span className="hint">Saved to this campaign&rsquo;s pictures. Name it and it pops up when you say it:</span>
+          <div className="pic-name-row">
+            <input
+              type="text"
+              value={naming.text}
+              placeholder="e.g. Claude"
+              aria-label="Picture name"
+              autoCapitalize="off"
+              enterKeyHint="done"
+              onChange={(e) => setNaming({ ...naming, text: e.target.value })}
+            />
+            <button type="submit" className="btn small primary" disabled={!naming.text.trim()}>
+              Save
+            </button>
+            <button type="button" className="btn small" onClick={() => setNaming(null)}>
+              Later
+            </button>
+          </div>
+        </form>
+      ) : null}
       <nav className="tl-tools" aria-label={clipTapped !== null ? 'This clip' : selectedPic ? 'What you tapped' : 'Add to the video'}>
         {clipTapped !== null ? (
           <>
@@ -2420,7 +2459,16 @@ export function CutsEditor({
               if (!file) return
               const type = file.type || (/\.(mov|mp4|m4v)$/i.test(file.name) ? 'video/mp4' : 'image/png')
               if (type.startsWith('video/')) void lengthOf(file).then((length) => addOverlay({ kind: 'phone', name: file.name, type }, file, length))
-              else addOverlay({ kind: 'phone', name: file.name, type }, file)
+              else {
+                addOverlay({ kind: 'phone', name: file.name, type }, file)
+                // Kept in the campaign's pictures straight away, then named
+                // right here (his ask, 2026-11-28).
+                void onPhonePicture?.(file)
+                  .then((picture) => {
+                    if (picture && picture.words.length === 0) setNaming({ id: picture.id, text: '' })
+                  })
+                  .catch(() => undefined)
+              }
             }}
           />
           {bank.some((b) => !b.campaignId) ? (

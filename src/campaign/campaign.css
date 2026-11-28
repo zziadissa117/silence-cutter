@@ -2089,6 +2089,8 @@ main.tabbed > .drop-check-screen, .drop-check-screen { position: fixed; inset: 0
   animation: caption-sheet-in 0.18s ease-out;
 }
 .caption-sheet.tall { height: 75svh; }
+/* Under the sheet only the video shows through - not the timeline's bars. */
+.caption-sheet-up .cuts-strip-wrap, .caption-sheet-up .tl-bar-row, .caption-sheet-up .tl-tools, .caption-sheet-up .tl-speeds { visibility: hidden; }
 .caption-sheet.over-keyboard { padding-bottom: 0; border-radius: 18px 18px 0 0; }
 @keyframes caption-sheet-in { from { transform: translateY(24px); opacity: 0.4; } to { transform: none; opacity: 1; } }
 .caption-sheet-grip { all: unset; display: grid; place-items: center; height: 22px; cursor: pointer; flex: none; }
@@ -2442,3 +2444,13 @@ textarea.lines-input { resize: none; line-height: 1.35; overflow: hidden; }
 .campaign-pic-grid { width: 100%; }
 .campaign-pic { position: relative; }
 .campaign-pic-x { position: absolute; top: 4px; right: 4px; width: 24px; height: 24px; border-radius: 50%; border: 0; background: rgb(0 0 0 / 0.6); color: #fff; font-size: 12px; line-height: 24px; padding: 0; }
+
+/* A phone picture just kept in the campaign's bank: its name, right in the
+   edit screen (CutsEditor `naming`). */
+.pic-name-card { display: flex; flex-direction: column; gap: 6px; margin: 8px 12px; padding: 10px 12px; border-radius: 14px;
+  background: color-mix(in srgb, var(--text) 8%, transparent); border: 1px solid color-mix(in srgb, var(--text) 14%, transparent); }
+.pic-name-card .hint { margin: 0; }
+.pic-name-row { display: flex; gap: 8px; align-items: center; }
+.pic-name-row input { flex: 1 1 0; min-width: 0; min-height: 38px; padding: 0 10px; border-radius: 10px; font: inherit; color: var(--text);
+  background: color-mix(in srgb, var(--ink) 60%, transparent); border: 1px solid color-mix(in srgb, var(--text) 18%, transparent); }
+.pic-name-row .btn { flex: none; }

@@ -22,6 +22,7 @@ import type { AngleEffects, EffectLevel } from './effects'
 import { cutNoiseOn, setCutNoise } from './noiseSetting'
 import { LANDSCAPE_MODES, landscapeMode, setLandscapeMode, type LandscapeMode } from './framing916'
 import { PostingLimits, PostingLimitsRow } from './PostingLimits'
+import { TimeZoneCard } from './TimeZoneCard'
 import { BufferBackup } from './BufferBackup'
 import { PlaceField } from './InstagramPlace'
 import type { PushState } from './push'
@@ -279,6 +280,7 @@ export function SettingsView({
               </span>
             </label>
             <RandomForAll profile={posting.profile} campaigns={campaigns} onChanged={onPlacesChanged} />
+            <TimeZoneCard profile={posting.profile} onChanged={onPlacesChanged} />
             <PostingLimitsRow profile={posting.profile} onOpen={() => setLimitsOpen(true)} />
             <BufferBackup profile={posting.profile} onChanged={onPlacesChanged} />
             {posting.profile.accounts.some((a) => a.platform.startsWith('instagram')) ? (

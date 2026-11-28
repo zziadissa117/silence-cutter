@@ -331,6 +331,20 @@ export function hoursHere(date: string): number[] | undefined {
   return hoursOn(postingHere()?.profile.bestHours, date)
 }
 
+/** The zone his posting times are in (TimeZoneCard). */
+export async function saveTimezone(timezone: string): Promise<Profile> {
+  return remember(await call<Profile>('save-timezone', { profile: profileId(), timezone }))
+}
+
+/** This phone's own time zone. */
+export function phoneZone(): string {
+  try {
+    return Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC'
+  } catch {
+    return 'UTC'
+  }
+}
+
 export async function saveLimits(limits: Limits): Promise<Profile> {
   return remember(await call<Profile>('save-limits', { profile: profileId(), limits }))
 }

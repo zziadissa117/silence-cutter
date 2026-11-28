@@ -38,7 +38,7 @@ import { NOT_ALLOWED, trialAngle, trialFileName, withAccounts } from './trialLoo
 import { AnalyticsView, addHeadline, answerSuggestion, dropWorst, saveTarget, useCampaignRows } from './AnalyticsView'
 import { FormatAlarmLine } from './FormatAlarm'
 import { newestFirst } from './campaignOrder'
-import { addToCampaignBank, picturesOf, sharedPictures } from './campaignBank'
+import { addToCampaignBank, campaignPictureId, picturesOf, sharedPictures } from './campaignBank'
 import { newTribeCampaign, setTribeOn, tribeCampaign, tribeOn } from './tribe'
 import { TribeView } from './TribeView'
 import { backUp, backupOn } from './tribeBackup'
@@ -211,6 +211,7 @@ import {
   holdMade,
   holdTribe,
   deleteBankPicture,
+  saveBankPicture,
   heldVideos,
   loadHeldVideo,
   madeNotSent,
@@ -4818,6 +4819,30 @@ export function CampaignApp() {
       .catch(() => {})
   }
 
+  /** A picture from his phone put on in the edit screen: in its campaign's
+   *  bank at once (General's: the shared one), to put on again right after. */
+  const keepPhonePicture = async (campaignId: string, image: Blob): Promise<BankPicture | null> => {
+    const campaign = campaignsRef.current.find((c) => c.id === campaignId)
+    const into = campaign && !campaign.general ? campaignId : undefined
+    const added = await addToCampaignBank(into, [image], bankRef.current)
+    if (added.length > 0) {
+      bankRef.current = [...bankRef.current, ...added]
+      setBank((b) => [...b, ...added.filter((a) => !b.some((x) => x.id === a.id))])
+      return added[0]
+    }
+    const id = await campaignPictureId(into, image)
+    return bankRef.current.find((p) => p.id === id) ?? null
+  }
+  /** Its name, given right there: it pops up when he says it. */
+  const namePicture = (pictureId: string, words: string[]) => {
+    const picture = bankRef.current.find((p) => p.id === pictureId)
+    if (!picture) return
+    const named = { ...picture, words }
+    bankRef.current = bankRef.current.map((p) => (p.id === pictureId ? named : p))
+    setBank((b) => b.map((p) => (p.id === pictureId ? named : p)))
+    void saveBankPicture(named).catch(() => {})
+  }
+
   const keepCuts = (id: string, fixed: Range[], overlays: ManualPicture[] = [], files: Map<string, Blob> = new Map()) => {
     const job = jobs.find((j) => j.id === id)
     if (!job?.day?.plan) return
@@ -5068,6 +5093,8 @@ export function CampaignApp() {
         words={cutsWords}
         overlays={editorOverlays(cutsJob)}
         bank={editorBank(cutsJob.campaignId)}
+        onPhonePicture={(image) => keepPhonePicture(cutsJob.campaignId, image)}
+        onNamePicture={namePicture}
         defaults={angleBankDefaults(cutsJob)}
         loadImage={(m) => autoImage(cutsJob, m) ?? (ownFile(m) ? loadOverlayFile(cutsJob.id, m.id, ownFile(m)!) : Promise.resolve(null))}
         loadSound={(m) => soundFileOf(cutsJob.id, m)}
@@ -5125,6 +5152,8 @@ export function CampaignApp() {
           words: captionWords(reviewJob.day!.plan!.spoken ?? reviewJob.day!.plan!.words, [{ start: 0, end: reviewJob.day!.plan!.duration }]),
           overlays: editorOverlays(reviewJob),
           bank: editorBank(reviewJob.campaignId),
+          onPhonePicture: (image) => keepPhonePicture(reviewJob.campaignId, image),
+          onNamePicture: namePicture,
           defaults: angleBankDefaults(reviewJob),
           loadImage: (m) => autoImage(reviewJob, m) ?? (ownFile(m) ? loadOverlayFile(reviewJob.id, m.id, ownFile(m)!) : Promise.resolve(null)),
           loadSound: (m) => soundFileOf(reviewJob.id, m),

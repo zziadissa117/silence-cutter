@@ -22,6 +22,7 @@
 //
 // Actions, all POST with a JSON body and the shared login's token:
 //   connect        { postizKey, anthropicKey?, timezone? } -> profile
+//   save-timezone  { timezone } -> profile (the zone his posting times are in)
 //   profile        { profile }                  -> profile
 //   accounts       { profile }                  -> profile (accounts listed again)
 //   save-campaign  { profile, campaignId, accounts, times, window? } -> profile
@@ -1716,6 +1717,22 @@ async function saveLimits(profile: Profile, body: Record<string, unknown>): Prom
   const { data, error } = await db
     .from('cutter_profiles')
     .update({ settings: { ...profile.settings, limits }, updated_at: new Date().toISOString() })
+    .eq('id', profile.id)
+    .select('*')
+    .single()
+  if (error || !data) throw new Problem('It could not be saved. Try again.', true, 500)
+  return reply(await profileView(data as Profile))
+}
+
+/** The time zone his posting times are in (each login's own: a student in
+ *  another country posts at their own hours). Videos already scheduled keep
+ *  their moment; the next ones are timed in the new zone. */
+async function saveTimezone(profile: Profile, body: Record<string, unknown>): Promise<Response> {
+  const timezone = typeof body.timezone === 'string' && body.timezone.length < 64 && isTimezone(body.timezone) ? body.timezone : null
+  if (!timezone) throw new Problem("That time zone isn't one we know.", false, 400)
+  const { data, error } = await db
+    .from('cutter_profiles')
+    .update({ timezone, updated_at: new Date().toISOString() })
     .eq('id', profile.id)
     .select('*')
     .single()
@@ -5256,6 +5273,8 @@ Deno.serve(async (req) => {
         return await savePlace(profile, body)
       case 'save-limits':
         return await saveLimits(profile, body)
+      case 'save-timezone':
+        return await saveTimezone(profile, body)
       case 'attach-accounts':
         return await attachAccounts(profile, body)
       case 'push':

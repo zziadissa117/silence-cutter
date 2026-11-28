@@ -59,7 +59,7 @@ export function EditScreen({
   /** The timeline: everything the cuts editor shows. */
   cuts: Pick<
     CutsProps,
-    'duration' | 'initial' | 'words' | 'checks' | 'peaks' | 'noiseNote' | 'overlays' | 'bank' | 'defaults' | 'loadImage' | 'videoBank' | 'loadVideo' | 'loadSound' | 'headline'
+    'duration' | 'initial' | 'words' | 'checks' | 'peaks' | 'noiseNote' | 'overlays' | 'bank' | 'onPhonePicture' | 'onNamePicture' | 'defaults' | 'loadImage' | 'videoBank' | 'loadVideo' | 'loadSound' | 'headline'
   >
   /** The captions he checks, through the cut as it is now. */
   shown: CaptionWord[]
@@ -176,6 +176,8 @@ export function EditScreen({
       noiseNote={cuts.noiseNote}
       overlays={cuts.overlays}
       bank={cuts.bank}
+      onPhonePicture={cuts.onPhonePicture}
+      onNamePicture={cuts.onNamePicture}
       defaults={cuts.defaults}
       loadImage={cuts.loadImage}
       videoBank={cuts.videoBank}

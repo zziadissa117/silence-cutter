@@ -3,6 +3,24 @@
 Newest first. Every change says what it does, how to use it, and how it works
 underneath. Kept up to date with each commit.
 
+## Time zones, the music behind the captions, and editor pictures kept in the campaign
+Needs deploying: run ./deploy-server.sh (the postiz function's new `save-timezone`).
+
+- **Time zones** (his ask, 2026-11-28: "some people could be in other countries ... make it so the current posting
+  hours are really specified to the time zone"). Every login's posting times are in one time zone, set from its phone
+  when it first connected - and never shown. Settings -> Posting now says it ("Every posting time is Toronto time
+  (UTC-5, now 3:42 PM)"), with Change (any zone) and, when the phone is on another clock, "Use <its zone> time" in one
+  tap. Never changed by itself: two people on one Postiz in two countries would keep moving each other's times. A
+  campaign's Posting says the zone next to "Your times". Videos already scheduled keep their moment; the next ones are
+  timed in the new zone. `TimeZoneCard.tsx`, `posting.saveTimezone`/`phoneZone`, server `saveTimezone`.
+- **Music spilling into the captions** (his report): the captions sheet is see-through so the video shows behind it,
+  but the edit screen's timeline under it - the sound and music bars, Add sound, the headline bar - showed through as
+  well. While the sheet is up the timeline is hidden (`CaptionSheet` sets `caption-sheet-up`); only the video shows.
+- **A picture from the phone in the edit screen** (his ask): kept in the campaign's own picture bank the moment it is
+  put on - in the Overlay list to put on again straight away - and a name box right there ("Name it and it pops up
+  when you say it"; Later leaves it for More -> Bank's "Name these"). `CutsEditor` `onPhonePicture`/`onNamePicture`,
+  `CampaignApp.keepPhonePicture`/`namePicture`.
+
 ## Trybe videos backed up on his server
 - His ask (2026-11-27): "back up Trybe videos to the server too".
 - With his Cutter server connected (Settings -> Server), every Trybe video goes up to it by itself once made, and again

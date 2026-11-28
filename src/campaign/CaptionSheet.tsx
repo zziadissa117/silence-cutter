@@ -77,6 +77,14 @@ export function CaptionSheet({
 }) {
   const [tall, setTall] = useSheetPref('captions.sheetTall', false)
   const { inset, room } = useKeyboard()
+  // While it is up, only the video shows through it: the timeline under it
+  // (its sound and music bars, Add sound, the headline bar) is hidden, not
+  // seen spilling through the captions (his report, 2026-11-28).
+  useEffect(() => {
+    if (!open || typeof document === 'undefined') return
+    document.documentElement.classList.add('caption-sheet-up')
+    return () => document.documentElement.classList.remove('caption-sheet-up')
+  }, [open])
   if (!open || typeof document === 'undefined') return null
   const typing = inset > 40
   return createPortal(

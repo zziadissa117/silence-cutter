@@ -3,6 +3,7 @@
 // friend): who approves a post, the reminder to submit it, and how the
 // caption is written.
 
+import { zoneLabel } from './TimeZoneCard'
 import { useState } from 'react'
 
 import { EditorFrame, useSaver } from './Editors'
@@ -228,7 +229,9 @@ export function PostingEditor({
 
       {local ? (
         <div className="group">
-          <div className="group-title">Your times</div>
+          <div className="group-title">
+            Your times{local?.profile.timezone ? <span className="hint"> · {zoneLabel(local.profile.timezone)} time</span> : null}
+          </div>
           <div className="seg" role="radiogroup" aria-label="When it posts">
             <button type="button" role="radio" aria-checked={timing === 'own'} className={timing === 'own' ? 'active' : ''} onClick={() => setTiming('own')}>
               My own times
