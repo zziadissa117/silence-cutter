@@ -163,7 +163,7 @@ it back.)
   in `postiz/index.ts` `PostizProblem`, `toBuffer`, `handOver` ("Postiz is down" switch), `checkBuffer`, `unpostHanded`;
   keys sealed in `cutter_profile_secrets.buffer_keys`, per-post `cutter_posts.buffer_ids`; phone `BufferBackup.tsx` (Settings, Posting)
 - Duplicate protection: `campaign/fingerprint.ts` (never key a send or a bank file on a random id alone)
-- Login (server): `supabase/functions/cutter/index.ts` (`whoami` is the engine's and the Cutter server's login check)
+- Login (server): `supabase/functions/cutter/index.ts` (`whoami` is the engine's and the Cutter server's login check); a login made as a copy of another when its link is opened (`startAsCopy`, set up by hand in cutter_config `newlogin:<name>`: campaigns, pictures, files, posting profiles handed over)
 - The Cutter server (Railway: this same app headless in Chrome for Testing, making every batch day and night):
   `server/main.mjs` (Node, no packages), its image the root `Dockerfile` (Railway finds it by itself; `server/railway.json` points at it for a service set up with Railway's old config files), setup in `server/README.md`; Apple's emoji in its videos as pictures the iPhone draws: `emojiSprites.ts`;
   app side `serverMode.ts` (`?server=1` on its localhost, `serverFlag.ts`), phone side `serverLink.ts` (hand-over,
