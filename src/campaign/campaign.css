@@ -2488,3 +2488,16 @@ textarea.lines-input { resize: none; line-height: 1.35; overflow: hidden; }
 .limit-row { flex-wrap: wrap; row-gap: 6px; }
 .limit-row .limit-name { flex: 1 1 100%; min-width: 0; }
 .limit-row .limit-switch { margin-left: auto; }
+
+/* The Batch clip check kept short, so the clip and its captions both show
+   (his friend's report, 2026-11-28): Cut / Raw on the clip's own line, the
+   script's differences on one line until tapped, the clip a little smaller. */
+.drop-check-line { flex-wrap: wrap; row-gap: 4px; }
+.drop-check-cut.inline { margin-top: 0; gap: 6px; flex-wrap: nowrap; }
+.drop-check-cut.inline .seg button { min-height: 30px; padding: 0 10px; font-size: 14px; }
+.drop-check-line .drop-check-mirror { margin-left: auto; }
+.drop-check-line .drop-check-out { margin-left: 0; }
+.drop-check-script.differs { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; cursor: pointer; }
+.drop-check-script.differs.open { white-space: normal; }
+.drop-check-place { padding: 6px 12px 8px; gap: 4px; }
+.drop-check-screen .review-frame { height: min(25svh, 300px); }

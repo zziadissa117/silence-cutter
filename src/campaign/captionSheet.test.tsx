@@ -83,3 +83,13 @@ describe("the captions' sheet", () => {
     vi.unstubAllGlobals()
   })
 })
+
+describe('the sheet keeps clear of the video', () => {
+  it('starts under the video, between 28% and 55% of the screen', async () => {
+    const { sheetUnderVideo } = await import('./CaptionSheet')
+    expect(sheetUnderVideo(664, 466)).toBe(192)
+    expect(sheetUnderVideo(844, 300)).toBe(Math.round(844 * 0.55))
+    expect(sheetUnderVideo(664, 600)).toBe(Math.round(664 * 0.28))
+    expect(sheetUnderVideo(664, null)).toBeNull()
+  })
+})

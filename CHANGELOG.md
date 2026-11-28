@@ -3,6 +3,17 @@
 Newest first. Every change says what it does, how to use it, and how it works
 underneath. Kept up to date with each commit.
 
+## The Batch clip check: the clip and its captions both in sight
+- His friend's report (2026-11-28): checking a batch clip's captions, the captions couldn't be seen - "some things take
+  too much space". The clip's box above the video (which clip, Cut/Raw, the script's differences, Sounds like, the
+  steps) pushed the video down, and the captions' sheet - always 55% of the screen - covered all of it. Measured at
+  iPhone size: the sheet started at 299 px, the video at 349-528 px.
+- The captions' sheet now starts just under the video it is the captions of (at least 28% of the screen, at most the
+  usual 55%; taller only when he pulls it up) - on every caption check and the edit screen (`CaptionSheet.sheetUnderVideo`).
+- The clip's box is shorter: Cut / Raw on the clip's own line, "Not sure" only when there is no "Sounds like" step to
+  show instead, the script's differences on one line (tap for all of them), the clip a little smaller (25% of the
+  screen). Same size now: the video 300-466 px, the sheet from 472 px.
+
 ## The music picker no longer runs off the side of the screen
 - His report (2026-11-28): after dropping a video and tapping Captions, the Music picker ran off the side of the phone.
   A field took the width of its longest choice - a long song name with its length and "(too short)" - wider than the

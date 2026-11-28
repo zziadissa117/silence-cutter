@@ -57,6 +57,24 @@ function useKeyboard(): { inset: number; room: number } {
   return state
 }
 
+/** Where the video showing its captions ends on screen: the lowest one in
+ *  view, or null. */
+function frameBottom(): number | null {
+  let bottom: number | null = null
+  for (const frame of document.querySelectorAll('.review-frame')) {
+    const r = frame.getBoundingClientRect()
+    if (r.height > 0 && r.bottom > 0 && r.top < window.innerHeight) bottom = Math.max(bottom ?? 0, r.bottom)
+  }
+  return bottom
+}
+
+/** The sheet's height that starts it just under the video - at least a third
+ *  of the screen (28%), at most the usual 55%. Null: no video to keep clear. */
+export function sheetUnderVideo(screen: number, videoBottom: number | null): number | null {
+  if (videoBottom === null || !(screen > 0)) return null
+  return Math.round(Math.min(screen * 0.55, Math.max(screen * 0.28, screen - videoBottom - 6)))
+}
+
 /** The least room the sheet keeps for the screen above it while he types. */
 const ABOVE_KEYBOARD = 64
 
@@ -85,6 +103,23 @@ export function CaptionSheet({
     document.documentElement.classList.add('caption-sheet-up')
     return () => document.documentElement.classList.remove('caption-sheet-up')
   }, [open])
+  // Never over the video it is the captions of (his friend's report,
+  // 2026-11-28: on the Batch clip check the clip's box above the video pushed
+  // it down, and the sheet covered it - the captions couldn't be seen): it
+  // starts under the video, down to a third of the screen; taller only when
+  // he makes it taller.
+  const [underVideo, setUnderVideo] = useState<number | null>(null)
+  useEffect(() => {
+    if (!open || tall || typeof window === 'undefined') return
+    const measure = () => setUnderVideo(sheetUnderVideo(window.innerHeight, frameBottom()))
+    measure()
+    const timer = window.setInterval(measure, 400)
+    window.addEventListener('resize', measure)
+    return () => {
+      window.clearInterval(timer)
+      window.removeEventListener('resize', measure)
+    }
+  }, [open, tall])
   if (!open || typeof document === 'undefined') return null
   const typing = inset > 40
   return createPortal(
@@ -92,7 +127,13 @@ export function CaptionSheet({
       className={`caption-sheet${tall ? ' tall' : ''}${typing ? ' over-keyboard' : ''}`}
       role="dialog"
       aria-label="Captions"
-      style={typing ? { bottom: inset, height: Math.max(160, Math.min(room - ABOVE_KEYBOARD, room * (tall ? 0.8 : 0.6))) } : undefined}
+      style={
+        typing
+          ? { bottom: inset, height: Math.max(160, Math.min(room - ABOVE_KEYBOARD, room * (tall ? 0.8 : 0.6))) }
+          : underVideo !== null && !tall
+            ? { height: underVideo }
+            : undefined
+      }
     >
       <button type="button" className="caption-sheet-grip" aria-label={tall ? 'Make the captions smaller' : 'Make the captions bigger'} onClick={() => setTall(!tall)}>
         <span />

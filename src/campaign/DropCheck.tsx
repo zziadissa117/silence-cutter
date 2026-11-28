@@ -113,6 +113,8 @@ export function DropCheck({
   const [hint, setHint] = useState<string | null>(item?.hint ?? null)
   /** Flipped left to right (BankFile.mirror) - set by the drop-in checklist, changed here. */
   const [mirror, setMirror] = useState(Boolean(item?.file.mirror))
+  /** The script differences, all of them: one line until tapped. */
+  const [allDiffs, setAllDiffs] = useState(false)
   /** Its timeline open (his ask, 2026-11-14: "sometimes it cuts it too
    *  short, and I could just manually extend it"): the recording, or null
    *  while it loads; 'missing' when it is no longer on the phone. */
@@ -271,9 +273,35 @@ export function DropCheck({
         <span className="row-name">
           Clip {done + 1} of {total}
         </span>
-        {(!item.sure || hint) && place === item.place && place !== null ? (
-          <span className="drop-check-unsure">{hint ? 'Maybe the wrong step' : 'Not sure - check it'}</span>
-        ) : null}
+        {/* "Sounds like" below says it when there is a step it sounds like. */}
+        {!item.sure && !hint && place === item.place && place !== null ? <span className="drop-check-unsure">Not sure</span> : null}
+        {/* Cut by the Cutter, or kept as he filmed it - his pick per clip
+            (his ask, 2026-11-15: "some clips i want to keep them raw but others no"). */}
+        <div className="drop-check-cut inline">
+          <div className="seg" role="radiogroup" aria-label="Cut by the Cutter or kept raw">
+            {([true, false] as const).map((on) => {
+              const now = isCut(liveFile())
+              return (
+                <button
+                  key={String(on)}
+                  type="button"
+                  role="radio"
+                  aria-checked={now === on}
+                  className={now === on ? 'active' : ''}
+                  disabled={switching !== null || listening}
+                  onClick={() => now !== on && void switchCut(on)}
+                >
+                  {on ? 'Cut' : 'Raw'}
+                </button>
+              )
+            })}
+          </div>
+          {switching ? (
+            <span className="hint">
+              {switching.what}… {Math.round(switching.fraction * 100)}%
+            </span>
+          ) : null}
+        </div>
         {/* Left and right swapped - a paper he holds up reads the right way. */}
         <button type="button" className={`linkbtn drop-check-mirror${mirror ? ' active' : ''}`} aria-pressed={mirror} onClick={() => setMirror(!mirror)}>
           {mirror ? 'Mirrored' : 'Mirror'}
@@ -281,34 +309,6 @@ export function DropCheck({
         <button type="button" className={`linkbtn drop-check-out${place === OUT ? ' active' : ''}`} aria-pressed={place === OUT} onClick={() => setPlace(place === OUT ? item.place : OUT)}>
           {place === OUT ? 'Keep it' : item.recheck ? 'Take out' : 'Leave out'}
         </button>
-      </div>
-      {/* Cut by the Cutter, or kept as he filmed it - his pick per clip
-          (his ask, 2026-11-15: "some clips i want to keep them raw but others no"). */}
-      <div className="drop-check-cut">
-        <span className="row-name">Cutter</span>
-        <div className="seg" role="radiogroup" aria-label="Cut by the Cutter or kept raw">
-          {([true, false] as const).map((on) => {
-            const now = isCut(liveFile())
-            return (
-              <button
-                key={String(on)}
-                type="button"
-                role="radio"
-                aria-checked={now === on}
-                className={now === on ? 'active' : ''}
-                disabled={switching !== null || listening}
-                onClick={() => now !== on && void switchCut(on)}
-              >
-                {on ? 'Cut' : 'Raw'}
-              </button>
-            )
-          })}
-        </div>
-        {switching ? (
-          <span className="hint">
-            {switching.what}… {Math.round(switching.fraction * 100)}%
-          </span>
-        ) : null}
       </div>
       {/* The step it goes in is the one lit below; said in words only when
           there is something to do. */}
@@ -330,7 +330,7 @@ export function DropCheck({
         fitted.matches ? (
           <span className="drop-check-script ok">✓ Matches the step&rsquo;s caption script{fitted.respelled > 0 ? ` - ${fitted.respelled} word${fitted.respelled === 1 ? '' : 's'} spelled as the script` : ''}</span>
         ) : (
-          <span className="drop-check-script differs">
+          <span className={`drop-check-script differs${allDiffs ? ' open' : ''}`} role="button" tabIndex={0} onClick={() => setAllDiffs(!allDiffs)}>
             Differs from the script:{' '}
             {fitted.diffs
               .slice(0, 3)
