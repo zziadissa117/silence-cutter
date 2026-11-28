@@ -56,6 +56,8 @@ export interface CampaignPlace {
 export interface Limit {
   paused?: boolean
   perDay?: number
+  /** The most batch videos a day; 0: his own new videos only (server limits.ts). */
+  batch?: number
 }
 export interface Limits {
   platforms?: Record<string, Limit>

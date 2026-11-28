@@ -2482,3 +2482,9 @@ textarea.lines-input { resize: none; line-height: 1.35; overflow: hidden; }
 .hook-place-guide { position: absolute; background: #ffd400; pointer-events: none; }
 .hook-place-guide.across { left: 50%; top: 0; bottom: 0; width: 1px; }
 .hook-place-guide.down { top: 50%; left: 0; right: 0; height: 1px; }
+
+/* Pause and daily limits: the account's name on its own line, its two numbers
+   and switch under it - with the batch number there was no room for both. */
+.limit-row { flex-wrap: wrap; row-gap: 6px; }
+.limit-row .limit-name { flex: 1 1 100%; min-width: 0; }
+.limit-row .limit-switch { margin-left: auto; }

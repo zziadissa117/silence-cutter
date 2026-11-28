@@ -3,6 +3,22 @@
 Newest first. Every change says what it does, how to use it, and how it works
 underneath. Kept up to date with each commit.
 
+## Accounts that take only his own new videos (or a few batch videos a day)
+Needs deploying: run ./deploy-server.sh (the postiz function).
+
+- His ask (2026-11-28): "a way to limit certain accounts from posting batches and only post new original content,
+  because sometimes YouTube doesn't like when posting more than 2x per day similar content."
+- Settings -> Posting -> Pause and daily limits: each platform and account has a second number, **batch** - the most
+  batch videos a day. 0: the account gets only his own new videos, never a batch video. 2: two batch videos a day,
+  then the day's other batch videos leave it out. Empty: no limit, as before. His own videos are never stopped by it.
+- A batch video leaves those accounts out (not held for later - the next batch video is as good) and goes to its
+  other accounts; with none left it goes nowhere, saying why. Counted by the profile's time zone's day.
+- Server: `limits.ts` `Limit.batch`, `batchCapFor`, `batchRoom`, `batchLeftNote`; `index.ts schedule` (before the
+  pause/daily split), `usedForDay(..., batchOnly)`. Phone: `PostingLimits.tsx` (each account's name on its own line
+  now, its numbers under it), `posting.Limit.batch`.
+- Also fixed: the Pause and daily limits page could crash on opening in a development build (its scroll-to-top
+  effect returned a value).
+
 ## Ilyan's own login, a copy of the shared one
 Needs deploying: run ./deploy-server.sh (the cutter function), before Ilyan opens his link.
 

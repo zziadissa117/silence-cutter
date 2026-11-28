@@ -21,8 +21,13 @@ export function limitsLine(profile: Profile): string {
   const capped =
     [...platforms].filter((p) => limits.platforms?.[p]?.perDay !== undefined).length +
     Object.entries(limits.accounts ?? {}).filter(([id, l]) => accounts.has(id) && l.perDay !== undefined).length
+  const only = Object.entries(limits.accounts ?? {}).filter(([id, l]) => accounts.has(id) && l.batch === 0).length + [...platforms].filter((p) => limits.platforms?.[p]?.batch === 0).length
+  const batchCapped =
+    Object.entries(limits.accounts ?? {}).filter(([id, l]) => accounts.has(id) && (l.batch ?? 0) > 0).length + [...platforms].filter((p) => (limits.platforms?.[p]?.batch ?? 0) > 0).length
   const parts = [
     paused.length > 0 ? `${paused.join(', ')} paused` : '',
+    only > 0 ? `${only} on your own videos only` : '',
+    batchCapped > 0 ? `${batchCapped} with a batch limit` : '',
     pausedAccounts > 0 ? `${pausedAccounts} account${pausedAccounts === 1 ? '' : 's'} paused` : '',
     capped > 0 ? `${capped} with a daily limit` : '',
   ].filter(Boolean)
@@ -68,7 +73,9 @@ export function PostingLimits({
   const [saving, setSaving] = useState(false)
 
   // Opened from far down Settings: start at the top.
-  useEffect(() => window.scrollTo(0, 0), [])
+  useEffect(() => {
+    window.scrollTo(0, 0)
+  }, [])
 
   const platforms = [...new Set(profile.accounts.map((a) => a.platform))]
 
@@ -90,8 +97,9 @@ export function PostingLimits({
     const merged: Limit = { ...current, ...patch }
     if (!merged.paused) delete merged.paused
     if (merged.perDay === undefined || Number.isNaN(merged.perDay)) delete merged.perDay
+    if (merged.batch === undefined || Number.isNaN(merged.batch)) delete merged.batch
     const rest = { ...limits[group] }
-    if (merged.paused || merged.perDay !== undefined) rest[key] = merged
+    if (merged.paused || merged.perDay !== undefined || merged.batch !== undefined) rest[key] = merged
     else delete rest[key]
     void put({ ...limits, [group]: rest })
   }
@@ -103,6 +111,7 @@ export function PostingLimits({
         <span className="limit-name">
           <span className="limit-title">{name}</span>
           {here?.paused ? <span className="limit-state warn-text">Paused - its videos wait</span> : null}
+          {here?.batch === 0 ? <span className="limit-state">Your own new videos only</span> : (here?.batch ?? 0) > 0 ? <span className="limit-state">At most {here!.batch} batch video{here!.batch === 1 ? '' : 's'} a day</span> : null}
         </span>
         <input
           type="number"
@@ -124,6 +133,26 @@ export function PostingLimits({
           }}
         />
         <span className="limit-unit">a day</span>
+        <input
+          type="number"
+          inputMode="numeric"
+          min={0}
+          max={50}
+          className="limit-input"
+          aria-label={`${label} - most batch videos a day`}
+          placeholder="-"
+          defaultValue={here?.batch ?? ''}
+          onBlur={(e) => {
+            const raw = e.target.value.trim()
+            const n = raw === '' ? undefined : Number(raw)
+            if (n !== undefined && (!Number.isInteger(n) || n < 0 || n > 50)) {
+              setProblem('A limit is a whole number from 0 to 50, or empty for no limit.')
+              return
+            }
+            if (n !== here?.batch) change(group, key, { batch: n })
+          }}
+        />
+        <span className="limit-unit">batch</span>
         <label className="toggle limit-switch">
           <input
             type="checkbox"
@@ -145,8 +174,9 @@ export function PostingLimits({
         <h2>Pause and daily limits</h2>
       </div>
       <p className="lede">
-        The switch pauses; the number is the most posts a day (empty: no limit). Held videos wait and go out by themselves once
-        it is free - nothing is lost.
+        The switch pauses; the first number is the most posts a day (empty: no limit). Held videos wait and go out by themselves
+        once it is free - nothing is lost. The second is the most <b>batch</b> videos a day: 0 and the account only gets your own
+        new videos; past it, batch videos skip that account (YouTube doesn&rsquo;t like many look-alike videos in a day).
       </p>
       {problem ? <div className="error">{problem}</div> : null}
       {platforms.map((platform) => {

@@ -14,7 +14,11 @@
 // Limits live in the profile's settings (no table of their own):
 //   settings.limits = {
 //     platforms: { tiktok: { paused?: true, perDay?: 3 } },
-//     accounts:  { "<account id>": { paused?: true, perDay?: 1 } },
+//     accounts:  { "<account id>": { paused?: true, perDay?: 1, batch?: 0 } },
+//   }
+//   (`batch`: the most batch videos a day - 0 for his own new videos only.
+//   Past it a batch video leaves the account out, never holds it.)
+//   {
 //   }
 //
 // Plain TypeScript (only deadAccounts.ts userName), for Deno and for the unit tests.
@@ -24,6 +28,11 @@ import { userName } from './deadAccounts.ts'
 export interface Limit {
   paused?: boolean
   perDay?: number
+  /** The most batch videos a day (his ask, 2026-11-28: YouTube doesn't like
+   *  more than two similar videos a day): 0 - his own new videos only. Past
+   *  it, a batch video simply doesn't go to the account (never held: the
+   *  next one is just as good); his own videos are never stopped by it. */
+  batch?: number
 }
 
 export interface Limits {
@@ -119,6 +128,38 @@ export function firstDayWithRoom(
   return null
 }
 
+/** The most batch videos a day for one account: the smaller of its own and
+ *  its platform's, or null for no limit. */
+export function batchCapFor(limits: Limits | undefined, account: { id: string; platform: string }): number | null {
+  const caps = [limits?.platforms?.[account.platform]?.batch, limits?.accounts?.[account.id]?.batch].filter((n): n is number => typeof n === 'number' && Number.isInteger(n) && n >= 0)
+  return caps.length > 0 ? Math.min(...caps) : null
+}
+
+/** A batch video's accounts: the ones with batch room left that day (`used`:
+ *  batch videos each already has), and the ones it leaves out. */
+export function batchRoom(accounts: readonly PostAccount[], limits: Limits | undefined, used: Readonly<Record<string, number>>): { keep: PostAccount[]; left: PostAccount[] } {
+  const keep: PostAccount[] = []
+  const left: PostAccount[] = []
+  for (const account of accounts) {
+    const cap = batchCapFor(limits, account)
+    if (cap !== null && (used[account.id] ?? 0) >= cap) left.push(account)
+    else keep.push(account)
+  }
+  return { keep, left }
+}
+
+/** "Not sent to @x - original videos only" for a batch video's note. */
+export function batchLeftNote(left: readonly PostAccount[], limits: Limits | undefined): string | null {
+  if (left.length === 0) return null
+  const only = left.filter((a) => batchCapFor(limits, a) === 0).map(userName)
+  const full = left.filter((a) => (batchCapFor(limits, a) ?? 0) > 0).map(userName)
+  const parts = [
+    only.length > 0 ? `${only.join(', ')} ${only.length === 1 ? 'takes' : 'take'} only your own new videos` : '',
+    full.length > 0 ? `${full.join(', ')} ${full.length === 1 ? 'has' : 'have'} had today's batch videos` : '',
+  ].filter(Boolean)
+  return `Not sent to every account: ${parts.join('; ')}.`
+}
+
 /** "TikTok is paused" / "TikTok is full today" - for the post's own note. */
 export function heldNote(held: readonly PostAccount[]): string | null {
   if (held.length === 0) return null
@@ -139,7 +180,8 @@ export function cleanLimits(value: unknown): Limits {
     const limit: Limit = {}
     if (raw.paused === true) limit.paused = true
     if (typeof raw.perDay === 'number' && Number.isInteger(raw.perDay) && raw.perDay >= 0 && raw.perDay <= 50) limit.perDay = raw.perDay
-    return limit.paused || limit.perDay !== undefined ? limit : null
+    if (typeof raw.batch === 'number' && Number.isInteger(raw.batch) && raw.batch >= 0 && raw.batch <= 50) limit.batch = raw.batch
+    return limit.paused || limit.perDay !== undefined || limit.batch !== undefined ? limit : null
   }
   const group = (v: unknown): Record<string, Limit> | undefined => {
     if (!v || typeof v !== 'object') return undefined

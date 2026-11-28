@@ -144,7 +144,7 @@ import {
 import { attachMove, summarise, type AttachMove } from './attach.ts'
 import { createdAround, isCreatedAround, sentDate } from './created.ts'
 import { cleanMode, pickRecaption, recaptionMode } from './recaption.ts'
-import { cleanLimits, firstDayWithRoom, heldNote, releasable, split, usedOn, type Limits, type PostAccount } from './limits.ts'
+import { batchLeftNote, batchRoom, cleanLimits, firstDayWithRoom, heldNote, releasable, split, usedOn, type Limits, type PostAccount } from './limits.ts'
 import { PENDING_STATUSES, channelReport, endPlan, isPending, splitStop, type EndPost, type Integration, type PendingPost } from './channels.ts'
 import { VIEWS_WINDOW_DAYS, dueAt, fillPerVideo, notRead, parseCache, readViews, remember, type ViewsCache } from './views.ts'
 import { POST_VIEW_AGES_H, POST_VIEW_MAX_DAYS, accountNameFor, postViewCount, postViewsDue } from './postViews.ts'
@@ -3038,14 +3038,17 @@ function anthropicProblem(error: unknown): never {
  *  gone while it waited, the next one (a brand-approved post takes the next
  *  time today, or goes at once). */
 /** How many posts each account already has on a day (limits.ts usedOn). */
-async function usedForDay(profile: Profile, date: string, exceptId: string): Promise<Record<string, number>> {
+async function usedForDay(profile: Profile, date: string, exceptId: string, batchOnly = false): Promise<Record<string, number>> {
   const around = new Date(zoned(date, '12:00', profile.timezone).getTime())
-  const { data } = await db
+  let query = db
     .from('cutter_posts')
     .select('post_at, status, accounts')
     .eq('profile_id', profile.id)
     .in('status', ['scheduled', 'posted'])
     .neq('id', exceptId)
+  // Batch videos only (Limit.batch).
+  if (batchOnly) query = query.not('batch', 'is', null)
+  const { data } = await query
     .gte('post_at', new Date(around.getTime() - 36 * 60 * MINUTE).toISOString())
     .lte('post_at', new Date(around.getTime() + 36 * 60 * MINUTE).toISOString())
   return usedOn((data ?? []) as { post_at: string | null; status: string; accounts: PostAccount[] }[], date, (iso) => localDate(new Date(iso), profile.timezone))
@@ -3094,6 +3097,19 @@ async function schedule(start: Post): Promise<Post> {
   const goesIn = new Date(date).getTime() - BATCH_LEAD_MS
   if (post.batch && !now && goesIn > Date.now() && !post.creating_at && !post.buffer_ids) {
     return update(post.id, { retry_at: new Date(goesIn).toISOString(), error: null, attempts: 0 })
+  }
+
+  // A batch video leaves out the accounts that take only his own new videos,
+  // or have had their batch videos for the day (Limit.batch) - not held: the
+  // next batch video is as good. None left: it goes nowhere.
+  if (post.batch) {
+    const day = localDate(new Date(date), profile.timezone)
+    const { keep, left } = batchRoom(post.accounts, profile.settings.limits, await usedForDay(profile, day, post.id, true))
+    if (left.length > 0) {
+      const note = batchLeftNote(left, profile.settings.limits)
+      if (keep.length === 0) return update(post.id, { status: 'rejected', error: note, retry_at: null, attempts: 0 })
+      post = await update(post.id, { accounts: keep })
+    }
   }
 
   // A paused or full account does not go in this group: it is held on the post

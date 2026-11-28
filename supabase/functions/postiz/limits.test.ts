@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { cleanLimits, firstDayWithRoom, heldNote, releasable, ruleFor, split, usedOn, type PostAccount } from './limits'
+import { batchCapFor, batchLeftNote, batchRoom, cleanLimits, firstDayWithRoom, heldNote, releasable, ruleFor, split, usedOn, type PostAccount } from './limits'
 
 const tt: PostAccount = { id: 'tt', name: 'TikTok main', platform: 'tiktok' }
 const tt2: PostAccount = { id: 'tt2', name: 'TikTok second', platform: 'tiktok' }
@@ -82,5 +82,26 @@ describe('cleanLimits', () => {
     expect(cleanLimits(null)).toEqual({})
     expect(cleanLimits('x')).toEqual({})
     expect(cleanLimits({ platforms: { a: { perDay: 99 } } })).toEqual({})
+  })
+})
+
+describe('batch videos a day per account', () => {
+  const yt = { id: 'y1', name: 'Jake', platform: 'youtube', profile: 'jake' }
+  const tt = { id: 't1', name: 'Jake', platform: 'tiktok', profile: 'jaketok' }
+  it('leaves out an account on its own videos only, keeps the rest', () => {
+    const limits = cleanLimits({ accounts: { y1: { batch: 0 } } })
+    expect(batchRoom([yt, tt], limits, {})).toEqual({ keep: [tt], left: [yt] })
+    expect(batchLeftNote([yt], limits)).toBe('Not sent to every account: @jake takes only your own new videos.')
+  })
+  it('lets an account have its batch videos up to the day\'s number, then leaves it out', () => {
+    const limits = cleanLimits({ platforms: { youtube: { batch: 2 } } })
+    expect(batchRoom([yt], limits, { y1: 1 }).keep).toEqual([yt])
+    expect(batchRoom([yt], limits, { y1: 2 }).left).toEqual([yt])
+    expect(batchCapFor(cleanLimits({ platforms: { youtube: { batch: 2 } }, accounts: { y1: { batch: 1 } } }), yt)).toBe(1)
+  })
+  it('keeps a batch-only limit when cleaning, and no limit means no change', () => {
+    expect(cleanLimits({ accounts: { y1: { batch: 0 } } })).toEqual({ accounts: { y1: { batch: 0 } } })
+    expect(cleanLimits({ accounts: { y1: { batch: 99 } } })).toEqual({})
+    expect(batchRoom([yt, tt], {}, { y1: 9 }).left).toEqual([])
   })
 })
