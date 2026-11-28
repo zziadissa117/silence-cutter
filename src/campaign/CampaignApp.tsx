@@ -2160,6 +2160,7 @@ export function CampaignApp() {
                 product,
                 music: track ? { ...track, drop } : null,
                 headlineText: hookText,
+                headlinePlace: jobFormat?.headlinePlace ?? null,
                 // The lines as they are set now, else as planned.
                 lines: jobFormat?.lines ?? next.montage.bank.split.lines,
                 amount: next.montage.bank.split.amount,
@@ -2189,6 +2190,7 @@ export function CampaignApp() {
           result = await watched(
             makeGreenScreen(background, cut, jobCampaign, jobAngle, hookText, green, (p) => setPhase('cutting', p), {
               reactionName: file instanceof File ? file.name : undefined,
+              headlinePlace: jobFormat?.headlinePlace ?? null,
               // A reaction he talks in keeps his voice (batch.talksIn).
               ...(keepsVoice ? { voice: file } : {}),
               // Each product step's own words, where he put them (StepTexts.tsx) -
@@ -2346,6 +2348,8 @@ export function CampaignApp() {
               // product step plays the moment something happens in it - a
               // step with a single clip plays whole (stepPiece.playsWhole).
               reactionFirst: Boolean(next.montage.bank) && !trialLook,
+              // Where he put the hook's headline for this format (HookPlace.tsx).
+              headlinePlace: trialLook ? null : (jobFormat?.headlinePlace ?? null),
               brightness: trialLook?.brightness,
               // Sometimes a second or two shorter, so no two copies are alike.
               shorterBy: trialLook?.trimSec,

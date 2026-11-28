@@ -29,6 +29,7 @@ import {
   type BankPicture,
   type PopCue,
   type Campaign,
+  type HeadlinePlace,
 } from './look'
 import { isText, isVideo, manualCues, textHeadline, type ManualPicture } from './manualPictures'
 import { wordMoments } from './moments'
@@ -476,6 +477,8 @@ export async function makeMontage(
     windows?: boolean[]
     /** The first clip is a batch reaction: it always pushes in slowly. */
     reactionFirst?: boolean
+    /** Where he put the hook's headline for the batch format (HookPlace.tsx). */
+    headlinePlace?: HeadlinePlace | null
     /** A talking batch: the reaction keeps his voice (montageRender). */
     voice?: boolean
     /** A talking head batch: every clip keeps its sound (montageRender). */
@@ -523,6 +526,7 @@ export async function makeMontage(
       formula: extra.formula ?? null,
       windows: extra.windows,
       reactionFirst: extra.reactionFirst,
+      headlinePlace: extra.headlinePlace ?? null,
       voice: extra.voice,
       voiceAll: extra.voiceAll,
       titles: extra.titles,
@@ -630,10 +634,10 @@ export async function makeGreenScreen(
   headlineText: string,
   corner: Corner,
   onRenderProgress?: (fraction: number) => void,
-  extra: { reactionName?: string; voice?: Blob; stepTexts?: Parameters<typeof renderGreenScreen>[0]['stepTexts'] } = {},
+  extra: { reactionName?: string; voice?: Blob; stepTexts?: Parameters<typeof renderGreenScreen>[0]['stepTexts']; headlinePlace?: HeadlinePlace | null } = {},
 ): Promise<CampaignResult> {
   const rendered = await renderGreenScreen(
-    { background, cutout, look: videoLook(campaign, angle, [], null), headlineText, corner, reactionName: extra.reactionName, voice: extra.voice, stepTexts: extra.stepTexts },
+    { background, cutout, look: videoLook(campaign, angle, [], null), headlineText, corner, reactionName: extra.reactionName, voice: extra.voice, stepTexts: extra.stepTexts, headlinePlace: extra.headlinePlace ?? null },
     onRenderProgress,
   )
   return {

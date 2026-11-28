@@ -13,7 +13,7 @@ import { DEFAULT_MONEY, hookReactions, splitSteps, type MoneyRange, type SplitLi
 import type { CaptionSize, CaptionStyle, CaptionWord } from './captions'
 import type { ClipSource } from './dropQueue'
 import type { EmojiSprite } from './emojiSprites'
-import type { HeadlineStyle } from './look'
+import type { HeadlinePlace, HeadlineStyle } from './look'
 import type { TrialBank } from './trialLoop'
 
 /** A file in the bank, kept on this phone only - his own footage. */
@@ -120,6 +120,10 @@ export interface BatchFormat {
   lines?: SplitLine[]
   /** Split screen: the range its "+$" amounts are drawn from. */
   money?: MoneyRange
+  /** Where he put the hook's headline on its videos, dragged and pinched on
+   *  a phone screen (HookPlace.tsx, his ask 2026-11-28). Absent: the
+   *  campaign's spot, a little lower, as always. */
+  headlinePlace?: HeadlinePlace
   /** No headline (hook words) over the clip of him - the clip is the hook
    *  itself, e.g. a wide clip with its own words (his ask, 2026-11-13: "make
    *  it so I can choose if I want one or not"). Absent: a headline, as

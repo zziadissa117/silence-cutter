@@ -135,6 +135,8 @@ export interface GreenScreenInput {
   /** Per background clip (a product step), in order: his own words, each
    *  where he put it on the phone screen (batch.StepText); null for none. */
   stepTexts?: ({ text: string; place?: { x: number; y: number; scale: number }; style?: 'outline' | 'box' | 'snap' }[] | null)[]
+  /** Where he put the headline for this batch format (HookPlace.tsx): exactly there. */
+  headlinePlace?: { x: number; y: number; scale: number } | null
 }
 
 /** His voice is brought to the loudness of a talking video's (voice.ts). */
@@ -150,7 +152,7 @@ export function voiceGain(lufs: number): number {
 }
 
 export async function renderGreenScreen(
-  { background, cutout, look, headlineText, corner, reactionName, voice, stepTexts = [] }: GreenScreenInput,
+  { background, cutout, look, headlineText, corner, reactionName, voice, stepTexts = [], headlinePlace = null }: GreenScreenInput,
   onProgress?: (fraction: number) => void,
 ): Promise<{ blob: Blob; storedAs: string | null; totalSec: number }> {
   if (!(await isSilenceCutSupported())) {
@@ -238,7 +240,8 @@ export async function renderGreenScreen(
     if (!ctx || !stackCtx || !personCtx || !maskCtx) throw new SilenceCutError("This phone couldn't prepare the canvas for the video.")
     await headlineFontReady()
     // A little lower than the angle's headline, as on every batch video.
-    const headline = lowered(headlineText.trim() ? layoutHeadline(ctx, width, height, { ...look.headline, text: headlineText }) : null, height)
+    const laidHook = headlineText.trim() ? layoutHeadline(ctx, width, height, { ...look.headline, text: headlineText, ...(headlinePlace ? { place: headlinePlace } : {}) }) : null
+    const headline = headlinePlace ? laidHook : lowered(laidHook, height)
     // Each product step's own words, laid out once (the step names' outline
     // look unless he picked another).
     const stepWords = backgrounds.map((_, i) =>

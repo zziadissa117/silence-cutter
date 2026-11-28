@@ -71,6 +71,8 @@ export interface SplitInput {
   look: VideoLook
   /** The title over the hook; empty for none. */
   headlineText: string
+  /** Where he put it (HookPlace.tsx); absent: near the top. */
+  headlinePlace?: { x: number; y: number; scale: number } | null
   lines: SplitLine[]
   /** "+$586.68 US", popping up on the goal. */
   amount: string
@@ -241,7 +243,7 @@ export async function renderSplit(input: SplitInput, onProgress?: (fraction: num
     if (!ctx) throw new SilenceCutError("This phone couldn't prepare the canvas for the video.")
     await headlineFontReady()
     // The title over his half, near its top.
-    const title = input.headlineText.trim() ? layoutHeadline(ctx, width, height, { ...input.look.headline, text: input.headlineText, place: null }) : null
+    const title = input.headlineText.trim() ? layoutHeadline(ctx, width, height, { ...input.look.headline, text: input.headlineText, place: input.headlinePlace ?? null }) : null
     tops.push(new TopFrames(reaction.video, reaction.first, lengthOf(reaction), false), new TopFrames(desk.video, desk.first, lengthOf(desk), true))
     const [him, atDesk] = tops
 

@@ -157,6 +157,7 @@ import {
 import { FormulaPreview } from './FormulaPreview'
 import { CORNER_SIZES, DEFAULT_CORNER } from './greenScreenRender'
 import { MoneyRow, SplitLines } from './SplitLines'
+import { HookPlace } from './HookPlace'
 import type { SplitRole } from './splitScreen'
 import {
   carryOnEngineJob,
@@ -372,6 +373,8 @@ export function BatchView({
   /** The Set order sheet is open. */
   /** The format whose product steps are being set (StepOrder). */
   const [ordering, setOrdering] = useState<string | null>(null)
+  /** The format whose hook headline is being moved (HookPlace.tsx). */
+  const [placing, setPlacing] = useState<string | null>(null)
   // The product step whose words are being placed on its phone screen (StepTexts.tsx).
   const [wordsFor, setWordsFor] = useState<string | null>(null)
   // The clip lists opened inside a format card: closed, a format with 45
@@ -1465,6 +1468,7 @@ export function BatchView({
               changeFormat(f.id, { noHeadline: on ? undefined : true }),
             )}
             {f.noHeadline ? null : <FormatHeadlines format={f} shared={bank?.headlines.length ?? 0} onSave={(headlines) => changeFormat(f.id, { headlines })} />}
+            {hookPlaceRow(f)}
             {bank && !f.noMusic ? (
               <SyncDropRow format={f} marked={songsOf(bank.music, f.id).filter((m) => bank.beatDrops?.[m.id]).length} songs={songsOf(bank.music, f.id).length} onChange={(on) => changeFormat(f.id, { syncDrop: on || undefined })} />
             ) : null}
@@ -1577,6 +1581,40 @@ export function BatchView({
     )
   }
 
+  /** Where the headline goes over the hook: the usual spot or his, and the
+   *  phone screen to move it (HookPlace.tsx). */
+  const hookPlaceRow = (f: BatchFormat) => {
+    if (!bank || f.noHeadline) return null
+    const sample = f.headlines?.find((h) => h.trim()) ?? bank.headlines.find((h) => h.trim()) ?? ''
+    const style = looksOf(bank).find((l) => l.look !== 'formula')?.look
+    const look = { ...angle.headline, ...(style && style !== 'formula' ? { style } : {}) }
+    const clip = formatBank(bank, f).reactions[0] ?? null
+    return (
+      <>
+        <div className="setting">
+          <div className="setting-text">
+            <span className="row-name">Where the headline goes</span>
+            <span className="row-line">{f.headlinePlace ? 'Where you put it, on every video of this format.' : 'The campaign’s usual spot. Move it anywhere you like.'}</span>
+          </div>
+          <button type="button" className="btn small" aria-expanded={placing === f.id} onClick={() => setPlacing(placing === f.id ? null : f.id)}>
+            Move it
+          </button>
+        </div>
+        {placing === f.id ? (
+          <HookPlace
+            place={f.headlinePlace}
+            look={look}
+            text={sample}
+            clip={clip}
+            loadFile={loadBankFile}
+            onSave={(headlinePlace) => changeFormat(f.id, { headlinePlace })}
+            onClose={() => setPlacing(null)}
+          />
+        ) : null}
+      </>
+    )
+  }
+
   /** A split screen format, open (splitScreen.ts): its four kinds of clip in
    *  the order a video plays them, the title, the step lines, the money. */
   const splitBody = (f: BatchFormat) => {
@@ -1610,6 +1648,7 @@ export function BatchView({
               <input type="checkbox" className="switch" checked={!f.noHeadline} aria-label="Title on top" onChange={(e) => changeFormat(f.id, { noHeadline: e.target.checked ? undefined : true })} />
             </div>
             {f.noHeadline ? null : <FormatHeadlines format={f} shared={bank.headlines.length} onSave={(headlines) => changeFormat(f.id, { headlines })} />}
+            {hookPlaceRow(f)}
             <SplitLines format={f} product={products[0] ?? null} loadFile={loadBankFile} onSave={(lines) => changeFormat(f.id, { lines })} />
             <MoneyRow format={f} onSave={(money) => changeFormat(f.id, { money })} />
             <p className="hint">The song plays the whole way. Mark its beat drop under Music and the drop lands on the goal.</p>
@@ -1759,6 +1798,7 @@ export function BatchView({
                   />
                 </div>
                 {f.noHeadline ? null : <FormatHeadlines format={f} shared={bank.headlines.length} onSave={(headlines) => changeFormat(f.id, { headlines })} />}
+                {hookPlaceRow(f)}
                 <SyncDropRow format={f} marked={songsOf(bank.music, f.id).filter((m) => bank.beatDrops?.[m.id]).length} songs={songsOf(bank.music, f.id).length} onChange={(on) => changeFormat(f.id, { syncDrop: on || undefined })} />
                 {/* A song under a talking head's videos, or none (the drop-in
                     checklist sets it too - his ask, 2026-11-14). */}

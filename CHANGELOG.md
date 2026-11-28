@@ -3,6 +3,19 @@
 Newest first. Every change says what it does, how to use it, and how it works
 underneath. Kept up to date with each commit.
 
+## The hook's headline, anywhere he wants it
+- His ask (2026-11-28): "make it so we can move the headline however we want in the hook" (instead of turning the
+  hook into a product step, which would have lost the rotating headlines and looks, Claude + X, the hook numbers in
+  Analytics, the mixing and the talking hooks' checks).
+- Every batch format's card (reaction, talking head, green screen, split screen), under its headlines: "Where the
+  headline goes" -> Move it. A phone screen with one of its hook clips behind and a headline drawn over it the way the
+  videos draw it: drag it anywhere, pinch or slide its size; near the middle it snaps there with a guide line, the dead
+  zone shown while dragging. Save: every video of the format puts its own headline exactly there (not lowered). Usual
+  spot: back to the campaign's, a little lower, as before. Only the hook's headline moves - step names and his step
+  words keep theirs; Claude + X keeps its place.
+- `HookPlace.tsx`, `BatchFormat.headlinePlace`, `BatchView.hookPlaceRow`; drawn by montageRender (`headlinePlace`),
+  greenScreenRender and splitRender; passed from `CampaignApp` (never for a Trial reel).
+
 ## Split screen batches (the soccer reel)
 - His friend's ask (2026-11-28), from their reel: half reaction on top, half the product under it, a money sound on the
   goal. A new batch format, **Split screen** (Batch -> + Add a format):

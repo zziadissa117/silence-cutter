@@ -37,6 +37,7 @@ import { ONLY_HOOK_ELSE } from './batch'
 import { CAPTION_LEAD, PHRASE_HOLD_SEC, captionAt, captionRanges, drawStyledCaption, type CaptionSize, type CaptionSpot, type CaptionStyle, type CaptionWord } from './captions'
 import { drawFormula, formulaPush, layoutFormula, type FormulaLayout } from './formulaOverlay'
 import { headlineFontReady } from './headlineFont'
+import type { HeadlinePlace } from './look'
 import type { VideoLook } from './look'
 import { MusicBed, musicGain, trackLoudness } from './music'
 import { Limiter } from './voice'
@@ -192,6 +193,9 @@ export interface MontageRenderInput {
   /** The first clip is his reaction (a batch): it slowly pushes in for its
    *  whole length when the campaign's push-in is on (effects.reactionZoom). */
   reactionFirst?: boolean
+  /** Where he put the hook's headline for this batch format (HookPlace.tsx):
+   *  drawn exactly there, not lowered. Only the hook's headline. */
+  headlinePlace?: HeadlinePlace | null
   /** A talking batch: the first clip's own sound - his voice - is kept, and
    *  the music goes under it, dipping while he talks (his ask, 2026-11-03:
    *  "some talking batches and some reaction-only"). Absent: music alone. */
@@ -396,7 +400,7 @@ export function liftMusic(channels: Float32Array[], gain: number, sampleRate: nu
 }
 
 export async function renderMontage(
-  { clips: files, look, headlineText, music, seed = '', formula = null, windows = [], reactionFirst = false, titles = [], stepTexts = [], stepOverlays = [], voice = false, voiceAll = false, brightness = 0, keepLines = false, keepShape = false, shorterBy = 0, cutOut = null, beatDrop = null, rawFirst = false, joinTight, asGiven = [], mirrored = [], captions = null, speed = 1, reframe = null, tint = null }: MontageRenderInput,
+  { clips: files, look, headlineText, music, seed = '', formula = null, windows = [], reactionFirst = false, headlinePlace = null, titles = [], stepTexts = [], stepOverlays = [], voice = false, voiceAll = false, brightness = 0, keepLines = false, keepShape = false, shorterBy = 0, cutOut = null, beatDrop = null, rawFirst = false, joinTight, asGiven = [], mirrored = [], captions = null, speed = 1, reframe = null, tint = null }: MontageRenderInput,
   onProgress?: (fraction: number) => void,
 ): Promise<MontageRenderResult> {
   if (files.length === 0) throw new SilenceCutError('Add at least one clip.')
@@ -514,8 +518,9 @@ export async function renderMontage(
     await headlineFontReady()
     // A batch's words sit a little lower (BATCH_LOWER).
     const place = (layout: HeadlineLayout | null) => (reactionFirst ? lowered(layout, height) : layout)
-    const words = { ...look.headline, text: headlineText }
-    const headline = place(
+    const words = { ...look.headline, text: headlineText, ...(headlinePlace ? { place: headlinePlace } : {}) }
+    const hookPlace = (layout: HeadlineLayout | null) => (headlinePlace ? layout : place(layout))
+    const headline = hookPlace(
       formula || !headlineText.trim()
         ? null
         : keepLines
